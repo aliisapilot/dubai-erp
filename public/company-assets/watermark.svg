@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="794" height="1123">
+  <!-- Subtle A4 Watermark Background for Dubai ERP Documents -->
+  <defs>
+    <radialGradient id="watermarkRadial" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0F172A" stop-opacity="0.045" />
+      <stop offset="60%" stop-color="#0F172A" stop-opacity="0.03" />
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Large Centered Emblem (Subtle & Non-Intrusive) -->
+  <g transform="translate(397, 561)" opacity="0.055" stroke="#0F172A" fill="none">
+    <!-- Concentric Decorative Calibration Rings -->
+    <circle r="260" stroke-width="1.5" stroke-dasharray="8 6" />
+    <circle r="240" stroke-width="1" />
+    <circle r="180" stroke-width="2" />
+    <circle r="120" stroke-width="1.5" stroke-dasharray="4 4" />
+    <circle r="60" stroke-width="1" />
+
+    <!-- 8-Axis Geometric Grid Lines -->
+    <line x1="-280" y1="0" x2="280" y2="0" stroke-width="0.75" />
+    <line x1="0" y1="-280" x2="0" y2="280" stroke-width="0.75" />
+    <line x1="-198" y1="-198" x2="198" y2="198" stroke-width="0.5" stroke-dasharray="6 6" />
+    <line x1="-198" y1="198" x2="198" y2="-198" stroke-width="0.5" stroke-dasharray="6 6" />
+
+    <!-- Central Skyline Silhouette Polygon -->
+    <g fill="#0F172A" stroke="none">
+      <!-- Burj / Spire Silhouette -->
+      <polygon points="0,-150 -12,-80 -18,120 18,120 12,-80" />
+      <!-- Tower Left -->
+      <polygon points="-55,-60 -35,-40 -35,120 -55,120" />
+      <!-- Tower Right -->
+      <polygon points="55,-40 35,-60 35,120 55,120" />
+      <!-- Base Horizon -->
+      <rect x="-140" y="120" width="280" height="4" rx="2" />
+    </g>
+
+    <!-- Circular Bilingual Watermark Text -->
+    <text text-anchor="middle" y="-200" font-family="Arial, sans-serif" font-size="16" font-weight="900" letter-spacing="8" fill="#0F172A" stroke="none">
+      DUBAI ENGINEERING &amp; CONTRACTING
+    </text>
+    <text text-anchor="middle" y="215" font-family="Arial, sans-serif" font-size="14" font-weight="bold" letter-spacing="4" fill="#0F172A" stroke="none">
+      OFFICIAL ERP DOCUMENT • مستند رسمي
+    </text>
+  </g>
+</svg>

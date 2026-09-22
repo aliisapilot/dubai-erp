@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 24" width="1000" height="24">
+  <defs>
+    <linearGradient id="footerLineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="35%" stop-color="#1E293B" />
+      <stop offset="70%" stop-color="#D4AF37" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+  </defs>
+  <rect x="0" y="8" width="1000" height="3" fill="url(#footerLineGrad)" />
+  <rect x="350" y="5" width="300" height="1.5" fill="#AA771C" />
+  <circle cx="500" cy="9.5" r="4" fill="#0F172A" stroke="#D4AF37" stroke-width="1.5" />
+</svg>

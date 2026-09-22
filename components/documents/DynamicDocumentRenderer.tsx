@@ -1,0 +1,779 @@
+"use client";
+
+import React, { useState } from "react";
+import Image from "next/image";
+import { Building2 } from "lucide-react";
+import { getBrandConfig } from "@/lib/brandConfig";
+import { DocumentLayout, LayoutElement, TableColumnConfig } from "@/lib/documentDesigner";
+import { CompanyDocInfo } from "./DocHeader";
+import { numberToWordsArabic, numberToWordsEnglish } from "@/lib/amountInWords";
+import { fmtAED, fmtDate } from "@/lib/helpers";
+
+export interface MockDocumentData {
+  document_number: string;
+  document_date: string;
+  supply_date?: string;
+  due_date?: string;
+  status?: string;
+  customer_name: string;
+  customer_trn?: string;
+  customer_address?: string;
+  contact_person?: string;
+  contact_number?: string;
+  supplier_name?: string;
+  project_name?: string;
+  project_number?: string;
+  location?: string;
+  scope_of_work?: string;
+  items: Array<{
+    description: string;
+    quantity: number;
+    unit?: string;
+    unit_price: number;
+    discount?: number;
+    vat_rate?: number;
+    vat_amount: number;
+    line_total: number;
+    date?: string;
+    type?: string;
+    reference?: string;
+    debit?: number;
+    credit?: number;
+    balance?: number;
+  }>;
+  subtotal: number;
+  discount_amount?: number;
+  vat_amount: number;
+  total_amount: number;
+  advance_amount?: number;
+  payment_terms?: string;
+  notes?: string;
+}
+
+export const SAMPLE_DOCUMENT_DATA: MockDocumentData = {
+  document_number: "INV-2026-0042",
+  document_date: new Date().toISOString(),
+  supply_date: new Date().toISOString(),
+  due_date: new Date(Date.now() + 30 * 86400000).toISOString(),
+  status: "approved",
+  customer_name: "AL NABOODAH CONTRACTING CO. L.L.C",
+  customer_trn: "100345678900003",
+  customer_address: "Sheikh Zayed Road, P.O. Box 1234, Dubai, UAE",
+  contact_person: "Eng. Tariq Mansoor",
+  contact_number: "+971 4 399 0000",
+  supplier_name: "EMIRATES STEEL ARKAN P.J.S.C",
+  project_name: "Luxury Majlis & Event Tents Facility",
+  project_number: "PRJ-2026-088",
+  location: "Jumeirah Beach Residence, Dubai",
+  scope_of_work: "Manufacturing, supply and installation of heavy-duty PVC event structures and aluminum framing.",
+  items: [
+    {
+      description: "Custom Arabic Majlis Tent (20m x 40m) Heavy Duty Flame Retardant PVC",
+      quantity: 1,
+      unit: "Set",
+      unit_price: 65000,
+      discount: 0,
+      vat_rate: 5,
+      vat_amount: 3250,
+      line_total: 68250,
+    },
+    {
+      description: "Galvanized Steel & Aluminum Structural Truss Arches (300mm Profile)",
+      quantity: 12,
+      unit: "Pcs",
+      unit_price: 3200,
+      discount: 0,
+      vat_rate: 5,
+      vat_amount: 1920,
+      line_total: 40320,
+    },
+    {
+      description: "Double Glazed Tempered Glass Wall Panels & Entrance Double Door",
+      quantity: 8,
+      unit: "Units",
+      unit_price: 2450,
+      discount: 0,
+      vat_rate: 5,
+      vat_amount: 980,
+      line_total: 20580,
+    },
+    {
+      description: "On-site Rigging, Assembly, Anchoring & Safety Compliance Testing",
+      quantity: 1,
+      unit: "Job",
+      unit_price: 15000,
+      discount: 0,
+      vat_rate: 5,
+      vat_amount: 750,
+      line_total: 15750,
+    },
+  ],
+  subtotal: 138400,
+  vat_amount: 6900,
+  total_amount: 145300,
+  advance_amount: 50000,
+  payment_terms: "50% Advance on signing, 50% upon successful handover.",
+  notes: "All materials conform to UAE Civil Defence and Dubai Municipality structural standards.",
+};
+
+interface DynamicDocumentRendererProps {
+  layout: DocumentLayout;
+  company: CompanyDocInfo | null;
+  data?: MockDocumentData;
+  isDesignerPreview?: boolean;
+  selectedElementId?: string | null;
+  onSelectElement?: (elementId: string) => void;
+  scale?: number;
+  pageNumber?: number;
+}
+
+export default function DynamicDocumentRenderer({
+  layout,
+  company,
+  data = SAMPLE_DOCUMENT_DATA,
+  isDesignerPreview = false,
+  selectedElementId = null,
+  onSelectElement,
+  scale = 1,
+  pageNumber = 1,
+}: DynamicDocumentRendererProps) {
+  const brand = getBrandConfig(company);
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  const colors = {
+    primary: layout.branding?.primaryColor || brand.colors.primary,
+    accent: layout.branding?.accentColor || brand.colors.accent,
+    text: layout.branding?.textColor || brand.colors.text,
+    muted: layout.branding?.mutedColor || brand.colors.muted,
+    border: layout.branding?.borderColor || brand.colors.border,
+    tableHeader: layout.branding?.tableHeaderColor || brand.colors.tableHeader,
+    totalHighlight: layout.branding?.totalHighlightColor || brand.colors.totalHighlight,
+  };
+
+  const advance = Number(data.advance_amount) || 0;
+  const balanceDue = Math.max(0, data.total_amount - advance);
+
+  // Render individual element content based on its type
+  function renderElementContent(elem: LayoutElement) {
+    switch (elem.type) {
+      case "watermark": {
+        const bgImg = brand.assets.watermark || brand.assets.background || brand.assets.logo;
+        return (
+          <div className="w-full h-full flex items-center justify-center pointer-events-none select-none overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={bgImg}
+              alt=""
+              className="w-full h-full object-contain"
+              style={{ opacity: elem.opacity ?? 0.045 }}
+            />
+          </div>
+        );
+      }
+
+      case "logo": {
+        const logoSrc = brand.assets.logo;
+        if (!logoFailed && logoSrc) {
+          return (
+            <div className="w-full h-full flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={logoSrc}
+                alt={brand.legal_name}
+                className="max-w-full max-h-full"
+                style={{
+                  objectFit: elem.imageFit || "contain",
+                  opacity: elem.opacity ?? 1,
+                }}
+                onError={() => setLogoFailed(true)}
+              />
+            </div>
+          );
+        }
+        return (
+          <div
+            className="w-full h-full flex items-center justify-center border rounded"
+            style={{ borderColor: colors.border, color: colors.primary }}
+          >
+            <Building2 size={24} />
+          </div>
+        );
+      }
+
+      case "company_name_en": {
+        return (
+          <div
+            className="w-full h-full flex items-center uppercase tracking-wider select-text"
+            style={{
+              justifyContent:
+                elem.textAlign === "center"
+                  ? "center"
+                  : elem.textAlign === "right"
+                  ? "flex-end"
+                  : "flex-start",
+              fontSize: `${elem.fontSize || 15}px`,
+              fontWeight: elem.fontWeight === "extrabold" ? 800 : elem.fontWeight === "bold" ? 700 : 600,
+              color: elem.color || colors.primary,
+            }}
+          >
+            {elem.customText || brand.legal_name || brand.name}
+          </div>
+        );
+      }
+
+      case "company_name_ar": {
+        return (
+          <div
+            className="w-full h-full flex items-center font-arabic select-text"
+            dir="rtl"
+            style={{
+              justifyContent:
+                elem.textAlign === "center"
+                  ? "center"
+                  : elem.textAlign === "left"
+                  ? "flex-start"
+                  : "flex-end",
+              fontSize: `${elem.fontSize || 26}px`,
+              fontWeight: 700,
+              color: elem.color || colors.accent,
+              letterSpacing: "0.01em",
+              fontFamily:
+                "'Segoe UI Arabic', 'Amiri', 'Scheherazade New', 'Traditional Arabic', 'Noto Naskh Arabic', Arial, sans-serif",
+            }}
+          >
+            {elem.customText || brand.arabic_name}
+          </div>
+        );
+      }
+
+      case "company_address": {
+        return (
+          <div
+            className="w-full h-full flex flex-col justify-center text-[10px] leading-tight select-text"
+            style={{
+              textAlign: elem.textAlign || "center",
+              color: elem.color || colors.muted,
+              fontSize: `${elem.fontSize || 10}px`,
+            }}
+          >
+            <div>{brand.address}</div>
+            <div className="font-semibold text-slate-800">
+              TRN: <span className="font-mono font-bold" style={{ color: colors.primary }}>{brand.trn}</span>
+              {brand.phone ? ` | Tel: ${brand.phone}` : ""}
+              {brand.email ? ` | Email: ${brand.email}` : ""}
+            </div>
+          </div>
+        );
+      }
+
+      case "doc_title": {
+        return (
+          <div
+            className="w-full h-full flex items-center justify-between px-3 select-text"
+            style={{
+              backgroundColor: elem.backgroundColor || colors.primary,
+              color: elem.color || "#FFFFFF",
+              borderRadius: `${elem.borderRadius || 4}px`,
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className="font-extrabold uppercase tracking-wider"
+                style={{ fontSize: `${elem.fontSize || 15}px` }}
+              >
+                {elem.customText || "TAX INVOICE"}
+              </span>
+            </div>
+            <div className="text-right font-mono font-bold text-xs" style={{ color: colors.accent }}>
+              REF: {data.document_number}
+            </div>
+          </div>
+        );
+      }
+
+      case "customer_info": {
+        return (
+          <div
+            className="w-full h-full p-2.5 flex flex-col justify-between select-text"
+            style={{
+              backgroundColor: elem.backgroundColor || "#F8FAFC",
+              border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+              borderRadius: `${elem.borderRadius || 4}px`,
+              fontSize: `${elem.fontSize || 11}px`,
+              color: colors.text,
+            }}
+          >
+            <div className="flex justify-between border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
+              <span style={{ color: colors.primary }}>Customer / Client Details (بيانات العميل):</span>
+              <span style={{ color: colors.muted }}>Buyer</span>
+            </div>
+            <div className="space-y-0.5 mt-1 text-[11px] leading-tight">
+              <div className="font-bold text-slate-900">{data.customer_name}</div>
+              {data.customer_trn && (
+                <div>
+                  <span style={{ color: colors.muted }}>TRN: </span>
+                  <span className="font-mono font-bold text-slate-900">{data.customer_trn}</span>
+                </div>
+              )}
+              {data.customer_address && (
+                <div className="line-clamp-1" style={{ color: colors.muted }}>
+                  {data.customer_address}
+                </div>
+              )}
+              {data.contact_person && (
+                <div style={{ color: colors.muted }}>
+                  Attn: {data.contact_person} {data.contact_number ? `(${data.contact_number})` : ""}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      case "doc_meta": {
+        return (
+          <div
+            className="w-full h-full p-2.5 flex flex-col justify-between select-text"
+            style={{
+              backgroundColor: elem.backgroundColor || "#F8FAFC",
+              border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+              borderRadius: `${elem.borderRadius || 4}px`,
+              fontSize: `${elem.fontSize || 11}px`,
+              color: colors.text,
+            }}
+          >
+            <div className="flex justify-between border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
+              <span style={{ color: colors.primary }}>Document Reference (البيانات):</span>
+              <span className="font-mono font-bold" style={{ color: colors.accent }}>{data.document_number}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1 mt-1 text-[10px] leading-tight">
+              <div>
+                <span style={{ color: colors.muted }}>Date: </span>
+                <span className="font-semibold text-slate-900">{fmtDate(data.document_date)}</span>
+              </div>
+              <div>
+                <span style={{ color: colors.muted }}>Supply: </span>
+                <span className="font-semibold text-slate-900">{fmtDate(data.supply_date || data.document_date)}</span>
+              </div>
+              {data.due_date && (
+                <div>
+                  <span style={{ color: colors.muted }}>Due: </span>
+                  <span className="font-semibold text-slate-900">{fmtDate(data.due_date)}</span>
+                </div>
+              )}
+              {data.payment_terms && (
+                <div>
+                  <span style={{ color: colors.muted }}>Terms: </span>
+                  <span className="font-semibold text-slate-900">{data.payment_terms}</span>
+                </div>
+              )}
+              {data.project_name && (
+                <div className="col-span-2 pt-0.5 border-t border-slate-200 line-clamp-1">
+                  <span style={{ color: colors.muted }}>Project: </span>
+                  <span className="font-semibold text-slate-900">{data.project_name}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      case "line_items": {
+        const tSettings = elem.tableSettings || {
+          headerBg: colors.tableHeader,
+          headerTextColor: "#FFFFFF",
+          fontSize: 11,
+          headerFontSize: 11,
+          rowHeight: 8,
+          borderThickness: 1,
+          borderColor: colors.border,
+          bodyTextColor: colors.text,
+          columns: [
+            { key: "index", label: "#", visible: true, widthPct: 6, align: "center" },
+            { key: "description", label: "Item Description", visible: true, widthPct: 44, align: "left" },
+            { key: "quantity", label: "Qty", visible: true, widthPct: 8, align: "center" },
+            { key: "unit", label: "Unit", visible: true, widthPct: 8, align: "center" },
+            { key: "unit_price", label: "Rate (AED)", visible: true, widthPct: 11, align: "right" },
+            { key: "vat_amount", label: "VAT (5%)", visible: true, widthPct: 10, align: "right" },
+            { key: "line_total", label: "Total (AED)", visible: true, widthPct: 13, align: "right" },
+          ] as TableColumnConfig[],
+        };
+
+        const activeCols = tSettings.columns.filter((c) => c.visible);
+
+        return (
+          <div
+            className="w-full h-full overflow-hidden rounded select-text"
+            style={{
+              border: `${tSettings.borderThickness}px solid ${tSettings.borderColor}`,
+              fontSize: `${tSettings.fontSize}px`,
+            }}
+          >
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr
+                  style={{
+                    backgroundColor: tSettings.headerBg,
+                    color: tSettings.headerTextColor,
+                    fontSize: `${tSettings.headerFontSize}px`,
+                  }}
+                >
+                  {activeCols.map((col) => (
+                    <th
+                      key={col.key}
+                      className="py-1.5 px-2 font-semibold"
+                      style={{
+                        width: `${col.widthPct}%`,
+                        textAlign: col.align,
+                        borderRight: `${tSettings.borderThickness}px solid rgba(255,255,255,0.15)`,
+                      }}
+                    >
+                      {col.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody
+                className="bg-white divide-y"
+                style={{
+                  color: tSettings.bodyTextColor,
+                  borderColor: tSettings.borderColor,
+                }}
+              >
+                {data.items.slice(0, 5).map((item, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50/50">
+                    {activeCols.map((col) => {
+                      let val: React.ReactNode = "";
+                      if (col.key === "index") val = idx + 1;
+                      else if (col.key === "description") val = item.description;
+                      else if (col.key === "quantity") val = item.quantity;
+                      else if (col.key === "unit") val = item.unit || "Nos";
+                      else if (col.key === "unit_price") val = Number(item.unit_price).toFixed(2);
+                      else if (col.key === "discount") val = (item.discount || 0).toFixed(2);
+                      else if (col.key === "vat_amount") val = Number(item.vat_amount).toFixed(2);
+                      else if (col.key === "line_total") val = Number(item.line_total).toFixed(2);
+                      else if (col.key === "date") val = item.date || "";
+                      else if (col.key === "type") val = item.type || "";
+                      else if (col.key === "reference") val = item.reference || "";
+                      else if (col.key === "debit") val = item.debit ? Number(item.debit).toFixed(2) : "";
+                      else if (col.key === "credit") val = item.credit ? Number(item.credit).toFixed(2) : "";
+                      else if (col.key === "balance") val = item.balance ? Number(item.balance).toFixed(2) : "";
+
+                      const isMonetary = ["unit_price", "discount", "vat_amount", "line_total", "debit", "credit", "balance"].includes(col.key);
+
+                      return (
+                        <td
+                          key={col.key}
+                          className="py-1 px-2"
+                          style={{
+                            textAlign: col.align,
+                            fontFamily: isMonetary ? "monospace" : "inherit",
+                            fontWeight: col.key === "line_total" ? 700 : 400,
+                          }}
+                        >
+                          {val}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      case "amount_in_words": {
+        return (
+          <div
+            className="w-full h-full p-2 flex flex-col justify-between select-text"
+            style={{
+              backgroundColor: elem.backgroundColor || "#F8FAFC",
+              border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+              borderRadius: `${elem.borderRadius || 4}px`,
+              fontSize: `${elem.fontSize || 10}px`,
+            }}
+          >
+            <div className="font-semibold text-slate-800 text-[10px]">
+              Amount in Words (المبلغ بالحروف):
+            </div>
+            <div className="italic text-slate-700 font-medium text-[11px] leading-tight">
+              {numberToWordsEnglish(data.total_amount)}
+            </div>
+            <div
+              className="text-right font-arabic font-semibold text-[11px] pt-1 border-t leading-tight select-text"
+              dir="rtl"
+              style={{
+                borderColor: colors.border,
+                color: colors.accent,
+                fontFamily: "'Segoe UI Arabic', 'Amiri', 'Noto Naskh Arabic', sans-serif",
+              }}
+            >
+              {numberToWordsArabic(data.total_amount)}
+            </div>
+          </div>
+        );
+      }
+
+      case "totals": {
+        return (
+          <div
+            className="w-full h-full overflow-hidden text-xs rounded select-text flex flex-col justify-between"
+            style={{
+              border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+              borderRadius: `${elem.borderRadius || 4}px`,
+              fontSize: `${elem.fontSize || 11}px`,
+            }}
+          >
+            <div className="flex justify-between py-1 px-2.5 bg-slate-50 border-b" style={{ borderColor: colors.border }}>
+              <span style={{ color: colors.muted }}>Subtotal:</span>
+              <span className="font-mono font-semibold">{fmtAED(data.subtotal)}</span>
+            </div>
+            <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
+              <span style={{ color: colors.muted }}>VAT Total (5%):</span>
+              <span className="font-mono font-semibold" style={{ color: colors.accent }}>{fmtAED(data.vat_amount)}</span>
+            </div>
+            <div
+              className="flex justify-between py-1.5 px-2.5 font-bold text-slate-900 border-b"
+              style={{
+                backgroundColor: colors.totalHighlight,
+                borderColor: colors.border,
+              }}
+            >
+              <span>Grand Total:</span>
+              <span className="font-mono" style={{ color: colors.primary }}>{fmtAED(data.total_amount)}</span>
+            </div>
+            {advance > 0 && (
+              <div className="flex justify-between py-1 px-2.5 bg-slate-50 text-[10px]">
+                <span style={{ color: colors.muted }}>Balance Due:</span>
+                <span className="font-mono font-bold text-slate-900">{fmtAED(balanceDue)}</span>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      case "bank_details": {
+        return (
+          <div
+            className="w-full h-full p-2 flex flex-col justify-center text-[10px] leading-tight select-text"
+            style={{
+              backgroundColor: elem.backgroundColor || "#F8FAFC",
+              border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+              borderRadius: `${elem.borderRadius || 4}px`,
+              fontSize: `${elem.fontSize || 10}px`,
+            }}
+          >
+            <div className="font-bold text-slate-800 text-[10px] mb-0.5" style={{ color: colors.primary }}>
+              Bank Transfer Information (بيانات التحويل):
+            </div>
+            <div>Bank: <span className="font-semibold">{brand.bank_name}</span></div>
+            <div>Account: <span className="font-semibold">{brand.bank_account_name || brand.legal_name}</span></div>
+            <div>IBAN: <span className="font-mono font-bold text-slate-900">{brand.iban}</span></div>
+            <div>SWIFT: <span className="font-mono">{brand.swift_bic}</span></div>
+          </div>
+        );
+      }
+
+      case "payment_terms": {
+        return (
+          <div
+            className="w-full h-full text-[10px] leading-relaxed select-text p-1"
+            style={{
+              fontSize: `${elem.fontSize || 10}px`,
+              color: elem.color || colors.muted,
+            }}
+          >
+            <div className="font-bold text-slate-800 mb-0.5">Terms &amp; Remarks:</div>
+            <div>{data.notes || "Standard payment within 30 days of invoice date."}</div>
+            {data.payment_terms && <div className="mt-0.5 italic">{data.payment_terms}</div>}
+          </div>
+        );
+      }
+
+      case "company_signature": {
+        const sigSrc = brand.assets.signature;
+        return (
+          <div className="w-full h-full flex flex-col items-center justify-between text-center select-none">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-800" style={{ color: colors.primary }}>
+              {elem.customText || "COMPANY AUTHORIZED SIGNATURE"}
+            </div>
+            {/* Real uploaded signature only */}
+            <div className="relative w-full flex-1 flex items-center justify-center">
+              {sigSrc ? (
+                <Image
+                  src={sigSrc}
+                  alt="Authorized Signature"
+                  width={110}
+                  height={38}
+                  className="max-h-full max-w-full object-contain"
+                  unoptimized
+                />
+              ) : (
+                <div className="w-24 h-7 border-b border-dashed border-slate-300" />
+              )}
+            </div>
+            <div className="w-full border-t border-slate-400 pt-0.5 text-[8px] text-slate-500">
+              For {brand.legal_name || brand.name}
+            </div>
+          </div>
+        );
+      }
+
+      case "company_stamp": {
+        const stampSrc = brand.assets.stamp;
+        return (
+          <div className="w-full h-full flex items-center justify-center select-none">
+            {stampSrc ? (
+              <Image
+                src={stampSrc}
+                alt="Official Company Stamp"
+                width={80}
+                height={80}
+                className="max-h-full max-w-full object-contain"
+                unoptimized
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full border border-dashed border-slate-300 flex items-center justify-center text-[8px] text-slate-400 text-center p-1">
+                Official Stamp
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      case "footer": {
+        return (
+          <div
+            className="w-full h-full flex flex-col items-center justify-center text-[9px] select-text"
+            style={{
+              textAlign: elem.textAlign || "center",
+              color: elem.color || colors.muted,
+              fontSize: `${elem.fontSize || 9}px`,
+              borderTop: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+            }}
+          >
+            <div>{elem.customText || `${brand.legal_name} | Tel: ${brand.phone} | Email: ${brand.email} | Web: ${brand.website}`}</div>
+            <div className="text-[8px] text-slate-400 mt-0.5">
+              This is a computer generated document issued in accordance with UAE VAT regulations.
+            </div>
+          </div>
+        );
+      }
+
+      case "custom_text": {
+        return (
+          <div
+            className="w-full h-full flex items-center select-text p-1"
+            style={{
+              justifyContent:
+                elem.textAlign === "center"
+                  ? "center"
+                  : elem.textAlign === "right"
+                  ? "flex-end"
+                  : "flex-start",
+              fontSize: `${elem.fontSize || 12}px`,
+              fontWeight: elem.fontWeight === "bold" ? 700 : 400,
+              color: elem.color || colors.text,
+              backgroundColor: elem.backgroundColor,
+              border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
+              borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
+            }}
+          >
+            {elem.customText || "Custom Text Element"}
+          </div>
+        );
+      }
+
+      default:
+        return (
+          <div className="w-full h-full p-1 text-xs text-slate-400 border border-dashed">
+            {elem.label}
+          </div>
+        );
+    }
+  }
+
+  // A4 dimensions: 210mm x 297mm
+  return (
+    <div
+      className={`print-a4-sheet relative bg-white shadow-2xl transition-all select-none box-border ${
+        isDesignerPreview ? "cursor-default" : ""
+      }`}
+      style={{
+        width: `${layout.page.widthMm}mm`,
+        minHeight: `${layout.page.heightMm}mm`,
+        height: `${layout.page.heightMm}mm`,
+        transform: scale !== 1 ? `scale(${scale})` : undefined,
+        transformOrigin: "top center",
+        backgroundColor: layout.page.background || "#FFFFFF",
+        // CSS Custom variables mapped from layout branding
+        ["--doc-primary" as string]: colors.primary,
+        ["--doc-accent" as string]: colors.accent,
+        ["--doc-text" as string]: colors.text,
+        ["--doc-muted" as string]: colors.muted,
+        ["--doc-border" as string]: colors.border,
+      }}
+    >
+      {/* Margin Guidelines (designer visual guides only) */}
+      {isDesignerPreview && (
+        <div
+          className="absolute inset-0 pointer-events-none z-0 border border-dashed border-blue-200/50"
+          style={{
+            top: `${layout.page.margins.top}mm`,
+            left: `${layout.page.margins.left}mm`,
+            right: `${layout.page.margins.right}mm`,
+            bottom: `${layout.page.margins.bottom}mm`,
+          }}
+        />
+      )}
+
+      {/* Render all visible layout elements */}
+      {layout.elements
+        .filter((elem) => elem.visible && (elem.pageNumber === undefined || elem.pageNumber === pageNumber))
+        .sort((a, b) => a.zIndex - b.zIndex)
+        .map((elem) => {
+          const isSelected = isDesignerPreview && selectedElementId === elem.id;
+
+          return (
+            <div
+              key={elem.id}
+              data-element-id={elem.id}
+              onClick={(e) => {
+                if (isDesignerPreview && onSelectElement) {
+                  e.stopPropagation();
+                  onSelectElement(elem.id);
+                }
+              }}
+              className={`absolute transition-shadow ${
+                isDesignerPreview
+                  ? isSelected
+                    ? "ring-2 ring-blue-600 ring-offset-1 z-30 cursor-move"
+                    : "hover:ring-1 hover:ring-blue-400 cursor-pointer"
+                  : ""
+              }`}
+              style={{
+                left: `${elem.x}mm`,
+                top: `${elem.y}mm`,
+                width: `${elem.width}mm`,
+                height: `${elem.height}mm`,
+                zIndex: isSelected ? 40 : elem.zIndex,
+              }}
+            >
+              {renderElementContent(elem)}
+
+              {/* Selection label tag on top-left */}
+              {isSelected && (
+                <div className="absolute -top-5 left-0 bg-blue-600 text-white text-[9px] px-1.5 py-0.5 rounded font-mono font-medium shadow select-none flex items-center gap-1">
+                  <span>{elem.label}</span>
+                  <span className="opacity-80">
+                    ({Math.round(elem.x)}x{Math.round(elem.y)})
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+    </div>
+  );
+}
