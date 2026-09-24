@@ -6,6 +6,13 @@ import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO
 import PurchaseOrderTemplate, { PurchaseOrderData, POLineItem } from "@/components/documents/PurchaseOrderTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import {
+  PurchaseOrderStatus,
+  PURCHASE_ORDER_STATUS_OPTIONS,
+  normalizePurchaseOrderStatus,
+  formatPurchaseOrderStatus,
+  parsePurchaseOrderError,
+} from "@/lib/purchaseOrderTypes";
 
 // DB verified: purchase_orders columns: id, purchase_order_number, order_date, expected_date, status, company_id, supplier_id, project_id
 // purchase_order_items: purchase_order_id (FK), discount_percent (not discount_pct), NO vat_category
@@ -14,8 +21,8 @@ type Project = { id: string; project_number: string; name: string };
 type Product = { id: string; name: string | null; sku: string | null; cost_price: number | null; vat_rate: number | null; unit: string | null };
 type POLine = { product_id: string; description: string; quantity: number; unit_price: number; discount_pct: number; vat_rate: number; line_total: number; vat_amount: number; sort_order: number };
 type PO = { id: string; company_id: string; purchase_order_number: string | null; supplier_id: string | null; project_id?: string | null; order_date: string | null; expected_date: string | null; status: string | null; subtotal: number | null; vat_amount: number | null; total_amount: number | null; notes: string | null; created_at: string | null };
-type POForm = { supplier_id: string; project_id: string; order_date: string; expected_date: string; status: string; notes: string };
-const emptyForm: POForm = { supplier_id:"", project_id:"", order_date: todayISO(), expected_date:"", status:"Draft", notes:"" };
+type POForm = { supplier_id: string; project_id: string; order_date: string; expected_date: string; status: PurchaseOrderStatus; notes: string };
+const emptyForm: POForm = { supplier_id:"", project_id:"", order_date: todayISO(), expected_date:"", status:"draft", notes:"" };
 const emptyLine = (): POLine => ({ product_id:"", description:"", quantity:1, unit_price:0, discount_pct:0, vat_rate:5, line_total:0, vat_amount:0, sort_order:0 });
 const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none";
 const sel = inp + " appearance-none";
@@ -108,7 +115,14 @@ export default function PurchaseOrdersPage() {
   function openAdd() { setError(""); setSuccess(""); setEditing(null); setForm(emptyForm); setLines([emptyLine()]); setShowForm(true); }
   async function openEdit(po: PO) {
     setError(""); setSuccess(""); setEditing(po);
-    setForm({ supplier_id: po.supplier_id||"", project_id: po.project_id||"", order_date: po.order_date||todayISO(), expected_date: po.expected_date||"", status: po.status||"Draft", notes: po.notes||"" });
+    setForm({
+      supplier_id: po.supplier_id||"",
+      project_id: po.project_id||"",
+      order_date: po.order_date||todayISO(),
+      expected_date: po.expected_date||"",
+      status: normalizePurchaseOrderStatus(po.status),
+      notes: po.notes||""
+    });
     // DB FK: purchase_order_id (not po_id)
     const { data: items } = await supabase.from("purchase_order_items").select("*").eq("purchase_order_id", po.id).order("sort_order");
     // Map DB discount_percent → UI discount_pct
@@ -125,8 +139,20 @@ export default function PurchaseOrdersPage() {
     setSaving(true);
     try {
       const { sub, vat, total } = totals();
+      const normStatus = normalizePurchaseOrderStatus(form.status);
       // DB: purchase_order_number, order_date (not po_date), expected_date
-      const payload = { supplier_id: form.supplier_id, project_id: form.project_id || null, order_date: form.order_date||null, expected_date: form.expected_date||null, status: form.status, subtotal: sub, vat_amount: vat, total_amount: total, notes: form.notes||null, updated_at: new Date().toISOString() };
+      const payload = {
+        supplier_id: form.supplier_id,
+        project_id: form.project_id || null,
+        order_date: form.order_date || null,
+        expected_date: form.expected_date || null,
+        status: normStatus,
+        subtotal: sub,
+        vat_amount: vat,
+        total_amount: total,
+        notes: form.notes || null,
+        updated_at: new Date().toISOString()
+      };
       let poid: string;
       if (editing) {
         const { error: updateErr } = await supabase.from("purchase_orders").update(payload).eq("id", editing.id);
@@ -139,11 +165,11 @@ export default function PurchaseOrdersPage() {
         const cid = await getCompanyId();
         const poNum = await generateDocNumber(cid, "PO");
         const { data: ins, error: err } = await supabase.from("purchase_orders").insert({ ...payload, company_id: cid, purchase_order_number: poNum }).select("id").single();
-        if (err) throw new Error(err.message);
+        if (err) throw err;
         poid = ins.id;
       }
       // If Received, update stock
-      if (form.status === "Received" && editing?.status !== "Received") {
+      if (normStatus === "received" && normalizePurchaseOrderStatus(editing?.status) !== "received") {
         for (const l of lines.filter(l=>l.product_id && l.quantity > 0)) {
           const { data: prod } = await supabase.from("products").select("current_stock").eq("id", l.product_id).single();
           if (!prod) continue;
@@ -161,13 +187,20 @@ export default function PurchaseOrdersPage() {
       const { error: itemErr } = await supabase.from("purchase_order_items").insert(lines.map((l,i)=>({ purchase_order_id: poid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, line_total: l.line_total, vat_amount: l.vat_amount, sort_order: i })));
       if (itemErr) throw itemErr;
       setSuccess(editing?"PO updated.":"Purchase order created."); closeForm(); await loadAll();
-    } catch (err: unknown) { setError(err instanceof Error ? err.message : "Error"); }
+    } catch (err: unknown) { setError(parsePurchaseOrderError(err)); }
     finally { setSaving(false); }
   }
 
   const suppMap = Object.fromEntries(suppliers.map(s=>[s.id,s]));
   const projMap = Object.fromEntries(projects.map(p=>[p.id,p]));
-  const filtered = orders.filter(po => { if (filterStatus && po.status!==filterStatus) return false; const sn=suppMap[po.supplier_id||""]?.name||""; const pn=projMap[po.project_id||""]?.project_number||""; return [po.purchase_order_number, sn, pn, po.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase()); });
+  const filtered = orders.filter(po => {
+    const norm = normalizePurchaseOrderStatus(po.status);
+    if (filterStatus && norm !== filterStatus) return false;
+    const sn = suppMap[po.supplier_id||""]?.name || "";
+    const pn = projMap[po.project_id||""]?.project_number || "";
+    const stLabel = formatPurchaseOrderStatus(po.status);
+    return [po.purchase_order_number, sn, pn, po.status, stLabel].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
+  });
   const { sub: fSub, vat: fVAT, total: fTotal } = totals();
 
   async function deletePO(po: PO) {
@@ -195,43 +228,72 @@ export default function PurchaseOrdersPage() {
         <div className="mx-auto max-w-7xl px-6 py-8">
           {success && <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
           {error && !showForm && <div className="mb-5 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button onClick={()=>setError("")}><X size={16}/></button></div>}
-          <div className="mb-6 flex gap-3"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search POs…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/></div><select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm appearance-none focus:outline-none"><option value="">All Status</option><option>Draft</option><option>Sent</option><option>Approved</option><option>Received</option><option>Cancelled</option></select></div>
+          <div className="mb-6 flex gap-3">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+              <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search POs…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/>
+            </div>
+            <select
+              value={filterStatus}
+              onChange={e=>setFilterStatus(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm appearance-none focus:outline-none"
+            >
+              <option value="">All Statuses</option>
+              {PURCHASE_ORDER_STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
           {loading ? <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-slate-400"/></div> : filtered.length===0 ? (
             <div className="rounded-xl border border-slate-200 bg-white py-20 text-center"><FileSignature size={40} className="mx-auto mb-3 text-slate-300"/><p className="text-sm text-slate-500">No purchase orders.</p></div>
           ) : (
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <table className="w-full text-sm">
                 <thead><tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><th className="px-4 py-3">PO No.</th><th className="px-4 py-3">Supplier / Project</th><th className="px-4 py-3">PO Date</th><th className="px-4 py-3">Expected</th><th className="px-4 py-3 text-right">VAT</th><th className="px-4 py-3 text-right">Total (AED)</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Actions</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">{filtered.map(po=>(
-                  <tr key={po.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{po.purchase_order_number || po.id.slice(0,8).toUpperCase()}</td>
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">{suppMap[po.supplier_id||""]?.name||"—"}</div>
-                      {po.project_id && projMap[po.project_id] && (
-                        <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">
-                          📁 {projMap[po.project_id].project_number}
+                <tbody className="divide-y divide-slate-100">{filtered.map(po=>{
+                  const normSt = normalizePurchaseOrderStatus(po.status);
+                  const isReceived = normSt === "received";
+                  const isCancelled = normSt === "cancelled";
+                  const isDraft = normSt === "draft";
+                  return (
+                    <tr key={po.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{po.purchase_order_number || po.id.slice(0,8).toUpperCase()}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-slate-900">{suppMap[po.supplier_id||""]?.name||"—"}</div>
+                        {po.project_id && projMap[po.project_id] && (
+                          <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">
+                            📁 {projMap[po.project_id].project_number}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{fmtDate(po.order_date)}</td>
+                      <td className="px-4 py-3 text-slate-600">{fmtDate(po.expected_date)}</td>
+                      <td className="px-4 py-3 text-right text-amber-600">{fmtAED(po.vat_amount)}</td>
+                      <td className="px-4 py-3 text-right font-bold text-slate-900">{fmtAED(po.total_amount)}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(po.status||"draft")}`}>
+                          {formatPurchaseOrderStatus(po.status)}
                         </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{fmtDate(po.order_date)}</td>
-                    <td className="px-4 py-3 text-slate-600">{fmtDate(po.expected_date)}</td>
-                    <td className="px-4 py-3 text-right text-amber-600">{fmtAED(po.vat_amount)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-slate-900">{fmtAED(po.total_amount)}</td>
-                    <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(po.status||"Draft")}`}>{po.status||"Draft"}</span></td>
-                    <td className="px-4 py-3"><div className="flex items-center justify-center gap-1.5">
-                      <button
-                        onClick={() => handlePrintPO(po)}
-                        title="Print / View A4 Purchase Order"
-                        className="flex items-center gap-1 rounded bg-slate-100 hover:bg-slate-900 hover:text-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition"
-                      >
-                        <Printer size={13} /> Print
-                      </button>
-                      <button onClick={()=>openView(po)} title="View Summary" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Eye size={14}/></button>
-                      {po.status!=="Received"&&po.status!=="Cancelled"&&<button onClick={()=>openEdit(po)} title="Edit" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14}/></button>}
-                      {po.status==="Draft"&&<button onClick={()=>deletePO(po)} title="Delete Draft PO" className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={14}/></button>}
-                    </div></td>
-                  </tr>
-                ))}</tbody>
+                      </td>
+                      <td className="px-4 py-3"><div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => handlePrintPO(po)}
+                          title="Print / View A4 Purchase Order"
+                          className="flex items-center gap-1 rounded bg-slate-100 hover:bg-slate-900 hover:text-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition"
+                        >
+                          <Printer size={13} /> Print
+                        </button>
+                        <button onClick={()=>openView(po)} title="View Summary" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Eye size={14}/></button>
+                        {!isReceived && !isCancelled && (
+                          <button onClick={()=>openEdit(po)} title="Edit" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14}/></button>
+                        )}
+                        {isDraft && (
+                          <button onClick={()=>deletePO(po)} title="Delete Draft PO" className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={14}/></button>
+                        )}
+                      </div></td>
+                    </tr>
+                  );
+                })}</tbody>
               </table>
             </div>
           )}
@@ -258,10 +320,21 @@ export default function PurchaseOrdersPage() {
             <div className="flex-1 overflow-y-auto">
               <form id="po-form" onSubmit={save} className="p-6 space-y-5">
                 {error&&<div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-                {form.status==="Received"&&<div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">✅ When saved as Received, stock will be updated for product line items.</div>}
+                {normalizePurchaseOrderStatus(form.status)==="received"&&<div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">✅ When saved as Received, stock will be updated for product line items.</div>}
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Supplier <span className="text-red-500">*</span></label><select value={form.supplier_id} onChange={e=>ff("supplier_id",e.target.value)} required className={sel}><option value="">— Select Supplier —</option>{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Status</label><select value={form.status} onChange={e=>ff("status",e.target.value)} className={sel}><option>Draft</option><option>Sent</option><option>Approved</option><option>Received</option><option>Cancelled</option></select></div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
+                    <select
+                      value={form.status}
+                      onChange={e=>ff("status", normalizePurchaseOrderStatus(e.target.value))}
+                      className={sel}
+                    >
+                      {PURCHASE_ORDER_STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Project / Job (Optional)</label>
                     <select value={form.project_id} onChange={e=>ff("project_id",e.target.value)} className={sel}>
@@ -329,7 +402,9 @@ export default function PurchaseOrdersPage() {
                 >
                   <Printer size={14} /> Print A4 PO
                 </button>
-                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass(viewing.po.status||"Draft")}`}>{viewing.po.status}</span>
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass(viewing.po.status||"draft")}`}>
+                  {formatPurchaseOrderStatus(viewing.po.status)}
+                </span>
                 <button onClick={()=>setViewing(null)}><X size={20}/></button>
               </div>
             </div>

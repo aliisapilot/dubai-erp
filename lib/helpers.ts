@@ -170,8 +170,11 @@ export function statusClass(status: string): string {
     Cancelled: "bg-red-50 text-red-700",
     Final: "bg-emerald-50 text-emerald-700",
     Pending: "bg-amber-50 text-amber-700",
-    Approved: "bg-emerald-50 text-emerald-700",
-    Received: "bg-teal-50 text-teal-700",
+    Approved: "bg-blue-50 text-blue-700",
+    Confirmed: "bg-blue-50 text-blue-700",
+    Received: "bg-emerald-50 text-emerald-700",
+    "Partially Received": "bg-amber-50 text-amber-700",
+    partially_received: "bg-amber-50 text-amber-700",
     Completed: "bg-emerald-50 text-emerald-700",
     Active: "bg-emerald-50 text-emerald-700",
     Inactive: "bg-slate-100 text-slate-500",
@@ -186,7 +189,7 @@ export function statusClass(status: string): string {
   };
   if (!status) return "bg-slate-100 text-slate-600";
   const normalized = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
-  return map[normalized] ?? map[status] ?? "bg-slate-100 text-slate-600";
+  return map[status] ?? map[normalized] ?? map[status.replace(/_/g, " ")] ?? "bg-slate-100 text-slate-600";
 }
 
 export const UAE_EMIRATES = [
