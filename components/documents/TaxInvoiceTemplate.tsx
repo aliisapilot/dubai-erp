@@ -7,8 +7,8 @@ import DocSignatureArea from "./DocSignatureArea";
 import { numberToWordsEnglish, numberToWordsArabic } from "@/lib/amountInWords";
 import { fmtAED, fmtDate } from "@/lib/helpers";
 import DocumentContainer from "./DocumentContainer";
-import DynamicDocumentRenderer, { MockDocumentData } from "./DynamicDocumentRenderer";
-import { DocumentLayout, loadDocumentLayout } from "@/lib/documentDesigner";
+import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
+import { DocumentLayout, loadDocumentLayout, createDefaultLayout } from "@/lib/documentDesigner";
 
 export type TaxInvoiceLineItem = {
   id?: string;
@@ -60,13 +60,13 @@ export default function TaxInvoiceTemplate({
   invoice,
   onClose,
 }: TaxInvoiceProps) {
-  const [customLayout, setCustomLayout] = useState<DocumentLayout | null>(null);
+  // Always initialize with default UAE Corporate template so the Tax Invoice preview
+  // and PDF Designer share the exact same underlying layout and dimensions.
+  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("tax_invoice"));
 
   useEffect(() => {
     loadDocumentLayout(company?.id, "tax_invoice").then((res) => {
-      if (res.source !== "default") {
-        setCustomLayout(res.layout);
-      }
+      setCustomLayout(res.layout);
     });
   }, [company?.id]);
 
@@ -105,6 +105,7 @@ export default function TaxInvoiceTemplate({
     payment_terms: invoice.payment_terms || undefined,
     notes: invoice.notes || undefined,
   };
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
 
   return (
     <DocumentContainer
@@ -113,15 +114,24 @@ export default function TaxInvoiceTemplate({
       status={invoice.status}
       onClose={onClose}
       company={company ?? undefined}
+      noPadding={Boolean(customLayout)}
+      showWatermark={!customLayout}
     >
       {customLayout ? (
-        <DynamicDocumentRenderer
-          layout={customLayout}
-          company={company}
-          data={rendererData}
-          isDesignerPreview={false}
-          scale={1}
-        />
+        <div className="flex flex-col gap-6 print:gap-0">
+          {Array.from({ length: totalPages }, (_, index) => (
+            <DynamicDocumentRenderer
+              key={index}
+              layout={customLayout}
+              company={company}
+              data={rendererData}
+              isDesignerPreview={false}
+              scale={1}
+              pageNumber={index + 1}
+              totalPages={totalPages}
+            />
+          ))}
+        </div>
       ) : (
         <>
           <DocHeader

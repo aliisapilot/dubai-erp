@@ -214,10 +214,12 @@ function TIContent() {
       const payload = { customer_id: form.customer_id, project_id: form.project_id || null, invoice_date: form.invoice_date||null, supply_date: form.supply_date||null, status: form.status, subtotal: sub, vat_amount: vat, total_amount: total, payment_terms: form.payment_terms||null, notes: form.notes||null, updated_at: new Date().toISOString() };
       let iid: string;
       if (editing) {
-        await supabase.from("tax_invoices").update(payload).eq("id", editing.id);
+        const { error: updateErr } = await supabase.from("tax_invoices").update(payload).eq("id", editing.id);
+        if (updateErr) throw updateErr;
         iid = editing.id;
         // DB FK: tax_invoice_id (not invoice_id)
-        await supabase.from("tax_invoice_items").delete().eq("tax_invoice_id", iid);
+        const { error: deleteItemsErr } = await supabase.from("tax_invoice_items").delete().eq("tax_invoice_id", iid);
+        if (deleteItemsErr) throw deleteItemsErr;
       } else {
         const cid = await getCompanyId(); const ino = await generateDocNumber(cid, "INV");
         const { data: ins, error: err } = await supabase.from("tax_invoices").insert({ ...payload, company_id: cid, invoice_number: ino }).select("id").single();
@@ -225,7 +227,8 @@ function TIContent() {
         iid = ins.id;
       }
       // DB: tax_invoice_id (FK), discount_percent (not discount_pct), no vat_category
-      await supabase.from("tax_invoice_items").insert(lines.map((l,i)=>({ tax_invoice_id: iid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit: l.unit||null, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, taxable_amount: l.taxable_amount, vat_amount: l.vat_amount, line_total: l.line_total, sort_order: i })));
+      const { error: itemErr } = await supabase.from("tax_invoice_items").insert(lines.map((l,i)=>({ tax_invoice_id: iid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit: l.unit||null, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, taxable_amount: l.taxable_amount, vat_amount: l.vat_amount, line_total: l.line_total, sort_order: i })));
+      if (itemErr) throw itemErr;
       setShowForm(false);
       setEditing(null);
       setSuccess(editing?"Invoice updated.":"Tax invoice created.");

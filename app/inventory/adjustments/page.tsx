@@ -213,13 +213,14 @@ export default function StockAdjustmentsPage() {
       for (const row of itemRows) {
         if (row.difference !== 0) {
           // Update product stock
-          await supabase
+          const { error: stockErr } = await supabase
             .from("products")
             .update({ current_stock: row.counted_stock })
             .eq("id", row.product_id);
+          if (stockErr) throw stockErr;
 
           // Log movement
-          await supabase
+          const { error: movementErr } = await supabase
             .from("stock_movements")
             .insert({
               company_id: companyId,
@@ -234,6 +235,7 @@ export default function StockAdjustmentsPage() {
               reference_number: docNum,
               notes: `Adjustment: ${reason}. Variance: ${row.difference > 0 ? "+" : ""}${row.difference}`,
             });
+          if (movementErr) throw movementErr;
         }
       }
 

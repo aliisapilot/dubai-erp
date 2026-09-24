@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
+import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
+
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
@@ -33,6 +37,38 @@ export default function ProjectHandoverTemplate({
   handover,
   onClose,
 }: HandoverProps) {
+  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("project_handover"));
+
+  useEffect(() => {
+    loadDocumentLayout(company?.id, "project_handover").then((res) => {
+      setCustomLayout(res.layout);
+    });
+  }, [company?.id]);
+
+  const rendererData: MockDocumentData = {
+    document_number: handover.handover_number,
+    document_date: handover.handover_date,
+    status: handover.status,
+    customer_name: handover.customer_name,
+    project_name: handover.project_name,
+    location: handover.location || undefined,
+    scope_of_work: handover.scope_completed,
+    items: [
+      {
+        description: `Project Handover Scope: ${handover.scope_completed}`,
+        quantity: 1,
+        unit: "Project",
+        unit_price: 0,
+        vat_amount: 0,
+        line_total: 0,
+      },
+    ],
+    subtotal: 0,
+    vat_amount: 0,
+    total_amount: 0,
+    notes: handover.snags_remarks || "Works inspected and formally accepted.",
+  };
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
   return (
     <DocumentContainer
       docTypeLabel="Handover Certificate"
@@ -40,7 +76,26 @@ export default function ProjectHandoverTemplate({
       status={handover.status}
       onClose={onClose}
       company={company ?? undefined}
+      noPadding={Boolean(customLayout)}
+      showWatermark={!customLayout}
     >
+      {customLayout ? (
+        <div className="flex flex-col gap-6 print:gap-0">
+          {Array.from({ length: totalPages }, (_, index) => (
+            <DynamicDocumentRenderer
+              key={index}
+              layout={customLayout}
+              company={company}
+              data={rendererData}
+              isDesignerPreview={false}
+              scale={1}
+              pageNumber={index + 1}
+              totalPages={totalPages}
+            />
+          ))}
+        </div>
+      ) : (
+        <>
       <div className="space-y-6">
         {/* Letterhead Header */}
         <DocHeader
@@ -116,6 +171,8 @@ export default function ProjectHandoverTemplate({
           customText="Official Handover Document. Valid upon mutual signatures and company stamps."
         />
       </div>
+        </>
+      )}
     </DocumentContainer>
   );
 }

@@ -7,8 +7,8 @@ import { getCompanyId, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber
 type Customer = { id: string; name: string | null; customer_code: string | null };
 type Supplier = { id: string; name: string | null; supplier_code: string | null };
 type Payment = { id: string; company_id: string; payment_number: string | null; payment_type: string | null; customer_id: string | null; supplier_id: string | null; payment_date: string | null; amount: number | null; payment_method: string | null; reference_number: string | null; bank_name: string | null; status: string | null; notes: string | null };
-type PForm = { payment_type: string; customer_id: string; supplier_id: string; payment_date: string; amount: string; payment_method: string; reference_number: string; bank_name: string; status: string; notes: string };
-const empty: PForm = { payment_type:"customer", customer_id:"", supplier_id:"", payment_date: todayISO(), amount:"0", payment_method:"Bank Transfer", reference_number:"", bank_name:"", status:"Completed", notes:"" };
+type PForm = { payment_type: string; customer_id: string; supplier_id: string; payment_date: string; amount: string; payment_method: string; reference_number: string; bank_name: string; notes: string };
+const empty: PForm = { payment_type:"customer", customer_id:"", supplier_id:"", payment_date: todayISO(), amount:"0", payment_method:"Bank Transfer", reference_number:"", bank_name:"", notes:"" };
 const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none";
 const sel = inp + " appearance-none";
 
@@ -45,7 +45,7 @@ export default function PaymentsPage() {
   function openAdd() { setError(""); setSuccess(""); setEditing(null); setForm(empty); setShowForm(true); }
   function openEdit(p: Payment) {
     setError(""); setSuccess(""); setEditing(p);
-    setForm({ payment_type: p.payment_type||"customer", customer_id: p.customer_id||"", supplier_id: p.supplier_id||"", payment_date: p.payment_date||todayISO(), amount: String(p.amount??0), payment_method: p.payment_method||"Bank Transfer", reference_number: p.reference_number||"", bank_name: p.bank_name||"", status: p.status||"Completed", notes: p.notes||"" });
+    setForm({ payment_type: p.payment_type||"customer", customer_id: p.customer_id||"", supplier_id: p.supplier_id||"", payment_date: p.payment_date||todayISO(), amount: String(p.amount??0), payment_method: p.payment_method||"Bank Transfer", reference_number: p.reference_number||"", bank_name: p.bank_name||"", notes: p.notes||"" });
     setShowForm(true);
   }
   function closeForm() { if (saving) return; setShowForm(false); setEditing(null); setError(""); }
@@ -58,7 +58,6 @@ export default function PaymentsPage() {
     if (form.payment_type === "supplier" && !form.supplier_id) { setError("Please select a supplier."); return; }
     setSaving(true);
     try {
-      // DB columns: payment_type, customer_id, supplier_id, payment_date, amount, payment_method, reference_number, bank_name, notes (NO status column in DB)
       const payload = { payment_type: form.payment_type, customer_id: form.payment_type==="customer" ? form.customer_id||null : null, supplier_id: form.payment_type==="supplier" ? form.supplier_id||null : null, payment_date: form.payment_date||null, amount: amt, payment_method: form.payment_method, reference_number: form.reference_number.trim()||null, bank_name: form.bank_name.trim()||null, notes: form.notes.trim()||null, updated_at: new Date().toISOString() };
       if (editing) {
         const { error: err } = await supabase.from("payments").update(payload).eq("id", editing.id);
@@ -83,8 +82,9 @@ export default function PaymentsPage() {
     const party = p.payment_type === "customer" ? custMap[p.customer_id||""]?.name : suppMap[p.supplier_id||""]?.name;
     return [p.payment_number, party, p.reference_number, p.payment_method].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
-  const totalIn = payments.filter(p=>p.payment_type==="customer").reduce((s,p)=>s+(p.amount||0),0);
-  const totalOut = payments.filter(p=>p.payment_type==="supplier").reduce((s,p)=>s+(p.amount||0),0);
+  const completedPayments = payments.filter(p => (p.status || "completed").toLowerCase() === "completed");
+  const totalIn = completedPayments.filter(p=>p.payment_type==="customer").reduce((s,p)=>s+(p.amount||0),0);
+  const totalOut = completedPayments.filter(p=>p.payment_type==="supplier").reduce((s,p)=>s+(p.amount||0),0);
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -129,7 +129,7 @@ export default function PaymentsPage() {
                       <td className="px-4 py-3 text-slate-600">{p.payment_method||"—"}</td>
                       <td className="px-4 py-3 text-slate-500">{p.reference_number||"—"}</td>
                       <td className="px-4 py-3 text-right font-bold text-slate-900">{fmtAED(p.amount)}</td>
-                      <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(p.status||"Completed")}`}>{p.status||"Completed"}</span></td>
+                      <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(p.status||"completed")}`}>{p.status||"completed"}</span></td>
                       <td className="px-4 py-3 text-center"><button onClick={()=>openEdit(p)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14} /></button></td>
                     </tr>
                   );
@@ -163,7 +163,6 @@ export default function PaymentsPage() {
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Payment Method</label><select value={form.payment_method} onChange={e=>f("payment_method",e.target.value)} className={sel}><option>Bank Transfer</option><option>Cash</option><option>Cheque</option><option>Credit Card</option><option>Debit Card</option></select></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Reference No.</label><input type="text" value={form.reference_number} onChange={e=>f("reference_number",e.target.value)} placeholder="Cheque/TT/Ref #" className={inp} /></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Bank Name</label><input type="text" value={form.bank_name} onChange={e=>f("bank_name",e.target.value)} className={inp} /></div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Status</label><select value={form.status} onChange={e=>f("status",e.target.value)} className={sel}><option>Completed</option><option>Pending</option><option>Cancelled</option></select></div>
                 </div>
                 <div><label className="mb-1 block text-sm font-medium text-slate-700">Notes</label><textarea value={form.notes} onChange={e=>f("notes",e.target.value)} rows={2} className={inp} /></div>
               </form>

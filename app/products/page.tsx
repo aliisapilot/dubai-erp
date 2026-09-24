@@ -12,8 +12,6 @@ import {
   Pencil,
   Power,
   AlertTriangle,
-  ChevronDown,
-  Filter,
   Trash2,
 } from "lucide-react";
 import { getCompanyId, generateDocNumber } from "@/lib/helpers";
@@ -24,60 +22,41 @@ type Product = {
   sku: string | null;
   name: string;
   description: string | null;
-  product_type: "Product" | "Service";
   category: string | null;
   unit: string | null;
   cost_price: number | null;
   selling_price: number | null;
   vat_rate: number | null;
-  vat_category: string | null;
-  opening_stock: number | null;
   current_stock: number | null;
   minimum_stock: number | null;
   active: boolean;
-  notes: string | null;
 };
 
 type ProductForm = {
   sku: string;
   name: string;
   description: string;
-  product_type: "Product" | "Service";
   category: string;
   unit: string;
   cost_price: string;
   selling_price: string;
   vat_rate: string;
-  vat_category: string;
-  opening_stock: string;
   current_stock: string;
   minimum_stock: string;
-  notes: string;
 };
 
 const emptyForm: ProductForm = {
   sku: "",
   name: "",
   description: "",
-  product_type: "Product",
   category: "",
   unit: "",
   cost_price: "",
   selling_price: "",
   vat_rate: "5",
-  vat_category: "Standard Rated",
-  opening_stock: "0",
   current_stock: "0",
   minimum_stock: "0",
-  notes: "",
 };
-
-const UAE_VAT_CATEGORIES = [
-  "Standard Rated",
-  "Zero Rated",
-  "Exempt",
-  "Out of Scope",
-];
 
 const COMMON_UNITS = [
   "Pcs","Nos","Kg","Gm","Litre","Ml","Meter","Sqm","Box","Carton","Set","Pair","Hour","Day","Month",
@@ -120,7 +99,6 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"All"|"Product"|"Service">("All");
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -153,17 +131,13 @@ export default function ProductsPage() {
       sku: product.sku || "",
       name: product.name || "",
       description: product.description || "",
-      product_type: product.product_type || "Product",
       category: product.category || "",
       unit: product.unit || "",
       cost_price: product.cost_price != null ? String(product.cost_price) : "",
       selling_price: product.selling_price != null ? String(product.selling_price) : "",
       vat_rate: product.vat_rate != null ? String(product.vat_rate) : "5",
-      vat_category: product.vat_category || "Standard Rated",
-      opening_stock: product.opening_stock != null ? String(product.opening_stock) : "0",
       current_stock: product.current_stock != null ? String(product.current_stock) : "0",
       minimum_stock: product.minimum_stock != null ? String(product.minimum_stock) : "0",
-      notes: product.notes || "",
     });
     setShowForm(true);
   }
@@ -179,8 +153,7 @@ export default function ProductsPage() {
     if (!form.name.trim()) { setError("Product name is required."); return; }
     setSaving(true);
     try {
-      // DB columns: sku, name, description, category, unit, cost_price, selling_price, vat_rate, current_stock, minimum_stock
-      // NO: product_type, vat_category, opening_stock, notes
+      // Keep the payload aligned with the live products table.
       const payload = {
         sku: form.sku.trim() || null,
         name: form.name.trim(),
@@ -242,13 +215,12 @@ export default function ProductsPage() {
   }
 
   const filtered = products.filter((p) => {
-    if (typeFilter !== "All" && p.product_type !== typeFilter) return false;
     const txt = [p.sku, p.name, p.category, p.unit, p.description].filter(Boolean).join(" ").toLowerCase();
     return txt.includes(search.toLowerCase());
   });
 
   const totalActive = products.filter((p) => p.active).length;
-  const lowStock = products.filter((p) => p.active && p.product_type === "Product" && p.minimum_stock != null && (p.current_stock ?? 0) <= p.minimum_stock).length;
+  const lowStock = products.filter((p) => p.active && p.minimum_stock != null && (p.current_stock ?? 0) <= p.minimum_stock).length;
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -288,15 +260,6 @@ export default function ProductsPage() {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input id="product-search" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, SKU, category…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none" />
           </div>
-          <div className="relative">
-            <Filter size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <select id="product-type-filter" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as "All"|"Product"|"Service")} className="appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-8 pr-8 text-sm focus:border-slate-400 focus:outline-none">
-              <option value="All">All Types</option>
-              <option value="Product">Product</option>
-              <option value="Service">Service</option>
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          </div>
         </div>
 
         {loading ? (
@@ -304,7 +267,7 @@ export default function ProductsPage() {
         ) : filtered.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white py-20 text-center">
             <Package size={40} className="mx-auto mb-3 text-slate-300" />
-            <p className="text-sm text-slate-500">{search || typeFilter !== "All" ? "No products match your search." : "No products yet. Click \"Add Product\" to get started."}</p>
+            <p className="text-sm text-slate-500">{search ? "No products match your search." : "No products yet. Click \"Add Product\" to get started."}</p>
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -314,7 +277,6 @@ export default function ProductsPage() {
                   <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <th className="px-4 py-3">SKU</th>
                     <th className="px-4 py-3">Name</th>
-                    <th className="px-4 py-3">Type</th>
                     <th className="px-4 py-3">Category</th>
                     <th className="px-4 py-3 text-right">Cost (AED)</th>
                     <th className="px-4 py-3 text-right">Price (AED)</th>
@@ -326,7 +288,7 @@ export default function ProductsPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filtered.map((product) => {
-                    const isLow = product.product_type === "Product" && product.minimum_stock != null && (product.current_stock ?? 0) <= product.minimum_stock;
+                    const isLow = product.minimum_stock != null && (product.current_stock ?? 0) <= product.minimum_stock;
                     return (
                       <tr key={product.id} className={`hover:bg-slate-50 transition-colors ${!product.active ? "opacity-50" : ""}`}>
                         <td className="px-4 py-3 font-mono text-xs text-slate-500">{product.sku || "—"}</td>
@@ -334,20 +296,15 @@ export default function ProductsPage() {
                           <div className="font-semibold text-slate-900">{product.name}</div>
                           {product.description && <div className="truncate max-w-[180px] text-xs text-slate-400">{product.description}</div>}
                         </td>
-                        <td className="px-4 py-3">
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${product.product_type === "Service" ? "bg-blue-50 text-blue-700" : "bg-violet-50 text-violet-700"}`}>{product.product_type}</span>
-                        </td>
                         <td className="px-4 py-3 text-slate-600">{product.category || "—"}</td>
                         <td className="px-4 py-3 text-right tabular-nums text-slate-600">{product.cost_price != null ? product.cost_price.toFixed(2) : "—"}</td>
                         <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-900">{product.selling_price != null ? product.selling_price.toFixed(2) : "—"}</td>
                         <td className="px-4 py-3 text-center text-slate-600">{product.vat_rate != null ? `${product.vat_rate}%` : "—"}</td>
                         <td className="px-4 py-3 text-center">
-                          {product.product_type === "Product" ? (
-                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${isLow ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
-                              {isLow && <AlertTriangle size={10} />}
-                              {product.current_stock ?? 0}{product.unit ? ` ${product.unit}` : ""}
-                            </span>
-                          ) : <span className="text-slate-400 text-xs">N/A</span>}
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${isLow ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
+                            {isLow && <AlertTriangle size={10} />}
+                            {product.current_stock ?? 0}{product.unit ? ` ${product.unit}` : ""}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${product.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
@@ -391,17 +348,9 @@ export default function ProductsPage() {
                 {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
                 <Section title="Basic Information">
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="SKU / Product Code">
-                      <input id="product-sku" type="text" value={form.sku} onChange={(e) => updateField("sku", e.target.value)} placeholder="e.g. PRD-001" className={inputClass} />
-                    </Field>
-                    <Field label="Product Type" required>
-                      <select id="product-type" value={form.product_type} onChange={(e) => updateField("product_type", e.target.value as "Product"|"Service")} className={selectClass}>
-                        <option value="Product">Product</option>
-                        <option value="Service">Service</option>
-                      </select>
-                    </Field>
-                  </div>
+                  <Field label="SKU / Product Code">
+                    <input id="product-sku" type="text" value={form.sku} onChange={(e) => updateField("sku", e.target.value)} placeholder="e.g. PRD-001" className={inputClass} />
+                  </Field>
                   <Field label="Product Name" required>
                     <input id="product-name" type="text" value={form.name} onChange={(e) => updateField("name", e.target.value)} placeholder="Enter product name" required className={inputClass} />
                   </Field>
@@ -430,24 +379,13 @@ export default function ProductsPage() {
                       <input id="product-selling-price" type="number" min="0" step="0.01" value={form.selling_price} onChange={(e) => updateField("selling_price", e.target.value)} placeholder="0.00" className={inputClass} />
                     </Field>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="VAT Rate (%)">
-                      <input id="product-vat-rate" type="number" min="0" max="100" step="0.01" value={form.vat_rate} onChange={(e) => updateField("vat_rate", e.target.value)} placeholder="5" className={inputClass} />
-                    </Field>
-                    <Field label="VAT Category">
-                      <select id="product-vat-category" value={form.vat_category} onChange={(e) => updateField("vat_category", e.target.value)} className={selectClass}>
-                        {UAE_VAT_CATEGORIES.map((c) => (<option key={c} value={c}>{c}</option>))}
-                      </select>
-                    </Field>
-                  </div>
+                  <Field label="VAT Rate (%)">
+                    <input id="product-vat-rate" type="number" min="0" max="100" step="0.01" value={form.vat_rate} onChange={(e) => updateField("vat_rate", e.target.value)} placeholder="5" className={inputClass} />
+                  </Field>
                 </Section>
 
-                {form.product_type === "Product" && (
-                  <Section title="Stock Levels">
-                    <div className="grid grid-cols-3 gap-4">
-                      <Field label="Opening Stock">
-                        <input id="product-opening-stock" type="number" min="0" step="1" value={form.opening_stock} onChange={(e) => updateField("opening_stock", e.target.value)} className={inputClass} />
-                      </Field>
+                <Section title="Stock Levels">
+                    <div className="grid grid-cols-2 gap-4">
                       <Field label="Current Stock">
                         <input id="product-current-stock" type="number" min="0" step="1" value={form.current_stock} onChange={(e) => updateField("current_stock", e.target.value)} className={inputClass} />
                       </Field>
@@ -456,13 +394,6 @@ export default function ProductsPage() {
                       </Field>
                     </div>
                     <p className="text-xs text-amber-600 mt-1">Low-stock alert fires when Current Stock &le; Minimum Stock.</p>
-                  </Section>
-                )}
-
-                <Section title="Additional Notes">
-                  <Field label="Notes">
-                    <textarea id="product-notes" value={form.notes} onChange={(e) => updateField("notes", e.target.value)} placeholder="Any additional notes" rows={3} className={inputClass} />
-                  </Field>
                 </Section>
               </form>
             </div>

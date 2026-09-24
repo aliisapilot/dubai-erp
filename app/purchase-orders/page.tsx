@@ -129,10 +129,12 @@ export default function PurchaseOrdersPage() {
       const payload = { supplier_id: form.supplier_id, project_id: form.project_id || null, order_date: form.order_date||null, expected_date: form.expected_date||null, status: form.status, subtotal: sub, vat_amount: vat, total_amount: total, notes: form.notes||null, updated_at: new Date().toISOString() };
       let poid: string;
       if (editing) {
-        await supabase.from("purchase_orders").update(payload).eq("id", editing.id);
+        const { error: updateErr } = await supabase.from("purchase_orders").update(payload).eq("id", editing.id);
+        if (updateErr) throw updateErr;
         poid = editing.id;
         // DB FK: purchase_order_id (not po_id)
-        await supabase.from("purchase_order_items").delete().eq("purchase_order_id", poid);
+        const { error: deleteItemsErr } = await supabase.from("purchase_order_items").delete().eq("purchase_order_id", poid);
+        if (deleteItemsErr) throw deleteItemsErr;
       } else {
         const cid = await getCompanyId();
         const poNum = await generateDocNumber(cid, "PO");
@@ -141,20 +143,23 @@ export default function PurchaseOrdersPage() {
         poid = ins.id;
       }
       // If Received, update stock
-      if (form.status === "Received") {
+      if (form.status === "Received" && editing?.status !== "Received") {
         for (const l of lines.filter(l=>l.product_id && l.quantity > 0)) {
           const { data: prod } = await supabase.from("products").select("current_stock").eq("id", l.product_id).single();
           if (!prod) continue;
           const before = prod.current_stock || 0;
           const after = before + l.quantity;
-          await supabase.from("products").update({ current_stock: after, updated_at: new Date().toISOString() }).eq("id", l.product_id);
+          const { error: stockErr } = await supabase.from("products").update({ current_stock: after, updated_at: new Date().toISOString() }).eq("id", l.product_id);
+          if (stockErr) throw stockErr;
           const cid = await getCompanyId();
           // DB stock_movements: previous_stock, new_stock (not before_stock, after_stock)
-          await supabase.from("stock_movements").insert({ company_id: cid, product_id: l.product_id, movement_type: "IN", quantity: l.quantity, previous_stock: before, new_stock: after, reference_type: "purchase_order", reference_id: poid });
+          const { error: movementErr } = await supabase.from("stock_movements").insert({ company_id: cid, product_id: l.product_id, movement_type: "IN", quantity: l.quantity, previous_stock: before, new_stock: after, reference_type: "purchase_order", reference_id: poid });
+          if (movementErr) throw movementErr;
         }
       }
       // DB: purchase_order_id (FK), discount_percent (not discount_pct), no vat_category
-      await supabase.from("purchase_order_items").insert(lines.map((l,i)=>({ purchase_order_id: poid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, line_total: l.line_total, vat_amount: l.vat_amount, sort_order: i })));
+      const { error: itemErr } = await supabase.from("purchase_order_items").insert(lines.map((l,i)=>({ purchase_order_id: poid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, line_total: l.line_total, vat_amount: l.vat_amount, sort_order: i })));
+      if (itemErr) throw itemErr;
       setSuccess(editing?"PO updated.":"Purchase order created."); closeForm(); await loadAll();
     } catch (err: unknown) { setError(err instanceof Error ? err.message : "Error"); }
     finally { setSaving(false); }
@@ -169,7 +174,8 @@ export default function PurchaseOrdersPage() {
     if (!window.confirm(`Are you sure you want to delete purchase order ${po.purchase_order_number || "this PO"}? This cannot be undone.`)) return;
     setError("");
     try {
-      await supabase.from("purchase_order_items").delete().eq("purchase_order_id", po.id);
+      const { error: itemDeleteErr } = await supabase.from("purchase_order_items").delete().eq("purchase_order_id", po.id);
+      if (itemDeleteErr) throw itemDeleteErr;
       const { error: delErr } = await supabase.from("purchase_orders").delete().eq("id", po.id);
       if (delErr) throw new Error(delErr.message);
       setSuccess(`Purchase order ${po.purchase_order_number} deleted successfully.`);

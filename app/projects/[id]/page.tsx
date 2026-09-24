@@ -253,10 +253,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
     // Assemble linked docs
     const lDocs: LinkedDoc[] = [];
-    (quotes || []).forEach(q => lDocs.push({ id: q.id, type: "Quotation", ref_number: (q as any).quotation_number || (q as any).quote_number, date: (q as any).quotation_date || (q as any).quote_date, amount: q.total_amount, status: q.status }));
+    (quotes || []).forEach(q => lDocs.push({ id: q.id, type: "Quotation", ref_number: q.quotation_number, date: q.quotation_date, amount: q.total_amount, status: q.status }));
     (invs || []).forEach(i => lDocs.push({ id: i.id, type: "Tax Invoice", ref_number: i.invoice_number, date: i.invoice_date, amount: i.total_amount, status: i.status }));
-    (dns || []).forEach(d => lDocs.push({ id: d.id, type: "Delivery Note", ref_number: (d as any).delivery_note_number || (d as any).dn_number, date: d.delivery_date, status: d.status }));
-    (pos || []).forEach(po => lDocs.push({ id: po.id, type: "Purchase Order", ref_number: (po as any).purchase_order_number || (po as any).po_number, date: (po as any).order_date || (po as any).po_date, amount: po.total_amount, status: po.status }));
+    (dns || []).forEach(d => lDocs.push({ id: d.id, type: "Delivery Note", ref_number: d.delivery_note_number, date: d.delivery_date, status: d.status }));
+    (pos || []).forEach(po => lDocs.push({ id: po.id, type: "Purchase Order", ref_number: po.purchase_order_number, date: po.order_date, amount: po.total_amount, status: po.status }));
     setLinkedDocs(lDocs);
 
     setLoading(false);
@@ -1342,18 +1342,18 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
             {/* Submittal Section Tabs */}
             <div className="flex border-b border-slate-200 bg-white px-6 overflow-x-auto text-xs">
-              {[
+              {([
                 { key: "general", label: "1. General & Scope" },
                 { key: "methodology", label: "2. Methodology & Execution" },
                 { key: "safety", label: "3. HSE & Quality Policy" },
                 { key: "risks", label: `4. Risk Assessment (${wmsRisks.length})` },
                 { key: "qaqc", label: `5. QA/QC Checklist (${wmsQAQC.length})` },
                 { key: "revisions", label: `6. Revision History (${wmsRevHistory.length})` },
-              ].map(tab => (
+              ] satisfies { key: typeof wmsModalTab; label: string }[]).map(tab => (
                 <button
                   key={tab.key}
                   type="button"
-                  onClick={() => setWmsModalTab(tab.key as any)}
+                  onClick={() => setWmsModalTab(tab.key)}
                   className={`py-3 px-3 font-semibold border-b-2 whitespace-nowrap transition ${
                     wmsModalTab === tab.key
                       ? "border-slate-900 text-slate-900"
@@ -1639,7 +1639,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                                 value={r.risk_level || "Medium"}
                                 onChange={e => {
                                   const copy = [...wmsRisks];
-                                  copy[idx].risk_level = e.target.value as any;
+                                  copy[idx].risk_level = e.target.value;
                                   setWmsRisks(copy);
                                 }}
                                 className={`w-full rounded border px-2 py-1.5 text-xs font-semibold ${
@@ -1745,7 +1745,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                                 value={q.status || "Pending"}
                                 onChange={e => {
                                   const copy = [...wmsQAQC];
-                                  copy[idx].status = e.target.value as any;
+                                  copy[idx].status = e.target.value;
                                   setWmsQAQC(copy);
                                 }}
                                 className={`w-full rounded border px-2 py-1.5 text-xs font-semibold ${

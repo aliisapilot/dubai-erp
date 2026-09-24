@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
+import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
+
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
@@ -48,12 +52,40 @@ export default function SalarySlipTemplate({
   slip,
   onClose,
 }: SalarySlipProps) {
+  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("salary_statement"));
+
+  useEffect(() => {
+    loadDocumentLayout(company?.id, "salary_statement").then((res) => {
+      setCustomLayout(res.layout);
+    });
+  }, [company?.id]);
   const monthNames = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
   ];
 
   const monthLabel = typeof slip.month === "number" ? monthNames[slip.month - 1] || `Month ${slip.month}` : slip.month;
+
+  const rendererData: MockDocumentData = {
+    document_number: `SLIP-${slip.year}-${String(slip.month).padStart(2, "0")}-${slip.employee_id}`,
+    document_date: `${slip.year}-${String(slip.month).padStart(2, "0")}-01`,
+    customer_name: `${slip.employee_name} (${slip.employee_id})`,
+    scope_of_work: slip.designation || undefined,
+    items: [
+      { description: "Basic Salary", quantity: 1, unit_price: slip.basic_salary, line_total: slip.basic_salary, vat_amount: 0 },
+      ...(slip.housing_allowance ? [{ description: "Housing Allowance", quantity: 1, unit_price: slip.housing_allowance, line_total: slip.housing_allowance, vat_amount: 0 }] : []),
+      ...(slip.transport_allowance ? [{ description: "Transport Allowance", quantity: 1, unit_price: slip.transport_allowance, line_total: slip.transport_allowance, vat_amount: 0 }] : []),
+      ...(slip.other_allowances ? [{ description: "Other Allowances", quantity: 1, unit_price: slip.other_allowances, line_total: slip.other_allowances, vat_amount: 0 }] : []),
+      ...(slip.overtime_amount ? [{ description: "Overtime Pay", quantity: 1, unit_price: slip.overtime_amount, line_total: slip.overtime_amount, vat_amount: 0 }] : []),
+      ...(slip.absence_deduction ? [{ description: "Absence Deduction", quantity: 1, unit_price: -slip.absence_deduction, line_total: -slip.absence_deduction, vat_amount: 0 }] : []),
+      ...(slip.advance_deduction ? [{ description: "Advance Salary Deduction", quantity: 1, unit_price: -slip.advance_deduction, line_total: -slip.advance_deduction, vat_amount: 0 }] : []),
+    ],
+    subtotal: slip.total_earnings,
+    vat_amount: 0,
+    total_amount: slip.net_pay,
+    notes: `Department: ${slip.department || "N/A"} | Bank: ${slip.bank_name || "N/A"} | IBAN: ${slip.iban || "N/A"}`,
+  };
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
 
   return (
     <DocumentContainer
@@ -62,7 +94,26 @@ export default function SalarySlipTemplate({
       status={slip.status || "Finalized"}
       onClose={onClose}
       company={company ?? undefined}
+      noPadding={Boolean(customLayout)}
+      showWatermark={!customLayout}
     >
+      {customLayout ? (
+        <div className="flex flex-col gap-6 print:gap-0">
+          {Array.from({ length: totalPages }, (_, index) => (
+            <DynamicDocumentRenderer
+              key={index}
+              layout={customLayout}
+              company={company}
+              data={rendererData}
+              isDesignerPreview={false}
+              scale={1}
+              pageNumber={index + 1}
+              totalPages={totalPages}
+            />
+          ))}
+        </div>
+      ) : (
+        <>
       {/* Letterhead Header */}
       <DocHeader
           company={company}
@@ -245,6 +296,8 @@ export default function SalarySlipTemplate({
       <DocFooter
         customText="Confidential document intended solely for the named employee. Generated via Dubai ERP WPS compliance."
       />
+        </>
+      )}
     </DocumentContainer>
   );
 }

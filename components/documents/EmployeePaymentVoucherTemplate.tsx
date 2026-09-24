@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
+import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
+
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
@@ -35,11 +39,41 @@ export default function EmployeePaymentVoucherTemplate({
   voucher,
   onClose,
 }: PaymentVoucherProps) {
+  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("employee_payment_voucher"));
+
+  useEffect(() => {
+    loadDocumentLayout(company?.id, "employee_payment_voucher").then((res) => {
+      setCustomLayout(res.layout);
+    });
+  }, [company?.id]);
   const monthNames = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
   ];
   const monthLabel = typeof voucher.month === "number" ? monthNames[voucher.month - 1] || `Month ${voucher.month}` : voucher.month;
+
+  const rendererData: MockDocumentData = {
+    document_number: voucher.voucher_number,
+    document_date: voucher.voucher_date,
+    customer_name: `${voucher.employee_name} (ID: ${voucher.employee_id})`,
+    project_name: voucher.designation || undefined,
+    items: [
+      {
+        description: `Employee Salary Payment (${monthLabel} ${voucher.year}) via ${voucher.payment_method}`,
+        quantity: 1,
+        unit: "Payment",
+        unit_price: voucher.net_amount,
+        vat_amount: 0,
+        line_total: voucher.net_amount,
+      },
+    ],
+    subtotal: voucher.net_amount,
+    vat_amount: 0,
+    total_amount: voucher.net_amount,
+    payment_terms: voucher.payment_method,
+    notes: voucher.notes || `Bank: ${voucher.bank_name || "N/A"} | Ref: ${voucher.bank_reference || "N/A"}`,
+  };
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
 
   return (
     <DocumentContainer
@@ -47,7 +81,26 @@ export default function EmployeePaymentVoucherTemplate({
       docNumber={voucher.voucher_number}
       onClose={onClose}
       company={company ?? undefined}
+      noPadding={Boolean(customLayout)}
+      showWatermark={!customLayout}
     >
+      {customLayout ? (
+        <div className="flex flex-col gap-6 print:gap-0">
+          {Array.from({ length: totalPages }, (_, index) => (
+            <DynamicDocumentRenderer
+              key={index}
+              layout={customLayout}
+              company={company}
+              data={rendererData}
+              isDesignerPreview={false}
+              scale={1}
+              pageNumber={index + 1}
+              totalPages={totalPages}
+            />
+          ))}
+        </div>
+      ) : (
+        <>
       {/* Letterhead Header */}
       <DocHeader
           company={company}
@@ -152,6 +205,8 @@ export default function EmployeePaymentVoucherTemplate({
         <DocFooter
           customText="Internal accounting voucher. Kept on record for audit and WPS payroll reconciliation."
         />
+        </>
+      )}
     </DocumentContainer>
   );
 }

@@ -11,7 +11,6 @@ import { CompanyDocInfo } from "@/components/documents/DocHeader";
 type Employee = {
   id: string;
   first_name: string | null;
-  name?: string | null;
   employee_number: string | null;
   designation?: string | null;
   department?: string | null;
@@ -166,7 +165,7 @@ export default function SalaryStatementsPage() {
     const yr = Number(form.payroll_year) || now.getFullYear();
     const mo = Number(form.payroll_month) || now.getMonth()+1;
     const period = `${yr}-${String(mo).padStart(2,"0")}`;
-    supabase.from("overtime").select("hours").eq("employee_id", empId).eq("approval_status","Approved").gte("overtime_date", `${period}-01`).lte("overtime_date", `${period}-31`)
+    supabase.from("overtime").select("hours").eq("employee_id", empId).in("approval_status",["approved", "Approved"]).gte("overtime_date", `${period}-01`).lte("overtime_date", `${period}-31`)
       .then(({data}) => {
         const totalHours = (data||[]).reduce((s,r) => s + (Number(r.hours)||0), 0);
         const hourly = (Number(emp.basic_salary) || 0) / 30 / 8;
@@ -291,7 +290,7 @@ export default function SalaryStatementsPage() {
       return;
     }
     const emp = empMap[r.employee_id || ""];
-    const empName = emp?.first_name || emp?.name || "this employee";
+    const empName = emp?.first_name || "this employee";
     if (!window.confirm(`Are you sure you want to delete the salary statement for ${empName}? This cannot be undone.`)) return;
     setError("");
     try {
@@ -307,7 +306,7 @@ export default function SalaryStatementsPage() {
   function handleOpenSlip(r: SS) {
     const emp = empMap[r.employee_id || ""];
     const slipData: SalarySlipData = {
-      employee_name: emp?.first_name || emp?.name || "Employee",
+      employee_name: emp?.first_name || "Employee",
       employee_id: emp?.employee_number || r.employee_id || "EMP-001",
       designation: emp?.designation,
       department: emp?.department,
@@ -340,7 +339,7 @@ export default function SalaryStatementsPage() {
     const vData: PaymentVoucherData = {
       voucher_number: `PV-SAL-${now.getFullYear()}${String(r.payroll_month || now.getMonth() + 1).padStart(2, "0")}-${(emp?.employee_number || "EMP").replace(/[^a-zA-Z0-9]/g, "")}`,
       voucher_date: r.payment_date || now.toISOString().split("T")[0],
-      employee_name: emp?.first_name || emp?.name || "Employee",
+      employee_name: emp?.first_name || "Employee",
       employee_id: emp?.employee_number || r.employee_id || "EMP-001",
       designation: emp?.designation,
       month: r.payroll_month || (now.getMonth() + 1),
@@ -359,7 +358,7 @@ export default function SalaryStatementsPage() {
   const filtered = records.filter(r => {
     if (filterEmp && r.employee_id !== filterEmp) return false;
     if (filterPeriod && String(r.payroll_month) !== filterPeriod) return false;
-    const empName = empMap[r.employee_id||""]?.first_name || empMap[r.employee_id||""]?.name || "";
+    const empName = empMap[r.employee_id||""]?.first_name || "";
     return [empName, String(r.payroll_month), r.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
 
@@ -380,7 +379,7 @@ export default function SalaryStatementsPage() {
         {error && !showForm && <div className="mb-5 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button onClick={() => setError("")}><X size={16} /></button></div>}
         <div className="mb-6 flex gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none" /></div>
-          <select value={filterEmp} onChange={e=>setFilterEmp(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none appearance-none"><option value="">All Employees</option>{employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select>
+          <select value={filterEmp} onChange={e=>setFilterEmp(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none appearance-none"><option value="">All Employees</option>{employees.map(e=><option key={e.id} value={e.id}>{e.first_name || e.employee_number || "Unnamed employee"}</option>)}</select>
           <input type="month" value={filterPeriod} onChange={e=>setFilterPeriod(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none" />
         </div>
         {loading ? <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-slate-400" /></div> : filtered.length === 0 ? (
@@ -395,7 +394,7 @@ export default function SalaryStatementsPage() {
                 {filtered.map(r => (
                   <tr key={r.id} className="hover:bg-slate-50 transition">
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">{empMap[r.employee_id||""]?.first_name || empMap[r.employee_id||""]?.name || "—"}</div>
+                      <div className="font-semibold text-slate-900">{empMap[r.employee_id||""]?.first_name || "—"}</div>
                       <div className="text-xs text-slate-400">{empMap[r.employee_id||""]?.employee_number||""} · {empMap[r.employee_id||""]?.designation||""}</div>
                     </td>
                     <td className="px-4 py-3 text-slate-600">{r.payroll_month ? `${MONTHS[(r.payroll_month||1)-1]} ${now.getFullYear()}` : "—"}</td>
@@ -446,7 +445,7 @@ export default function SalaryStatementsPage() {
                 {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-1"><label className="mb-1 block text-sm font-medium text-slate-700">Employee <span className="text-red-500">*</span></label>
-                    <select value={form.employee_id} onChange={e=>onEmpChange(e.target.value)} required className={sel}><option value="">— Select —</option>{employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select>
+                    <select value={form.employee_id} onChange={e=>onEmpChange(e.target.value)} required className={sel}><option value="">— Select —</option>{employees.map(e=><option key={e.id} value={e.id}>{e.first_name || e.employee_number || "Unnamed employee"}</option>)}</select>
                   </div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Year</label><input type="number" step="1" min="2020" max="2099" value={form.payroll_year} onChange={e=>ff("payroll_year",e.target.value)} className={inp} /></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Month</label><select value={form.payroll_month} onChange={e=>ff("payroll_month",e.target.value)} className={sel}>{MONTHS.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select></div>
@@ -490,7 +489,7 @@ export default function SalaryStatementsPage() {
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={()=>setViewRec(null)} />
           <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl p-6 space-y-4">
             <div className="flex justify-between"><h2 className="text-lg font-bold text-slate-900">Salary Statement</h2><button onClick={()=>setViewRec(null)}><X size={20} /></button></div>
-            <div className="flex justify-between text-sm"><span className="text-slate-500">{emp?.first_name || emp?.name || "—"} ({emp?.employee_number||"—"})</span><span className="font-semibold text-slate-700">{viewRec.payroll_month ? `${MONTHS[(viewRec.payroll_month||1)-1]} ${now.getFullYear()}` : "—"}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-slate-500">{emp?.first_name || "—"} ({emp?.employee_number||"—"})</span><span className="font-semibold text-slate-700">{viewRec.payroll_month ? `${MONTHS[(viewRec.payroll_month||1)-1]} ${now.getFullYear()}` : "—"}</span></div>
             <table className="w-full text-sm"><tbody>
               {[["Basic Salary",viewRec.basic_salary],["Housing Allowance",viewRec.housing_allowance],["Transport Allowance",viewRec.transport_allowance],["Other Allowances",viewRec.other_allowances],["Friday / Weekend Pay",viewRec.friday_pay],["Overtime",viewRec.overtime_amount],["Bonus",viewRec.bonus]].map(([l,v])=>(
                 <tr key={String(l)}><td className="py-1 text-slate-500">{l}</td><td className="py-1 text-right text-slate-900">{fmtAED(v as number)}</td></tr>

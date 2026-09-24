@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Receipt, Plus, Search, Loader2, X, Save, Printer, Pencil, Trash2, Ban } from "lucide-react";
+import { Receipt, Plus, Search, Loader2, X, Save, Printer, Pencil } from "lucide-react";
 import { getCompanyId, getCurrentCompany, fmtAED, statusClass, todayISO, generateDocNumber } from "@/lib/helpers";
 import ReceiptVoucherTemplate, { ReceiptVoucherData } from "@/components/documents/ReceiptVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -29,7 +29,6 @@ type RCV = {
   balance_amount: number | null;
   accountant_name: string | null;
   notes: string | null;
-  status?: string | null;
   created_at: string | null;
 };
 
@@ -49,7 +48,6 @@ type RCVForm = {
   balance_amount: string;
   accountant_name: string;
   notes: string;
-  status: string;
 };
 
 const emptyForm: RCVForm = {
@@ -68,7 +66,6 @@ const emptyForm: RCVForm = {
   balance_amount: "0",
   accountant_name: "Accounts Dept.",
   notes: "",
-  status: "Posted",
 };
 
 const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none";
@@ -115,15 +112,11 @@ export default function ReceiptVouchersPage() {
     setError("");
     setSuccess("");
     setEditing(null);
-    setForm({ ...emptyForm, voucher_date: todayISO(), status: "Posted" });
+    setForm({ ...emptyForm, voucher_date: todayISO() });
     setShowModal(true);
   }
 
   function openEdit(v: RCV) {
-    if ((v.status || "").toLowerCase() === "cancelled") {
-      setError("Cancelled receipt vouchers cannot be modified.");
-      return;
-    }
     setError("");
     setSuccess("");
     setEditing(v);
@@ -143,7 +136,6 @@ export default function ReceiptVouchersPage() {
       balance_amount: String(v.balance_amount ?? 0),
       accountant_name: v.accountant_name || "Accounts Dept.",
       notes: v.notes || "",
-      status: v.status || "Posted",
     });
     setShowModal(true);
   }
@@ -182,7 +174,6 @@ export default function ReceiptVouchersPage() {
         balance_amount: Number(form.balance_amount) || 0,
         accountant_name: form.accountant_name.trim() || null,
         notes: form.notes.trim() || null,
-        status: form.status || "Posted",
       };
 
       if (editing) {
@@ -210,42 +201,6 @@ export default function ReceiptVouchersPage() {
       setError(err instanceof Error ? err.message : "Error saving receipt voucher");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function deleteDraftVoucher(v: RCV) {
-    if ((v.status || "").toLowerCase() !== "draft") {
-      setError("Only draft vouchers can be deleted. Posted vouchers must be cancelled to preserve accounting history.");
-      return;
-    }
-    if (!confirm(`Are you sure you want to permanently delete draft voucher "${v.voucher_number}"? This action cannot be undone.`)) return;
-    setError("");
-    setSuccess("");
-    try {
-      const { error: err } = await supabase.from("receipt_vouchers").delete().eq("id", v.id);
-      if (err) throw err;
-      setSuccess(`Draft receipt voucher ${v.voucher_number} deleted successfully.`);
-      await loadData();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to delete voucher.");
-    }
-  }
-
-  async function cancelVoucher(v: RCV) {
-    if ((v.status || "").toLowerCase() === "draft") {
-      await deleteDraftVoucher(v);
-      return;
-    }
-    if (!confirm(`Are you sure you want to cancel receipt voucher "${v.voucher_number}"? This will mark it as Cancelled and preserve accounting history.`)) return;
-    setError("");
-    setSuccess("");
-    try {
-      const { error: err } = await supabase.from("receipt_vouchers").update({ status: "cancelled" }).eq("id", v.id);
-      if (err) throw err;
-      setSuccess(`Receipt voucher ${v.voucher_number} has been cancelled.`);
-      await loadData();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to cancel voucher.");
     }
   }
 
@@ -354,8 +309,8 @@ export default function ReceiptVouchersPage() {
                       {fmtAED(v.amount)}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(v.status || "Posted")}`}>
-                        {v.status || "Posted"}
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass("Posted")}`}>
+                        Posted
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -367,32 +322,13 @@ export default function ReceiptVouchersPage() {
                         >
                           <Printer size={14} />
                         </button>
-                        {(v.status || "").toLowerCase() !== "cancelled" && (
-                          <button
-                            onClick={() => openEdit(v)}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-                            title="Edit Voucher"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                        )}
-                        {(v.status || "").toLowerCase() === "draft" ? (
-                          <button
-                            onClick={() => deleteDraftVoucher(v)}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition"
-                            title="Delete Draft"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        ) : (v.status || "").toLowerCase() !== "cancelled" ? (
-                          <button
-                            onClick={() => cancelVoucher(v)}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600 transition"
-                            title="Cancel / Void Voucher"
-                          >
-                            <Ban size={14} />
-                          </button>
-                        ) : null}
+                        <button
+                          onClick={() => openEdit(v)}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+                          title="Edit Voucher"
+                        >
+                          <Pencil size={14} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -423,7 +359,7 @@ export default function ReceiptVouchersPage() {
             <form onSubmit={saveVoucher} className="p-6 space-y-3 max-h-[80vh] overflow-y-auto text-xs">
               {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-red-700">{error}</div>}
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block font-semibold text-slate-700">Voucher Ref #</label>
                   <input
@@ -437,13 +373,6 @@ export default function ReceiptVouchersPage() {
                 <div>
                   <label className="mb-1 block font-semibold text-slate-700">Receipt Date</label>
                   <input type="date" value={form.voucher_date} onChange={e => setForm({ ...form, voucher_date: e.target.value })} required className={inp} />
-                </div>
-                <div>
-                  <label className="mb-1 block font-semibold text-slate-700">Status</label>
-                  <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className={sel}>
-                    <option value="Posted">Posted</option>
-                    <option value="Draft">Draft</option>
-                  </select>
                 </div>
               </div>
 

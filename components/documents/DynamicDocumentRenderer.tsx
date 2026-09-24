@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { CSSProperties, useState } from "react";
 import Image from "next/image";
-import { Building2 } from "lucide-react";
+import { Building2, Image as ImageIcon } from "lucide-react";
 import { getBrandConfig } from "@/lib/brandConfig";
 import { DocumentLayout, LayoutElement, TableColumnConfig } from "@/lib/documentDesigner";
 import { CompanyDocInfo } from "./DocHeader";
@@ -121,10 +121,21 @@ interface DynamicDocumentRendererProps {
   company: CompanyDocInfo | null;
   data?: MockDocumentData;
   isDesignerPreview?: boolean;
-  selectedElementId?: string | null;
-  onSelectElement?: (elementId: string) => void;
   scale?: number;
   pageNumber?: number;
+  totalPages?: number;
+}
+
+export function getItemsPerPage(layout: DocumentLayout): number {
+  const lineItems = layout.elements.find((element) => element.type === "line_items");
+  if (!lineItems) return 1;
+  const rowHeight = Math.max(4, lineItems.tableSettings?.rowHeight || 8);
+  const headerHeight = Math.max(6, rowHeight);
+  return Math.max(1, Math.floor((lineItems.height - headerHeight) / rowHeight));
+}
+
+export function getDocumentPageCount(layout: DocumentLayout, itemCount: number): number {
+  return Math.max(1, Math.ceil(Math.max(1, itemCount) / getItemsPerPage(layout)));
 }
 
 export default function DynamicDocumentRenderer({
@@ -132,10 +143,9 @@ export default function DynamicDocumentRenderer({
   company,
   data = SAMPLE_DOCUMENT_DATA,
   isDesignerPreview = false,
-  selectedElementId = null,
-  onSelectElement,
   scale = 1,
   pageNumber = 1,
+  totalPages,
 }: DynamicDocumentRendererProps) {
   const brand = getBrandConfig(company);
   const [logoFailed, setLogoFailed] = useState(false);
@@ -152,6 +162,46 @@ export default function DynamicDocumentRenderer({
 
   const advance = Number(data.advance_amount) || 0;
   const balanceDue = Math.max(0, data.total_amount - advance);
+  const itemsPerPage = getItemsPerPage(layout);
+  const resolvedTotalPages = totalPages || getDocumentPageCount(layout, data.items.length);
+  const firstItemIndex = (pageNumber - 1) * itemsPerPage;
+  const pageItems = data.items.slice(firstItemIndex, firstItemIndex + itemsPerPage);
+  const isLastPage = pageNumber >= resolvedTotalPages;
+
+  const fontWeight = (weight: LayoutElement["fontWeight"]): CSSProperties["fontWeight"] => {
+    if (weight === "extrabold") return 800;
+    if (weight === "bold") return 700;
+    if (weight === "semibold") return 600;
+    if (weight === "medium") return 500;
+    return weight === "normal" ? 400 : undefined;
+  };
+
+  const elementAppearance = (elem: LayoutElement): CSSProperties => ({
+    ...(elem.fontSize !== undefined ? { fontSize: `${elem.fontSize}px` } : {}),
+    ...(elem.fontWeight ? { fontWeight: fontWeight(elem.fontWeight) } : {}),
+    ...(elem.fontStyle ? { fontStyle: elem.fontStyle } : {}),
+    ...(elem.fontFamily ? { fontFamily: elem.fontFamily } : {}),
+    ...(elem.textAlign ? { textAlign: elem.textAlign } : {}),
+    ...(elem.color ? { color: elem.color } : {}),
+    ...(elem.backgroundColor ? { backgroundColor: elem.backgroundColor } : {}),
+    ...(elem.borderWidth !== undefined
+      ? { border: `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` }
+      : {}),
+    ...(elem.borderRadius !== undefined ? { borderRadius: `${elem.borderRadius}px` } : {}),
+    ...(elem.padding !== undefined ? { padding: `${elem.padding}mm` } : {}),
+    ...(elem.lineHeight !== undefined ? { lineHeight: elem.lineHeight } : {}),
+    ...(elem.letterSpacing !== undefined ? { letterSpacing: `${elem.letterSpacing}px` } : {}),
+    opacity: elem.opacity ?? 1,
+  });
+
+  const replaceCompanyTokens = (value: string) =>
+    value
+      .replaceAll("{{company.name}}", brand.name || "")
+      .replaceAll("{{company.legal_name}}", brand.legal_name || brand.name || "")
+      .replaceAll("{{company.trn}}", brand.trn || "")
+      .replaceAll("{{company.phone}}", brand.phone || "")
+      .replaceAll("{{company.email}}", brand.email || "")
+      .replaceAll("{{company.address}}", brand.address || "");
 
   // Render individual element content based on its type
   function renderElementContent(elem: LayoutElement) {
@@ -172,18 +222,26 @@ export default function DynamicDocumentRenderer({
       }
 
       case "logo": {
-        const logoSrc = brand.assets.logo;
+        const logoSrc = elem.imageSrc || brand.assets.logo;
         if (!logoFailed && logoSrc) {
           return (
-            <div className="w-full h-full flex items-center justify-center">
+            <div
+              className="w-full h-full flex items-center justify-center overflow-hidden"
+              style={{
+                backgroundColor: elem.backgroundColor,
+                border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
+                borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
+                opacity: elem.opacity ?? 1,
+                ...elementAppearance(elem),
+              }}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={logoSrc}
-                alt={brand.legal_name}
-                className="max-w-full max-h-full"
+                alt={brand.legal_name || "Company Logo"}
+                className="w-full h-full"
                 style={{
                   objectFit: elem.imageFit || "contain",
-                  opacity: elem.opacity ?? 1,
                 }}
                 onError={() => setLogoFailed(true)}
               />
@@ -213,7 +271,16 @@ export default function DynamicDocumentRenderer({
                   : "flex-start",
               fontSize: `${elem.fontSize || 15}px`,
               fontWeight: elem.fontWeight === "extrabold" ? 800 : elem.fontWeight === "bold" ? 700 : 600,
+              fontStyle: elem.fontStyle || "normal",
+              fontFamily: elem.fontFamily || "inherit",
+              letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : "0.05em",
+              lineHeight: elem.lineHeight ? elem.lineHeight : undefined,
               color: elem.color || colors.primary,
+              backgroundColor: elem.backgroundColor,
+              border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
+              borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
+              opacity: elem.opacity ?? 1,
+              ...elementAppearance(elem),
             }}
           >
             {elem.customText || brand.legal_name || brand.name}
@@ -234,11 +301,19 @@ export default function DynamicDocumentRenderer({
                   ? "flex-start"
                   : "flex-end",
               fontSize: `${elem.fontSize || 26}px`,
-              fontWeight: 700,
+              fontWeight: elem.fontWeight === "bold" ? 700 : elem.fontWeight === "semibold" ? 600 : 700,
+              fontStyle: elem.fontStyle || "normal",
               color: elem.color || colors.accent,
-              letterSpacing: "0.01em",
+              letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : "0.01em",
+              lineHeight: elem.lineHeight ? elem.lineHeight : 1.25,
               fontFamily:
+                elem.fontFamily ||
                 "'Segoe UI Arabic', 'Amiri', 'Scheherazade New', 'Traditional Arabic', 'Noto Naskh Arabic', Arial, sans-serif",
+              backgroundColor: elem.backgroundColor,
+              border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
+              borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
+              opacity: elem.opacity ?? 1,
+              ...elementAppearance(elem),
             }}
           >
             {elem.customText || brand.arabic_name}
@@ -254,14 +329,29 @@ export default function DynamicDocumentRenderer({
               textAlign: elem.textAlign || "center",
               color: elem.color || colors.muted,
               fontSize: `${elem.fontSize || 10}px`,
+              fontStyle: elem.fontStyle || "normal",
+              fontFamily: elem.fontFamily || "inherit",
+              letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
+              lineHeight: elem.lineHeight ? elem.lineHeight : undefined,
+              backgroundColor: elem.backgroundColor,
+              border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
+              borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
+              opacity: elem.opacity ?? 1,
+              ...elementAppearance(elem),
             }}
           >
-            <div>{brand.address}</div>
-            <div className="font-semibold text-slate-800">
-              TRN: <span className="font-mono font-bold" style={{ color: colors.primary }}>{brand.trn}</span>
-              {brand.phone ? ` | Tel: ${brand.phone}` : ""}
-              {brand.email ? ` | Email: ${brand.email}` : ""}
-            </div>
+            {elem.customText ? (
+              <div>{replaceCompanyTokens(elem.customText)}</div>
+            ) : (
+              <>
+                <div>{brand.address}</div>
+                <div className="font-semibold text-slate-800">
+                  TRN: <span className="font-mono font-bold" style={{ color: colors.primary }}>{brand.trn}</span>
+                  {brand.phone ? ` | Tel: ${brand.phone}` : ""}
+                  {brand.email ? ` | Email: ${brand.email}` : ""}
+                </div>
+              </>
+            )}
           </div>
         );
       }
@@ -273,13 +363,22 @@ export default function DynamicDocumentRenderer({
             style={{
               backgroundColor: elem.backgroundColor || colors.primary,
               color: elem.color || "#FFFFFF",
+              border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
               borderRadius: `${elem.borderRadius || 4}px`,
+              opacity: elem.opacity ?? 1,
+              padding: elem.padding !== undefined ? `${elem.padding}mm` : undefined,
+              ...elementAppearance(elem),
             }}
           >
             <div className="flex items-center gap-3">
               <span
                 className="font-extrabold uppercase tracking-wider"
-                style={{ fontSize: `${elem.fontSize || 15}px` }}
+                style={{
+                  fontSize: `${elem.fontSize || 15}px`,
+                  fontStyle: elem.fontStyle || "normal",
+                  fontFamily: elem.fontFamily || "inherit",
+                  letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
+                }}
               >
                 {elem.customText || "TAX INVOICE"}
               </span>
@@ -301,6 +400,7 @@ export default function DynamicDocumentRenderer({
               borderRadius: `${elem.borderRadius || 4}px`,
               fontSize: `${elem.fontSize || 11}px`,
               color: colors.text,
+              ...elementAppearance(elem),
             }}
           >
             <div className="flex justify-between border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
@@ -330,6 +430,75 @@ export default function DynamicDocumentRenderer({
         );
       }
 
+      case "supplier_info": {
+        return (
+          <div
+            className="w-full h-full p-2.5 flex flex-col justify-between select-text"
+            style={{
+              backgroundColor: elem.backgroundColor || "#F8FAFC",
+              border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+              borderRadius: `${elem.borderRadius || 4}px`,
+              fontSize: `${elem.fontSize || 11}px`,
+              color: colors.text,
+              ...elementAppearance(elem),
+            }}
+          >
+            <div className="flex justify-between border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
+              <span style={{ color: colors.primary }}>Supplier / Vendor Details (بيانات المورد):</span>
+              <span style={{ color: colors.muted }}>Vendor</span>
+            </div>
+            <div className="space-y-0.5 mt-1 text-[11px] leading-tight">
+              <div className="font-bold text-slate-900">{data.supplier_name || data.customer_name || "Supplier Name"}</div>
+              {data.contact_person && (
+                <div style={{ color: colors.muted }}>
+                  Attn: {data.contact_person} {data.contact_number ? `(${data.contact_number})` : ""}
+                </div>
+              )}
+              {data.customer_address && (
+                <div className="line-clamp-1" style={{ color: colors.muted }}>
+                  {data.customer_address}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      case "project_info": {
+        return (
+          <div
+            className="w-full h-full p-2.5 flex flex-col justify-between select-text"
+            style={{
+              backgroundColor: elem.backgroundColor || "#F8FAFC",
+              border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+              borderRadius: `${elem.borderRadius || 4}px`,
+              fontSize: `${elem.fontSize || 11}px`,
+              color: colors.text,
+              ...elementAppearance(elem),
+            }}
+          >
+            <div className="flex justify-between border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
+              <span style={{ color: colors.primary }}>Project Details (بيانات المشروع):</span>
+              <span className="font-mono font-bold" style={{ color: colors.accent }}>{data.project_number || "PRJ"}</span>
+            </div>
+            <div className="space-y-0.5 mt-1 text-[11px] leading-tight">
+              <div className="font-bold text-slate-900">{data.project_name || "Project Name"}</div>
+              {data.location && (
+                <div style={{ color: colors.muted }}>
+                  Location: <span className="font-semibold text-slate-800">{data.location}</span>
+                </div>
+              )}
+              {data.scope_of_work && (
+                <div className="line-clamp-2 text-[10px]" style={{ color: colors.muted }}>
+                  Scope: {data.scope_of_work}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+
       case "doc_meta": {
         return (
           <div
@@ -340,6 +509,7 @@ export default function DynamicDocumentRenderer({
               borderRadius: `${elem.borderRadius || 4}px`,
               fontSize: `${elem.fontSize || 11}px`,
               color: colors.text,
+              ...elementAppearance(elem),
             }}
           >
             <div className="flex justify-between border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
@@ -416,6 +586,7 @@ export default function DynamicDocumentRenderer({
                     backgroundColor: tSettings.headerBg,
                     color: tSettings.headerTextColor,
                     fontSize: `${tSettings.headerFontSize}px`,
+                    height: `${Math.max(6, tSettings.rowHeight)}mm`,
                   }}
                 >
                   {activeCols.map((col) => (
@@ -440,11 +611,11 @@ export default function DynamicDocumentRenderer({
                   borderColor: tSettings.borderColor,
                 }}
               >
-                {data.items.slice(0, 5).map((item, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50">
+                {pageItems.map((item, idx) => (
+                  <tr key={firstItemIndex + idx} className="hover:bg-slate-50/50" style={{ height: `${tSettings.rowHeight}mm` }}>
                     {activeCols.map((col) => {
                       let val: React.ReactNode = "";
-                      if (col.key === "index") val = idx + 1;
+                      if (col.key === "index") val = firstItemIndex + idx + 1;
                       else if (col.key === "description") val = item.description;
                       else if (col.key === "quantity") val = item.quantity;
                       else if (col.key === "unit") val = item.unit || "Nos";
@@ -464,7 +635,7 @@ export default function DynamicDocumentRenderer({
                       return (
                         <td
                           key={col.key}
-                          className="py-1 px-2"
+                          className="px-2"
                           style={{
                             textAlign: col.align,
                             fontFamily: isMonetary ? "monospace" : "inherit",
@@ -492,6 +663,7 @@ export default function DynamicDocumentRenderer({
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
               fontSize: `${elem.fontSize || 10}px`,
+              ...elementAppearance(elem),
             }}
           >
             <div className="font-semibold text-slate-800 text-[10px]">
@@ -523,6 +695,7 @@ export default function DynamicDocumentRenderer({
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
               fontSize: `${elem.fontSize || 11}px`,
+              ...elementAppearance(elem),
             }}
           >
             <div className="flex justify-between py-1 px-2.5 bg-slate-50 border-b" style={{ borderColor: colors.border }}>
@@ -562,6 +735,7 @@ export default function DynamicDocumentRenderer({
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
               fontSize: `${elem.fontSize || 10}px`,
+              ...elementAppearance(elem),
             }}
           >
             <div className="font-bold text-slate-800 text-[10px] mb-0.5" style={{ color: colors.primary }}>
@@ -582,6 +756,7 @@ export default function DynamicDocumentRenderer({
             style={{
               fontSize: `${elem.fontSize || 10}px`,
               color: elem.color || colors.muted,
+              ...elementAppearance(elem),
             }}
           >
             <div className="font-bold text-slate-800 mb-0.5">Terms &amp; Remarks:</div>
@@ -592,21 +767,31 @@ export default function DynamicDocumentRenderer({
       }
 
       case "company_signature": {
-        const sigSrc = brand.assets.signature;
+        const sigSrc = elem.imageSrc || brand.assets.signature;
         return (
-          <div className="w-full h-full flex flex-col items-center justify-between text-center select-none">
+          <div
+            className="w-full h-full flex flex-col items-center justify-between text-center select-none overflow-hidden"
+            style={{
+              backgroundColor: elem.backgroundColor,
+              border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
+              borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
+              opacity: elem.opacity ?? 1,
+              ...elementAppearance(elem),
+            }}
+          >
             <div className="text-[9px] font-bold uppercase tracking-wider text-slate-800" style={{ color: colors.primary }}>
               {elem.customText || "COMPANY AUTHORIZED SIGNATURE"}
             </div>
             {/* Real uploaded signature only */}
-            <div className="relative w-full flex-1 flex items-center justify-center">
+            <div className="relative w-full flex-1 flex items-center justify-center overflow-hidden">
               {sigSrc ? (
                 <Image
                   src={sigSrc}
                   alt="Authorized Signature"
                   width={110}
                   height={38}
-                  className="max-h-full max-w-full object-contain"
+                  className="max-h-full max-w-full"
+                  style={{ width: "auto", height: "auto", objectFit: elem.imageFit || "contain" }}
                   unoptimized
                 />
               ) : (
@@ -621,16 +806,26 @@ export default function DynamicDocumentRenderer({
       }
 
       case "company_stamp": {
-        const stampSrc = brand.assets.stamp;
+        const stampSrc = elem.imageSrc || brand.assets.stamp;
         return (
-          <div className="w-full h-full flex items-center justify-center select-none">
+          <div
+            className="w-full h-full flex items-center justify-center select-none overflow-hidden"
+            style={{
+              backgroundColor: elem.backgroundColor,
+              border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
+              borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
+              opacity: elem.opacity ?? 1,
+              ...elementAppearance(elem),
+            }}
+          >
             {stampSrc ? (
               <Image
                 src={stampSrc}
                 alt="Official Company Stamp"
                 width={80}
                 height={80}
-                className="max-h-full max-w-full object-contain"
+                  className="max-h-full max-w-full"
+                  style={{ width: "auto", height: "auto", objectFit: elem.imageFit || "contain" }}
                 unoptimized
               />
             ) : (
@@ -642,6 +837,64 @@ export default function DynamicDocumentRenderer({
         );
       }
 
+      case "building_image": {
+        const bldgSrc = elem.imageSrc || brand.assets.building;
+        return (
+          <div
+            className="w-full h-full flex items-center justify-center select-none overflow-hidden"
+            style={{
+              backgroundColor: elem.backgroundColor,
+              border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
+              borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
+              opacity: elem.opacity ?? 1,
+              ...elementAppearance(elem),
+            }}
+          >
+            {bldgSrc ? (
+              <Image
+                src={bldgSrc}
+                alt="Company Premises"
+                width={180}
+                height={100}
+                className="max-h-full max-w-full"
+                style={{ width: "auto", height: "auto", objectFit: elem.imageFit || "cover" }}
+                unoptimized
+              />
+            ) : (
+              <div className="w-full h-full border border-dashed border-slate-300 flex items-center justify-center text-[10px] text-slate-400">
+                Building / Premises Image
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      case "company_trn": {
+        return (
+          <div
+            className="w-full h-full flex items-center text-[11px] select-text"
+            style={{
+              justifyContent:
+                elem.textAlign === "center"
+                  ? "center"
+                  : elem.textAlign === "right"
+                  ? "flex-end"
+                  : "flex-start",
+              color: elem.color || colors.primary,
+              backgroundColor: elem.backgroundColor,
+              border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
+              borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
+              opacity: elem.opacity ?? 1,
+              ...elementAppearance(elem),
+            }}
+          >
+            <span className="font-semibold mr-1">TRN:</span>
+            <span className="font-mono font-bold">{brand.trn}</span>
+          </div>
+        );
+      }
+
+
       case "footer": {
         return (
           <div
@@ -650,13 +903,27 @@ export default function DynamicDocumentRenderer({
               textAlign: elem.textAlign || "center",
               color: elem.color || colors.muted,
               fontSize: `${elem.fontSize || 9}px`,
+              fontStyle: elem.fontStyle || "normal",
+              fontFamily: elem.fontFamily || "inherit",
+              letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
+              lineHeight: elem.lineHeight ? elem.lineHeight : undefined,
+              backgroundColor: elem.backgroundColor,
               borderTop: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+              borderBottom: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
+              borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
+              opacity: elem.opacity ?? 1,
+              ...elementAppearance(elem),
             }}
           >
             <div>{elem.customText || `${brand.legal_name} | Tel: ${brand.phone} | Email: ${brand.email} | Web: ${brand.website}`}</div>
             <div className="text-[8px] text-slate-400 mt-0.5">
               This is a computer generated document issued in accordance with UAE VAT regulations.
             </div>
+            {resolvedTotalPages > 1 && (
+              <div className="mt-0.5 font-mono text-[8px] text-slate-400">
+                Page {pageNumber} of {resolvedTotalPages}
+              </div>
+            )}
           </div>
         );
       }
@@ -673,17 +940,68 @@ export default function DynamicDocumentRenderer({
                   ? "flex-end"
                   : "flex-start",
               fontSize: `${elem.fontSize || 12}px`,
-              fontWeight: elem.fontWeight === "bold" ? 700 : 400,
+              fontWeight: elem.fontWeight === "bold" ? 700 : elem.fontWeight === "semibold" ? 600 : elem.fontWeight === "extrabold" ? 800 : 400,
+              fontStyle: elem.fontStyle || "normal",
+              fontFamily: elem.fontFamily || "inherit",
+              letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
+              lineHeight: elem.lineHeight ? elem.lineHeight : undefined,
               color: elem.color || colors.text,
               backgroundColor: elem.backgroundColor,
               border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
               borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
+              opacity: elem.opacity ?? 1,
+              ...elementAppearance(elem),
             }}
           >
             {elem.customText || "Custom Text Element"}
           </div>
         );
       }
+
+      case "custom_image": {
+        const src = elem.imageSrc;
+        if (!src) {
+          return (
+            <div className="w-full h-full flex flex-col items-center justify-center border border-dashed border-slate-300 rounded text-slate-400 text-[10px]">
+              <ImageIcon size={18} className="mb-1 text-slate-300" />
+              <span>Empty Image</span>
+            </div>
+          );
+        }
+        return (
+          <div
+            className="w-full h-full overflow-hidden"
+            style={{
+              backgroundColor: elem.backgroundColor,
+              border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
+              borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
+              opacity: elem.opacity ?? 1,
+              ...elementAppearance(elem),
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={src}
+              alt={elem.label || "Custom Image"}
+              className="w-full h-full"
+              style={{
+                objectFit: elem.imageFit || "contain",
+              }}
+            />
+          </div>
+        );
+      }
+
+      case "divider":
+        return (
+          <div
+            className="h-full w-full"
+            style={{
+              borderTop: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+              opacity: elem.opacity ?? 1,
+            }}
+          />
+        );
 
       default:
         return (
@@ -697,7 +1015,7 @@ export default function DynamicDocumentRenderer({
   // A4 dimensions: 210mm x 297mm
   return (
     <div
-      className={`print-a4-sheet relative bg-white shadow-2xl transition-all select-none box-border ${
+      className={`dynamic-document-page print-a4-sheet relative box-border select-none overflow-hidden bg-white shadow-2xl transition-all ${
         isDesignerPreview ? "cursor-default" : ""
       }`}
       style={{
@@ -730,47 +1048,27 @@ export default function DynamicDocumentRenderer({
 
       {/* Render all visible layout elements */}
       {layout.elements
-        .filter((elem) => elem.visible && (elem.pageNumber === undefined || elem.pageNumber === pageNumber))
+        .filter((elem) => {
+          if (!elem.visible || (elem.pageNumber !== undefined && elem.pageNumber !== pageNumber)) return false;
+          if (isLastPage) return true;
+          return !["amount_in_words", "totals", "bank_details", "payment_terms", "company_signature", "company_stamp"].includes(elem.type);
+        })
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((elem) => {
-          const isSelected = isDesignerPreview && selectedElementId === elem.id;
-
           return (
             <div
               key={elem.id}
               data-element-id={elem.id}
-              onClick={(e) => {
-                if (isDesignerPreview && onSelectElement) {
-                  e.stopPropagation();
-                  onSelectElement(elem.id);
-                }
-              }}
-              className={`absolute transition-shadow ${
-                isDesignerPreview
-                  ? isSelected
-                    ? "ring-2 ring-blue-600 ring-offset-1 z-30 cursor-move"
-                    : "hover:ring-1 hover:ring-blue-400 cursor-pointer"
-                  : ""
-              }`}
+              className={`absolute ${isDesignerPreview ? "pointer-events-none" : ""}`}
               style={{
                 left: `${elem.x}mm`,
                 top: `${elem.y}mm`,
                 width: `${elem.width}mm`,
                 height: `${elem.height}mm`,
-                zIndex: isSelected ? 40 : elem.zIndex,
+                zIndex: elem.zIndex,
               }}
             >
               {renderElementContent(elem)}
-
-              {/* Selection label tag on top-left */}
-              {isSelected && (
-                <div className="absolute -top-5 left-0 bg-blue-600 text-white text-[9px] px-1.5 py-0.5 rounded font-mono font-medium shadow select-none flex items-center gap-1">
-                  <span>{elem.label}</span>
-                  <span className="opacity-80">
-                    ({Math.round(elem.x)}x{Math.round(elem.y)})
-                  </span>
-                </div>
-              )}
             </div>
           );
         })}

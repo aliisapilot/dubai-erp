@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
+import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
+
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
@@ -49,6 +53,40 @@ export default function ProformaInvoiceTemplate({
   proforma,
   onClose,
 }: ProformaProps) {
+  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("proforma_invoice"));
+
+  useEffect(() => {
+    loadDocumentLayout(company?.id, "proforma_invoice").then((res) => {
+      setCustomLayout(res.layout);
+    });
+  }, [company?.id]);
+
+  const rendererData: MockDocumentData = {
+    document_number: proforma.proforma_number,
+    document_date: proforma.proforma_date,
+    status: proforma.status || undefined,
+    customer_name: proforma.customer_name,
+    customer_trn: proforma.customer_trn || undefined,
+    customer_address: proforma.customer_address || undefined,
+    project_name: proforma.project_name || undefined,
+    project_number: proforma.project_number || undefined,
+    items: proforma.items.map((it) => ({
+      description: it.description,
+      quantity: it.quantity,
+      unit: it.unit || "Nos",
+      unit_price: it.unit_price,
+      discount: it.discount_pct || 0,
+      vat_rate: it.vat_rate,
+      vat_amount: it.vat_amount,
+      line_total: it.line_total,
+    })),
+    subtotal: proforma.subtotal,
+    vat_amount: proforma.vat_amount,
+    total_amount: proforma.total_amount,
+    payment_terms: proforma.payment_terms || undefined,
+    notes: proforma.notes || undefined,
+  };
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
   return (
     <DocumentContainer
       docTypeLabel="Proforma Invoice"
@@ -56,7 +94,26 @@ export default function ProformaInvoiceTemplate({
       status={proforma.status}
       onClose={onClose}
       company={company ?? undefined}
+      noPadding={Boolean(customLayout)}
+      showWatermark={!customLayout}
     >
+      {customLayout ? (
+        <div className="flex flex-col gap-6 print:gap-0">
+          {Array.from({ length: totalPages }, (_, index) => (
+            <DynamicDocumentRenderer
+              key={index}
+              layout={customLayout}
+              company={company}
+              data={rendererData}
+              isDesignerPreview={false}
+              scale={1}
+              pageNumber={index + 1}
+              totalPages={totalPages}
+            />
+          ))}
+        </div>
+      ) : (
+        <>
       <DocHeader
           company={company}
           docTitle="PROFORMA INVOICE"
@@ -190,6 +247,8 @@ export default function ProformaInvoiceTemplate({
       />
 
       <DocFooter company={company} showBankDetails={true} />
+        </>
+      )}
     </DocumentContainer>
   );
 }

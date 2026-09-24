@@ -33,12 +33,7 @@ export default function ProjectCostingPortfolioPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  useEffect(() => {
-    loadPortfolioCosting();
-  }, []);
-
   async function loadPortfolioCosting() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -169,6 +164,10 @@ export default function ProjectCostingPortfolioPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(loadPortfolioCosting);
+  }, []);
 
   const filtered = summaries.filter(s => {
     const matchSearch =

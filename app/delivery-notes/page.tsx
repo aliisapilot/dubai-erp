@@ -59,7 +59,7 @@ const emptyForm: DNForm = {
   project_id: "",
   delivery_date: todayISO(),
   dispatch_date: todayISO(),
-  status: "Draft",
+  status: "draft",
   customer_address: "",
   contact_person: "",
   contact_number: "",
@@ -172,7 +172,7 @@ export default function DeliveryNotesPage() {
       project_id: dn.project_id || "",
       delivery_date: dn.delivery_date || todayISO(),
       dispatch_date: dn.delivery_date || todayISO(),
-      status: dn.status || "Draft",
+      status: (dn.status || "draft").toLowerCase(),
       customer_address: dn.customer_address || "",
       contact_person: dn.contact_person || "",
       contact_number: dn.contact_number || "",
@@ -275,10 +275,12 @@ export default function DeliveryNotesPage() {
       let dnNumber = "";
 
       if (editing) {
-        await supabase.from("delivery_notes").update(payload).eq("id", editing.id);
+        const { error: updateErr } = await supabase.from("delivery_notes").update(payload).eq("id", editing.id);
+        if (updateErr) throw updateErr;
         dnid = editing.id;
         dnNumber = editing.delivery_note_number || editing.id; // DB: delivery_note_number
-        await supabase.from("delivery_note_items").delete().eq("delivery_note_id", dnid); // DB FK
+        const { error: deleteItemsErr } = await supabase.from("delivery_note_items").delete().eq("delivery_note_id", dnid); // DB FK
+        if (deleteItemsErr) throw deleteItemsErr;
       } else {
         const cid = await getCompanyId();
         const dno = await generateDocNumber(cid, "DN");
@@ -292,7 +294,7 @@ export default function DeliveryNotesPage() {
         dnid = ins.id;
       }
 
-      await supabase.from("delivery_note_items").insert(
+      const { error: itemErr } = await supabase.from("delivery_note_items").insert(
         lines
           .filter(l => l.description.trim())
           .map((l, i) => ({
@@ -305,17 +307,19 @@ export default function DeliveryNotesPage() {
             sort_order: i,
           }))
       );
+      if (itemErr) throw itemErr;
 
       // Stock deduction if Delivered
-      if (form.status === "Delivered") {
+      if (form.status === "delivered" && editing?.status?.toLowerCase() !== "delivered") {
         for (const l of lines) {
           if (!l.product_id || l.quantity <= 0) continue;
           const prod = products.find(p => p.id === l.product_id);
           if (!prod) continue;
           const newStock = Math.max(0, (prod.current_stock || 0) - l.quantity);
-          await supabase.from("products").update({ current_stock: newStock, updated_at: new Date().toISOString() }).eq("id", l.product_id);
+          const { error: stockErr } = await supabase.from("products").update({ current_stock: newStock, updated_at: new Date().toISOString() }).eq("id", l.product_id);
+          if (stockErr) throw stockErr;
           const cid = await getCompanyId();
-          await supabase.from("stock_movements").insert({
+          const { error: movementErr } = await supabase.from("stock_movements").insert({
             company_id: cid,
             product_id: l.product_id,
             movement_type: "OUT",
@@ -326,6 +330,7 @@ export default function DeliveryNotesPage() {
             reference_id: dnid,
             notes: `Delivery Note ${dnNumber}`,
           });
+          if (movementErr) throw movementErr;
         }
       }
 
@@ -342,7 +347,7 @@ export default function DeliveryNotesPage() {
   const custMap = Object.fromEntries(customers.map(c => [c.id, c]));
   const prjMap = Object.fromEntries(projects.map(p => [p.id, p]));
   const filtered = notes.filter(n => {
-    if (filterStatus && n.status !== filterStatus) return false;
+    if (filterStatus && (n.status || "").toLowerCase() !== filterStatus.toLowerCase()) return false;
     const cname = custMap[n.customer_id || ""]?.name || "";
     const pname = prjMap[n.project_id || ""]?.name || "";
     return [n.delivery_note_number, cname, pname, n.order_ref, n.driver_name, n.vehicle_number, n.receiver_name, n.status]
@@ -353,7 +358,8 @@ export default function DeliveryNotesPage() {
     if (!window.confirm(`Are you sure you want to delete delivery note ${dn.delivery_note_number || "this delivery note"}? This cannot be undone.`)) return;
     setError("");
     try {
-      await supabase.from("delivery_note_items").delete().eq("delivery_note_id", dn.id);
+      const { error: itemDeleteErr } = await supabase.from("delivery_note_items").delete().eq("delivery_note_id", dn.id);
+      if (itemDeleteErr) throw itemDeleteErr;
       const { error: delErr } = await supabase.from("delivery_notes").delete().eq("id", dn.id);
       if (delErr) throw new Error(delErr.message);
       setSuccess(`Delivery note ${dn.delivery_note_number} deleted successfully.`);
@@ -473,7 +479,7 @@ export default function DeliveryNotesPage() {
                         >
                           <Printer size={13} /> Print
                         </button>
-                        {dn.status !== "Delivered" && (
+                        {(dn.status || "").toLowerCase() !== "delivered" && (
                           <button
                             onClick={() => openEdit(dn)}
                             title="Edit"
@@ -482,7 +488,7 @@ export default function DeliveryNotesPage() {
                             <Pencil size={14} />
                           </button>
                         )}
-                        {dn.status === "Draft" && (
+                        {(dn.status || "").toLowerCase() === "draft" && (
                           <button
                             onClick={() => deleteDN(dn)}
                             title="Delete Draft Delivery Note"
@@ -524,7 +530,7 @@ export default function DeliveryNotesPage() {
             <div className="flex-1 overflow-y-auto">
               <form id="dn-form" onSubmit={save} className="p-6 space-y-4">
                 {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-                {form.status === "Delivered" && (
+                {form.status === "delivered" && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
                     ⚠️ When saved as Delivered, stock will be automatically deducted for product line items.
                   </div>
@@ -587,9 +593,9 @@ export default function DeliveryNotesPage() {
                     <div>
                       <label className="mb-1 block text-xs font-medium text-slate-700">Status</label>
                       <select value={form.status} onChange={e => ff("status", e.target.value)} className={sel}>
-                        <option>Draft</option>
-                        <option>Dispatched</option>
-                        <option>Delivered</option>
+                        <option value="draft">Draft</option>
+                        <option value="dispatched">Dispatched</option>
+                        <option value="delivered">Delivered</option>
                       </select>
                     </div>
                     <div>

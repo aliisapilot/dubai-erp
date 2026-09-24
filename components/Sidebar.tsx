@@ -9,8 +9,8 @@ import {
   FileSpreadsheet, FileCheck2, ClipboardList, ShoppingBag,
   FileSignature, UserCheck, Users2, CalendarCheck, Clock,
   Banknote, BarChart3, Settings, ChevronDown, ChevronRight,
-  LogOut, Menu, X, Wallet, Briefcase, TrendingUp, Calendar,
-  Paperclip, ShieldAlert, ShieldCheck, CheckCircle2, FileCode2,
+  LogOut, X, Wallet, Briefcase, TrendingUp, Calendar,
+  Paperclip, ShieldAlert, ShieldCheck, FileCode2,
   CreditCard, ArrowDownRight, ArrowUpRight, RefreshCw, History,
   FileCheck
 } from "lucide-react";
@@ -143,6 +143,12 @@ export default function Sidebar() {
     setMobileOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    const handleToggle = () => setMobileOpen((p) => !p);
+    window.addEventListener("toggle-erp-sidebar", handleToggle);
+    return () => window.removeEventListener("toggle-erp-sidebar", handleToggle);
+  }, []);
+
   async function handleSignOut() {
     setLoggingOut(true);
     try {
@@ -158,31 +164,41 @@ export default function Sidebar() {
   const navContent = (
     <div className="flex h-full flex-col bg-slate-900 text-slate-300">
       {/* Brand Header */}
-      <div className="border-b border-slate-800 p-5">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-sm shadow-md">
+      <div className="h-14 border-b border-slate-800 px-4 flex items-center justify-between bg-slate-900 shrink-0">
+        <Link href="/" className="flex items-center gap-2.5 group">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-xs shadow-sm transition-transform group-hover:scale-105">
             DXB
           </div>
-          <div>
+          <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-white tracking-tight text-base">Dubai ERP</span>
-              <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/30">
+              <span className="font-bold text-white tracking-tight text-sm">Dubai ERP</span>
+              <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-400 border border-emerald-500/30 leading-none">
                 5% VAT
               </span>
             </div>
-            <p className="text-xs text-slate-400 truncate max-w-[150px]">{company?.name || "Enterprise"}</p>
+            <p className="text-[10px] text-slate-400 truncate max-w-[130px] leading-tight">
+              {company?.name || "Enterprise"}
+            </p>
           </div>
         </Link>
+        <button
+          type="button"
+          onClick={() => setMobileOpen(false)}
+          className="md:hidden rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          aria-label="Close Navigation"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      {/* Nav List */}
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1.5 text-sm custom-scrollbar">
         {company?.trn && (
-          <div className="mt-3 flex items-center justify-between rounded-lg bg-slate-800/80 px-2.5 py-1.5 text-[11px] text-slate-400">
+          <div className="mb-2 flex items-center justify-between rounded-lg bg-slate-800/60 px-2.5 py-1 text-[11px] text-slate-400 border border-slate-800">
             <span className="truncate">TRN: {company.trn}</span>
             <span className="text-emerald-400 font-medium">UAE</span>
           </div>
         )}
-      </div>
-
-      {/* Nav List */}
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5 text-sm custom-scrollbar">
         {/* DASHBOARD */}
         <NavLink href="/" icon={<LayoutDashboard size={18} />} label="Dashboard" exact />
 
@@ -395,27 +411,9 @@ export default function Sidebar() {
   return (
     <>
       {/* Desktop Navigation */}
-      <aside className="no-print print-hide hidden md:flex h-screen w-64 flex-col shrink-0 border-r border-slate-800 sticky top-0 z-30">
+      <aside className="no-print print-hide hidden md:flex h-screen w-64 flex-col shrink-0 border-r border-slate-800 sticky top-0 z-30 m-0 p-0">
         {navContent}
       </aside>
-
-      {/* Mobile Top Bar */}
-      <div className="no-print print-hide md:hidden sticky top-0 z-40 flex items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-3 text-white">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 font-black text-xs text-white">
-            DXB
-          </div>
-          <span className="font-bold text-sm tracking-tight">Dubai ERP</span>
-        </Link>
-        <button
-          type="button"
-          onClick={() => setMobileOpen(p => !p)}
-          className="rounded-lg p-2 text-slate-300 hover:bg-slate-800"
-          aria-label="Toggle Navigation"
-        >
-          {mobileOpen ? <X size={20} /> : <Menu size={20} />}
-        </button>
-      </div>
 
       {/* Mobile Drawer */}
       {mobileOpen && (

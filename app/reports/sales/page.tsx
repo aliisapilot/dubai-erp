@@ -10,19 +10,15 @@ import {
 } from "lucide-react";
 
 export default function SalesReportPage() {
-  const [invoices, setInvoices] = useState<any[]>([]);
-  const [quotations, setQuotations] = useState<any[]>([]);
-  const [proformas, setProformas] = useState<any[]>([]);
+  type SalesDocumentRow = { id: string; status?: string | null; subtotal?: number | null; vat_amount?: number | null; total_amount?: number | null; invoice_number?: string | null; invoice_date?: string | null; customers?: { name?: string | null } | { name?: string | null }[] | null };
+  const [invoices, setInvoices] = useState<SalesDocumentRow[]>([]);
+  const [quotations, setQuotations] = useState<SalesDocumentRow[]>([]);
+  const [proformas, setProformas] = useState<SalesDocumentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  useEffect(() => {
-    loadSalesData();
-  }, []);
-
   async function loadSalesData() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -33,9 +29,12 @@ export default function SalesReportPage() {
         supabase.from("proforma_invoices").select("*, customers(name)").eq("company_id", companyId).order("proforma_date", { ascending: false }),
       ]);
 
-      setInvoices(invRes.data || []);
-      setQuotations(qRes.data || []);
-      setProformas(piRes.data || []);
+      const queryError = invRes.error || qRes.error || piRes.error;
+      if (queryError) throw new Error(queryError.message);
+
+      setInvoices((invRes.data || []) as SalesDocumentRow[]);
+      setQuotations((qRes.data || []) as SalesDocumentRow[]);
+      setProformas((piRes.data || []) as SalesDocumentRow[]);
     } catch (err) {
       console.error("Error loading sales report:", err);
     } finally {
@@ -43,15 +42,20 @@ export default function SalesReportPage() {
     }
   }
 
+  useEffect(() => {
+    void Promise.resolve().then(loadSalesData);
+  }, []);
+
   const filteredInvoices = invoices.filter(inv => {
-    if (dateFrom && inv.invoice_date < dateFrom) return false;
-    if (dateTo && inv.invoice_date > dateTo) return false;
+    if (dateFrom && (inv.invoice_date || "") < dateFrom) return false;
+    if (dateTo && (inv.invoice_date || "") > dateTo) return false;
     return true;
   });
 
-  const totalSalesExVat = filteredInvoices.filter(i => i.status !== "Cancelled").reduce((acc, i) => acc + (Number(i.subtotal) || 0), 0);
-  const totalVat = filteredInvoices.filter(i => i.status !== "Cancelled").reduce((acc, i) => acc + (Number(i.vat_amount) || 0), 0);
-  const totalGrossSales = filteredInvoices.filter(i => i.status !== "Cancelled").reduce((acc, i) => acc + (Number(i.total_amount) || 0), 0);
+  const activeInvoices = filteredInvoices.filter(i => (i.status || "").toLowerCase() !== "cancelled");
+  const totalSalesExVat = activeInvoices.reduce((acc, i) => acc + (Number(i.subtotal) || 0), 0);
+  const totalVat = activeInvoices.reduce((acc, i) => acc + (Number(i.vat_amount) || 0), 0);
+  const totalGrossSales = activeInvoices.reduce((acc, i) => acc + (Number(i.total_amount) || 0), 0);
 
   const acceptedQuotes = quotations.filter(q => (q.status || "").toLowerCase() === "accepted").length;
   const quoteWinRate = quotations.length > 0 ? (acceptedQuotes / quotations.length) * 100 : 0;
@@ -176,7 +180,7 @@ export default function SalesReportPage() {
                 <tr key={inv.id} className="hover:bg-slate-50/50">
                   <td className="px-4 py-2.5 font-semibold text-slate-900 font-mono">{inv.invoice_number}</td>
                   <td className="px-4 py-2.5 font-mono text-slate-500">{inv.invoice_date}</td>
-                  <td className="px-4 py-2.5 font-medium text-slate-800">{inv.customers?.name || "Customer"}</td>
+                  <td className="px-4 py-2.5 font-medium text-slate-800">{(Array.isArray(inv.customers) ? inv.customers[0]?.name : inv.customers?.name) || "Customer"}</td>
                   <td className="px-4 py-2.5 text-right font-mono">{Number(inv.subtotal || 0).toFixed(2)}</td>
                   <td className="px-4 py-2.5 text-right font-mono text-emerald-600">{Number(inv.vat_amount || 0).toFixed(2)}</td>
                   <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-900">{Number(inv.total_amount || 0).toFixed(2)}</td>

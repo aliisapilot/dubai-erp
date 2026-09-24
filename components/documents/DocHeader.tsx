@@ -20,6 +20,9 @@ export type CompanyDocInfo = {
   logo_url?: string | null;
   stamp_url?: string | null;
   signature_url?: string | null;
+  background_url?: string | null;
+  building_image_url?: string | null;
+  footer_image_url?: string | null;
   bank_name?: string | null;
   bank_account_name?: string | null;
   iban?: string | null;
@@ -63,11 +66,11 @@ export default function DocHeader({
 
   // ONE central config value (lib/brandConfig.ts -> logo_size) controls the logo width everywhere.
   // Height stays "auto", so the real logo PNG keeps its natural aspect ratio on screen and on A4 print.
-  const logoSize = brand.logo_size;
+  const logoSize = brand.logo_size || 130;
   const logoWidthCss = typeof logoSize === "number" ? `${logoSize}px` : String(logoSize);
 
-  // Centralized Arabic company name size (default 30px, 1.4–1.6x English name size)
-  const arabicNameSize = brand.arabic_name_size || 30;
+  // Centralized Arabic company name size (default 22px, balanced with English name size)
+  const arabicNameSize = brand.arabic_name_size || 22;
   const arabicSizeCss = typeof arabicNameSize === "number" ? `${arabicNameSize}px` : String(arabicNameSize);
 
   const primary = brand.colors.primary;
@@ -76,14 +79,14 @@ export default function DocHeader({
 
   return (
     <div
-      className="print-doc-header w-full pb-3 mb-5"
+      className="print-doc-header w-full pb-2 mb-3.5"
       style={{ borderBottom: `2px solid ${primary}` }}
     >
-      {/* Company Identity Block: large centered real logo, English name, Arabic name directly below */}
+      {/* Company Identity Block: compact centered real logo, English name, Arabic name directly below */}
       <div className="print-doc-identity flex w-full flex-col items-center text-center">
         <div className="print-logo-container flex w-full items-center justify-center">
           {!logoFailed ? (
-            /* Real <img> element (not a CSS background) so the actual logo PNG prints reliably on A4 */
+            /* Real <img> element with max-height and max-width constraints to preserve aspect ratio without vertical bloat */
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={logoSrc}
@@ -92,6 +95,8 @@ export default function DocHeader({
               className="print-doc-logo block max-w-full"
               style={{
                 width: logoWidthCss,
+                maxWidth: "100%",
+                maxHeight: "80px",
                 height: "auto", // preserve aspect ratio
                 objectFit: "contain",
               }}
@@ -105,17 +110,17 @@ export default function DocHeader({
             />
           ) : (
             <div
-              className="flex h-14 w-14 items-center justify-center rounded-lg border"
+              className="flex h-12 w-12 items-center justify-center rounded-lg border"
               style={{ borderColor: brand.colors.border, backgroundColor: "#f8fafc", color: primary }}
             >
-              <Building2 size={28} />
+              <Building2 size={24} />
             </div>
           )}
         </div>
 
         {/* English company name — dignified uppercase primary */}
         <h1
-          className="mt-2 text-base sm:text-lg font-bold tracking-wide uppercase leading-tight text-center"
+          className="mt-1.5 text-sm sm:text-base font-bold tracking-wide uppercase leading-tight text-center"
           style={{ color: primary }}
         >
           {brand.legal_name || brand.name}
@@ -123,7 +128,7 @@ export default function DocHeader({
 
         {/* Arabic company name directly below — visual focal point in gold accent, real selectable text */}
         <div
-          className="mt-1 font-arabic font-bold text-center select-text"
+          className="mt-0.5 font-arabic font-bold text-center select-text"
           dir="rtl"
           style={{
             fontSize: arabicSizeCss,
@@ -137,13 +142,13 @@ export default function DocHeader({
         </div>
 
         {/* Subtle, elegant, thin gold divider beneath Arabic name with minimal geometric accent */}
-        <div className="mt-1.5 mb-1 flex items-center justify-center gap-2" aria-hidden="true">
-          <span className="h-[1px] w-14" style={{ backgroundColor: accent, opacity: 0.85 }} />
+        <div className="mt-1 mb-0.5 flex items-center justify-center gap-2" aria-hidden="true">
+          <span className="h-[1px] w-12" style={{ backgroundColor: accent, opacity: 0.85 }} />
           <span className="h-1.5 w-1.5 rotate-45" style={{ backgroundColor: accent }} />
-          <span className="h-[1px] w-14" style={{ backgroundColor: accent, opacity: 0.85 }} />
+          <span className="h-[1px] w-12" style={{ backgroundColor: accent, opacity: 0.85 }} />
         </div>
 
-        <div className="mt-1.5 text-[11px] leading-tight space-y-0.5" style={{ color: muted }}>
+        <div className="mt-1 text-[10px] leading-tight space-y-0.5" style={{ color: muted }}>
           <p>{brand.address}</p>
           <p className="font-semibold" style={{ color: brand.colors.text }}>
             TRN (الرقم الضريبي):{" "}
@@ -154,7 +159,7 @@ export default function DocHeader({
 
       {/* Reusable Contact Strip */}
       <div
-        className="mt-2.5 flex flex-wrap items-center justify-between py-1 text-[10px] font-medium"
+        className="mt-2 flex flex-wrap items-center justify-between py-0.5 text-[9.5px] font-medium"
         style={{
           borderTop: `1px solid ${brand.colors.border}`,
           borderBottom: `1px solid ${brand.colors.border}`,
@@ -170,12 +175,12 @@ export default function DocHeader({
 
       {/* Document Title Banner — Navy primary background, gold accent text */}
       <div
-        className="mt-3 flex items-center justify-between px-4 py-2 rounded"
+        className="mt-2 flex items-center justify-between px-3.5 py-1.5 rounded"
         style={{ backgroundColor: primary, color: "#ffffff" }}
       >
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-extrabold uppercase tracking-wider">
+            <h2 className="text-sm sm:text-base font-extrabold uppercase tracking-wider">
               {docTitle}
             </h2>
             {arabicTitle && (

@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
+import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
+
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
@@ -51,6 +55,41 @@ export default function SupplierBillTemplate({
   bill,
   onClose,
 }: BillProps) {
+  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("supplier_bill"));
+
+  useEffect(() => {
+    loadDocumentLayout(company?.id, "supplier_bill").then((res) => {
+      setCustomLayout(res.layout);
+    });
+  }, [company?.id]);
+
+  const rendererData: MockDocumentData = {
+    document_number: bill.bill_number,
+    document_date: bill.bill_date,
+    due_date: bill.due_date || undefined,
+    status: bill.status || undefined,
+    customer_name: bill.supplier_name,
+    customer_trn: bill.supplier_trn || undefined,
+    customer_address: bill.supplier_address || undefined,
+    supplier_name: bill.supplier_name,
+    project_name: bill.project_name || undefined,
+    project_number: bill.project_number || bill.supplier_invoice_ref || bill.po_number || undefined,
+    items: bill.items.map((it) => ({
+      description: it.description,
+      quantity: it.quantity,
+      unit: it.unit || "Nos",
+      unit_price: it.unit_price,
+      vat_rate: it.vat_rate,
+      vat_amount: it.vat_amount,
+      line_total: it.line_total,
+    })),
+    subtotal: bill.subtotal,
+    vat_amount: bill.vat_amount,
+    total_amount: bill.total_amount,
+    advance_amount: bill.paid_amount,
+    notes: bill.notes || undefined,
+  };
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
   const paid = Number(bill.paid_amount) || 0;
   const balance = Math.max(0, bill.total_amount - paid);
 
@@ -61,7 +100,26 @@ export default function SupplierBillTemplate({
       status={bill.status}
       onClose={onClose}
       company={company ?? undefined}
+      noPadding={Boolean(customLayout)}
+      showWatermark={!customLayout}
     >
+      {customLayout ? (
+        <div className="flex flex-col gap-6 print:gap-0">
+          {Array.from({ length: totalPages }, (_, index) => (
+            <DynamicDocumentRenderer
+              key={index}
+              layout={customLayout}
+              company={company}
+              data={rendererData}
+              isDesignerPreview={false}
+              scale={1}
+              pageNumber={index + 1}
+              totalPages={totalPages}
+            />
+          ))}
+        </div>
+      ) : (
+        <>
       <DocHeader
           company={company}
           docTitle="SUPPLIER BILL"
@@ -209,6 +267,8 @@ export default function SupplierBillTemplate({
       />
 
       <DocFooter company={company} showBankDetails={false} />
+        </>
+      )}
     </DocumentContainer>
   );
 }

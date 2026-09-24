@@ -157,12 +157,13 @@ export default function DashboardPage() {
 
         // Build recent activity list
         const activity: RecentTx[] = [];
-        ti.slice(0, 5).forEach((i: any) => {
+        ti.slice(0, 5).forEach((i) => {
+          const invoiceCustomer = Array.isArray(i.customers) ? i.customers[0] : i.customers;
           activity.push({
             id: i.id,
             type: "Tax Invoice",
             ref: i.invoice_number,
-            party: i.customers?.name || "Client",
+            party: invoiceCustomer?.name || "Client",
             amount: Number(i.total_amount || 0),
             date: i.invoice_date,
             status: i.status,

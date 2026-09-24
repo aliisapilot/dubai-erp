@@ -6,10 +6,28 @@ import { getCompanyId, statusClass, todayISO } from "@/lib/helpers";
 
 type Employee = { id: string; first_name: string | null; employee_number: string | null; basic_salary: number | null };
 type OT = { id: string; company_id: string; employee_id: string | null; overtime_date: string | null; hours: number | null; approval_status: string | null; approved_by: string | null; created_at: string | null };
-type OTForm = { employee_id: string; overtime_date: string; hours: string; approval_status: string; approved_by: string };
-const empty: OTForm = { employee_id: "", overtime_date: todayISO(), hours: "0", approval_status: "Pending", approved_by: "" };
+type ApprovalStatus = "pending" | "approved" | "rejected";
+type OTForm = { employee_id: string; overtime_date: string; hours: string; approval_status: ApprovalStatus };
+const empty: OTForm = { employee_id: "", overtime_date: todayISO(), hours: "0", approval_status: "pending" };
 const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none";
 const sel = inp + " appearance-none";
+const APPROVAL_OPTIONS: { value: ApprovalStatus; label: string }[] = [
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+];
+
+function normalizeApprovalStatus(status: unknown): ApprovalStatus {
+  const normalized = String(status || "pending").trim().toLowerCase();
+  return APPROVAL_OPTIONS.some(option => option.value === normalized)
+    ? normalized as ApprovalStatus
+    : "pending";
+}
+
+function formatApprovalStatus(status: unknown): string {
+  const normalized = normalizeApprovalStatus(status);
+  return APPROVAL_OPTIONS.find(option => option.value === normalized)?.label || "Pending";
+}
 
 export default function OvertimePage() {
   const [records, setRecords] = useState<OT[]>([]);
@@ -31,14 +49,14 @@ export default function OvertimePage() {
     setLoading(true);
     const [{ data: ot }, { data: emps }] = await Promise.all([
       supabase.from("overtime").select("*").order("overtime_date", { ascending: false }),
-      supabase.from("employees").select("id, first_name, employee_number, basic_salary").eq("status", "Active").order("first_name"),
+      supabase.from("employees").select("id, first_name, employee_number, basic_salary").in("status", ["active", "Active"]).order("first_name"),
     ]);
     setRecords((ot || []) as OT[]);
     setEmployees((emps || []) as Employee[]);
     setLoading(false);
   }
 
-  const f = (k: keyof OTForm, v: string) => setForm(c => ({ ...c, [k]: v }));
+  const f = <K extends keyof OTForm>(k: K, v: OTForm[K]) => setForm(c => ({ ...c, [k]: v }));
 
   function openAdd() { setError(""); setSuccess(""); setEditing(null); setForm(empty); setShowForm(true); }
   function openEdit(r: OT) {
@@ -47,8 +65,7 @@ export default function OvertimePage() {
       employee_id: r.employee_id || "",
       overtime_date: r.overtime_date || todayISO(),
       hours: String(r.hours ?? 0),
-      approval_status: r.approval_status || "Pending",
-      approved_by: r.approved_by || ""
+      approval_status: normalizeApprovalStatus(r.approval_status),
     });
     setShowForm(true);
   }
@@ -59,12 +76,20 @@ export default function OvertimePage() {
     if (!form.employee_id) { setError("Please select an employee."); return; }
     setSaving(true);
     try {
+      const approvalStatus = normalizeApprovalStatus(form.approval_status);
+      let approvedBy: string | null = null;
+      if (approvalStatus === "approved") {
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+        if (authError) throw new Error(authError.message);
+        if (!authData.user) throw new Error("You must be signed in to approve overtime.");
+        approvedBy = authData.user.id;
+      }
       const payload = {
         employee_id: form.employee_id,
         overtime_date: form.overtime_date || null,
         hours: Number(form.hours) || 0,
-        approval_status: form.approval_status,
-        approved_by: form.approved_by.trim() || null,
+        approval_status: approvalStatus,
+        approved_by: approvedBy,
         updated_at: new Date().toISOString()
       };
       if (editing) {
@@ -78,12 +103,22 @@ export default function OvertimePage() {
         setSuccess("Overtime added.");
       }
       closeForm(); await loadAll();
-    } catch (err: unknown) { setError(err instanceof Error ? err.message : "Error"); }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Error saving overtime";
+      setError(message.includes("overtime_approval_status_check")
+        ? "The selected overtime approval status is not supported by the database."
+        : message);
+    }
     finally { setSaving(false); }
   }
 
   async function approve(r: OT) {
-    const { error } = await supabase.from("overtime").update({ approval_status: "Approved", updated_at: new Date().toISOString() }).eq("id", r.id);
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) {
+      setError(authError?.message || "You must be signed in to approve overtime.");
+      return;
+    }
+    const { error } = await supabase.from("overtime").update({ approval_status: "approved", approved_by: authData.user.id, updated_at: new Date().toISOString() }).eq("id", r.id);
     if (error) { setError(error.message); return; }
     setSuccess("Overtime approved."); await loadAll();
   }
@@ -91,13 +126,13 @@ export default function OvertimePage() {
   const empMap = Object.fromEntries(employees.map(e => [e.id, e]));
   const filtered = records.filter(r => {
     if (filterEmp && r.employee_id !== filterEmp) return false;
-    if (filterStatus && r.approval_status !== filterStatus) return false;
+    if (filterStatus && normalizeApprovalStatus(r.approval_status) !== filterStatus) return false;
     const empName = empMap[r.employee_id || ""]?.first_name || "";
     return [empName, r.overtime_date].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
   const totalHours = records.reduce((s, r) => s + (Number(r.hours) || 0), 0);
-  const pending = records.filter(r => r.approval_status === "Pending").length;
-  const approvedCount = records.filter(r => r.approval_status === "Approved").length;
+  const pending = records.filter(r => normalizeApprovalStatus(r.approval_status) === "pending").length;
+  const approvedCount = records.filter(r => normalizeApprovalStatus(r.approval_status) === "approved").length;
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -125,7 +160,7 @@ export default function OvertimePage() {
             {employees.map(e => <option key={e.id} value={e.id}>{e.employee_number ? `${e.employee_number} - ` : ""}{e.first_name}</option>)}
           </select>
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none appearance-none">
-            <option value="">All Status</option><option>Pending</option><option>Approved</option><option>Rejected</option>
+            <option value="">All Status</option>{APPROVAL_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </div>
         {loading ? <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-slate-400" /></div> : filtered.length === 0 ? (
@@ -134,7 +169,7 @@ export default function OvertimePage() {
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-3">Employee</th><th className="px-4 py-3">Date</th><th className="px-4 py-3 text-center">OT Hours</th><th className="px-4 py-3">Approved By</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Actions</th>
+                <th className="px-4 py-3">Employee</th><th className="px-4 py-3">Date</th><th className="px-4 py-3 text-center">OT Hours</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Actions</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map(r => (
@@ -142,11 +177,10 @@ export default function OvertimePage() {
                     <td className="px-4 py-3"><div className="font-semibold text-slate-900">{empMap[r.employee_id || ""]?.first_name || "—"}</div></td>
                     <td className="px-4 py-3 text-slate-600">{r.overtime_date || "—"}</td>
                     <td className="px-4 py-3 text-center text-slate-600 font-bold">{r.hours ?? 0} hrs</td>
-                    <td className="px-4 py-3 text-slate-600">{r.approved_by || "—"}</td>
-                    <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(r.approval_status || "Pending")}`}>{r.approval_status || "Pending"}</span></td>
+                    <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(formatApprovalStatus(r.approval_status))}`}>{formatApprovalStatus(r.approval_status)}</span></td>
                     <td className="px-4 py-3"><div className="flex justify-center gap-2">
                       <button onClick={() => openEdit(r)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14} /></button>
-                      {r.approval_status === "Pending" && <button onClick={() => approve(r)} title="Approve" className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"><CheckCircle2 size={14} /></button>}
+                      {normalizeApprovalStatus(r.approval_status) === "pending" && <button onClick={() => approve(r)} title="Approve" className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"><CheckCircle2 size={14} /></button>}
                     </div></td>
                   </tr>
                 ))}
@@ -179,9 +213,9 @@ export default function OvertimePage() {
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">OT Hours</label><input type="number" min="0" step="0.5" value={form.hours} onChange={e => f("hours", e.target.value)} className={inp} /></div>
                 </div>
                 <div><label className="mb-1 block text-sm font-medium text-slate-700">Approval Status</label>
-                  <select value={form.approval_status} onChange={e => f("approval_status", e.target.value)} className={sel}><option>Pending</option><option>Approved</option><option>Rejected</option></select>
+                  <select value={form.approval_status} onChange={e => f("approval_status", normalizeApprovalStatus(e.target.value))} className={sel}>{APPROVAL_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
                 </div>
-                <div><label className="mb-1 block text-sm font-medium text-slate-700">Approved By</label><input type="text" value={form.approved_by} onChange={e => f("approved_by", e.target.value)} className={inp} /></div>
+                <p className="text-xs text-slate-500">Approved records are attributed automatically to the signed-in user.</p>
               </form>
             </div>
             <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">

@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
+import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
+
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
@@ -36,13 +40,63 @@ export default function ReceiptVoucherTemplate({
   voucher,
   onClose,
 }: ReceiptVoucherProps) {
+  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("receipt_voucher"));
+
+  useEffect(() => {
+    loadDocumentLayout(company?.id, "receipt_voucher").then((res) => {
+      setCustomLayout(res.layout);
+    });
+  }, [company?.id]);
+
+  const rendererData: MockDocumentData = {
+    document_number: voucher.voucher_number,
+    document_date: voucher.voucher_date,
+    customer_name: voucher.received_from,
+    customer_trn: voucher.customer_trn || undefined,
+    items: [
+      {
+        description: `Payment Received via ${voucher.payment_method}${voucher.cheque_number ? ` (Cheque #${voucher.cheque_number})` : ""}${voucher.reference_invoice ? ` for ${voucher.reference_invoice}` : ""}`,
+        quantity: 1,
+        unit: "Voucher",
+        unit_price: voucher.amount,
+        vat_amount: 0,
+        line_total: voucher.amount,
+      },
+    ],
+    subtotal: voucher.amount,
+    vat_amount: 0,
+    total_amount: voucher.amount,
+    advance_amount: voucher.advance_amount,
+    payment_terms: voucher.payment_method,
+    notes: voucher.notes || undefined,
+  };
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
   return (
     <DocumentContainer
       docTypeLabel="Receipt Voucher"
       docNumber={voucher.voucher_number}
       onClose={onClose}
       company={company ?? undefined}
+      noPadding={Boolean(customLayout)}
+      showWatermark={!customLayout}
     >
+      {customLayout ? (
+        <div className="flex flex-col gap-6 print:gap-0">
+          {Array.from({ length: totalPages }, (_, index) => (
+            <DynamicDocumentRenderer
+              key={index}
+              layout={customLayout}
+              company={company}
+              data={rendererData}
+              isDesignerPreview={false}
+              scale={1}
+              pageNumber={index + 1}
+              totalPages={totalPages}
+            />
+          ))}
+        </div>
+      ) : (
+        <>
       <div className="space-y-6">
         {/* Letterhead Header */}
         <DocHeader
@@ -148,6 +202,8 @@ export default function ReceiptVoucherTemplate({
           customText="Original Receipt Voucher. Generated via Dubai ERP Finance Suite."
         />
       </div>
+        </>
+      )}
     </DocumentContainer>
   );
 }

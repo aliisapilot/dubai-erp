@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useCallback, useEffect, useState } from "react";
+import React, { useRef, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { DocumentLayout, LayoutElement } from "@/lib/documentDesigner";
 import DynamicDocumentRenderer, { SAMPLE_DOCUMENT_DATA } from "../documents/DynamicDocumentRenderer";
 import { CompanyDocInfo } from "../documents/DocHeader";
@@ -15,14 +15,18 @@ interface DocumentCanvasProps {
   snapGrid: boolean;
   snapMargins: boolean;
   pageNumber: number;
+  containerRef?: React.RefObject<HTMLDivElement | null>;
+  onAddImage?: (file: File) => void;
 }
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
-// Keep a stable ref to the latest value of any prop/state without triggering effect re-runs.
+// Keep a stable ref to latest values without triggering effects or violating render rules
 function useLatest<T>(value: T) {
   const ref = useRef(value);
-  ref.current = value;
+  useLayoutEffect(() => {
+    ref.current = value;
+  }, [value]);
   return ref;
 }
 
@@ -36,14 +40,15 @@ export default function DocumentCanvas({
   snapGrid,
   snapMargins,
   pageNumber,
+  containerRef,
+  onAddImage,
 }: DocumentCanvasProps) {
-  // The actual A4 page DOM node — used for getBoundingClientRect-based coordinate conversion.
+  // The actual A4 page DOM node — used for getBoundingClientRect-based coordinate conversion
   const pageRef = useRef<HTMLDivElement>(null);
+  const internalContainerRef = useRef<HTMLDivElement>(null);
+  const effectiveContainerRef = containerRef || internalContainerRef;
 
-  // Keep latest versions of all props/state that the drag handlers need,
-  // without adding them to the effect deps array (prevents listener teardown per frame).
   const latestLayout = useLatest(layout);
-  const latestZoom = useLatest(zoom);
   const latestSnapGrid = useLatest(snapGrid);
   const latestSnapMargins = useLatest(snapMargins);
   const latestOnUpdateElement = useLatest(onUpdateElement);
@@ -52,11 +57,13 @@ export default function DocumentCanvas({
   // Guide lines for snap feedback
   const [guideLines, setGuideLines] = useState<{ x?: number; y?: number }>({});
 
-  // Drag state lives in a ref (not React state) so mutations never trigger re-renders mid-drag.
+  // Drag state stored in ref for 60fps interaction without React render bottlenecks
   const dragRef = useRef<{
     mode: "move" | "resize";
     elementId: string;
     handle?: ResizeHandle;
+    grabOffsetX: number;
+    grabOffsetY: number;
     startClientX: number;
     startClientY: number;
     initialX: number;
@@ -64,155 +71,251 @@ export default function DocumentCanvas({
     initialW: number;
     initialH: number;
     aspectRatio: number;
-    // pixels-per-mm of the rendered A4 sheet at current zoom, captured at drag start
-    pxPerMm: number;
+    lockAspectRatio: boolean;
+    changed: boolean;
   } | null>(null);
 
-  /**
-   * Convert screen delta (px) → document delta (mm)
-   * using the ACTUAL rendered size of the A4 page element.
-   * This accounts for CSS transform scale, scroll, device pixel ratio, etc.
-   */
-  function computePxPerMm(): number {
-    if (!pageRef.current) {
-      // Fallback: 1mm ≈ 3.7795px × zoom
-      return 3.7795296 * latestZoom.current;
-    }
-    const rect = pageRef.current.getBoundingClientRect();
-    // widthMm of the A4 page vs its rendered pixel width
-    return rect.width / latestLayout.current.page.widthMm;
-  }
-
-  // ── Element MouseDown → start drag ──────────────────────────────────────────
+  // ── Element MouseDown → Select & Start Drag ─────────────────────────────────
   const handleElementMouseDown = useCallback(
     (e: React.MouseEvent, elem: LayoutElement) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
       latestOnSelectElement.current(elem.id);
       if (elem.locked) return;
-
-      e.stopPropagation();
       e.preventDefault();
+
+      if (!pageRef.current) return;
+      const rect = pageRef.current.getBoundingClientRect();
+      const currentPxPerMm = rect.width / latestLayout.current.page.widthMm;
+
+      // Mouse position in mm relative to top-left of the A4 page
+      const mouseXmm = (e.clientX - rect.left) / currentPxPerMm;
+      const mouseYmm = (e.clientY - rect.top) / currentPxPerMm;
 
       dragRef.current = {
         mode: "move",
         elementId: elem.id,
+        grabOffsetX: mouseXmm - elem.x,
+        grabOffsetY: mouseYmm - elem.y,
         startClientX: e.clientX,
         startClientY: e.clientY,
         initialX: elem.x,
         initialY: elem.y,
         initialW: elem.width,
         initialH: elem.height,
-        aspectRatio: elem.width / Math.max(1, elem.height),
-        pxPerMm: computePxPerMm(),
+        aspectRatio: elem.imageAspectRatio || elem.width / Math.max(1, elem.height),
+        lockAspectRatio: Boolean(elem.lockAspectRatio),
+        changed: false,
       };
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [latestOnSelectElement, latestLayout]
   );
 
   // ── Resize Handle MouseDown ──────────────────────────────────────────────────
   const handleResizeHandleMouseDown = useCallback(
     (e: React.MouseEvent, handle: ResizeHandle, elem: LayoutElement) => {
-      if (elem.locked) return;
+      if (e.button !== 0) return;
       e.stopPropagation();
       e.preventDefault();
+      if (elem.locked) return;
 
       dragRef.current = {
         mode: "resize",
         elementId: elem.id,
         handle,
+        grabOffsetX: 0,
+        grabOffsetY: 0,
         startClientX: e.clientX,
         startClientY: e.clientY,
         initialX: elem.x,
         initialY: elem.y,
         initialW: elem.width,
         initialH: elem.height,
-        aspectRatio: elem.width / Math.max(1, elem.height),
-        pxPerMm: computePxPerMm(),
+        aspectRatio: elem.imageAspectRatio || elem.width / Math.max(1, elem.height),
+        lockAspectRatio: Boolean(elem.lockAspectRatio),
+        changed: false,
       };
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
-  // ── Global mouse event listeners — attached ONCE, read latest values via refs ──
+  // ── Window-Level Drag & Resize Listener ──────────────────────────────────────
   useEffect(() => {
     function handleMouseMove(e: MouseEvent) {
       const drag = dragRef.current;
-      if (!drag) return;
+      if (!drag || !pageRef.current) return;
 
-      const layout = latestLayout.current;
-      const snapGrid = latestSnapGrid.current;
-      const snapMargins = latestSnapMargins.current;
-
-      const deltaXmm = (e.clientX - drag.startClientX) / drag.pxPerMm;
-      const deltaYmm = (e.clientY - drag.startClientY) / drag.pxPerMm;
-
-      const guides: { x?: number; y?: number } = {};
+      const curLayout = latestLayout.current;
+      const rect = pageRef.current.getBoundingClientRect();
+      const currentPxPerMm = rect.width / curLayout.page.widthMm;
 
       if (drag.mode === "move") {
-        let newX = drag.initialX + deltaXmm;
-        let newY = drag.initialY + deltaYmm;
+        const mouseXmm = (e.clientX - rect.left) / currentPxPerMm;
+        const mouseYmm = (e.clientY - rect.top) / currentPxPerMm;
 
-        if (snapGrid) {
+        let newX = mouseXmm - drag.grabOffsetX;
+        let newY = mouseYmm - drag.grabOffsetY;
+
+        const guides: { x?: number; y?: number } = {};
+
+        if (latestSnapGrid.current) {
           newX = Math.round(newX / 5) * 5;
           newY = Math.round(newY / 5) * 5;
         }
 
-        if (snapMargins) {
-          const lm = layout.page.margins.left;
-          const rm = layout.page.widthMm - layout.page.margins.right - drag.initialW;
-          const tm = layout.page.margins.top;
-          const cx = (layout.page.widthMm - drag.initialW) / 2;
+        if (latestSnapMargins.current) {
+          const lm = curLayout.page.margins.left;
+          const rm = curLayout.page.widthMm - curLayout.page.margins.right - drag.initialW;
+          const tm = curLayout.page.margins.top;
+          const bm = curLayout.page.heightMm - curLayout.page.margins.bottom - drag.initialH;
+          const cx = (curLayout.page.widthMm - drag.initialW) / 2;
           const SNAP = 3;
 
           if (Math.abs(newX - lm) < SNAP) { newX = lm; guides.x = lm; }
           else if (Math.abs(newX - rm) < SNAP) { newX = rm; guides.x = rm + drag.initialW; }
-          else if (Math.abs(newX - cx) < SNAP) { newX = cx; guides.x = layout.page.widthMm / 2; }
+          else if (Math.abs(newX - cx) < SNAP) { newX = cx; guides.x = curLayout.page.widthMm / 2; }
 
           if (Math.abs(newY - tm) < SNAP) { newY = tm; guides.y = tm; }
+          else if (Math.abs(newY - bm) < SNAP) { newY = bm; guides.y = bm + drag.initialH; }
         }
 
-        newX = Math.max(0, Math.min(layout.page.widthMm - drag.initialW, newX));
-        newY = Math.max(0, Math.min(layout.page.heightMm - drag.initialH, newY));
+        newX = Math.max(0, Math.min(curLayout.page.widthMm - drag.initialW, newX));
+        newY = Math.max(0, Math.min(curLayout.page.heightMm - drag.initialH, newY));
 
+        if (Math.abs(newX - drag.initialX) > 0.01 || Math.abs(newY - drag.initialY) > 0.01) {
+          drag.changed = true;
+        }
         setGuideLines(guides);
         latestOnUpdateElement.current(drag.elementId, { x: newX, y: newY }, false);
       } else if (drag.mode === "resize" && drag.handle) {
-        let newW = drag.initialW;
-        let newH = drag.initialH;
-        let newX = drag.initialX;
-        let newY = drag.initialY;
+        const deltaXmm = (e.clientX - drag.startClientX) / currentPxPerMm;
+        const deltaYmm = (e.clientY - drag.startClientY) / currentPxPerMm;
         const h = drag.handle;
 
-        if (h.includes("e")) newW = Math.max(10, drag.initialW + deltaXmm);
-        else if (h.includes("w")) {
-          const eff = Math.min(drag.initialW - 10, deltaXmm);
-          newW = drag.initialW - eff;
-          newX = drag.initialX + eff;
+        let newX = drag.initialX;
+        let newY = drag.initialY;
+        let newW = drag.initialW;
+        let newH = drag.initialH;
+
+        const MIN_W = 5;
+        const MIN_H = 5;
+        const lockAspect = drag.lockAspectRatio || e.shiftKey;
+
+        if (h === "e") {
+          newW = Math.max(MIN_W, drag.initialW + deltaXmm);
+          newW = Math.min(curLayout.page.widthMm - newX, newW);
+        } else if (h === "w") {
+          const maxDelta = drag.initialW - MIN_W;
+          const effDelta = Math.min(maxDelta, deltaXmm);
+          newX = Math.max(0, drag.initialX + effDelta);
+          newW = drag.initialW + (drag.initialX - newX);
+        } else if (h === "s") {
+          newH = Math.max(MIN_H, drag.initialH + deltaYmm);
+          newH = Math.min(curLayout.page.heightMm - newY, newH);
+        } else if (h === "n") {
+          const maxDelta = drag.initialH - MIN_H;
+          const effDelta = Math.min(maxDelta, deltaYmm);
+          newY = Math.max(0, drag.initialY + effDelta);
+          newH = drag.initialH + (drag.initialY - newY);
+        } else {
+          // Corner handles: se, sw, ne, nw
+          if (h === "se") {
+            newW = Math.max(MIN_W, drag.initialW + deltaXmm);
+            newH = Math.max(MIN_H, drag.initialH + deltaYmm);
+            if (lockAspect && drag.aspectRatio) {
+              newH = newW / drag.aspectRatio;
+            }
+          } else if (h === "sw") {
+            const effDeltaX = Math.min(drag.initialW - MIN_W, deltaXmm);
+            newX = Math.max(0, drag.initialX + effDeltaX);
+            newW = drag.initialW + (drag.initialX - newX);
+            newH = Math.max(MIN_H, drag.initialH + deltaYmm);
+            if (lockAspect && drag.aspectRatio) {
+              newH = newW / drag.aspectRatio;
+            }
+          } else if (h === "ne") {
+            newW = Math.max(MIN_W, drag.initialW + deltaXmm);
+            const effDeltaY = Math.min(drag.initialH - MIN_H, deltaYmm);
+            newY = Math.max(0, drag.initialY + effDeltaY);
+            newH = drag.initialH + (drag.initialY - newY);
+            if (lockAspect && drag.aspectRatio) {
+              const targetH = newW / drag.aspectRatio;
+              newY = drag.initialY + (drag.initialH - targetH);
+              newH = targetH;
+            }
+          } else if (h === "nw") {
+            const effDeltaX = Math.min(drag.initialW - MIN_W, deltaXmm);
+            newX = Math.max(0, drag.initialX + effDeltaX);
+            newW = drag.initialW + (drag.initialX - newX);
+
+            const effDeltaY = Math.min(drag.initialH - MIN_H, deltaYmm);
+            newY = Math.max(0, drag.initialY + effDeltaY);
+            newH = drag.initialH + (drag.initialY - newY);
+
+            if (lockAspect && drag.aspectRatio) {
+              const targetH = newW / drag.aspectRatio;
+              newY = drag.initialY + (drag.initialH - targetH);
+              newH = targetH;
+            }
+          }
+
+          if (newX < 0) { newW += newX; newX = 0; }
+          if (newY < 0) { newH += newY; newY = 0; }
+          newW = Math.max(MIN_W, Math.min(curLayout.page.widthMm - newX, newW));
+          newH = Math.max(MIN_H, Math.min(curLayout.page.heightMm - newY, newH));
         }
 
-        if (h.includes("s")) newH = Math.max(5, drag.initialH + deltaYmm);
-        else if (h.includes("n")) {
-          const eff = Math.min(drag.initialH - 5, deltaYmm);
-          newH = drag.initialH - eff;
-          newY = drag.initialY + eff;
-        }
+        if (lockAspect && drag.aspectRatio > 0) {
+          const right = drag.initialX + drag.initialW;
+          const bottom = drag.initialY + drag.initialH;
+          const centerX = drag.initialX + drag.initialW / 2;
+          const centerY = drag.initialY + drag.initialH / 2;
+          const horizontalHandle = h.includes("e") || h.includes("w");
+          const verticalHandle = h.includes("n") || h.includes("s");
 
-        if (drag.aspectRatio && (h === "nw" || h === "ne" || h === "sw" || h === "se")) {
+          let requestedWidth = horizontalHandle ? newW : newH * drag.aspectRatio;
+          if (horizontalHandle && verticalHandle) {
+            const fromHeight = newH * drag.aspectRatio;
+            requestedWidth = Math.abs(deltaXmm) >= Math.abs(deltaYmm * drag.aspectRatio)
+              ? newW
+              : fromHeight;
+          }
+
+          const minimumWidth = Math.max(MIN_W, MIN_H * drag.aspectRatio);
+          const maxWidthFromX = h.includes("w")
+            ? right
+            : h.includes("e")
+              ? curLayout.page.widthMm - drag.initialX
+              : 2 * Math.min(centerX, curLayout.page.widthMm - centerX);
+          const maxHeightFromY = h.includes("n")
+            ? bottom
+            : h.includes("s")
+              ? curLayout.page.heightMm - drag.initialY
+              : 2 * Math.min(centerY, curLayout.page.heightMm - centerY);
+          const maxWidth = Math.max(minimumWidth, Math.min(maxWidthFromX, maxHeightFromY * drag.aspectRatio));
+
+          newW = Math.max(minimumWidth, Math.min(maxWidth, requestedWidth));
           newH = newW / drag.aspectRatio;
+          newX = h.includes("w") ? right - newW : h.includes("e") ? drag.initialX : centerX - newW / 2;
+          newY = h.includes("n") ? bottom - newH : h.includes("s") ? drag.initialY : centerY - newH / 2;
         }
 
-        newW = Math.min(layout.page.widthMm - newX, newW);
-        newH = Math.min(layout.page.heightMm - newY, newH);
-
+        if (
+          Math.abs(newX - drag.initialX) > 0.01 ||
+          Math.abs(newY - drag.initialY) > 0.01 ||
+          Math.abs(newW - drag.initialW) > 0.01 ||
+          Math.abs(newH - drag.initialH) > 0.01
+        ) {
+          drag.changed = true;
+        }
         latestOnUpdateElement.current(drag.elementId, { x: newX, y: newY, width: newW, height: newH }, false);
       }
     }
 
     function handleMouseUp() {
       const drag = dragRef.current;
-      if (drag) {
-        // Commit the final position to history (only once on mouse-up)
+      if (drag?.changed) {
+        // Commit the final position to undo history once drag ends
         latestOnUpdateElement.current(drag.elementId, {}, true);
       }
       dragRef.current = null;
@@ -225,36 +328,40 @@ export default function DocumentCanvas({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-    // Empty deps: listeners attached once, always read latest values through refs.
-  }, []);
-
-  const selectedElement = layout.elements.find((el) => el.id === selectedElementId) || null;
+  }, [latestLayout, latestOnUpdateElement, latestSnapGrid, latestSnapMargins]);
 
   return (
     <div
+      ref={effectiveContainerRef}
       onClick={() => onSelectElement(null)}
-      className="flex-1 overflow-auto bg-slate-950 p-10 flex items-start justify-center relative select-none"
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files?.[0];
+        if (file && file.type.startsWith("image/") && onAddImage) {
+          onAddImage(file);
+        }
+      }}
+      className="relative flex min-w-0 flex-1 select-none items-start justify-center overflow-auto bg-slate-950 p-6 sm:p-8 md:p-10"
       style={{
-        backgroundImage: "radial-gradient(circle at center, rgba(51,65,85,0.2) 1px, transparent 1px)",
+        backgroundImage: "radial-gradient(circle at center, rgba(51,65,85,0.25) 1px, transparent 1px)",
         backgroundSize: "24px 24px",
       }}
     >
-      {/*
-        Zoom container:
-        - Use transform-origin: top center so the page scales from the top-center.
-        - Wrap in an outer div that has explicit pixel dimensions matching the
-          VISUAL size so the flexbox container correctly accounts for available space
-          and doesn't mis-position the scaled element.
-      */}
+      {/* Zoom container matching visual dimensions for reliable flex centering */}
       <div
         style={{
           width: `${layout.page.widthMm * zoom * 3.7795296}px`,
           height: `${layout.page.heightMm * zoom * 3.7795296}px`,
           flexShrink: 0,
           position: "relative",
+          margin: "0 auto",
         }}
       >
-        {/* The actual A4 sheet — positioned at top-left of the outer sizing wrapper */}
+        {/* The true A4 Document Sheet (210mm x 297mm) */}
         <div
           ref={pageRef}
           className="absolute top-0 left-0 origin-top-left"
@@ -264,7 +371,7 @@ export default function DocumentCanvas({
             transform: `scale(${zoom})`,
           }}
         >
-          {/* Snap guidelines */}
+          {/* Snap Guide Lines */}
           {guideLines.x !== undefined && (
             <div
               className="absolute top-0 bottom-0 border-l border-cyan-400 z-50 pointer-events-none"
@@ -284,21 +391,22 @@ export default function DocumentCanvas({
             company={company}
             data={SAMPLE_DOCUMENT_DATA}
             isDesignerPreview={true}
-            selectedElementId={selectedElementId}
-            onSelectElement={onSelectElement}
             scale={1}
             pageNumber={pageNumber}
           />
 
           {/*
-            Drag & Resize Overlay
-            Transparent hit-detection layer over each element.
-            Positioned with the same mm coordinates as the renderer.
-            pointer-events-none on wrapper; pointer-events-auto on each element div.
+            Interactive Element Overlay
+            Transparent hit-detection layer with proper z-index and selection visuals.
           */}
           <div className="absolute inset-0 z-20 pointer-events-none">
             {layout.elements
-              .filter((el) => el.visible)
+              .filter((el) => {
+                if (!el.visible) return false;
+                if (el.pageNumber !== undefined && el.pageNumber !== pageNumber) return false;
+                return true;
+              })
+              .sort((a, b) => a.zIndex - b.zIndex)
               .map((elem) => {
                 const isSelected = selectedElementId === elem.id;
 
@@ -306,28 +414,47 @@ export default function DocumentCanvas({
                   <div
                     key={elem.id}
                     onMouseDown={(e) => handleElementMouseDown(e, elem)}
-                    className={`absolute pointer-events-auto transition-colors ${
+                    onClick={(e) => e.stopPropagation()}
+                    className={`absolute pointer-events-auto transition-shadow ${
                       isSelected
-                        ? "ring-2 ring-blue-500 ring-offset-1 z-40 cursor-move"
+                        ? elem.locked
+                          ? "ring-2 ring-amber-400 ring-offset-1 cursor-default shadow-sm"
+                          : "ring-2 ring-blue-600 ring-offset-1 cursor-move shadow-md"
                         : elem.locked
-                        ? "cursor-default hover:ring-1 hover:ring-slate-400/50"
-                        : "hover:ring-1 hover:ring-blue-300/80 cursor-pointer"
+                        ? "cursor-default hover:ring-1 hover:ring-amber-300/60"
+                        : "hover:ring-1 hover:ring-blue-400/80 cursor-pointer"
                     }`}
                     style={{
                       left: `${elem.x}mm`,
                       top: `${elem.y}mm`,
                       width: `${elem.width}mm`,
                       height: `${elem.height}mm`,
+                      zIndex: elem.zIndex,
                     }}
                   >
-                    {/* 8 resize handles — only on selected, unlocked elements */}
+                    {/* Badge tag on selected element */}
+                    {isSelected && (
+                      <div
+                        className={`absolute -top-6 left-0 text-white text-[9px] px-2 py-0.5 rounded font-mono font-medium shadow select-none flex items-center gap-1.5 whitespace-nowrap z-50 pointer-events-none ${
+                          elem.locked ? "bg-amber-600" : "bg-blue-600"
+                        }`}
+                      >
+                        <span>{elem.label}</span>
+                        <span className="opacity-80">
+                          {Math.round(elem.x)}×{Math.round(elem.y)} mm ({Math.round(elem.width)}×{Math.round(elem.height)})
+                        </span>
+                        {elem.locked && <span className="text-amber-200 font-bold">🔒 LOCKED</span>}
+                      </div>
+                    )}
+
+                    {/* 8 resize handles — ONLY for selected, UNLOCKED elements */}
                     {isSelected && !elem.locked && (
                       <>
                         {(["nw", "n", "ne", "e", "se", "s", "sw", "w"] as ResizeHandle[]).map((handle) => (
                           <div
                             key={handle}
                             onMouseDown={(e) => handleResizeHandleMouseDown(e, handle, elem)}
-                            className={`absolute w-3 h-3 bg-white border-2 border-blue-600 rounded-sm z-50 shadow ${
+                            className={`absolute w-3 h-3 bg-white border-2 border-blue-600 rounded-sm z-50 shadow-md ${
                               handle === "nw" ? "-top-1.5 -left-1.5 cursor-nwse-resize"
                               : handle === "n"  ? "-top-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize"
                               : handle === "ne" ? "-top-1.5 -right-1.5 cursor-nesw-resize"

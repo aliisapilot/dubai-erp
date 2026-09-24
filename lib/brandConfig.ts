@@ -295,8 +295,8 @@ export const DEFAULT_BRAND_CONFIG: BrandConfig = {
   bank_account_name: "AL SAFWAH AL QABDHA TENTS IND L.L.C SP",
   iban: "AE450260000123456789001",
   swift_bic: "EBILAEADXXX",
-  logo_size: 200, // The one central value controlling the header logo size (px width) on all A4 documents
-  arabic_name_size: 30, // Centralized font size (px) for the Arabic company name (1.4–1.6x English name)
+  logo_size: 130, // Balanced corporate logo width (px) for elegant A4 document headers
+  arabic_name_size: 22, // Proportionate font size (px) for the Arabic company name
   colors: DEFAULT_BRAND_COLORS,
   assets: {
     logo: "/company-assets/logo.png",
@@ -334,6 +334,9 @@ export type CompanyBrandInput = {
   logo_url?: string | null;
   stamp_url?: string | null;
   signature_url?: string | null;
+  background_url?: string | null;
+  building_image_url?: string | null;
+  footer_image_url?: string | null;
   bank_name?: string | null;
   bank_account_name?: string | null;
   bank_account_number?: string | null;
@@ -343,21 +346,28 @@ export type CompanyBrandInput = {
   bank_swift?: string | null;
   logo_size?: number | null;
   arabic_name_size?: number | null;
+  brand_primary?: string | null;
+  brand_accent?: string | null;
+  brand_text?: string | null;
+  brand_muted?: string | null;
+  brand_border?: string | null;
+  brand_table_header?: string | null;
+  brand_total_highlight?: string | null;
 };
 
 /**
  * Merges dynamic company settings from Supabase with the central Brand Configuration.
  * If any DB property is empty or undefined, defaults gracefully to the central brand identity.
  *
- * Note: the LEGAL company name is centrally enforced so every printable document
- * always shows the exact registered legal name.
+ * Company settings are the source of truth. Central values are only fallbacks for
+ * fields that have not been configured yet.
  */
 export function getBrandConfig(company?: CompanyBrandInput | null): BrandConfig {
   if (!company) return DEFAULT_BRAND_CONFIG;
 
   return {
     name: company.name || company.legal_name || DEFAULT_BRAND_CONFIG.name,
-    legal_name: DEFAULT_BRAND_CONFIG.legal_name,
+    legal_name: company.legal_name || company.name || DEFAULT_BRAND_CONFIG.legal_name,
     arabic_name: company.arabic_name || DEFAULT_BRAND_CONFIG.arabic_name,
     trn: company.trn || DEFAULT_BRAND_CONFIG.trn,
     address: company.address || DEFAULT_BRAND_CONFIG.address,
@@ -371,16 +381,29 @@ export function getBrandConfig(company?: CompanyBrandInput | null): BrandConfig 
     currency: DEFAULT_BRAND_CONFIG.currency,
     bank_name: company.bank_name || DEFAULT_BRAND_CONFIG.bank_name,
     bank_account_name: company.bank_account_name || company.name || DEFAULT_BRAND_CONFIG.bank_account_name,
-    iban: company.iban || DEFAULT_BRAND_CONFIG.iban,
-    swift_bic: company.swift_bic || DEFAULT_BRAND_CONFIG.swift_bic,
+    iban: company.iban || company.bank_iban || DEFAULT_BRAND_CONFIG.iban,
+    swift_bic: company.swift_bic || company.bank_swift || DEFAULT_BRAND_CONFIG.swift_bic,
     // Centralized logo size (px width) saved centrally per company branding, fallback to default 200px
     logo_size: company.logo_size && Number(company.logo_size) > 0 ? Number(company.logo_size) : DEFAULT_BRAND_CONFIG.logo_size,
     // Centralized Arabic company name size (px font size), fallback to default 30px
     arabic_name_size: company.arabic_name_size && Number(company.arabic_name_size) >= 18 ? Number(company.arabic_name_size) : DEFAULT_BRAND_CONFIG.arabic_name_size,
-    colors: DEFAULT_BRAND_COLORS,
+    colors: {
+      ...DEFAULT_BRAND_COLORS,
+      primary: company.brand_primary || DEFAULT_BRAND_COLORS.primary,
+      accent: company.brand_accent || DEFAULT_BRAND_COLORS.accent,
+      text: company.brand_text || DEFAULT_BRAND_COLORS.text,
+      muted: company.brand_muted || DEFAULT_BRAND_COLORS.muted,
+      border: company.brand_border || DEFAULT_BRAND_COLORS.border,
+      tableHeader: company.brand_table_header || DEFAULT_BRAND_COLORS.tableHeader,
+      totalHighlight: company.brand_total_highlight || DEFAULT_BRAND_COLORS.totalHighlight,
+    },
     assets: {
       ...DEFAULT_BRAND_CONFIG.assets,
       logo: company.logo_url || DEFAULT_BRAND_CONFIG.assets.logo,
+      background: company.background_url || DEFAULT_BRAND_CONFIG.assets.background,
+      watermark: company.background_url || DEFAULT_BRAND_CONFIG.assets.watermark,
+      building: company.building_image_url || DEFAULT_BRAND_CONFIG.assets.building,
+      footer: company.footer_image_url || DEFAULT_BRAND_CONFIG.assets.footer,
       // Real uploaded stamp / signature only. No fallback graphic is ever generated.
       stamp: company.stamp_url || "",
       signature: company.signature_url || "",

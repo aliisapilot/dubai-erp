@@ -12,7 +12,6 @@ import { CompanyDocInfo } from "@/components/documents/DocHeader";
 type Employee = {
   id: string;
   first_name: string | null;
-  name?: string | null;
   employee_number: string | null;
   designation: string | null;
   department: string | null;
@@ -67,12 +66,7 @@ export default function PayslipsPage() {
   const [activeSlip, setActiveSlip] = useState<SalarySlipData | null>(null);
   const [activeVoucher, setActiveVoucher] = useState<PaymentVoucherData | null>(null);
 
-  useEffect(() => {
-    load();
-  }, []);
-
   async function load() {
-    setLoading(true);
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) {
       setLoading(false);
@@ -100,11 +94,15 @@ export default function PayslipsPage() {
     setLoading(false);
   }
 
+  useEffect(() => {
+    void Promise.resolve().then(load);
+  }, []);
+
   function handleOpenSlip(r: SS) {
     const emp = empMap[r.employee_id || ""];
     const now = new Date();
     const slipData: SalarySlipData = {
-      employee_name: emp?.first_name || emp?.name || "Employee",
+      employee_name: emp?.first_name || "Employee",
       employee_id: emp?.employee_number || emp?.id?.slice(0, 8) || "EMP-001",
       designation: emp?.designation || "Staff",
       department: emp?.department || "Operations",
@@ -140,7 +138,7 @@ export default function PayslipsPage() {
     const voucherData: PaymentVoucherData = {
       voucher_number: voucherNumber,
       voucher_date: r.payment_date || now.toISOString().split("T")[0],
-      employee_name: emp?.first_name || emp?.name || "Employee",
+      employee_name: emp?.first_name || "Employee",
       employee_id: emp?.employee_number || emp?.id?.slice(0, 8) || "EMP-001",
       designation: emp?.designation || "Staff",
       month: r.payroll_month || 1,
@@ -159,7 +157,7 @@ export default function PayslipsPage() {
 
   const filtered = records.filter(r => {
     if (filterPeriod && String(r.payroll_month) !== filterPeriod) return false;
-    const empName = empMap[r.employee_id || ""]?.first_name || empMap[r.employee_id || ""]?.name || "";
+    const empName = empMap[r.employee_id || ""]?.first_name || "";
     return [empName, String(r.payroll_month)].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
 
@@ -223,7 +221,7 @@ export default function PayslipsPage() {
                 {filtered.map(r => (
                   <tr key={r.id} className="hover:bg-slate-50 transition">
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">{empMap[r.employee_id || ""]?.first_name || empMap[r.employee_id || ""]?.name || "—"}</div>
+                      <div className="font-semibold text-slate-900">{empMap[r.employee_id || ""]?.first_name || "—"}</div>
                       <div className="text-xs text-slate-400">{empMap[r.employee_id || ""]?.employee_number || ""} · {empMap[r.employee_id || ""]?.designation || ""}</div>
                     </td>
                     <td className="px-4 py-3 text-slate-600 font-medium">

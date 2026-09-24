@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
+import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
+
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
@@ -54,6 +58,42 @@ export default function PurchaseOrderTemplate({
   po,
   onClose,
 }: POProps) {
+  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("purchase_order"));
+
+  useEffect(() => {
+    loadDocumentLayout(company?.id, "purchase_order").then((res) => {
+      setCustomLayout(res.layout);
+    });
+  }, [company?.id]);
+
+  const rendererData: MockDocumentData = {
+    document_number: po.po_number,
+    document_date: po.po_date,
+    status: po.status || undefined,
+    customer_name: po.supplier_name,
+    customer_trn: po.supplier_trn || undefined,
+    customer_address: po.supplier_address || undefined,
+    supplier_name: po.supplier_name,
+    contact_person: po.vendor_contact || undefined,
+    contact_number: po.vendor_mobile || undefined,
+    project_name: po.project_name || undefined,
+    project_number: po.project_number || po.vendor_reference || undefined,
+    items: po.items.map((it) => ({
+      description: it.description,
+      quantity: it.quantity,
+      unit: it.unit || "Nos",
+      unit_price: it.unit_price,
+      vat_rate: it.vat_rate,
+      vat_amount: it.vat_amount,
+      line_total: it.line_total,
+    })),
+    subtotal: po.subtotal,
+    vat_amount: po.vat_amount,
+    total_amount: po.total_amount,
+    payment_terms: po.payment_terms || undefined,
+    notes: po.notes || po.terms_conditions || undefined,
+  };
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
   return (
     <DocumentContainer
       docTypeLabel="Purchase Order"
@@ -61,7 +101,26 @@ export default function PurchaseOrderTemplate({
       status={po.status}
       onClose={onClose}
       company={company ?? undefined}
+      noPadding={Boolean(customLayout)}
+      showWatermark={!customLayout}
     >
+      {customLayout ? (
+        <div className="flex flex-col gap-6 print:gap-0">
+          {Array.from({ length: totalPages }, (_, index) => (
+            <DynamicDocumentRenderer
+              key={index}
+              layout={customLayout}
+              company={company}
+              data={rendererData}
+              isDesignerPreview={false}
+              scale={1}
+              pageNumber={index + 1}
+              totalPages={totalPages}
+            />
+          ))}
+        </div>
+      ) : (
+        <>
       <DocHeader
           company={company}
           docTitle="PURCHASE ORDER"
@@ -212,6 +271,8 @@ export default function PurchaseOrderTemplate({
       />
 
       <DocFooter company={company} showBankDetails={false} />
+        </>
+      )}
     </DocumentContainer>
   );
 }

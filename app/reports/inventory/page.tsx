@@ -10,16 +10,13 @@ import {
 } from "lucide-react";
 
 export default function InventoryReportPage() {
-  const [products, setProducts] = useState<any[]>([]);
-  const [movements, setMovements] = useState<any[]>([]);
+  type ProductRow = { id: string; sku?: string | null; name?: string | null; category?: string | null; unit?: string | null; cost_price?: number | null; selling_price?: number | null; current_stock?: number | null; minimum_stock?: number | null; active?: boolean | null };
+  type MovementRow = Record<string, unknown>;
+  const [products, setProducts] = useState<ProductRow[]>([]);
+  const [movements, setMovements] = useState<MovementRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadInventoryData();
-  }, []);
-
   async function loadInventoryData() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -29,14 +26,18 @@ export default function InventoryReportPage() {
         supabase.from("stock_movements").select("*, products(name, sku, unit)").eq("company_id", companyId).order("created_at", { ascending: false }).limit(50),
       ]);
 
-      setProducts(pRes.data || []);
-      setMovements(mRes.data || []);
+      setProducts((pRes.data || []) as ProductRow[]);
+      setMovements((mRes.data || []) as MovementRow[]);
     } catch (err) {
       console.error("Error loading inventory report:", err);
     } finally {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(loadInventoryData);
+  }, []);
 
   const totalValuation = products.reduce((acc, p) => acc + ((p.current_stock || 0) * (p.cost_price || 0)), 0);
   const lowStockItems = products.filter(p => (p.current_stock ?? 0) <= (p.minimum_stock ?? 0) && p.active);

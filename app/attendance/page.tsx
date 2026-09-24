@@ -6,11 +6,31 @@ import { getCompanyId, statusClass, todayISO } from "@/lib/helpers";
 
 type Employee = { id: string; first_name: string | null; employee_number: string | null };
 type Att = { id: string; company_id: string; employee_id: string | null; attendance_date: string | null; check_in: string | null; check_out: string | null; total_hours: number | null; regular_hours: number | null; overtime_hours: number | null; status: string | null; remarks: string | null };
-type AttForm = { employee_id: string; attendance_date: string; check_in: string; check_out: string; regular_hours: string; overtime_hours: string; status: string; remarks: string };
-const empty: AttForm = { employee_id:"", attendance_date: todayISO(), check_in:"", check_out:"", regular_hours:"8", overtime_hours:"0", status:"Present", remarks:"" };
+type AttendanceStatus = "present" | "absent" | "leave" | "holiday" | "late" | "early_departure";
+type AttForm = { employee_id: string; attendance_date: string; check_in: string; check_out: string; regular_hours: string; overtime_hours: string; status: AttendanceStatus; remarks: string };
+const empty: AttForm = { employee_id:"", attendance_date: todayISO(), check_in:"", check_out:"", regular_hours:"8", overtime_hours:"0", status:"present", remarks:"" };
 const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none";
 const sel = inp + " appearance-none";
-const STATUSES = ["Present","Absent","Leave","Holiday","Late","Early Departure"];
+const STATUS_OPTIONS: { value: AttendanceStatus; label: string }[] = [
+  { value: "present", label: "Present" },
+  { value: "absent", label: "Absent" },
+  { value: "leave", label: "Leave" },
+  { value: "holiday", label: "Holiday" },
+  { value: "late", label: "Late" },
+  { value: "early_departure", label: "Early Departure" },
+];
+
+function normalizeAttendanceStatus(status: unknown): AttendanceStatus {
+  const normalized = String(status || "present").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return STATUS_OPTIONS.some(option => option.value === normalized)
+    ? normalized as AttendanceStatus
+    : "present";
+}
+
+function formatAttendanceStatus(status: unknown): string {
+  const normalized = normalizeAttendanceStatus(status);
+  return STATUS_OPTIONS.find(option => option.value === normalized)?.label || "Present";
+}
 
 export default function AttendancePage() {
   const [records, setRecords] = useState<Att[]>([]);
@@ -32,7 +52,7 @@ export default function AttendancePage() {
     setLoading(true);
     const [{ data: att }, { data: emps }] = await Promise.all([
       supabase.from("attendance").select("*").order("attendance_date", { ascending: false }).order("created_at", { ascending: false }),
-      supabase.from("employees").select("id, first_name, employee_number").eq("status", "Active").order("first_name"),
+      supabase.from("employees").select("id, first_name, employee_number").in("status", ["active", "Active"]).order("first_name"),
     ]);
     setRecords((att || []) as Att[]);
     setEmployees((emps || []) as Employee[]);
@@ -43,7 +63,7 @@ export default function AttendancePage() {
   function openAdd() { setError(""); setSuccess(""); setEditing(null); setForm(empty); setShowForm(true); }
   function openEdit(r: Att) {
     setError(""); setSuccess(""); setEditing(r);
-    setForm({ employee_id: r.employee_id||"", attendance_date: r.attendance_date||todayISO(), check_in: r.check_in||"", check_out: r.check_out||"", regular_hours: String(r.regular_hours??8), overtime_hours: String(r.overtime_hours??0), status: r.status||"Present", remarks: r.remarks||"" });
+    setForm({ employee_id: r.employee_id||"", attendance_date: r.attendance_date||todayISO(), check_in: r.check_in||"", check_out: r.check_out||"", regular_hours: String(r.regular_hours??8), overtime_hours: String(r.overtime_hours??0), status: normalizeAttendanceStatus(r.status), remarks: r.remarks||"" });
     setShowForm(true);
   }
   function closeForm() { if (saving) return; setShowForm(false); setEditing(null); setError(""); }
@@ -62,7 +82,7 @@ export default function AttendancePage() {
         const [h2,m2] = cout.split(":").map(Number);
         totalHours = Math.max(0, (h2*60+m2 - h1*60-m1)/60);
       }
-      const payload = { employee_id: form.employee_id, attendance_date: form.attendance_date, check_in: cin, check_out: cout, total_hours: totalHours, regular_hours: Number(form.regular_hours)||8, overtime_hours: Number(form.overtime_hours)||0, status: form.status, remarks: form.remarks.trim()||null, updated_at: new Date().toISOString() };
+      const payload = { employee_id: form.employee_id, attendance_date: form.attendance_date, check_in: cin, check_out: cout, total_hours: totalHours, regular_hours: Number(form.regular_hours)||8, overtime_hours: Number(form.overtime_hours)||0, status: normalizeAttendanceStatus(form.status), remarks: form.remarks.trim()||null, updated_at: new Date().toISOString() };
       if (editing) {
         const { error: err } = await supabase.from("attendance").update(payload).eq("id", editing.id);
         if (err) throw new Error(err.message);
@@ -74,7 +94,12 @@ export default function AttendancePage() {
         setSuccess("Attendance added.");
       }
       closeForm(); await loadAll();
-    } catch (err: unknown) { setError(err instanceof Error ? err.message : "Error"); }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Error saving attendance";
+      setError(message.includes("attendance_status_check")
+        ? "The selected attendance status is not supported by the database."
+        : message);
+    }
     finally { setSaving(false); }
   }
 
@@ -85,8 +110,8 @@ export default function AttendancePage() {
     const empName = empMap[r.employee_id||""]?.first_name||"";
     return [empName, r.attendance_date, r.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
-  const presentToday = records.filter(r => r.attendance_date === todayISO() && r.status === "Present").length;
-  const absentToday = records.filter(r => r.attendance_date === todayISO() && r.status === "Absent").length;
+  const presentToday = records.filter(r => r.attendance_date === todayISO() && normalizeAttendanceStatus(r.status) === "present").length;
+  const absentToday = records.filter(r => r.attendance_date === todayISO() && normalizeAttendanceStatus(r.status) === "absent").length;
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -133,7 +158,7 @@ export default function AttendancePage() {
                     <td className="px-4 py-3 text-slate-600">{r.check_out||"—"}</td>
                     <td className="px-4 py-3 text-center text-slate-600">{r.total_hours != null ? r.total_hours.toFixed(1) : "—"}</td>
                     <td className="px-4 py-3 text-center text-slate-600">{r.overtime_hours != null ? r.overtime_hours.toFixed(1) : "0"}</td>
-                    <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(r.status||"")}`}>{r.status||"—"}</span></td>
+                    <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(formatAttendanceStatus(r.status))}`}>{formatAttendanceStatus(r.status)}</span></td>
                     <td className="px-4 py-3 text-center"><button onClick={() => openEdit(r)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14} /></button></td>
                   </tr>
                 ))}
@@ -163,8 +188,8 @@ export default function AttendancePage() {
                 </div>
                 <div><label className="mb-1 block text-sm font-medium text-slate-700">Date <span className="text-red-500">*</span></label><input type="date" value={form.attendance_date} onChange={e=>f("attendance_date",e.target.value)} required className={inp} /></div>
                 <div><label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
-                  <select value={form.status} onChange={e=>f("status",e.target.value)} className={sel}>
-                    {STATUSES.map(s=><option key={s}>{s}</option>)}
+                  <select value={form.status} onChange={e=>f("status",normalizeAttendanceStatus(e.target.value))} className={sel}>
+                    {STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">

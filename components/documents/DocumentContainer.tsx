@@ -17,6 +17,8 @@ interface DocumentContainerProps {
   className?: string;
   /** Optional company object — used to inject brand color CSS variables into the document sheet */
   company?: CompanyBrandInput | null;
+  /** When true, omits outer p-[12mm] padding (required when wrapping DynamicDocumentRenderer which renders its own A4 sheet) */
+  noPadding?: boolean;
 }
 
 export default function DocumentContainer({
@@ -31,6 +33,7 @@ export default function DocumentContainer({
   backgroundUrl,
   className = "",
   company,
+  noPadding = false,
 }: DocumentContainerProps) {
   const handlePrint = () => {
     if (onPrint) {
@@ -96,48 +99,43 @@ export default function DocumentContainer({
         </div>
       )}
 
-      {/* True A4 Document Sheet: Exactly 210mm wide, min 297mm height */}
-      <div
-        className={`print-page print-document document-sheet relative w-[210mm] min-h-[297mm] mx-auto bg-white p-[12mm] border border-slate-200 shadow-xl box-border print:border-none print:shadow-none print:p-[12mm] print:m-0 print:w-[210mm] print:min-h-[297mm] print:overflow-visible ${className}`}
-        style={{
-          ...brandVars,
-          ...(showWatermark
-            ? {
-                backgroundImage: `url('${bgImg}')`,
-                backgroundPosition: "center top",
-                backgroundRepeat: "repeat-y",
-                backgroundSize: "210mm 297mm",
-              }
-            : {}),
-        }}
-      >
-        {/* Dedicated Background / Watermark PNG Layer for 100% Reliable Chrome Print Preview (even if Background Graphics is OFF) */}
-        {showWatermark && (
-          <div
-            className="print-background-container absolute inset-0 w-full h-full pointer-events-none select-none overflow-hidden z-0"
-            aria-hidden="true"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={bgImg}
-              alt=""
-              className="print-background w-full h-full object-cover select-none pointer-events-none"
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                opacity: 0.045,
-                pointerEvents: "none",
-              }}
-            />
-          </div>
-        )}
-
-        {/* Content layer strictly above background layer */}
-        <div className="print-content relative z-10 w-full">{children}</div>
-      </div>
+      {noPadding ? (
+        <div className={`dynamic-document-pages mx-auto w-[210mm] ${className}`} style={brandVars}>
+          {children}
+        </div>
+      ) : (
+        /* True A4 Document Sheet: exactly 210mm × 297mm. */
+        <div
+          className={`print-page print-document document-sheet relative mx-auto box-border min-h-[297mm] w-[210mm] border border-slate-200 bg-white p-[12mm] shadow-xl print:m-0 print:min-h-[297mm] print:w-[210mm] print:border-none print:p-[12mm] print:shadow-none ${className}`}
+          style={{
+            ...brandVars,
+            ...(showWatermark
+              ? {
+                  backgroundImage: `url('${bgImg}')`,
+                  backgroundPosition: "center top",
+                  backgroundRepeat: "repeat-y",
+                  backgroundSize: "210mm 297mm",
+                }
+              : {}),
+          }}
+        >
+          {showWatermark && (
+            <div
+              className="print-background-container absolute inset-0 z-0 h-full w-full select-none overflow-hidden pointer-events-none"
+              aria-hidden="true"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={bgImg}
+                alt=""
+                className="print-background h-full w-full select-none object-cover pointer-events-none"
+                style={{ position: "absolute", inset: 0, opacity: 0.045 }}
+              />
+            </div>
+          )}
+          <div className="print-content relative z-10 w-full">{children}</div>
+        </div>
+      )}
     </div>
   );
 }

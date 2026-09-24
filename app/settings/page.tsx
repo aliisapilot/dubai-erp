@@ -17,6 +17,7 @@ import {
   Sliders,
 } from "lucide-react";
 import { DEFAULT_BRAND_COLORS } from "@/lib/brandConfig";
+import { getCurrentCompany } from "@/lib/helpers";
 
 type Company = {
   id: string;
@@ -176,18 +177,10 @@ export default function SettingsPage() {
   };
 
   async function loadCompany() {
-    setLoading(true);
-    setError("");
-    setMessage("");
+    const data = await getCurrentCompany();
 
-    const { data, error } = await supabase
-      .from("companies")
-      .select("*")
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      setError(error.message);
+    if (!data) {
+      setError("No company is linked to your account.");
       setLoading(false);
       return;
     }
@@ -242,7 +235,7 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
-    loadCompany();
+    void Promise.resolve().then(loadCompany);
   }, []);
 
   function updateField(

@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
+import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
+
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
@@ -63,6 +67,44 @@ export default function QuotationTemplate({
   quotation,
   onClose,
 }: QuotationProps) {
+  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("quotation"));
+
+  useEffect(() => {
+    loadDocumentLayout(company?.id, "quotation").then((res) => {
+      setCustomLayout(res.layout);
+    });
+  }, [company?.id]);
+
+  const rendererData: MockDocumentData = {
+    document_number: quotation.quotation_number,
+    document_date: quotation.quotation_date,
+    due_date: quotation.expiry_date || undefined,
+    status: quotation.status || undefined,
+    customer_name: quotation.customer_name,
+    customer_trn: quotation.customer_trn || undefined,
+    customer_address: quotation.customer_address || undefined,
+    contact_person: quotation.contact_person || undefined,
+    contact_number: quotation.contact_number || undefined,
+    project_name: quotation.project_name || undefined,
+    project_number: quotation.project_number || undefined,
+    scope_of_work: quotation.scope_of_work || undefined,
+    items: quotation.items.map((it) => ({
+      description: it.description,
+      quantity: it.quantity,
+      unit: it.unit || "Nos",
+      unit_price: it.unit_price,
+      discount: it.discount_pct || it.discount_percent || 0,
+      vat_rate: it.vat_rate,
+      vat_amount: it.vat_amount,
+      line_total: it.line_total,
+    })),
+    subtotal: quotation.subtotal,
+    vat_amount: quotation.vat_amount,
+    total_amount: quotation.total_amount,
+    payment_terms: quotation.payment_terms || undefined,
+    notes: quotation.notes || quotation.terms_conditions || undefined,
+  };
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
   return (
     <DocumentContainer
       docTypeLabel="Quotation"
@@ -70,7 +112,26 @@ export default function QuotationTemplate({
       status={quotation.status}
       onClose={onClose}
       company={company ?? undefined}
+      noPadding={Boolean(customLayout)}
+      showWatermark={!customLayout}
     >
+      {customLayout ? (
+        <div className="flex flex-col gap-6 print:gap-0">
+          {Array.from({ length: totalPages }, (_, index) => (
+            <DynamicDocumentRenderer
+              key={index}
+              layout={customLayout}
+              company={company}
+              data={rendererData}
+              isDesignerPreview={false}
+              scale={1}
+              pageNumber={index + 1}
+              totalPages={totalPages}
+            />
+          ))}
+        </div>
+      ) : (
+        <>
       <DocHeader
           company={company}
           docTitle="QUOTATION"
@@ -231,6 +292,8 @@ export default function QuotationTemplate({
       />
 
       <DocFooter company={company} showBankDetails={true} />
+        </>
+      )}
     </DocumentContainer>
   );
 }

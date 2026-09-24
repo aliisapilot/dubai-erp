@@ -16,10 +16,7 @@ export default function PayrollSummaryPage() {
   const [month, setMonth] = useState(now.getMonth()+1);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { load(); }, [year, month]);
-
   async function load() {
-    setLoading(true);
     const [{ data: ss }, { data: emps }] = await Promise.all([
       supabase.from("salary_statements").select("*").eq("payroll_month", month),
       supabase.from("employees").select("id, first_name").order("first_name"),
@@ -30,6 +27,8 @@ export default function PayrollSummaryPage() {
     setEmpMap(em);
     setLoading(false);
   }
+
+  useEffect(() => { void Promise.resolve().then(load); }, [year, month]);
 
   const totalGross = records.reduce((s,r) => s + (r.gross_salary||0), 0);
   const totalOT = records.reduce((s,r) => s + (r.overtime_amount||0), 0);

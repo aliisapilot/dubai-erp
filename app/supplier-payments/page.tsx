@@ -156,11 +156,12 @@ export default function SupplierPaymentsPage() {
         if (bill) {
           const newPaid = Number(bill.paid_amount) + amt;
           const newStatus = newPaid >= Number(bill.total_amount) - 0.01 ? "Paid" : "Partially Paid";
-          await supabase.from("supplier_bills").update({
+          const { error: billUpdateErr } = await supabase.from("supplier_bills").update({
             paid_amount: newPaid,
             status: newStatus,
             updated_at: new Date().toISOString(),
           }).eq("id", form.bill_id);
+          if (billUpdateErr) throw billUpdateErr;
         }
       }
 

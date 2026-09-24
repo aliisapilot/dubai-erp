@@ -13,10 +13,7 @@ export default function ReportsPage() {
   const [dateTo, setDateTo] = useState("");
   const [data, setData] = useState<Record<string, unknown[]>>({});
 
-  useEffect(() => { loadReport(); }, [tab]);
-
   async function loadReport() {
-    setLoading(true);
     const d: Record<string, unknown[]> = {};
     try {
       if (tab === "sales") {
@@ -66,6 +63,8 @@ export default function ReportsPage() {
     setData(d);
     setLoading(false);
   }
+
+  useEffect(() => { void Promise.resolve().then(loadReport); }, [tab]);
 
   const tabs: {key: Tab; label: string}[] = [
     { key: "sales", label: "Sales" }, { key: "purchasing", label: "Purchasing" }, { key: "vat", label: "VAT" },
@@ -124,18 +123,18 @@ export default function ReportsPage() {
 
             {/* PURCHASING */}
             {tab === "purchasing" && (() => {
-              const pos = (data.purchase_orders||[]) as {po_number:string; status:string; total_amount:number; vat_amount:number; po_date:string}[];
+              const pos = (data.purchase_orders||[]) as {purchase_order_number:string; status:string; total_amount:number; vat_amount:number; order_date:string}[];
               return (
                 <div className="space-y-6">
                   <div className="grid grid-cols-4 gap-4">
                     {statCard("Total POs", pos.length)}
-                    {statCard("Draft", pos.filter(p=>p.status==="Draft").length)}
-                    {statCard("Received", pos.filter(p=>p.status==="Received").length)}
+                    {statCard("Draft", pos.filter(p=>(p.status||"").toLowerCase()==="draft").length)}
+                    {statCard("Received", pos.filter(p=>(p.status||"").toLowerCase()==="received").length)}
                     {statCard("Total Value", fmtAED(pos.reduce((s,p)=>s+(p.total_amount||0),0)))}
                   </div>
                   <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                     <table className="w-full text-sm"><thead><tr className="bg-slate-50 text-xs font-semibold uppercase text-slate-500"><th className="px-4 py-2 text-left">PO No.</th><th className="px-4 py-2 text-left">Date</th><th className="px-4 py-2 text-right">VAT</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2 text-center">Status</th></tr></thead>
-                    <tbody className="divide-y divide-slate-100">{pos.slice(0,50).map((po,i)=><tr key={i} className="hover:bg-slate-50"><td className="px-4 py-2 font-mono text-xs">{po.po_number||"—"}</td><td className="px-4 py-2 text-slate-600">{fmtDate(po.po_date)}</td><td className="px-4 py-2 text-right text-amber-600">{fmtAED(po.vat_amount)}</td><td className="px-4 py-2 text-right font-bold">{fmtAED(po.total_amount)}</td><td className="px-4 py-2 text-center text-xs">{po.status}</td></tr>)}</tbody>
+                    <tbody className="divide-y divide-slate-100">{pos.slice(0,50).map((po,i)=><tr key={i} className="hover:bg-slate-50"><td className="px-4 py-2 font-mono text-xs">{po.purchase_order_number||"—"}</td><td className="px-4 py-2 text-slate-600">{fmtDate(po.order_date)}</td><td className="px-4 py-2 text-right text-amber-600">{fmtAED(po.vat_amount)}</td><td className="px-4 py-2 text-right font-bold">{fmtAED(po.total_amount)}</td><td className="px-4 py-2 text-center text-xs">{po.status}</td></tr>)}</tbody>
                     </table>
                   </div>
                 </div>
@@ -146,9 +145,9 @@ export default function ReportsPage() {
             {tab === "vat" && (() => {
               const tis = (data.sales_invoices||[]) as {status:string; vat_amount:number; subtotal:number; total_amount:number}[];
               const pos = (data.purchase_orders||[]) as {status:string; vat_amount:number; subtotal:number}[];
-              const finalTis = tis.filter(ti=>ti.status==="Final");
+              const finalTis = tis.filter(ti=>["final", "issued", "paid", "partially_paid", "overdue"].includes((ti.status||"").toLowerCase().replaceAll(" ", "_")));
               const outputVAT = finalTis.reduce((s,ti)=>s+(ti.vat_amount||0),0);
-              const inputVAT = pos.filter(po=>po.status==="Received").reduce((s,po)=>s+(po.vat_amount||0),0);
+              const inputVAT = pos.filter(po=>(po.status||"").toLowerCase()==="received").reduce((s,po)=>s+(po.vat_amount||0),0);
               return (
                 <div className="space-y-6">
                   <div className="grid grid-cols-2 gap-4">
@@ -159,7 +158,7 @@ export default function ReportsPage() {
                     </div>
                     <div className="rounded-xl border border-blue-200 bg-blue-50 px-6 py-5 space-y-3">
                       <p className="font-semibold text-blue-800">Input VAT (Purchases)</p>
-                      {statCard("Taxable Purchases", fmtAED(pos.filter(p=>p.status==="Received").reduce((s,p)=>s+(p.subtotal||0),0)))}
+                      {statCard("Taxable Purchases", fmtAED(pos.filter(p=>(p.status||"").toLowerCase()==="received").reduce((s,p)=>s+(p.subtotal||0),0)))}
                       {statCard("Input VAT Paid", fmtAED(inputVAT))}
                     </div>
                   </div>
@@ -174,7 +173,7 @@ export default function ReportsPage() {
             {/* CUSTOMERS */}
             {tab === "customers" && (() => {
               const cs = (data.customers||[]) as {id:string; name:string; active:boolean; customer_code:string}[];
-              const pays = (data.payments||[]) as {customer_id:string; amount:number}[];
+              const pays = ((data.payments||[]) as {customer_id:string; amount:number; status?:string|null}[]).filter(p=>(p.status||"completed").toLowerCase()==="completed");
               return (
                 <div className="space-y-6">
                   <div className="grid grid-cols-3 gap-4">
@@ -194,7 +193,7 @@ export default function ReportsPage() {
             {/* SUPPLIERS */}
             {tab === "suppliers" && (() => {
               const ss = (data.suppliers||[]) as {id:string; name:string; active:boolean; supplier_code:string}[];
-              const pays = (data.payments||[]) as {supplier_id:string; amount:number}[];
+              const pays = ((data.payments||[]) as {supplier_id:string; amount:number; status?:string|null}[]).filter(p=>(p.status||"completed").toLowerCase()==="completed");
               return (
                 <div className="space-y-6">
                   <div className="grid grid-cols-3 gap-4">
@@ -242,15 +241,15 @@ export default function ReportsPage() {
               return (
                 <div className="space-y-6">
                   <div className="grid grid-cols-4 gap-4">
-                    {statCard("Employees", emps.filter(e=>e.status==="Active").length, "Active")}
+                    {statCard("Employees", emps.filter(e=>e.status?.toLowerCase()==="active").length, "Active")}
                     {statCard("Total Payroll", fmtAED(sss.filter(s=>s.status==="Finalized").reduce((s,r)=>s+(r.net_salary||0),0)), "Finalized")}
-                    {statCard("Approved OT Hours", ots.filter(o=>o.approval_status==="Approved").reduce((s,o)=>s+(Number(o.hours)||0),0).toFixed(1))}
+                    {statCard("Approved OT Hours", ots.filter(o=>o.approval_status?.toLowerCase()==="approved").reduce((s,o)=>s+(Number(o.hours)||0),0).toFixed(1))}
                     {statCard("Attendance Records", atts.length)}
                   </div>
                   <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                     <div className="border-b border-slate-100 px-4 py-3"><p className="font-semibold text-slate-900">Employees</p></div>
                     <table className="w-full text-sm"><thead><tr className="bg-slate-50 text-xs font-semibold uppercase text-slate-500"><th className="px-4 py-2 text-left">Name</th><th className="px-4 py-2 text-left">Designation</th><th className="px-4 py-2 text-left">Department</th><th className="px-4 py-2 text-right">Basic Salary</th><th className="px-4 py-2 text-center">Status</th></tr></thead>
-                    <tbody className="divide-y divide-slate-100">{emps.map((e,i)=><tr key={i} className="hover:bg-slate-50"><td className="px-4 py-2 font-semibold">{e.first_name}</td><td className="px-4 py-2 text-slate-600">{e.designation||"—"}</td><td className="px-4 py-2 text-slate-600">{e.department||"—"}</td><td className="px-4 py-2 text-right">{fmtAED(e.basic_salary)}</td><td className="px-4 py-2 text-center"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${e.status==="Active"?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500"}`}>{e.status||"Active"}</span></td></tr>)}</tbody>
+                    <tbody className="divide-y divide-slate-100">{emps.map((e,i)=>{ const active = e.status?.toLowerCase() === "active"; return <tr key={i} className="hover:bg-slate-50"><td className="px-4 py-2 font-semibold">{e.first_name}</td><td className="px-4 py-2 text-slate-600">{e.designation||"—"}</td><td className="px-4 py-2 text-slate-600">{e.department||"—"}</td><td className="px-4 py-2 text-right">{fmtAED(e.basic_salary)}</td><td className="px-4 py-2 text-center"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${active?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500"}`}>{active ? "Active" : e.status || "Active"}</span></td></tr>;})}</tbody>
                     </table>
                   </div>
                 </div>

@@ -238,7 +238,6 @@ export default function SupplierBillsPage() {
         const { error: err } = await supabase.from("supplier_bills").update({
           supplier_id: form.supplier_id,
           purchase_order_id: form.purchase_order_id || null,
-          po_id: form.purchase_order_id || null,
           project_id: form.project_id || null,
           bill_date: form.bill_date || todayISO(),
           due_date: form.due_date || null,
@@ -252,7 +251,8 @@ export default function SupplierBillsPage() {
         }).eq("id", editing.id);
         if (err) throw err;
         billId = editing.id;
-        await supabase.from("supplier_bill_items").delete().eq("bill_id", billId);
+        const { error: deleteItemsErr } = await supabase.from("supplier_bill_items").delete().eq("bill_id", billId);
+        if (deleteItemsErr) throw deleteItemsErr;
       } else {
         const cid = await getCompanyId();
         const bno = await generateDocNumber(cid, "BILL");
@@ -261,7 +261,6 @@ export default function SupplierBillsPage() {
           bill_number: bno,
           supplier_id: form.supplier_id,
           purchase_order_id: form.purchase_order_id || null,
-          po_id: form.purchase_order_id || null,
           project_id: form.project_id || null,
           bill_date: form.bill_date || todayISO(),
           due_date: form.due_date || null,
@@ -322,7 +321,8 @@ export default function SupplierBillsPage() {
     if (!window.confirm(`Are you sure you want to delete bill ${b.bill_number}? This cannot be undone.`)) return;
     setError("");
     try {
-      await supabase.from("supplier_bill_items").delete().eq("bill_id", b.id);
+      const { error: itemDeleteErr } = await supabase.from("supplier_bill_items").delete().eq("bill_id", b.id);
+      if (itemDeleteErr) throw itemDeleteErr;
       const { error: delErr } = await supabase.from("supplier_bills").delete().eq("id", b.id);
       if (delErr) throw new Error(delErr.message);
       setSuccess(`Supplier bill ${b.bill_number} deleted successfully.`);

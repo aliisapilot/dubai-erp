@@ -18,7 +18,6 @@ import {
   Building,
   CreditCard,
   FileText,
-  AlignJustify,
   Search,
 } from "lucide-react";
 import { LayoutElement, ElementType } from "@/lib/documentDesigner";
@@ -31,6 +30,7 @@ interface LeftSidebarProps {
   onToggleLock: (id: string) => void;
   onMoveLayer: (id: string, direction: "up" | "down" | "top" | "bottom") => void;
   onAddCustomElement: (type: "custom_text" | "divider") => void;
+  onAddImage?: (file: File) => void;
 }
 
 function getElementIcon(type: ElementType) {
@@ -38,6 +38,7 @@ function getElementIcon(type: ElementType) {
     case "logo":
     case "watermark":
     case "building_image":
+    case "custom_image":
       return <ImageIcon size={14} className="text-blue-500" />;
     case "company_name_en":
     case "company_name_ar":
@@ -154,22 +155,24 @@ export default function LeftSidebar({
                 {/* Layer order up/down (only visible on hover or when selected) */}
                 <div className="hidden group-hover:flex items-center gap-0.5 mr-1">
                   <button
+                    disabled={elem.locked}
                     onClick={(e) => {
                       e.stopPropagation();
                       onMoveLayer(elem.id, "up");
                     }}
-                    className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700"
-                    title="Bring Layer Forward"
+                    className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-30"
+                    title={elem.locked ? "Unlock element before reordering" : "Bring Layer Forward"}
                   >
                     <ArrowUp size={12} />
                   </button>
                   <button
+                    disabled={elem.locked}
                     onClick={(e) => {
                       e.stopPropagation();
                       onMoveLayer(elem.id, "down");
                     }}
-                    className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700"
-                    title="Send Layer Backward"
+                    className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-30"
+                    title={elem.locked ? "Unlock element before reordering" : "Send Layer Backward"}
                   >
                     <ArrowDown size={12} />
                   </button>

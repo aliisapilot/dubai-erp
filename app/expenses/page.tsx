@@ -28,7 +28,7 @@ type Expense = {
   created_at: string;
   projects?: { name: string; project_number: string };
   suppliers?: { name: string };
-  employees?: { name: string };
+  employees?: { first_name: string };
 };
 
 type OptionItem = { id: string; name: string };
@@ -91,18 +91,18 @@ export default function ExpensesPage() {
       const [expRes, prjRes, supRes, empRes] = await Promise.all([
         supabase
           .from("expenses")
-          .select("*, projects(name, project_number), suppliers(name), employees(name)")
+          .select("*, projects(name, project_number), suppliers(name), employees(first_name)")
           .eq("company_id", companyId)
           .order("expense_date", { ascending: false }),
         supabase.from("projects").select("id, name").eq("company_id", companyId).order("name"),
         supabase.from("suppliers").select("id, name").eq("company_id", companyId).order("name"),
-        supabase.from("employees").select("id, name").eq("company_id", companyId).order("name")
+        supabase.from("employees").select("id, first_name").eq("company_id", companyId).order("first_name")
       ]);
 
       setExpenses((expRes.data as unknown as Expense[]) || []);
       setProjects(prjRes.data || []);
       setSuppliers(supRes.data || []);
-      setEmployees(empRes.data || []);
+      setEmployees((empRes.data || []).map(emp => ({ id: emp.id, name: emp.first_name || "Unnamed employee" })));
     } catch (err) {
       console.error("Error loading expenses:", err);
     } finally {
@@ -418,9 +418,9 @@ export default function ExpensesPage() {
                         <span className="inline-flex items-center gap-1 text-purple-700 bg-purple-50 px-2 py-0.5 rounded text-[10px] font-medium">
                           <Truck size={10} /> {exp.suppliers.name}
                         </span>
-                      ) : exp.employees?.name ? (
+                      ) : exp.employees?.first_name ? (
                         <span className="inline-flex items-center gap-1 text-teal-700 bg-teal-50 px-2 py-0.5 rounded text-[10px] font-medium">
-                          <User size={10} /> {exp.employees.name}
+                          <User size={10} /> {exp.employees.first_name}
                         </span>
                       ) : (
                         <span className="text-slate-400 italic">General</span>
@@ -601,7 +601,7 @@ export default function ExpensesPage() {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Payment Method</label>
                   <select
                     value={formPaymentMethod}
-                    onChange={(e) => setFormPaymentMethod(e.target.value as any)}
+                    onChange={(e) => setFormPaymentMethod(e.target.value as "Cash" | "Bank Transfer" | "Cheque" | "Credit Card" | "Petty Cash")}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="Bank Transfer">Bank Transfer</option>
@@ -615,7 +615,7 @@ export default function ExpensesPage() {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
                   <select
                     value={formStatus}
-                    onChange={(e) => setFormStatus(e.target.value as any)}
+                    onChange={(e) => setFormStatus(e.target.value as "Pending" | "Approved" | "Paid" | "Rejected")}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="Paid">Paid</option>

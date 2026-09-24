@@ -15,10 +15,6 @@ export default function LoginPage() {
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    checkExistingSession();
-  }, []);
-
   async function checkExistingSession() {
     const { data } = await supabase.auth.getSession();
 
@@ -29,6 +25,10 @@ export default function LoginPage() {
 
     setChecking(false);
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(checkExistingSession);
+  }, []);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

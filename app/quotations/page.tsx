@@ -9,7 +9,7 @@ import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null };
-type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; vat_category: string | null; unit: string | null };
+type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; unit: string | null };
 type Project = { id: string; name: string | null; project_number: string | null };
 type LineItem = { id?: string; product_id: string; description: string; quantity: number; unit?: string | null; unit_price: number; discount_percent: number; discount_pct?: number; vat_rate: number; vat_category?: string; line_total: number; vat_amount: number; sort_order: number };
 type RawItemRecord = {
@@ -92,7 +92,7 @@ export default function QuotationsPage() {
     const [{ data: q }, { data: c }, { data: p }, { data: prjs }, co] = await Promise.all([
       supabase.from("quotations").select("*").order("created_at", { ascending: false }),
       supabase.from("customers").select("id, name, customer_code, trn").eq("active", true).order("name"),
-      supabase.from("products").select("id, name, sku, selling_price, vat_rate, vat_category, unit").eq("active", true).order("name"),
+      supabase.from("products").select("id, name, sku, selling_price, vat_rate, unit").eq("active", true).order("name"),
       supabase.from("projects").select("id, name, project_number").order("created_at", { ascending: false }),
       getCurrentCompany(),
     ]);
@@ -131,7 +131,7 @@ export default function QuotationsPage() {
       description: prod?.name || l.description,
       unit_price: prod?.selling_price ?? l.unit_price,
       vat_rate: prod?.vat_rate ?? 5,
-      vat_category: prod?.vat_category ?? "Standard Rated",
+      vat_category: "Standard Rated",
     })));
   }
 

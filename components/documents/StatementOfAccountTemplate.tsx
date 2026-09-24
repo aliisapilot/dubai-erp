@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
+import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
+
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
@@ -40,8 +44,41 @@ export default function StatementOfAccountTemplate({
   statement,
   onClose,
 }: StatementProps) {
+  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("customer_statement"));
+
+  useEffect(() => {
+    loadDocumentLayout(company?.id, "customer_statement").then((res) => {
+      setCustomLayout(res.layout);
+    });
+  }, [company?.id]);
+
   const totalCharges = statement.entries.reduce((acc, curr) => acc + (Number(curr.debit) || 0), 0);
   const totalCredits = statement.entries.reduce((acc, curr) => acc + (Number(curr.credit) || 0), 0);
+
+  const rendererData: MockDocumentData = {
+    document_number: statement.statement_number,
+    document_date: statement.statement_date,
+    customer_name: statement.customer_name,
+    customer_trn: statement.customer_trn || undefined,
+    customer_address: statement.customer_address || undefined,
+    contact_number: statement.customer_phone || undefined,
+    items: statement.entries.map((e) => ({
+      date: e.date,
+      reference: e.reference_no,
+      description: e.description,
+      debit: e.debit,
+      credit: e.credit,
+      balance: e.balance,
+      quantity: 1,
+      unit_price: e.debit || e.credit || 0,
+      vat_amount: 0,
+      line_total: e.balance,
+    })),
+    subtotal: totalCharges,
+    vat_amount: 0,
+    total_amount: statement.closing_balance,
+  };
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
 
   return (
     <DocumentContainer
@@ -49,7 +86,26 @@ export default function StatementOfAccountTemplate({
       docNumber={statement.statement_number}
       onClose={onClose}
       company={company ?? undefined}
+      noPadding={Boolean(customLayout)}
+      showWatermark={!customLayout}
     >
+      {customLayout ? (
+        <div className="flex flex-col gap-6 print:gap-0">
+          {Array.from({ length: totalPages }, (_, index) => (
+            <DynamicDocumentRenderer
+              key={index}
+              layout={customLayout}
+              company={company}
+              data={rendererData}
+              isDesignerPreview={false}
+              scale={1}
+              pageNumber={index + 1}
+              totalPages={totalPages}
+            />
+          ))}
+        </div>
+      ) : (
+        <>
       {/* Letterhead Header */}
       <DocHeader
           company={company}
@@ -210,6 +266,8 @@ export default function StatementOfAccountTemplate({
           showBankDetails={true}
           notes="Please arrange payment of any overdue balance at your earliest convenience to maintain continuous supply and service."
         />
+        </>
+      )}
     </DocumentContainer>
   );
 }

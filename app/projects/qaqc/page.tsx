@@ -71,7 +71,7 @@ export default function QAQCInspectionPage() {
         supabase
           .from("wms_qaqc_checklists")
           .select("*, work_method_statements(wms_number, title, project_id, projects(name, project_number))")
-          .order("item_number", { ascending: true }),
+          .order("created_at", { ascending: true }),
         supabase
           .from("work_method_statements")
           .select("id, wms_number, title")
@@ -79,7 +79,10 @@ export default function QAQCInspectionPage() {
           .order("wms_number", { ascending: true })
       ]);
 
-      setItems((qcRes.data as unknown as QAQCItem[]) || []);
+      setItems(((qcRes.data || []) as Array<Record<string, unknown>>).map((row, index) => ({
+        ...row,
+        item_number: index + 1,
+      })) as unknown as QAQCItem[]);
       setWmsOptions(wmsRes.data || []);
       if (wmsRes.data && wmsRes.data.length > 0) {
         setFormWmsId(wmsRes.data[0].id);
@@ -129,9 +132,10 @@ export default function QAQCInspectionPage() {
     setErrorMsg("");
 
     try {
+      const companyId = await getCompanyId();
       const payload = {
+        company_id: companyId,
         wms_id: formWmsId,
-        item_number: parseInt(formItemNumber) || 1,
         inspection_item: formInspectionItem.trim(),
         acceptance_criteria: formAcceptanceCriteria.trim(),
         status: formStatus,
@@ -463,7 +467,7 @@ export default function QAQCInspectionPage() {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Inspection Status</label>
                   <select
                     value={formStatus}
-                    onChange={(e) => setFormStatus(e.target.value as any)}
+                    onChange={(e) => setFormStatus(e.target.value as "Pending" | "Pass" | "Fail" | "Hold" | "N/A")}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="Pending">Pending</option>

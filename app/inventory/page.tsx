@@ -30,12 +30,7 @@ export default function InventoryStockPage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [filterLowStockOnly, setFilterLowStockOnly] = useState(false);
 
-  useEffect(() => {
-    loadProducts();
-  }, []);
-
   async function loadProducts() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -54,6 +49,10 @@ export default function InventoryStockPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(loadProducts);
+  }, []);
 
   // Filter physical items for valuation
   const physicalItems = products.filter(p => p.product_type === "Product");

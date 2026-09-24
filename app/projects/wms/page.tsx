@@ -53,12 +53,7 @@ export default function WorkMethodStatementsPage() {
   const [risks, setRisks] = useState<RiskAssessmentRow[]>([]);
   const [qaqc, setQaqc] = useState<QAQCChecklistItem[]>([]);
 
-  useEffect(() => {
-    loadWMS();
-  }, []);
-
   async function loadWMS() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -80,6 +75,10 @@ export default function WorkMethodStatementsPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(loadWMS);
+  }, []);
 
   async function handleOpenPreview(wms: WMSItem) {
     setPreviewWms(wms);

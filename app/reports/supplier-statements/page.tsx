@@ -15,7 +15,7 @@ import { CompanyDocInfo } from "@/components/documents/DocHeader";
 type Supplier = {
   id: string;
   name: string;
-  code: string | null;
+  supplier_code: string | null;
   trn: string | null;
   address: string | null;
   phone: string | null;
@@ -39,6 +39,7 @@ type SupplierPayment = {
   amount: number;
   payment_method: string;
   reference_number: string | null;
+  status?: string | null;
 };
 
 export default function SupplierStatementOfAccountPage() {
@@ -54,20 +55,17 @@ export default function SupplierStatementOfAccountPage() {
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
 
-  useEffect(() => {
-    loadSuppliers();
-  }, []);
-
   async function loadSuppliers() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
 
       const [sRes, co] = await Promise.all([
-        supabase.from("suppliers").select("id, name, code, trn, address, phone, email").eq("company_id", companyId).order("name"),
+        supabase.from("suppliers").select("id, name, supplier_code, trn, address, phone, email").eq("company_id", companyId).order("name"),
         getCurrentCompany()
       ]);
+
+      if (sRes.error) throw new Error(sRes.error.message);
 
       setSuppliers(sRes.data || []);
       if (sRes.data && sRes.data.length > 0) {
@@ -80,6 +78,10 @@ export default function SupplierStatementOfAccountPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(loadSuppliers);
+  }, []);
 
   async function generateStatement() {
     if (!selectedSupplierId) return;
@@ -95,7 +97,6 @@ export default function SupplierStatementOfAccountPage() {
           .from("supplier_bills")
           .select("id, supplier_id, bill_number, bill_date, total_amount, status")
           .eq("supplier_id", selectedSupplierId)
-          .neq("status", "Cancelled")
           .order("bill_date", { ascending: true }),
         supabase
           .from("payments")
@@ -104,7 +105,10 @@ export default function SupplierStatementOfAccountPage() {
           .order("payment_date", { ascending: true })
       ]);
 
-      const bills: Bill[] = billsRes.data || [];
+      const queryError = billsRes.error || paysRes.error;
+      if (queryError) throw new Error(queryError.message);
+
+      const bills: Bill[] = (billsRes.data || []).filter(b => (b.status || "").toLowerCase() !== "cancelled");
       const pays: SupplierPayment[] = paysRes.data || [];
 
       // Build unified timeline
@@ -167,7 +171,7 @@ export default function SupplierStatementOfAccountPage() {
       });
 
       const now = new Date();
-      const stNumber = `SOA-SUP-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}-${selected.code || selected.id.slice(0, 4).toUpperCase()}`;
+      const stNumber = `SOA-SUP-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}-${selected.supplier_code || selected.id.slice(0, 4).toUpperCase()}`;
 
       setStatement({
         statement_number: stNumber,

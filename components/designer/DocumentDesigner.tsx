@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { supabase } from "@/lib/supabase";
+import { getCurrentCompany } from "@/lib/helpers";
 import {
   DocumentLayout,
   DocumentTypeId,
@@ -10,16 +10,19 @@ import {
   saveDocumentLayout,
   resetDocumentLayout,
   createDefaultLayout,
+  normalizeLayerZIndexes,
   DOCUMENT_TYPE_OPTIONS,
 } from "@/lib/documentDesigner";
 import TopToolbar from "./TopToolbar";
 import LeftSidebar from "./LeftSidebar";
 import RightInspector from "./RightInspector";
+import ApplyToOthersModal from "./ApplyToOthersModal";
 import DocumentCanvas from "./DocumentCanvas";
 import { CompanyDocInfo } from "../documents/DocHeader";
-import PrintModal from "../documents/PrintModal";
-import DynamicDocumentRenderer, { SAMPLE_DOCUMENT_DATA } from "../documents/DynamicDocumentRenderer";
-import { AlertCircle, CheckCircle2, RotateCcw, X } from "lucide-react";
+import DocumentPreviewModal from "./DocumentPreviewModal";
+import { getDocumentPageCount, SAMPLE_DOCUMENT_DATA } from "../documents/DynamicDocumentRenderer";
+import { processAndOptimizeImage } from "@/lib/documentDesigner";
+import { AlertCircle, CheckCircle2, RotateCcw } from "lucide-react";
 
 export default function DocumentDesigner() {
   const [selectedDocType, setSelectedDocType] = useState<DocumentTypeId>("tax_invoice");
@@ -40,23 +43,35 @@ export default function DocumentDesigner() {
   const [snapGrid, setSnapGrid] = useState<boolean>(true);
   const [snapMargins, setSnapMargins] = useState<boolean>(true);
   const [pageNumber, setPageNumber] = useState<number>(1);
-  const [totalPages] = useState<number>(1);
+  const totalPages = getDocumentPageCount(layout, SAMPLE_DOCUMENT_DATA.items.length);
+  const displayedPageNumber = Math.min(pageNumber, totalPages);
+  const canvasContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Modals & Feedback
   const [saving, setSaving] = useState(false);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showApplyModal, setShowApplyModal] = useState(false);
+  const [applyTargetElement, setApplyTargetElement] = useState<LayoutElement | null>(null);
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
+  const [rightInspectorOpen, setRightInspectorOpen] = useState(true);
+
+  const handleOpenApplyModal = useCallback((targetElem?: LayoutElement | null) => {
+    setApplyTargetElement(targetElem || null);
+    setShowApplyModal(true);
+  }, []);
+
   const [showPreviewModal, setShowPreviewModal] = useState(false);
 
   // ── 1. Load Company Profile & Initial Layout ────────────────────────────────
   useEffect(() => {
     async function init() {
-      const { data } = await supabase.from("companies").select("*").limit(1).maybeSingle();
-      if (data) {
-        setCompany(data);
-        setCompanyId(data.id);
+      const currentCompany = await getCurrentCompany();
+      if (currentCompany) {
+        setCompany(currentCompany as CompanyDocInfo);
+        setCompanyId(currentCompany.id);
       }
-      const loaded = await loadDocumentLayout(data?.id, "tax_invoice");
+      const loaded = await loadDocumentLayout(currentCompany?.id, "tax_invoice");
       const snapshot = JSON.parse(JSON.stringify(loaded.layout));
       setLayout(loaded.layout);
       historyRef.current = [snapshot];
@@ -200,22 +215,22 @@ export default function DocumentDesigner() {
   // ── 7. Layer Movement ──────────────────────────────────────────────────────
   const handleMoveLayer = useCallback(
     (id: string, direction: "up" | "down" | "top" | "bottom") => {
-      const elem = layout.elements.find((el) => el.id === id);
-      if (!elem) return;
+      const sorted = [...layout.elements].sort((a, b) => a.zIndex - b.zIndex);
+      const index = sorted.findIndex((el) => el.id === id);
+      if (index === -1 || sorted[index].locked) return;
 
-      const zIndices = layout.elements.map((el) => el.zIndex);
-      const maxZ = Math.max(...zIndices, 1);
-      const minZ = Math.min(...zIndices, 1);
+      const target = sorted[index];
+      const nextList = [...sorted];
+      nextList.splice(index, 1);
 
-      let newZ = elem.zIndex;
-      if (direction === "top") newZ = maxZ + 1;
-      else if (direction === "bottom") newZ = Math.max(1, minZ - 1);
-      else if (direction === "up") newZ = elem.zIndex + 1;
-      else if (direction === "down") newZ = Math.max(1, elem.zIndex - 1);
+      if (direction === "top") nextList.push(target);
+      else if (direction === "bottom") nextList.unshift(target);
+      else if (direction === "up") nextList.splice(Math.min(nextList.length, index + 1), 0, target);
+      else nextList.splice(Math.max(0, index - 1), 0, target);
 
-      handleUpdateElement(id, { zIndex: newZ }, true);
+      pushHistory({ ...layout, elements: normalizeLayerZIndexes(nextList) });
     },
-    [layout, handleUpdateElement]
+    [layout, pushHistory]
   );
 
   // ── 8. Visibility & Lock Toggles ───────────────────────────────────────────
@@ -235,25 +250,132 @@ export default function DocumentDesigner() {
     [layout, handleUpdateElement]
   );
 
+  // ── Image Upload & Element Handlers ─────────────────────────────────────────
+  const handleAddImage = useCallback(
+    async (file: File) => {
+      try {
+        const { dataUrl, aspectRatio, fileName } = await processAndOptimizeImage(file);
+        const newId = `img_${Date.now()}`;
+        const initialW = 50;
+        const initialH = Math.max(10, Math.min(150, Math.round((initialW / aspectRatio) * 10) / 10));
+
+        const newElem: LayoutElement = {
+          id: newId,
+          type: "custom_image",
+          label: fileName.replace(/\.[^/.]+$/, "").substring(0, 24) || "Custom Image",
+          x: 20,
+          y: 60,
+          width: initialW,
+          height: initialH,
+          visible: true,
+          locked: false,
+          lockAspectRatio: true,
+          zIndex: layout.elements.length + 10,
+          imageSrc: dataUrl,
+          imageFit: "contain",
+          imageAspectRatio: aspectRatio,
+          opacity: 1,
+        };
+
+        const updated = {
+          ...layout,
+          elements: [...layout.elements, newElem],
+        };
+        pushHistory(updated);
+        setSelectedElementId(newId);
+        setNotification({
+          message: `Added image "${newElem.label}" to document.`,
+          type: "success",
+        });
+        setTimeout(() => setNotification(null), 3000);
+      } catch (err) {
+        setNotification({
+          message: err instanceof Error ? err.message : "Failed to load image file.",
+          type: "error",
+        });
+        setTimeout(() => setNotification(null), 4000);
+      }
+    },
+    [layout, pushHistory]
+  );
+
+  const handleReplaceImage = useCallback(
+    async (elem: LayoutElement, file: File) => {
+      try {
+        const { dataUrl, aspectRatio } = await processAndOptimizeImage(file);
+        const patch: Partial<LayoutElement> = {
+          imageSrc: dataUrl,
+          imageAspectRatio: aspectRatio,
+        };
+        if (elem.lockAspectRatio && aspectRatio > 0) {
+          patch.height = Math.round((elem.width / aspectRatio) * 10) / 10;
+        }
+        handleUpdateElement(elem.id, patch, true);
+        setNotification({
+          message: `Replaced image for "${elem.label}".`,
+          type: "success",
+        });
+        setTimeout(() => setNotification(null), 3000);
+      } catch (err) {
+        setNotification({
+          message: err instanceof Error ? err.message : "Failed to replace image.",
+          type: "error",
+        });
+        setTimeout(() => setNotification(null), 4000);
+      }
+    },
+    [handleUpdateElement]
+  );
+
+  const handleDuplicateElement = useCallback(
+    (elem: LayoutElement) => {
+      const newId = `${elem.id}_copy_${Date.now().toString().slice(-4)}`;
+      const newElem: LayoutElement = {
+        ...JSON.parse(JSON.stringify(elem)),
+        id: newId,
+        label: `${elem.label} (Copy)`,
+        x: Math.min(layout.page.widthMm - elem.width, elem.x + 5),
+        y: Math.min(layout.page.heightMm - elem.height, elem.y + 5),
+        zIndex: Math.max(...layout.elements.map((el) => el.zIndex), 0) + 1,
+        locked: false,
+      };
+
+      const updated = {
+        ...layout,
+        elements: [...layout.elements, newElem],
+      };
+      pushHistory(updated);
+      setSelectedElementId(newId);
+      setNotification({
+        message: `Duplicated "${elem.label}".`,
+        type: "success",
+      });
+      setTimeout(() => setNotification(null), 3000);
+    },
+    [layout, pushHistory]
+  );
+
   // ── 9. Add / Delete Custom Elements ────────────────────────────────────────
   const handleAddCustomElement = useCallback(
     (type: "custom_text" | "divider") => {
       const newId = `custom_${type}_${Date.now()}`;
       const newElem: LayoutElement = {
         id: newId,
-        type: "custom_text",
-        label: "Custom Text Block",
+        type,
+        label: type === "divider" ? "Divider" : "Custom Text Block",
         x: 20,
         y: 100,
         width: 80,
-        height: 12,
+        height: type === "divider" ? 1 : 12,
         visible: true,
         locked: false,
         zIndex: layout.elements.length + 10,
         fontSize: 12,
         fontWeight: "normal",
         color: layout.branding.textColor,
-        customText: "Double-click or edit in inspector",
+        customText: type === "divider" ? undefined : "Double-click or edit in inspector",
+        borderColor: type === "divider" ? layout.branding.borderColor : undefined,
+        borderWidth: type === "divider" ? 1 : undefined,
       };
 
       const updated = {
@@ -278,6 +400,22 @@ export default function DocumentDesigner() {
     [layout, pushHistory, selectedElementId]
   );
 
+  const handleResetElement = useCallback(
+    (id: string) => {
+      const defaultLayout = createDefaultLayout(selectedDocType);
+      const defEl = defaultLayout.elements.find((el) => el.id === id);
+      if (!defEl) return;
+      handleUpdateElement(id, { ...defEl }, true);
+      setNotification({
+        message: `Reset element "${defEl.label}" to UAE Corporate Professional default.`,
+        type: "success",
+      });
+      setTimeout(() => setNotification(null), 3000);
+    },
+    [selectedDocType, handleUpdateElement]
+  );
+
+
   // ── 10. Save Layout ────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -287,9 +425,11 @@ export default function DocumentDesigner() {
     setSaving(false);
 
     if (res.success) {
-      const dest = res.target === "database" ? "Supabase Database" : "Local Workspace";
+      const dest = res.target === "database" ? "Supabase Database" : "Local Storage";
       setNotification({
-        message: `Layout for ${selectedDocType.replace("_", " ")} saved successfully to ${dest}!`,
+        message: res.warning
+          ? `Layout saved locally in browser. (${res.warning})`
+          : `Layout for ${selectedDocType.replace("_", " ")} saved successfully to ${dest}!`,
         type: "success",
       });
     } else {
@@ -304,41 +444,101 @@ export default function DocumentDesigner() {
 
   // ── 11. Reset Layout to Default ────────────────────────────────────────────
   const handleConfirmReset = useCallback(async () => {
-    const defaultLayout = await resetDocumentLayout(companyId, selectedDocType);
-    const snapshot = JSON.parse(JSON.stringify(defaultLayout));
-    historyRef.current = [snapshot];
-    historyIndexRef.current = 0;
-    setHistory([snapshot]);
-    setHistoryIndex(0);
-    setLayout(defaultLayout);
+    const result = await resetDocumentLayout(companyId, selectedDocType);
+    pushHistory(result.layout);
     setShowResetModal(false);
     setNotification({
-      message: `Reset ${selectedDocType} to UAE Corporate Professional Default.`,
-      type: "success",
+      message: result.persistenceError
+        ? `Reset locally, but database persistence failed: ${result.persistenceError}`
+        : `Reset ${selectedDocType} to UAE Corporate Professional Default.`,
+      type: result.persistenceError ? "error" : "success",
     });
     setTimeout(() => setNotification(null), 3500);
   }, [companyId, selectedDocType, pushHistory]);
 
-  // ── 12. Keyboard Shortcuts ─────────────────────────────────────────────────
+  // ── 12. Zoom Fitting Actions ───────────────────────────────────────────────
+  const handleFitWidth = useCallback(() => {
+    if (canvasContainerRef.current) {
+      const containerW = canvasContainerRef.current.clientWidth - 64;
+      const a4WidthPx = 210 * 3.779527559; // ~793.7px
+      const calculatedZoom = Math.max(0.3, Math.min(2.0, containerW / a4WidthPx));
+      setZoom(Math.round(calculatedZoom * 100) / 100);
+    } else {
+      setZoom(1.0);
+    }
+  }, []);
+
+  const handleFitPage = useCallback(() => {
+    if (canvasContainerRef.current) {
+      const containerW = Math.max(300, canvasContainerRef.current.clientWidth - 80);
+      const containerH = Math.max(300, canvasContainerRef.current.clientHeight - 80);
+      const a4WidthPx = 210 * 3.779527559;
+      const a4HeightPx = 297 * 3.779527559; // ~1122.5px
+      const zoomW = containerW / a4WidthPx;
+      const zoomH = containerH / a4HeightPx;
+      const calculatedZoom = Math.max(0.3, Math.min(2.0, Math.min(zoomW, zoomH)));
+      setZoom(Math.round(calculatedZoom * 100) / 100);
+    } else {
+      setZoom(0.75);
+    }
+  }, []);
+
+  // Auto-fit page on initial layout load and window resize
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleFitPage();
+    }, 150);
+    window.addEventListener("resize", handleFitPage);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", handleFitPage);
+    };
+  }, [handleFitPage]);
+
+  // ── 13. Keyboard Shortcuts ─────────────────────────────────────────────────
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      // Don't intercept if typing in an input
+      // Don't intercept if typing in an input or editable element
       const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT") {
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable
+      ) {
         return;
       }
 
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSelectedElementId(null);
+        return;
+      }
+
+      const isMod = e.ctrlKey || e.metaKey;
+      if (isMod && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) handleRedo();
         else handleUndo();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        return;
+      }
+      if (isMod && e.key.toLowerCase() === "y") {
         e.preventDefault();
         handleRedo();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        return;
+      }
+      if (isMod && e.key.toLowerCase() === "s") {
         e.preventDefault();
         handleSave();
-      } else if (selectedElementId) {
+        return;
+      }
+      if (isMod && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setShowPreviewModal(true);
+        return;
+      }
+
+      if (selectedElementId) {
         const step = e.shiftKey ? 5 : 1;
         const elem = layout.elements.find((el) => el.id === selectedElementId);
         if (!elem || elem.locked) return;
@@ -356,7 +556,8 @@ export default function DocumentDesigner() {
           e.preventDefault();
           handleUpdateElement(elem.id, { y: Math.min(layout.page.heightMm - elem.height, elem.y + step) }, true);
         } else if (e.key === "Delete" || e.key === "Backspace") {
-          if (elem.type === "custom_text") {
+          e.preventDefault();
+          if (elem.type === "custom_text" || elem.type === "custom_image" || elem.type === "divider") {
             handleDeleteElement(elem.id);
           } else {
             handleToggleVisibility(elem.id);
@@ -381,71 +582,93 @@ export default function DocumentDesigner() {
   const selectedElement = layout.elements.find((el) => el.id === selectedElementId) || null;
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 font-sans">
-      {/* Top Toolbar */}
-      <TopToolbar
-        selectedDocType={selectedDocType}
-        onSelectDocType={handleSelectDocType}
-        canUndo={historyIndex > 0}
-        canRedo={historyIndex < history.length - 1}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        zoom={zoom}
-        onZoomChange={setZoom}
-        onFitWidth={() => setZoom(1.0)}
-        onFitPage={() => setZoom(0.75)}
-        snapGrid={snapGrid}
-        onToggleSnapGrid={() => setSnapGrid(!snapGrid)}
-        snapMargins={snapMargins}
-        onToggleSnapMargins={() => setSnapMargins(!snapMargins)}
-        onAlign={handleAlign}
-        hasSelectedElement={Boolean(selectedElement && !selectedElement.locked)}
-        pageNumber={pageNumber}
-        totalPages={totalPages}
-        onPageChange={setPageNumber}
-        saving={saving}
-        onSave={handleSave}
-        onReset={() => setShowResetModal(true)}
-        onPreview={() => setShowPreviewModal(true)}
-        templateName={layout.templateName}
-      />
-
-      {/* Main Workspace */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Left Sidebar: Document Layers */}
-        <LeftSidebar
-          elements={layout.elements}
-          selectedElementId={selectedElementId}
-          onSelectElement={setSelectedElementId}
-          onToggleVisibility={handleToggleVisibility}
-          onToggleLock={handleToggleLock}
-          onMoveLayer={handleMoveLayer}
-          onAddCustomElement={handleAddCustomElement}
-        />
-
-        {/* Center: Interactive A4 Canvas */}
-        <DocumentCanvas
-          layout={layout}
-          company={company}
-          selectedElementId={selectedElementId}
-          onSelectElement={setSelectedElementId}
-          onUpdateElement={handleUpdateElement}
+    <div className="flex h-[100dvh] w-full min-w-0 flex-col overflow-hidden bg-slate-950 font-sans">
+      {/* Editor Chrome — hidden entirely during print */}
+      <div className="designer-editor-chrome print-hide no-print flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+        {/* Top Toolbar */}
+        <TopToolbar
+          selectedDocType={selectedDocType}
+          onSelectDocType={handleSelectDocType}
+          canUndo={historyIndex > 0}
+          canRedo={historyIndex < history.length - 1}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
           zoom={zoom}
+          onZoomChange={setZoom}
+          onFitWidth={handleFitWidth}
+          onFitPage={handleFitPage}
           snapGrid={snapGrid}
+          onToggleSnapGrid={() => setSnapGrid(!snapGrid)}
           snapMargins={snapMargins}
-          pageNumber={pageNumber}
+          onToggleSnapMargins={() => setSnapMargins(!snapMargins)}
+          onAlign={handleAlign}
+          hasSelectedElement={Boolean(selectedElement && !selectedElement.locked)}
+          pageNumber={displayedPageNumber}
+          totalPages={totalPages}
+          onPageChange={setPageNumber}
+          saving={saving}
+          onSave={handleSave}
+          onReset={() => setShowResetModal(true)}
+          onPreview={() => setShowPreviewModal(true)}
+          onPrint={() => setShowPreviewModal(true)}
+          onAddImage={handleAddImage}
+          onAddText={() => handleAddCustomElement("custom_text")}
+          onOpenApplyModal={() => handleOpenApplyModal(null)}
+          onToggleLeftSidebar={() => setLeftSidebarOpen(!leftSidebarOpen)}
+          onToggleRightInspector={() => setRightInspectorOpen(!rightInspectorOpen)}
+          leftSidebarOpen={leftSidebarOpen}
+          rightInspectorOpen={rightInspectorOpen}
+          templateName={layout.templateName}
         />
 
-        {/* Right Sidebar: Selected Element Inspector / Page Settings */}
-        <RightInspector
-          layout={layout}
-          selectedElement={selectedElement}
-          onUpdateElement={handleUpdateElement}
-          onUpdateLayoutBranding={handleUpdateLayoutBranding}
-          onUpdatePageSettings={handleUpdatePageSettings}
-          onDeleteElement={handleDeleteElement}
-          onMoveLayer={handleMoveLayer}
-        />
+        {/* Main Workspace: Left Layers | Centered Canvas | Right Inspector */}
+        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          {/* Left Sidebar: Document Layers */}
+          {leftSidebarOpen && (
+            <LeftSidebar
+              elements={layout.elements}
+              selectedElementId={selectedElementId}
+              onSelectElement={setSelectedElementId}
+              onToggleVisibility={handleToggleVisibility}
+              onToggleLock={handleToggleLock}
+              onMoveLayer={handleMoveLayer}
+              onAddCustomElement={handleAddCustomElement}
+              onAddImage={handleAddImage}
+            />
+          )}
+
+          {/* Center: Interactive A4 Canvas */}
+          <DocumentCanvas
+            layout={layout}
+            company={company}
+            selectedElementId={selectedElementId}
+            onSelectElement={setSelectedElementId}
+            onUpdateElement={handleUpdateElement}
+            zoom={zoom}
+            snapGrid={snapGrid}
+            snapMargins={snapMargins}
+            pageNumber={displayedPageNumber}
+            containerRef={canvasContainerRef}
+            onAddImage={handleAddImage}
+          />
+
+          {/* Right Sidebar: Selected Element Inspector / Page Settings */}
+          {rightInspectorOpen && (
+            <RightInspector
+              layout={layout}
+              selectedElement={selectedElement}
+              onUpdateElement={handleUpdateElement}
+              onUpdateLayoutBranding={handleUpdateLayoutBranding}
+              onUpdatePageSettings={handleUpdatePageSettings}
+              onDeleteElement={handleDeleteElement}
+              onMoveLayer={handleMoveLayer}
+              onResetElement={handleResetElement}
+              onApplyElementToOthers={(elem) => handleOpenApplyModal(elem)}
+              onDuplicateElement={handleDuplicateElement}
+              onReplaceImage={handleReplaceImage}
+            />
+          )}
+        </div>
       </div>
 
       {/* Floating Status Toast Notification */}
@@ -504,46 +727,39 @@ export default function DocumentDesigner() {
         </div>
       )}
 
-      {/* Live Print Preview Modal
-           DynamicDocumentRenderer renders its own 210×297mm A4 sheet.
-           Do NOT wrap it in DocumentContainer — that adds p-[12mm] padding
-           causing all elements to be offset by 12mm vs the canvas preview. */}
-      <PrintModal isOpen={showPreviewModal} onClose={() => setShowPreviewModal(false)}>
-        <div className="bg-slate-100 min-h-screen py-6 px-4 print:bg-transparent print:p-0">
-          {/* Screen-only control bar */}
-          <div className="no-print w-[210mm] max-w-full mx-auto mb-4 flex items-center justify-between bg-white px-4 py-3 rounded-lg border border-slate-200 shadow-sm">
-            <div className="text-sm font-semibold text-slate-700">
-              {DOCUMENT_TYPE_OPTIONS.find((d) => d.id === selectedDocType)?.label} — Preview
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => window.print()}
-                type="button"
-                className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition shadow"
-              >
-                🖨 Print / Save PDF
-              </button>
-              <button
-                onClick={() => setShowPreviewModal(false)}
-                type="button"
-                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-          {/* A4 sheet — same renderer, same layout, no extra padding wrapper */}
-          <div className="mx-auto w-fit shadow-2xl">
-            <DynamicDocumentRenderer
-              layout={layout}
-              company={company}
-              data={SAMPLE_DOCUMENT_DATA}
-              isDesignerPreview={false}
-              scale={1}
-            />
-          </div>
-        </div>
-      </PrintModal>
+      {/* Apply to Other Documents Modal */}
+      {showApplyModal && (
+        <ApplyToOthersModal
+          isOpen={showApplyModal}
+          onClose={() => {
+            setShowApplyModal(false);
+            setApplyTargetElement(null);
+          }}
+          currentDocType={selectedDocType}
+          currentLayout={layout}
+          companyId={companyId}
+          targetElement={applyTargetElement}
+          onApplied={(count, message) => {
+            setNotification({
+              message: message || `Visual settings successfully applied to ${count} document${count === 1 ? "" : "s"}.`,
+              type: "success",
+            });
+            setTimeout(() => setNotification(null), 4000);
+          }}
+        />
+      )}
+
+      {/* Dedicated A4 Print Preview Modal */}
+      {showPreviewModal && (
+        <DocumentPreviewModal
+          isOpen={showPreviewModal}
+          onClose={() => setShowPreviewModal(false)}
+          layout={layout}
+          company={company}
+          docTitle={DOCUMENT_TYPE_OPTIONS.find((d) => d.id === selectedDocType)?.label || "Document"}
+          totalPages={totalPages}
+        />
+      )}
     </div>
   );
 }

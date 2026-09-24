@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
+import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
+
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
@@ -49,13 +53,63 @@ export default function DeliveryNoteTemplate({
   deliveryNote,
   onClose,
 }: DeliveryNoteTemplateProps) {
+  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("delivery_note"));
+
+  useEffect(() => {
+    loadDocumentLayout(company?.id, "delivery_note").then((res) => {
+      setCustomLayout(res.layout);
+    });
+  }, [company?.id]);
+
+  const rendererData: MockDocumentData = {
+    document_number: deliveryNote.delivery_number,
+    document_date: deliveryNote.delivery_date,
+    customer_name: deliveryNote.customer_name,
+    customer_address: deliveryNote.customer_address || undefined,
+    contact_person: deliveryNote.contact_person || deliveryNote.receiver_name || undefined,
+    contact_number: deliveryNote.contact_number || deliveryNote.receiver_mobile || undefined,
+    project_name: deliveryNote.project_name || undefined,
+    project_number: deliveryNote.project_number || deliveryNote.order_ref || undefined,
+    items: deliveryNote.items.map((it) => ({
+      description: it.description || it.item_description || it.product_name || "Item",
+      quantity: it.quantity,
+      unit: it.unit || "Nos",
+      unit_price: 0,
+      vat_amount: 0,
+      line_total: 0,
+    })),
+    subtotal: 0,
+    vat_amount: 0,
+    total_amount: 0,
+    notes: deliveryNote.notes || undefined,
+  };
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
   return (
     <DocumentContainer
       docTypeLabel="Delivery Note"
       docNumber={deliveryNote.delivery_number}
       onClose={onClose}
       company={company ?? undefined}
+      noPadding={Boolean(customLayout)}
+      showWatermark={!customLayout}
     >
+      {customLayout ? (
+        <div className="flex flex-col gap-6 print:gap-0">
+          {Array.from({ length: totalPages }, (_, index) => (
+            <DynamicDocumentRenderer
+              key={index}
+              layout={customLayout}
+              company={company}
+              data={rendererData}
+              isDesignerPreview={false}
+              scale={1}
+              pageNumber={index + 1}
+              totalPages={totalPages}
+            />
+          ))}
+        </div>
+      ) : (
+        <>
       {/* Letterhead Header */}
       <DocHeader
           company={company}
@@ -205,6 +259,8 @@ export default function DeliveryNoteTemplate({
           notes="Goods once delivered in good condition cannot be returned without prior authorization."
           customText="Original: Customer Copy | Pink: Driver Copy | Yellow: Accounts Copy"
         />
+        </>
+      )}
     </DocumentContainer>
   );
 }

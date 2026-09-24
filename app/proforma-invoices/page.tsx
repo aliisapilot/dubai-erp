@@ -11,12 +11,12 @@ import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn?: string | null; address?: string | null };
 type Project = { id: string; project_number: string; name: string };
-type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; vat_category: string | null };
+type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null };
 type LineItem = { id?: string; product_id: string; description: string; quantity: number; unit_price: number; discount_pct: number; vat_rate: number; line_total: number; vat_amount: number; sort_order: number };
 // DB: proforma_invoices has: valid_until (not due_date), no project_id, no payment_terms
 type PI = { id: string; company_id: string; proforma_number: string | null; customer_id: string | null; quotation_id: string | null; proforma_date: string | null; valid_until: string | null; status: string | null; subtotal: number | null; vat_amount: number | null; total_amount: number | null; notes: string | null; created_at: string | null };
 type PIForm = { customer_id: string; proforma_date: string; valid_until: string; status: string; payment_terms: string; notes: string };
-const emptyForm: PIForm = { customer_id:"", proforma_date: todayISO(), valid_until:"", status:"Draft", payment_terms:"30 days", notes:"" };
+const emptyForm: PIForm = { customer_id:"", proforma_date: todayISO(), valid_until:"", status:"draft", payment_terms:"30 days", notes:"" };
 const emptyLine = (): LineItem => ({ product_id:"", description:"", quantity:1, unit_price:0, discount_pct:0, vat_rate:5, line_total:0, vat_amount:0, sort_order:0 });
 const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none";
 const sel = inp + " appearance-none";
@@ -59,7 +59,7 @@ function PIContent() {
       supabase.from("proforma_invoices").select("*").order("created_at", { ascending: false }),
       supabase.from("customers").select("id, name, customer_code, trn, address").eq("active", true).order("name"),
       supabase.from("projects").select("id, project_number, name").order("project_number"),
-      supabase.from("products").select("id, name, sku, selling_price, vat_rate, vat_category").eq("active", true).order("name"),
+      supabase.from("products").select("id, name, sku, selling_price, vat_rate").eq("active", true).order("name"),
       getCurrentCompany(),
     ]);
     setInvoices((pi || []) as PI[]);
@@ -119,7 +119,7 @@ function PIContent() {
   function openAdd() { setError(""); setSuccess(""); setEditing(null); setForm(emptyForm); setLines([emptyLine()]); setShowForm(true); }
   async function openEdit(pi: PI) {
     setError(""); setSuccess(""); setEditing(pi);
-    setForm({ customer_id: pi.customer_id||"", proforma_date: pi.proforma_date||todayISO(), valid_until: pi.valid_until||"", status: pi.status||"Draft", payment_terms: (pi as { terms_conditions?: string | null }).terms_conditions||"", notes: pi.notes||"" });
+    setForm({ customer_id: pi.customer_id||"", proforma_date: pi.proforma_date||todayISO(), valid_until: pi.valid_until||"", status: (pi.status||"draft").toLowerCase(), payment_terms: (pi as { terms_conditions?: string | null }).terms_conditions||"", notes: pi.notes||"" });
     const { data: items } = await supabase.from("proforma_invoice_items").select("*").eq("proforma_invoice_id", pi.id).order("sort_order");
     // Map DB discount_percent back to UI discount_pct
     type DBItem = { id?: string; proforma_invoice_id?: string; product_id?: string; description?: string; quantity?: number; unit_price?: number; discount_percent?: number; vat_rate?: number; line_total?: number; vat_amount?: number; sort_order?: number };
@@ -139,9 +139,11 @@ function PIContent() {
       const payload = { customer_id: form.customer_id, proforma_date: form.proforma_date||null, valid_until: form.valid_until||null, terms_conditions: form.payment_terms.trim()||null, status: String(form.status || "draft").toLowerCase(), subtotal: sub, vat_amount: vat, total_amount: total, notes: form.notes.trim()||null, updated_at: new Date().toISOString() };
       let pid: string;
       if (editing) {
-        await supabase.from("proforma_invoices").update(payload).eq("id", editing.id);
+        const { error: updateErr } = await supabase.from("proforma_invoices").update(payload).eq("id", editing.id);
+        if (updateErr) throw updateErr;
         pid = editing.id;
-        await supabase.from("proforma_invoice_items").delete().eq("proforma_invoice_id", pid);
+        const { error: deleteItemsErr } = await supabase.from("proforma_invoice_items").delete().eq("proforma_invoice_id", pid);
+        if (deleteItemsErr) throw deleteItemsErr;
       } else {
         const cid = await getCompanyId(); const pno = await generateDocNumber(cid, "PRO");
         const { data: ins, error: err } = await supabase.from("proforma_invoices").insert({ ...payload, company_id: cid, proforma_number: pno }).select("id").single();
@@ -149,7 +151,8 @@ function PIContent() {
         pid = ins.id;
       }
       // DB columns: proforma_invoice_id (FK), discount_percent (not discount_pct), no vat_category
-      await supabase.from("proforma_invoice_items").insert(lines.map((l,i)=>({ proforma_invoice_id: pid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, line_total: l.line_total, vat_amount: l.vat_amount, sort_order: i })));
+      const { error: itemErr } = await supabase.from("proforma_invoice_items").insert(lines.map((l,i)=>({ proforma_invoice_id: pid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, line_total: l.line_total, vat_amount: l.vat_amount, sort_order: i })));
+      if (itemErr) throw itemErr;
       setSuccess(editing?"Proforma updated.":"Proforma invoice created."); closeForm(); await loadAll();
     } catch (err: unknown) { setError(err instanceof Error ? err.message : "Error"); }
     finally { setSaving(false); }
@@ -165,7 +168,8 @@ function PIContent() {
     }
     setError("");
     try {
-      await supabase.from("proforma_invoice_items").delete().eq("proforma_invoice_id", pi.id);
+      const { error: itemDeleteErr } = await supabase.from("proforma_invoice_items").delete().eq("proforma_invoice_id", pi.id);
+      if (itemDeleteErr) throw itemDeleteErr;
       const { error: delErr } = await supabase.from("proforma_invoices").delete().eq("id", pi.id);
       if (delErr) throw new Error(delErr.message);
       setSuccess(`Proforma invoice ${pi.proforma_number} deleted successfully.`);
@@ -185,7 +189,7 @@ function PIContent() {
       <div className="mx-auto max-w-7xl px-6 py-8">
         {success && <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
         {error && !showForm && <div className="mb-5 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button onClick={()=>setError("")}><X size={16}/></button></div>}
-        <div className="mb-6 flex gap-3"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search proformas…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/></div><select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm appearance-none focus:outline-none"><option value="">All Status</option><option>Draft</option><option>Sent</option><option>Paid</option><option>Cancelled</option></select></div>
+        <div className="mb-6 flex gap-3"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search proformas…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/></div><select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm appearance-none focus:outline-none"><option value="">All Status</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="invoiced">Invoiced</option><option value="cancelled">Cancelled</option></select></div>
         {loading ? <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-slate-400"/></div> : filtered.length===0 ? (
           <div className="rounded-xl border border-slate-200 bg-white py-20 text-center"><FileSpreadsheet size={40} className="mx-auto mb-3 text-slate-300"/><p className="text-sm text-slate-500">No proforma invoices.</p></div>
         ) : (
@@ -204,9 +208,9 @@ function PIContent() {
                   <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(pi.status||"Draft")}`}>{pi.status||"Draft"}</span></td>
                   <td className="px-4 py-3"><div className="flex justify-center gap-1">
                     <button onClick={()=>openView(pi)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Eye size={14}/></button>
-                    {(pi.status==="Draft"||pi.status==="Sent")&&<button onClick={()=>openEdit(pi)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14}/></button>}
-                    {pi.status!=="Cancelled"&&<button onClick={()=>router.push(`/tax-invoices?from_proforma=${pi.id}`)} title="Convert to Tax Invoice" className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"><ArrowRight size={14}/></button>}
-                    {pi.status==="Draft"&&<button onClick={()=>deleteProforma(pi)} title="Delete Draft Proforma" className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={14}/></button>}
+                    {["draft", "sent"].includes((pi.status||"").toLowerCase())&&<button onClick={()=>openEdit(pi)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14}/></button>}
+                    {!(["cancelled", "invoiced"].includes((pi.status||"").toLowerCase()))&&<button onClick={()=>router.push(`/tax-invoices?from_proforma=${pi.id}`)} title="Convert to Tax Invoice" className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"><ArrowRight size={14}/></button>}
+                    {(pi.status||"").toLowerCase()==="draft"&&<button onClick={()=>deleteProforma(pi)} title="Delete Draft Proforma" className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={14}/></button>}
                   </div></td>
                 </tr>
               ))}</tbody>
@@ -238,7 +242,7 @@ function PIContent() {
                 {error&&<div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Customer <span className="text-red-500">*</span></label><select value={form.customer_id} onChange={e=>ff("customer_id",e.target.value)} required className={sel}><option value="">— Select —</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Status</label><select value={form.status} onChange={e=>ff("status",e.target.value)} className={sel}><option>Draft</option><option>Sent</option><option>Paid</option><option>Cancelled</option></select></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Status</label><select value={form.status} onChange={e=>ff("status",e.target.value)} className={sel}><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="invoiced">Invoiced</option><option value="cancelled">Cancelled</option></select></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Proforma Date</label><input type="date" value={form.proforma_date} onChange={e=>ff("proforma_date",e.target.value)} className={inp}/></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Valid Until</label><input type="date" value={form.valid_until} onChange={e=>ff("valid_until",e.target.value)} className={inp}/></div>
                   <div className="col-span-2"><label className="mb-1 block text-sm font-medium text-slate-700">Payment Terms (displayed on document)</label><input type="text" value={form.payment_terms} onChange={e=>ff("payment_terms",e.target.value)} placeholder="30 days" className={inp}/></div>

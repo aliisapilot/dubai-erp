@@ -15,7 +15,7 @@ type Employee = {
   payment_method: string | null;
   bank_name: string | null; account_number: string | null; iban: string | null; // DB: account_number (not bank_account)
   email: string | null; phone: string | null;
-  status: string | null; // DB: employees_status_check accepts 'Active','Inactive','On Leave','Terminated'
+  status: string | null; // Stored canonically as lowercase values; labels are formatted for display.
 };
 
 export type EmployeeStatus = "active" | "inactive" | "on_leave" | "terminated";
@@ -41,15 +41,16 @@ export function formatEmployeeStatus(status: string | null | undefined): string 
   return found ? found.label : status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-const DB_STATUS: Record<EmployeeStatus, string> = {
-  active: "Active",
-  inactive: "Inactive",
-  on_leave: "On Leave",
-  terminated: "Terminated",
-};
-
 function toDbStatus(status: EmployeeStatus): string {
-  return DB_STATUS[status] ?? DB_STATUS.active;
+  return normalizeEmployeeStatus(status);
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return String(error.message);
+  }
+  return fallback;
 }
 
 type EmpForm = { employee_number: string; first_name: string; designation: string; department: string; joining_date: string; basic_salary: string; payment_method: string; bank_name: string; account_number: string; iban: string; email: string; phone: string; status: EmployeeStatus; };
@@ -144,9 +145,9 @@ export default function EmployeesPage() {
       await load();
     } catch (err: unknown) {
       console.error("Employee save error:", err);
-      const msg = err instanceof Error ? err.message : "Error saving employee record";
-      if (msg.includes("violates check constraint") || msg.includes("employees_status_check")) {
-        setError("Invalid employee status. Allowed values: Active, Inactive, On Leave, Terminated.");
+      const msg = getErrorMessage(err, "Error saving employee record");
+      if (msg.toLowerCase().includes("check constraint") || msg.includes("employees_status_check")) {
+        setError("The employee status was rejected by the database. Please choose Active, Inactive, On Leave, or Terminated.");
       } else {
         setError(msg);
       }
@@ -170,7 +171,7 @@ export default function EmployeesPage() {
       setSuccess("Employee deleted successfully.");
       await load();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to delete employee");
+      alert(getErrorMessage(err, "Failed to delete employee"));
     }
   }
 

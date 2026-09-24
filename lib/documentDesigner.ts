@@ -155,6 +155,7 @@ export type ElementType =
   | "footer"
   | "watermark"
   | "building_image"
+  | "custom_image"
   | "custom_text"
   | "divider";
 
@@ -185,6 +186,7 @@ export interface LayoutElement {
   // Typography & Appearance
   fontSize?: number; // px
   fontWeight?: "normal" | "medium" | "semibold" | "bold" | "extrabold";
+  fontStyle?: "normal" | "italic";
   fontFamily?: string;
   textAlign?: "left" | "center" | "right" | "justify";
   color?: string;
@@ -194,6 +196,7 @@ export interface LayoutElement {
   borderRadius?: number; // px
   padding?: number; // mm
   lineHeight?: number;
+  letterSpacing?: number; // px
   opacity?: number; // 0 to 1
 
   // Text contents / bindings
@@ -203,7 +206,9 @@ export interface LayoutElement {
 
   // Image specific controls
   imageSrc?: string;
-  imageFit?: "contain" | "cover";
+  imageFit?: "contain" | "cover" | "fill";
+  /** Intrinsic image aspect ratio (width / height), used by locked resizing. */
+  imageAspectRatio?: number;
 
   // Table specific controls
   tableSettings?: {
@@ -248,6 +253,8 @@ export interface DocumentLayout {
   };
   elements: LayoutElement[];
 }
+
+export const CURRENT_LAYOUT_VERSION = 2;
 
 // ── Default Table Columns ──────────────────────────────────────────────────────
 export const DEFAULT_INVOICE_COLUMNS: TableColumnConfig[] = [
@@ -300,39 +307,39 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       imageFit: "contain",
     },
 
-    // 1. Company Logo (centered at top)
+    // 1. Company Logo (compact, centered at top, preserved aspect ratio)
     {
       id: "logo",
       type: "logo",
       label: "Company Logo",
-      x: 12,
-      y: 12,
-      width: 186,
-      height: 24,
+      x: 85,
+      y: 10,
+      width: 40,
+      height: 12,
       visible: true,
       locked: false,
       lockAspectRatio: true,
       zIndex: 10,
       imageFit: "contain",
+      imageAspectRatio: 10 / 3,
     },
 
-    // 2. English Company Name
+    // 2. English Company Name (positioned right beneath logo)
     {
       id: "company_name_en",
       type: "company_name_en",
       label: "English Company Name",
       x: 12,
-      y: 38,
+      y: 29,
       width: 186,
-      height: 7,
+      height: 6,
       visible: true,
       locked: false,
       zIndex: 11,
-      fontSize: 15,
+      fontSize: 13.5,
       fontWeight: "bold",
       textAlign: "center",
       color: "#0F172A",
-      customText: "AL SAFWAH AL QABDHA TENTS IND L.L.C SP",
     },
 
     // 3. Arabic Company Name (prominent focal point in Gold accent)
@@ -341,17 +348,16 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "company_name_ar",
       label: "Arabic Company Name",
       x: 12,
-      y: 45,
+      y: 35.5,
       width: 186,
-      height: 10,
+      height: 7.5,
       visible: true,
       locked: false,
       zIndex: 12,
-      fontSize: 26,
+      fontSize: 20,
       fontWeight: "bold",
       textAlign: "center",
       color: "#C9A227",
-      customText: "الصفوه الذهبيه لصناعه الخيام ذ.م.م.ش.ش.و",
     },
 
     // 4. Company Address & TRN Strip
@@ -360,16 +366,15 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "company_address",
       label: "Company Address & Contact Strip",
       x: 12,
-      y: 56,
+      y: 44,
       width: 186,
-      height: 9,
+      height: 6,
       visible: true,
       locked: false,
       zIndex: 13,
-      fontSize: 10,
+      fontSize: 9.5,
       textAlign: "center",
       color: "#64748B",
-      customText: "Al Quoz Industrial Area 3, Dubai, UAE | TRN: {{company.trn}} | Tel: {{company.phone}}",
     },
 
     // 5. Document Title & Reference Banner (Navy background, Gold reference)
@@ -378,19 +383,19 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "doc_title",
       label: "Document Title Banner",
       x: 12,
-      y: 67,
+      y: 51,
       width: 186,
-      height: 13,
+      height: 11,
       visible: true,
       locked: false,
       zIndex: 14,
-      fontSize: 15,
+      fontSize: 13.5,
       fontWeight: "extrabold",
       textAlign: "left",
       color: "#FFFFFF",
       backgroundColor: "#0F172A",
       borderRadius: 4,
-      padding: 3,
+      padding: 2.5,
       customText: `${docConfig.defaultTitle} — ${docConfig.defaultTitleAr}`,
     },
 
@@ -400,13 +405,13 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "customer_info",
       label: "Customer Information Card",
       x: 12,
-      y: 83,
+      y: 64,
       width: 91,
       height: 30,
       visible: true,
       locked: false,
       zIndex: 15,
-      fontSize: 11,
+      fontSize: 10.5,
       backgroundColor: "#F8FAFC",
       borderColor: "#CBD5E1",
       borderWidth: 1,
@@ -420,13 +425,13 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "doc_meta",
       label: "Invoice Date & Reference Meta",
       x: 107,
-      y: 83,
+      y: 64,
       width: 91,
       height: 30,
       visible: true,
       locked: false,
       zIndex: 16,
-      fontSize: 11,
+      fontSize: 10.5,
       backgroundColor: "#F8FAFC",
       borderColor: "#CBD5E1",
       borderWidth: 1,
@@ -434,24 +439,24 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       padding: 3,
     },
 
-    // 8. Line Items Table
+    // 8. Line Items Table (Generous height using available A4 space)
     {
       id: "line_items",
       type: "line_items",
       label: "Line Items Table",
       x: 12,
-      y: 116,
+      y: 96,
       width: 186,
-      height: 52,
+      height: 68,
       visible: true,
       locked: false,
       zIndex: 17,
       tableSettings: {
         headerBg: "#0F172A",
         headerTextColor: "#FFFFFF",
-        fontSize: 11,
-        headerFontSize: 11,
-        rowHeight: 9,
+        fontSize: 10.5,
+        headerFontSize: 10.5,
+        rowHeight: 9.5,
         borderThickness: 1,
         borderColor: "#CBD5E1",
         bodyTextColor: "#334155",
@@ -470,13 +475,13 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "amount_in_words",
       label: "Amount in Words (English & Arabic)",
       x: 12,
-      y: 172,
+      y: 167,
       width: 105,
       height: 25,
       visible: true,
       locked: false,
       zIndex: 18,
-      fontSize: 11,
+      fontSize: 10.5,
       backgroundColor: "#F8FAFC",
       borderColor: "#CBD5E1",
       borderWidth: 1,
@@ -490,13 +495,13 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "totals",
       label: "Subtotal, VAT & Grand Total",
       x: 121,
-      y: 172,
+      y: 167,
       width: 77,
-      height: 44,
+      height: 46,
       visible: true,
       locked: false,
       zIndex: 19,
-      fontSize: 11,
+      fontSize: 10.5,
       borderColor: "#CBD5E1",
       borderWidth: 1,
       borderRadius: 4,
@@ -509,13 +514,13 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "bank_details",
       label: "Bank Details (IBAN & SWIFT)",
       x: 12,
-      y: 200,
+      y: 195,
       width: 105,
-      height: 27,
+      height: 26,
       visible: true,
       locked: false,
       zIndex: 20,
-      fontSize: 10,
+      fontSize: 9.5,
       backgroundColor: "#F8FAFC",
       borderColor: "#CBD5E1",
       borderWidth: 1,
@@ -529,13 +534,13 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "payment_terms",
       label: "Payment Terms & Conditions",
       x: 12,
-      y: 230,
+      y: 224,
       width: 105,
-      height: 24,
+      height: 28,
       visible: true,
       locked: false,
       zIndex: 21,
-      fontSize: 10,
+      fontSize: 9.5,
       color: "#64748B",
     },
 
@@ -545,9 +550,9 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "company_signature",
       label: "Company Authorized Signature",
       x: 121,
-      y: 220,
+      y: 216,
       width: 44,
-      height: 34,
+      height: 36,
       visible: true,
       locked: false,
       lockAspectRatio: true,
@@ -561,9 +566,9 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "company_stamp",
       label: "Official Company Stamp",
       x: 167,
-      y: 220,
+      y: 216,
       width: 31,
-      height: 34,
+      height: 36,
       visible: true,
       locked: false,
       lockAspectRatio: true,
@@ -571,19 +576,19 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       imageFit: "contain",
     },
 
-    // 15. Document Footer
+    // 15. Document Footer (prominent, proportionate, solid baseline anchor)
     {
       id: "footer",
       type: "footer",
       label: "Document Footer",
       x: 12,
-      y: 278,
+      y: 262,
       width: 186,
-      height: 8,
+      height: 16,
       visible: true,
       locked: false,
       zIndex: 24,
-      fontSize: 9,
+      fontSize: 9.5,
       textAlign: "center",
       color: "#64748B",
       borderColor: "#CBD5E1",
@@ -592,7 +597,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
   ];
 
   return {
-    version: 1,
+    version: CURRENT_LAYOUT_VERSION,
     documentType: docType,
     templateName: "Default UAE Corporate Template",
     page: {
@@ -620,8 +625,64 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
 // ── Persistence Helpers ────────────────────────────────────────────────────────
 const LOCAL_STORAGE_PREFIX = "dubai-erp.doc-layout.";
 
-export function getLocalStorageKey(docType: DocumentTypeId): string {
-  return `${LOCAL_STORAGE_PREFIX}${docType}`;
+export function getLocalStorageKey(companyId: string | null | undefined, docType: DocumentTypeId): string {
+  return `${LOCAL_STORAGE_PREFIX}${companyId || "anonymous"}.${docType}`;
+}
+
+/**
+ * Applies explicit, versioned migrations and validates geometry without
+ * replacing deliberate user positions or sizes.
+ */
+export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
+  if (!layout || !layout.elements) return layout;
+  const sourceVersion = Number.isFinite(layout.version) ? layout.version : 1;
+  const pageWidth = Number.isFinite(layout.page?.widthMm) ? layout.page.widthMm : 210;
+  const pageHeight = Number.isFinite(layout.page?.heightMm) ? layout.page.heightMm : 297;
+
+  const elements = layout.elements.map((element) => {
+    let el = { ...element };
+
+    if (sourceVersion < 2 && el.id === "logo") {
+      const originalFullWidth = Math.abs(el.width - 186) < 0.01 && Math.abs(el.height - 24) < 0.01;
+      const interimDefault = Math.abs(el.width - 40) < 0.01 && Math.abs(el.height - 18) < 0.01;
+      if (originalFullWidth) el = { ...el, x: 85, y: 10, width: 40, height: 12 };
+      else if (interimDefault) el = { ...el, height: 12 };
+      el.lockAspectRatio = true;
+      el.imageAspectRatio = el.imageAspectRatio || 10 / 3;
+    }
+
+    if (sourceVersion < 2 && el.id === "footer" && Math.abs(el.height - 8) < 0.01) {
+      el = { ...el, height: 16, y: 262, fontSize: 9.5 };
+    }
+
+    const width = Math.max(1, Math.min(pageWidth, Number.isFinite(el.width) ? el.width : 20));
+    const height = Math.max(1, Math.min(pageHeight, Number.isFinite(el.height) ? el.height : 10));
+    const x = Math.max(0, Math.min(pageWidth - width, Number.isFinite(el.x) ? el.x : 0));
+    const y = Math.max(0, Math.min(pageHeight - height, Number.isFinite(el.y) ? el.y : 0));
+    return { ...el, x, y, width, height };
+  });
+
+  return {
+    ...layout,
+    version: CURRENT_LAYOUT_VERSION,
+    page: { ...layout.page, paper: "A4", widthMm: 210, heightMm: 297 },
+    elements,
+  };
+}
+
+/**
+ * Assigns sequential z-indices (2, 4, 6, ...) to elements in their current array order.
+ */
+export function normalizeLayerZIndexes(elements: LayoutElement[]): LayoutElement[] {
+  return elements.map((el, idx) => ({ ...el, zIndex: (idx + 1) * 2 }));
+}
+
+/**
+ * Sorts elements by existing zIndex ascending and re-indexes them sequentially.
+ */
+export function sortAndNormalizeLayerZIndexes(elements: LayoutElement[]): LayoutElement[] {
+  const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex);
+  return sorted.map((el, idx) => ({ ...el, zIndex: (idx + 1) * 2 }));
 }
 
 /**
@@ -644,11 +705,13 @@ export async function loadDocumentLayout(
         .eq("company_id", companyId)
         .eq("document_type", docType)
         .eq("is_default", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (!error && data?.layout_json) {
         return {
-          layout: data.layout_json as DocumentLayout,
+          layout: normalizeLayout(data.layout_json as DocumentLayout),
           source: "database",
         };
       }
@@ -660,11 +723,20 @@ export async function loadDocumentLayout(
   // 2. Try localStorage
   if (typeof window !== "undefined") {
     try {
-      const stored = window.localStorage.getItem(getLocalStorageKey(docType));
+      const storageKey = getLocalStorageKey(companyId, docType);
+      let stored = window.localStorage.getItem(storageKey);
+      if (!stored) {
+        const legacyKey = `${LOCAL_STORAGE_PREFIX}${docType}`;
+        stored = window.localStorage.getItem(legacyKey);
+        if (stored) {
+          window.localStorage.setItem(storageKey, stored);
+          window.localStorage.removeItem(legacyKey);
+        }
+      }
       if (stored) {
         const parsed = JSON.parse(stored) as DocumentLayout;
         if (parsed?.elements?.length) {
-          return { layout: parsed, source: "local" };
+          return { layout: normalizeLayout(parsed), source: "local" };
         }
       }
     } catch {
@@ -674,7 +746,7 @@ export async function loadDocumentLayout(
 
   // 3. Return fresh default layout
   return {
-    layout: createDefaultLayout(docType),
+    layout: normalizeLayout(createDefaultLayout(docType)),
     source: "default",
   };
 }
@@ -682,16 +754,226 @@ export async function loadDocumentLayout(
 /**
  * Saves document layout to Supabase with automatic fallback to localStorage.
  */
+function isMissingTableError(errorMsg?: string | null): boolean {
+  if (!errorMsg) return false;
+  const lower = errorMsg.toLowerCase();
+  return (
+    lower.includes("could not find the table") ||
+    lower.includes("schema cache") ||
+    lower.includes("does not exist") ||
+    lower.includes("42p01")
+  );
+}
+
+export type VisualScopeKey =
+  | "logo"
+  | "company_name_en"
+  | "company_name_ar"
+  | "company_address"
+  | "header_layout"
+  | "doc_title"
+  | "typography"
+  | "branding_colors"
+  | "watermark"
+  | "footer"
+  | "bank_details"
+  | "payment_terms"
+  | "company_signature"
+  | "company_stamp"
+  | "page_margins";
+
+export const VISUAL_SCOPE_DEFINITIONS: { key: VisualScopeKey; label: string; description: string }[] = [
+  { key: "logo", label: "Company Logo", description: "Position, dimensions, border, aspect ratio" },
+  { key: "company_name_en", label: "English Company Name", description: "Font size, family, color, alignment" },
+  { key: "company_name_ar", label: "Arabic Company Name", description: "Font size, family, color, alignment" },
+  { key: "company_address", label: "Company Details & TRN", description: "Font, spacing, alignment, contact strip" },
+  { key: "header_layout", label: "Complete Header Layout", description: "Logo, company names, and address coordinates" },
+  { key: "doc_title", label: "Document Title Styling", description: "Banner background, height, fonts, padding (preserves doc title text)" },
+  { key: "typography", label: "Typography & Fonts", description: "Font families across document elements" },
+  { key: "branding_colors", label: "Brand Colors Theme", description: "Primary navy, gold accent, borders, table header, highlight" },
+  { key: "watermark", label: "Background & Watermark", description: "Watermark image, size, position, opacity" },
+  { key: "footer", label: "Document Footer", description: "Position, height, typography, borders" },
+  { key: "bank_details", label: "Bank Details Card", description: "Card position, background, borders, font size" },
+  { key: "payment_terms", label: "Payment Terms Styling", description: "Font size, colors, position" },
+  { key: "company_signature", label: "Authorized Signature", description: "Signature box size, position, styling" },
+  { key: "company_stamp", label: "Official Stamp Area", description: "Stamp position, size, border, fit" },
+  { key: "page_margins", label: "Page Margins & Background", description: "Top, bottom, left, right margins, page background" },
+];
+
+/**
+ * Copies visual appearance properties from a source element into a target element,
+ * intentionally excluding document-specific business text (except custom blocks).
+ */
+export function copyElementVisualProperties(
+  sourceEl: LayoutElement,
+  targetEl: LayoutElement,
+  preserveCustomText = false
+): LayoutElement {
+  const updated: LayoutElement = {
+    ...targetEl,
+    x: sourceEl.x,
+    y: sourceEl.y,
+    width: sourceEl.width,
+    height: sourceEl.height,
+    visible: sourceEl.visible,
+    locked: sourceEl.locked,
+    zIndex: sourceEl.zIndex,
+    fontSize: sourceEl.fontSize,
+    fontWeight: sourceEl.fontWeight,
+    fontStyle: sourceEl.fontStyle,
+    fontFamily: sourceEl.fontFamily,
+    textAlign: sourceEl.textAlign,
+    color: sourceEl.color,
+    backgroundColor: sourceEl.backgroundColor,
+    borderColor: sourceEl.borderColor,
+    borderWidth: sourceEl.borderWidth,
+    borderRadius: sourceEl.borderRadius,
+    padding: sourceEl.padding,
+    lineHeight: sourceEl.lineHeight,
+    letterSpacing: sourceEl.letterSpacing,
+    opacity: sourceEl.opacity,
+    imageFit: sourceEl.imageFit,
+    imageAspectRatio: sourceEl.imageAspectRatio,
+    lockAspectRatio: sourceEl.lockAspectRatio,
+  };
+
+  if (sourceEl.imageSrc) {
+    updated.imageSrc = sourceEl.imageSrc;
+  }
+
+  // Only copy custom text if explicitly allowed (e.g. for custom text blocks, not document title)
+  if (!preserveCustomText && sourceEl.type === "custom_text") {
+    updated.customText = sourceEl.customText;
+  }
+
+  // If table settings exist, copy table styling without modifying business columns
+  if (sourceEl.tableSettings && targetEl.tableSettings) {
+    updated.tableSettings = {
+      ...targetEl.tableSettings,
+      headerBg: sourceEl.tableSettings.headerBg,
+      headerTextColor: sourceEl.tableSettings.headerTextColor,
+      fontSize: sourceEl.tableSettings.fontSize,
+      headerFontSize: sourceEl.tableSettings.headerFontSize,
+      rowHeight: sourceEl.tableSettings.rowHeight,
+      borderThickness: sourceEl.tableSettings.borderThickness,
+      borderColor: sourceEl.tableSettings.borderColor,
+      bodyTextColor: sourceEl.tableSettings.bodyTextColor,
+    };
+  }
+
+  return updated;
+}
+
+/**
+ * Applies selected visual settings or a single element from a source layout
+ * to a target layout, guaranteeing that business data is NEVER modified.
+ */
+export function applyVisualSettingsToLayout(
+  sourceLayout: DocumentLayout,
+  targetLayout: DocumentLayout,
+  options: {
+    scopes?: VisualScopeKey[];
+    singleElementId?: string;
+  }
+): DocumentLayout {
+  const updated = JSON.parse(JSON.stringify(targetLayout)) as DocumentLayout;
+
+  // Mode 1: Single element propagation
+  if (options.singleElementId) {
+    const sourceEl = sourceLayout.elements.find((el) => el.id === options.singleElementId);
+    if (sourceEl) {
+      let found = false;
+      updated.elements = updated.elements.map((targetEl) => {
+        if (targetEl.id === sourceEl.id || targetEl.type === sourceEl.type) {
+          found = true;
+          return copyElementVisualProperties(sourceEl, targetEl, sourceEl.type === "doc_title");
+        }
+        return targetEl;
+      });
+      // If it's a custom element not yet in target layout, append it
+      if (!found && (sourceEl.type === "custom_text" || sourceEl.type === "divider" || sourceEl.type === "custom_image")) {
+        updated.elements.push({ ...sourceEl, id: `${sourceEl.id}_${targetLayout.documentType}` });
+      }
+    }
+    return normalizeLayout(updated);
+  }
+
+  // Mode 2: Multi-scope visual propagation
+  const scopes = new Set(options.scopes || []);
+
+  if (scopes.has("branding_colors")) {
+    updated.branding = { ...sourceLayout.branding };
+  }
+
+  if (scopes.has("page_margins")) {
+    updated.page = {
+      ...updated.page,
+      margins: { ...sourceLayout.page.margins },
+      background: sourceLayout.page.background,
+      watermarkOpacity: sourceLayout.page.watermarkOpacity,
+    };
+  }
+
+  const scopeElementTypes: Partial<Record<VisualScopeKey, string[]>> = {
+    logo: ["logo"],
+    company_name_en: ["company_name_en"],
+    company_name_ar: ["company_name_ar"],
+    company_address: ["company_address"],
+    header_layout: ["logo", "company_name_en", "company_name_ar", "company_address"],
+    doc_title: ["doc_title"],
+    watermark: ["watermark"],
+    footer: ["footer"],
+    bank_details: ["bank_details"],
+    payment_terms: ["payment_terms"],
+    company_signature: ["company_signature"],
+    company_stamp: ["company_stamp"],
+  };
+
+  const typesToCopy = new Set<string>();
+  for (const scope of scopes) {
+    const types = scopeElementTypes[scope];
+    if (types) {
+      types.forEach((t) => typesToCopy.add(t));
+    }
+  }
+
+  updated.elements = updated.elements.map((targetEl) => {
+    let el = { ...targetEl };
+
+    if (scopes.has("typography")) {
+      const matchingSource = sourceLayout.elements.find((s) => s.id === el.id || s.type === el.type);
+      if (matchingSource?.fontFamily) {
+        el.fontFamily = matchingSource.fontFamily;
+      }
+    }
+
+    if (typesToCopy.has(el.type) || typesToCopy.has(el.id)) {
+      const matchingSource = sourceLayout.elements.find((s) => s.id === el.id || s.type === el.type);
+      if (matchingSource) {
+        el = copyElementVisualProperties(matchingSource, el, el.type === "doc_title");
+      }
+    }
+
+    return el;
+  });
+
+  return normalizeLayout(updated);
+}
+
+
 export async function saveDocumentLayout(
   companyId: string | null | undefined,
   docType: DocumentTypeId,
   layout: DocumentLayout,
-  templateName: string = "Default Template"
-): Promise<{ success: boolean; error?: string; target: "database" | "local" }> {
+  templateName: string = layout.templateName || "Default UAE Corporate Template"
+): Promise<{ success: boolean; error?: string; warning?: string; target: "database" | "local" }> {
   // Always update localStorage first so current user session and preview are instant
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(getLocalStorageKey(docType), JSON.stringify(layout));
+      window.localStorage.setItem(
+        getLocalStorageKey(companyId, docType),
+        JSON.stringify(normalizeLayout(layout))
+      );
     } catch (e) {
       console.warn("Failed to write layout to localStorage:", e);
     }
@@ -700,12 +982,35 @@ export async function saveDocumentLayout(
   // If companyId is available, attempt saving to Supabase
   if (companyId) {
     try {
+      const { error: clearDefaultError } = await supabase
+        .from("document_templates")
+        .update({ is_default: false, updated_at: new Date().toISOString() })
+        .eq("company_id", companyId)
+        .eq("document_type", docType)
+        .eq("is_default", true)
+        .neq("template_name", templateName);
+
+      if (clearDefaultError) {
+        if (isMissingTableError(clearDefaultError.message)) {
+          return {
+            success: true,
+            target: "local",
+            warning: "Saved locally in browser. Database table 'document_templates' pending migration.",
+          };
+        }
+        return {
+          success: true,
+          target: "local",
+          warning: `Saved locally. Database sync notice: ${clearDefaultError.message}`,
+        };
+      }
+
       const { error } = await supabase.from("document_templates").upsert(
         {
           company_id: companyId,
           document_type: docType,
           template_name: templateName,
-          layout_json: layout,
+          layout_json: normalizeLayout(layout),
           is_default: true,
           updated_at: new Date().toISOString(),
         },
@@ -719,10 +1024,32 @@ export async function saveDocumentLayout(
       }
 
       console.warn("Supabase document_templates upsert error:", error.message);
-      return { success: true, target: "local", error: error.message };
+      if (isMissingTableError(error.message)) {
+        return {
+          success: true,
+          target: "local",
+          warning: "Saved locally in browser. Database table 'document_templates' pending migration.",
+        };
+      }
+      return {
+        success: true,
+        target: "local",
+        warning: `Saved locally. Database notice: ${error.message}`,
+      };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { success: true, target: "local", error: msg };
+      if (isMissingTableError(msg)) {
+        return {
+          success: true,
+          target: "local",
+          warning: "Saved locally in browser.",
+        };
+      }
+      return {
+        success: true,
+        target: "local",
+        warning: `Saved locally. Sync notice: ${msg}`,
+      };
     }
   }
 
@@ -735,24 +1062,104 @@ export async function saveDocumentLayout(
 export async function resetDocumentLayout(
   companyId: string | null | undefined,
   docType: DocumentTypeId
-): Promise<DocumentLayout> {
+): Promise<{ layout: DocumentLayout; persistenceError?: string }> {
   const defaultLayout = createDefaultLayout(docType);
+  const result = await saveDocumentLayout(companyId, docType, defaultLayout, defaultLayout.templateName);
+  return { layout: defaultLayout, persistenceError: result.success ? undefined : result.error };
+}
 
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(getLocalStorageKey(docType));
-  }
-
-  if (companyId) {
-    try {
-      await supabase
-        .from("document_templates")
-        .delete()
-        .eq("company_id", companyId)
-        .eq("document_type", docType);
-    } catch {
-      // ignore
+/**
+ * Processes an uploaded image file (PNG, JPG, JPEG, WEBP), calculates its intrinsic
+ * dimensions & aspect ratio, and creates an optimized webp/jpeg/png data URL (max 1200px)
+ * so it stays lightweight (~80-150KB) and avoids localStorage quota exhaustion.
+ */
+export async function processAndOptimizeImage(
+  file: File,
+  maxDimension = 1200,
+  quality = 0.88
+): Promise<{
+  dataUrl: string;
+  width: number;
+  height: number;
+  aspectRatio: number;
+  fileName: string;
+}> {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) {
+      reject(new Error("Please upload a valid image file (PNG, JPG, JPEG, or WEBP)."));
+      return;
     }
-  }
 
-  return defaultLayout;
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read image file."));
+    reader.onload = (e) => {
+      const rawDataUrl = e.target?.result as string;
+      if (typeof window === "undefined") {
+        resolve({
+          dataUrl: rawDataUrl,
+          width: 200,
+          height: 100,
+          aspectRatio: 2,
+          fileName: file.name,
+        });
+        return;
+      }
+
+      const img = new window.Image();
+      img.onerror = () => reject(new Error("Failed to decode image data."));
+      img.onload = () => {
+        const origW = img.naturalWidth || img.width || 400;
+        const origH = img.naturalHeight || img.height || 200;
+        const aspectRatio = origW / Math.max(1, origH);
+
+        // Compute scaled dimensions preserving aspect ratio
+        let targetW = origW;
+        let targetH = origH;
+        if (targetW > maxDimension || targetH > maxDimension) {
+          if (targetW > targetH) {
+            targetW = maxDimension;
+            targetH = Math.max(1, Math.round(maxDimension / aspectRatio));
+          } else {
+            targetH = maxDimension;
+            targetW = Math.max(1, Math.round(maxDimension * aspectRatio));
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve({
+            dataUrl: rawDataUrl,
+            width: origW,
+            height: origH,
+            aspectRatio,
+            fileName: file.name,
+          });
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+        const isTransparent = file.type === "image/png" || file.type === "image/webp";
+        const format = isTransparent ? "image/png" : "image/jpeg";
+        let optimizedDataUrl: string;
+        try {
+          optimizedDataUrl = canvas.toDataURL(format, quality);
+        } catch {
+          optimizedDataUrl = rawDataUrl;
+        }
+
+        resolve({
+          dataUrl: optimizedDataUrl,
+          width: targetW,
+          height: targetH,
+          aspectRatio,
+          fileName: file.name,
+        });
+      };
+      img.src = rawDataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
 }

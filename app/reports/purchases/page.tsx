@@ -10,29 +10,29 @@ import {
 } from "lucide-react";
 
 export default function PurchasesReportPage() {
-  const [pos, setPos] = useState<any[]>([]);
-  const [bills, setBills] = useState<any[]>([]);
+  type PurchaseOrderRow = Record<string, unknown>;
+  type SupplierBillRow = { id: string; bill_number?: string | null; bill_date?: string | null; subtotal?: number | null; vat_amount?: number | null; total_amount?: number | null; paid_amount?: number | null; balance_due?: number | null; status?: string | null; suppliers?: { name?: string | null } | { name?: string | null }[] | null };
+  const [pos, setPos] = useState<PurchaseOrderRow[]>([]);
+  const [bills, setBills] = useState<SupplierBillRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  useEffect(() => {
-    loadPurchasingData();
-  }, []);
-
   async function loadPurchasingData() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
 
       const [poRes, billRes] = await Promise.all([
-        supabase.from("purchase_orders").select("*, suppliers(name)").eq("company_id", companyId).order("po_date", { ascending: false }),
+        supabase.from("purchase_orders").select("*, suppliers(name)").eq("company_id", companyId).order("order_date", { ascending: false }),
         supabase.from("supplier_bills").select("*, suppliers(name)").eq("company_id", companyId).order("bill_date", { ascending: false }),
       ]);
 
-      setPos(poRes.data || []);
-      setBills(billRes.data || []);
+      const queryError = poRes.error || billRes.error;
+      if (queryError) throw new Error(queryError.message);
+
+      setPos((poRes.data || []) as PurchaseOrderRow[]);
+      setBills((billRes.data || []) as SupplierBillRow[]);
     } catch (err) {
       console.error("Error loading purchases report:", err);
     } finally {
@@ -40,9 +40,13 @@ export default function PurchasesReportPage() {
     }
   }
 
+  useEffect(() => {
+    void Promise.resolve().then(loadPurchasingData);
+  }, []);
+
   const filteredBills = bills.filter(b => {
-    if (dateFrom && b.bill_date < dateFrom) return false;
-    if (dateTo && b.bill_date > dateTo) return false;
+    if (dateFrom && (b.bill_date || "") < dateFrom) return false;
+    if (dateTo && (b.bill_date || "") > dateTo) return false;
     return true;
   });
 
@@ -143,7 +147,7 @@ export default function PurchasesReportPage() {
                 <tr key={b.id} className="hover:bg-slate-50/50">
                   <td className="px-4 py-2.5 font-semibold text-slate-900 font-mono">{b.bill_number}</td>
                   <td className="px-4 py-2.5 font-mono text-slate-500">{b.bill_date}</td>
-                  <td className="px-4 py-2.5 font-medium text-slate-800">{b.suppliers?.name || "Supplier"}</td>
+                  <td className="px-4 py-2.5 font-medium text-slate-800">{(Array.isArray(b.suppliers) ? b.suppliers[0]?.name : b.suppliers?.name) || "Supplier"}</td>
                   <td className="px-4 py-2.5 text-right font-mono">{Number(b.subtotal || 0).toFixed(2)}</td>
                   <td className="px-4 py-2.5 text-right font-mono text-emerald-600">{Number(b.vat_amount || 0).toFixed(2)}</td>
                   <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-900">{Number(b.total_amount || 0).toFixed(2)}</td>

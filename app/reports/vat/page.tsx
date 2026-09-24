@@ -11,30 +11,34 @@ import {
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
 export default function VatReportPage() {
-  const [invoices, setInvoices] = useState<any[]>([]);
-  const [bills, setBills] = useState<any[]>([]);
-  const [expenses, setExpenses] = useState<any[]>([]);
+  type InvoiceVatRow = { subtotal?: number | null; vat_amount?: number | null; invoice_date?: string | null; status?: string | null };
+  type BillVatRow = { subtotal?: number | null; vat_amount?: number | null; bill_date?: string | null; status?: string | null };
+  type ExpenseVatRow = { amount?: number | null; vat_amount?: number | null; expense_date?: string | null; status?: string | null };
+  const [invoices, setInvoices] = useState<InvoiceVatRow[]>([]);
+  const [bills, setBills] = useState<BillVatRow[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseVatRow[]>([]);
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
   async function loadVatData() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
 
       const [invRes, billRes, expRes, co] = await Promise.all([
-        supabase.from("tax_invoices").select("subtotal, vat_amount, total_amount, invoice_date, status").eq("company_id", companyId).neq("status", "Cancelled"),
-        supabase.from("supplier_bills").select("subtotal, vat_amount, total_amount, bill_date, status").eq("company_id", companyId).neq("status", "Cancelled"),
-        supabase.from("expenses").select("amount, vat_amount, total_amount, expense_date, status").eq("company_id", companyId).neq("status", "Rejected"),
+        supabase.from("tax_invoices").select("subtotal, vat_amount, total_amount, invoice_date, status").eq("company_id", companyId),
+        supabase.from("supplier_bills").select("subtotal, vat_amount, total_amount, bill_date, status").eq("company_id", companyId),
+        supabase.from("expenses").select("amount, vat_amount, total_amount, expense_date, status").eq("company_id", companyId),
         getCurrentCompany(),
       ]);
 
-      setInvoices(invRes.data || []);
-      setBills(billRes.data || []);
-      setExpenses(expRes.data || []);
+      const queryError = invRes.error || billRes.error || expRes.error;
+      if (queryError) throw new Error(queryError.message);
+      setInvoices((invRes.data || []).filter(i => (i.status || "").toLowerCase() !== "cancelled"));
+      setBills((billRes.data || []).filter(b => (b.status || "").toLowerCase() !== "cancelled"));
+      setExpenses((expRes.data || []).filter(e => (e.status || "").toLowerCase() !== "rejected"));
       if (co) setCompany(co as CompanyDocInfo);
     } catch (err) {
       console.error("Error loading VAT data:", err);
@@ -44,25 +48,25 @@ export default function VatReportPage() {
   }
 
   useEffect(() => {
-    loadVatData();
+    void Promise.resolve().then(loadVatData);
   }, []);
 
   // Filter by date
   const filteredInvoices = invoices.filter(i => {
-    if (dateFrom && i.invoice_date < dateFrom) return false;
-    if (dateTo && i.invoice_date > dateTo) return false;
+    if (dateFrom && (i.invoice_date || "") < dateFrom) return false;
+    if (dateTo && (i.invoice_date || "") > dateTo) return false;
     return true;
   });
 
   const filteredBills = bills.filter(b => {
-    if (dateFrom && b.bill_date < dateFrom) return false;
-    if (dateTo && b.bill_date > dateTo) return false;
+    if (dateFrom && (b.bill_date || "") < dateFrom) return false;
+    if (dateTo && (b.bill_date || "") > dateTo) return false;
     return true;
   });
 
   const filteredExpenses = expenses.filter(e => {
-    if (dateFrom && e.expense_date < dateFrom) return false;
-    if (dateTo && e.expense_date > dateTo) return false;
+    if (dateFrom && (e.expense_date || "") < dateFrom) return false;
+    if (dateTo && (e.expense_date || "") > dateTo) return false;
     return true;
   });
 

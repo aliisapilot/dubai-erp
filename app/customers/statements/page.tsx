@@ -35,6 +35,7 @@ type Payment = {
   amount: number | null;
   payment_method: string | null;
   reference_number: string | null;
+  status?: string | null;
 };
 
 type ReceiptVoucher = {
@@ -61,10 +62,6 @@ export default function StatementOfAccountPage() {
   const [statement, setStatement] = useState<StatementData | null>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
 
-  useEffect(() => {
-    loadInitialData();
-  }, []);
-
   async function loadInitialData() {
     setLoading(true);
     const [{ data: custs }, co] = await Promise.all([
@@ -84,12 +81,6 @@ export default function StatementOfAccountPage() {
     }
     setLoading(false);
   }
-
-  useEffect(() => {
-    if (selectedCustomerId) {
-      generateStatement();
-    }
-  }, [selectedCustomerId, fromDate, toDate, openingBalance]);
 
   async function generateStatement() {
     if (!selectedCustomerId) return;
@@ -115,7 +106,7 @@ export default function StatementOfAccountPage() {
         .order("payment_date", { ascending: true }),
       supabase
         .from("receipt_vouchers")
-        .select("id, customer_id, voucher_number, voucher_date, amount, payment_method, cheque_number, status")
+        .select("id, customer_id, voucher_number, voucher_date, amount, payment_method, cheque_number")
         .eq("customer_id", selectedCustomerId)
         .order("voucher_date", { ascending: true }),
     ]);
@@ -147,6 +138,7 @@ export default function StatementOfAccountPage() {
     });
 
     (pays || []).forEach((p: Payment) => {
+      if ((p.status || "completed").toLowerCase() !== "completed") return;
       if (p.payment_date) {
         rawTxs.push({
           date: p.payment_date,
@@ -222,6 +214,16 @@ export default function StatementOfAccountPage() {
     setStatement(statementData);
     setCalculating(false);
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(loadInitialData);
+  }, []);
+
+  useEffect(() => {
+    if (selectedCustomerId) {
+      void Promise.resolve().then(generateStatement);
+    }
+  }, [selectedCustomerId, fromDate, toDate, openingBalance]);
 
   return (
     <main className="min-h-screen bg-slate-50">

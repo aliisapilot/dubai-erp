@@ -18,17 +18,15 @@ export const metadata: Metadata = {
   description: "Enterprise Resource Planning system tailored for UAE businesses with VAT compliance",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} m-0 p-0 w-full min-h-screen antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="m-0 p-0 w-full min-h-screen bg-slate-900 text-slate-100 antialiased overflow-x-hidden">
         <ERPLayout>{children}</ERPLayout>
       </body>
     </html>
   );
 }
-
-

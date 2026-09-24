@@ -15,7 +15,6 @@ import { CompanyDocInfo } from "@/components/documents/DocHeader";
 type Employee = {
   id: string;
   first_name: string | null;
-  name?: string | null;
   employee_number: string | null;
   designation: string | null;
   department: string | null;
@@ -51,12 +50,7 @@ export default function EmployeePaymentVouchersPage() {
   // Print voucher modal
   const [activeVoucher, setActiveVoucher] = useState<PaymentVoucherData | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   async function loadData() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -86,6 +80,10 @@ export default function EmployeePaymentVouchersPage() {
     }
   }
 
+  useEffect(() => {
+    void Promise.resolve().then(loadData);
+  }, []);
+
   function handleOpenVoucher(ss: SalaryStatement, idx: number) {
     const emp = ss.employee_id ? empMap[ss.employee_id] : null;
     const year = ss.payroll_year || new Date().getFullYear();
@@ -95,7 +93,7 @@ export default function EmployeePaymentVouchersPage() {
     setActiveVoucher({
       voucher_number: voucherNo,
       voucher_date: ss.payment_date || new Date().toISOString().split("T")[0],
-      employee_name: emp?.first_name || emp?.name || "Employee",
+      employee_name: emp?.first_name || "Employee",
       employee_id: emp?.employee_number || "-",
       designation: emp?.designation || "-",
       month: month,
@@ -111,7 +109,7 @@ export default function EmployeePaymentVouchersPage() {
 
   const filtered = statements.filter(ss => {
     const emp = ss.employee_id ? empMap[ss.employee_id] : null;
-    const name = (emp?.first_name || emp?.name || "").toLowerCase();
+    const name = (emp?.first_name || "").toLowerCase();
     const empNo = emp?.employee_number?.toLowerCase() || "";
     const q = search.toLowerCase();
     const matchSearch = name.includes(q) || empNo.includes(q);
@@ -238,7 +236,7 @@ export default function EmployeePaymentVouchersPage() {
                   return (
                     <tr key={ss.id} className="hover:bg-slate-50/75 transition-colors">
                       <td className="px-4 py-3">
-                        <div className="font-semibold text-slate-900">{emp?.first_name || emp?.name || "Employee"}</div>
+                        <div className="font-semibold text-slate-900">{emp?.first_name || "Employee"}</div>
                         <div className="text-[10px] text-slate-400 font-mono">
                           {emp?.employee_number || "EMP"} &bull; {emp?.designation || "-"}
                         </div>

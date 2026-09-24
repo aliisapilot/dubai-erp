@@ -14,10 +14,26 @@ export type CompanyDocDetails = {
   email?: string | null;
   website?: string | null;
   logo_url?: string | null;
+  stamp_url?: string | null;
+  signature_url?: string | null;
+  background_url?: string | null;
+  building_image_url?: string | null;
+  footer_image_url?: string | null;
   bank_name?: string | null;
   bank_account_name?: string | null;
   iban?: string | null;
   swift_bic?: string | null;
+  bank_iban?: string | null;
+  bank_swift?: string | null;
+  logo_size?: number | null;
+  arabic_name_size?: number | null;
+  brand_primary?: string | null;
+  brand_accent?: string | null;
+  brand_text?: string | null;
+  brand_muted?: string | null;
+  brand_border?: string | null;
+  brand_table_header?: string | null;
+  brand_total_highlight?: string | null;
   default_vat_rate?: number | null;
 };
 
@@ -46,14 +62,6 @@ export async function getCompanyId(): Promise<string> {
       .maybeSingle();
     if (prof?.company_id) return prof.company_id;
   }
-
-  // 3. Fallback to any company visible via RLS / single-tenant setup
-  const { data: anyCo } = await supabase
-    .from("companies")
-    .select("id")
-    .limit(1)
-    .maybeSingle();
-  if (anyCo?.id) return anyCo.id;
 
   if (userError) throw new Error(userError.message);
   if (!user) throw new Error("You are not logged in.");
@@ -92,14 +100,6 @@ export async function getCurrentCompany(): Promise<CompanyDocDetails | null> {
         .maybeSingle();
       if (memberCo) return memberCo as CompanyDocDetails;
     }
-
-    // 3. Fallback to any company visible via RLS
-    const { data: anyCo } = await supabase
-      .from("companies")
-      .select("*")
-      .limit(1)
-      .maybeSingle();
-    if (anyCo) return anyCo as CompanyDocDetails;
 
     return null;
   } catch (err) {

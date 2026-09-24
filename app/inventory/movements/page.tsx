@@ -34,12 +34,7 @@ export default function StockMovementsPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
 
-  useEffect(() => {
-    loadMovements();
-  }, []);
-
   async function loadMovements() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -58,6 +53,10 @@ export default function StockMovementsPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(loadMovements);
+  }, []);
 
   const filtered = movements.filter((m) => {
     const prodName = m.products?.name?.toLowerCase() || "";
