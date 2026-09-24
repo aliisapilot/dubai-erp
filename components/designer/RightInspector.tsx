@@ -499,6 +499,56 @@ export default function RightInspector({
           </div>
         </div>
 
+        {/* ── Flow & Dynamic Spacing Controls ───────────────────────────────── */}
+        {elem.type !== "watermark" && elem.type !== "footer" && (
+          <div className="pt-3 border-t border-slate-800">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2 flex items-center justify-between">
+              <span>Dynamic Spacing &amp; Flow</span>
+              <span className="text-[10px] text-amber-400 font-mono">
+                {elem.flowMode === "fixed" ? "Fixed" : "Auto-Flow"}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <label className="text-[10px] text-slate-400 block mb-1">Positioning Behavior</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateElement(elem.id, { flowMode: "flow" })}
+                    className={`py-1.5 px-2 rounded text-xs font-semibold text-center transition ${
+                      elem.flowMode !== "fixed"
+                        ? "bg-amber-500 text-slate-950 font-bold"
+                        : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                    }`}
+                    title="Element dynamically follows table height changes, eliminating vertical gaps"
+                  >
+                    Flow with Table
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateElement(elem.id, { flowMode: "fixed" })}
+                    className={`py-1.5 px-2 rounded text-xs font-semibold text-center transition ${
+                      elem.flowMode === "fixed"
+                        ? "bg-amber-500 text-slate-950 font-bold"
+                        : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                    }`}
+                    title="Lock to exact static X/Y coordinates regardless of row count"
+                  >
+                    Fixed Position
+                  </button>
+                </div>
+              </div>
+
+              {elem.type === "line_items" && (
+                <div className="text-[10px] text-slate-400 bg-slate-950/50 p-2 rounded border border-slate-800 leading-normal">
+                  <span>💡 <strong>Dynamic Table Height:</strong> Table expands automatically for 1, 5, or 20 items. When content overflows A4 boundaries, pagination will create additional pages cleanly.</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ── Layer Order Controls ─────────────────────────────────────────── */}
         <div className="pt-3 border-t border-slate-800">
           <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">

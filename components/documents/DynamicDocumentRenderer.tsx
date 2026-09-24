@@ -126,16 +126,21 @@ interface DynamicDocumentRendererProps {
   totalPages?: number;
 }
 
+import {
+  computeEffectiveLayout,
+  computePaginationPlan,
+} from "@/lib/documentLayoutEngine";
+
 export function getItemsPerPage(layout: DocumentLayout): number {
   const lineItems = layout.elements.find((element) => element.type === "line_items");
   if (!lineItems) return 1;
-  const rowHeight = Math.max(4, lineItems.tableSettings?.rowHeight || 8);
-  const headerHeight = Math.max(6, rowHeight);
+  const rowHeight = Math.max(4, lineItems.tableSettings?.rowHeight || 8.5);
+  const headerHeight = Math.max(7, lineItems.tableSettings?.headerFontSize ? lineItems.tableSettings.headerFontSize * 0.35 + 4 : rowHeight);
   return Math.max(1, Math.floor((lineItems.height - headerHeight) / rowHeight));
 }
 
 export function getDocumentPageCount(layout: DocumentLayout, itemCount: number): number {
-  return Math.max(1, Math.ceil(Math.max(1, itemCount) / getItemsPerPage(layout)));
+  return computePaginationPlan(layout, itemCount).totalPages;
 }
 
 export default function DynamicDocumentRenderer({
@@ -162,11 +167,29 @@ export default function DynamicDocumentRenderer({
 
   const advance = Number(data.advance_amount) || 0;
   const balanceDue = Math.max(0, data.total_amount - advance);
-  const itemsPerPage = getItemsPerPage(layout);
-  const resolvedTotalPages = totalPages || getDocumentPageCount(layout, data.items.length);
-  const firstItemIndex = (pageNumber - 1) * itemsPerPage;
-  const pageItems = data.items.slice(firstItemIndex, firstItemIndex + itemsPerPage);
-  const isLastPage = pageNumber >= resolvedTotalPages;
+
+  // Compute intelligent pagination plan
+  const paginationPlan = computePaginationPlan(layout, data.items.length);
+  const resolvedTotalPages = totalPages || paginationPlan.totalPages;
+  const currentPageInfo = paginationPlan.pageItemRanges.find((p) => p.pageNumber === pageNumber) || {
+    pageNumber,
+    startIndex: 0,
+    endIndex: data.items.length,
+    itemCount: data.items.length,
+    isLastPage: pageNumber >= resolvedTotalPages,
+  };
+
+  const firstItemIndex = currentPageInfo.startIndex;
+  const pageItems = data.items.slice(currentPageInfo.startIndex, currentPageInfo.endIndex);
+  const isLastPage = pageNumber >= resolvedTotalPages || currentPageInfo.isLastPage;
+
+  // Calculate dynamic effective layout geometry with flow-aware positioning
+  const effectiveGeometry = computeEffectiveLayout(
+    layout,
+    pageItems.length,
+    isLastPage,
+    pageNumber
+  );
 
   const fontWeight = (weight: LayoutElement["fontWeight"]): CSSProperties["fontWeight"] => {
     if (weight === "extrabold") return 800;
@@ -573,10 +596,11 @@ export default function DynamicDocumentRenderer({
 
         return (
           <div
-            className="w-full h-full overflow-hidden rounded select-text"
+            className="w-full rounded select-text"
             style={{
               border: `${tSettings.borderThickness}px solid ${tSettings.borderColor}`,
               fontSize: `${tSettings.fontSize}px`,
+              minHeight: isDesignerPreview ? `${elem.height}mm` : undefined,
             }}
           >
             <table className="w-full text-left border-collapse">
@@ -611,43 +635,54 @@ export default function DynamicDocumentRenderer({
                   borderColor: tSettings.borderColor,
                 }}
               >
-                {pageItems.map((item, idx) => (
-                  <tr key={firstItemIndex + idx} className="hover:bg-slate-50/50" style={{ height: `${tSettings.rowHeight}mm` }}>
-                    {activeCols.map((col) => {
-                      let val: React.ReactNode = "";
-                      if (col.key === "index") val = firstItemIndex + idx + 1;
-                      else if (col.key === "description") val = item.description;
-                      else if (col.key === "quantity") val = item.quantity;
-                      else if (col.key === "unit") val = item.unit || "Nos";
-                      else if (col.key === "unit_price") val = Number(item.unit_price).toFixed(2);
-                      else if (col.key === "discount") val = (item.discount || 0).toFixed(2);
-                      else if (col.key === "vat_amount") val = Number(item.vat_amount).toFixed(2);
-                      else if (col.key === "line_total") val = Number(item.line_total).toFixed(2);
-                      else if (col.key === "date") val = item.date || "";
-                      else if (col.key === "type") val = item.type || "";
-                      else if (col.key === "reference") val = item.reference || "";
-                      else if (col.key === "debit") val = item.debit ? Number(item.debit).toFixed(2) : "";
-                      else if (col.key === "credit") val = item.credit ? Number(item.credit).toFixed(2) : "";
-                      else if (col.key === "balance") val = item.balance ? Number(item.balance).toFixed(2) : "";
-
-                      const isMonetary = ["unit_price", "discount", "vat_amount", "line_total", "debit", "credit", "balance"].includes(col.key);
-
-                      return (
-                        <td
-                          key={col.key}
-                          className="px-2"
-                          style={{
-                            textAlign: col.align,
-                            fontFamily: isMonetary ? "monospace" : "inherit",
-                            fontWeight: col.key === "line_total" ? 700 : 400,
-                          }}
-                        >
-                          {val}
-                        </td>
-                      );
-                    })}
+                {pageItems.length === 0 ? (
+                  <tr style={{ height: `${tSettings.rowHeight || 8.5}mm` }}>
+                    <td
+                      colSpan={activeCols.length}
+                      className="text-center text-slate-400 italic text-[10px] py-2"
+                    >
+                      No items specified.
+                    </td>
                   </tr>
-                ))}
+                ) : (
+                  pageItems.map((item, idx) => (
+                    <tr key={firstItemIndex + idx} className="hover:bg-slate-50/50" style={{ height: `${tSettings.rowHeight}mm` }}>
+                      {activeCols.map((col) => {
+                        let val: React.ReactNode = "";
+                        if (col.key === "index") val = firstItemIndex + idx + 1;
+                        else if (col.key === "description") val = item.description;
+                        else if (col.key === "quantity") val = item.quantity;
+                        else if (col.key === "unit") val = item.unit || "Nos";
+                        else if (col.key === "unit_price") val = Number(item.unit_price).toFixed(2);
+                        else if (col.key === "discount") val = (item.discount || 0).toFixed(2);
+                        else if (col.key === "vat_amount") val = Number(item.vat_amount).toFixed(2);
+                        else if (col.key === "line_total") val = Number(item.line_total).toFixed(2);
+                        else if (col.key === "date") val = item.date || "";
+                        else if (col.key === "type") val = item.type || "";
+                        else if (col.key === "reference") val = item.reference || "";
+                        else if (col.key === "debit") val = item.debit ? Number(item.debit).toFixed(2) : "";
+                        else if (col.key === "credit") val = item.credit ? Number(item.credit).toFixed(2) : "";
+                        else if (col.key === "balance") val = item.balance ? Number(item.balance).toFixed(2) : "";
+
+                        const isMonetary = ["unit_price", "discount", "vat_amount", "line_total", "debit", "credit", "balance"].includes(col.key);
+
+                        return (
+                          <td
+                            key={col.key}
+                            className="px-2"
+                            style={{
+                              textAlign: col.align,
+                              fontFamily: isMonetary ? "monospace" : "inherit",
+                              fontWeight: col.key === "line_total" ? 700 : 400,
+                            }}
+                          >
+                            {val}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -655,6 +690,28 @@ export default function DynamicDocumentRenderer({
       }
 
       case "amount_in_words": {
+        if ((layout.documentType === "delivery_note" || layout.documentType === "project_handover") && data.total_amount === 0) {
+          return (
+            <div
+              className="w-full h-full p-2.5 flex flex-col justify-center select-text"
+              style={{
+                backgroundColor: elem.backgroundColor || "#F8FAFC",
+                border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+                borderRadius: `${elem.borderRadius || 4}px`,
+                fontSize: `${elem.fontSize || 10}px`,
+                ...elementAppearance(elem),
+              }}
+            >
+              <div className="font-semibold text-slate-800 text-[10px]">
+                {layout.documentType === "delivery_note" ? "Delivery Verification:" : "Handover Verification:"}
+              </div>
+              <div className="italic text-slate-600 text-[10px] mt-0.5">
+                Official document issued for physical inspection, handover, and site delivery verification.
+              </div>
+            </div>
+          );
+        }
+
         return (
           <div
             className="w-full h-full p-2 flex flex-col justify-between select-text"
@@ -688,6 +745,60 @@ export default function DynamicDocumentRenderer({
       }
 
       case "totals": {
+        if (layout.documentType === "customer_statement") {
+          return (
+            <div
+              className="w-full h-full overflow-hidden text-xs rounded select-text flex flex-col justify-between"
+              style={{
+                border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+                borderRadius: `${elem.borderRadius || 4}px`,
+                fontSize: `${elem.fontSize || 11}px`,
+                ...elementAppearance(elem),
+              }}
+            >
+              <div className="flex justify-between py-1 px-2.5 bg-slate-50 border-b" style={{ borderColor: colors.border }}>
+                <span style={{ color: colors.muted }}>Total Invoiced (Debits):</span>
+                <span className="font-mono font-semibold">{fmtAED(data.subtotal)}</span>
+              </div>
+              <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
+                <span style={{ color: colors.muted }}>Total Paid (Credits):</span>
+                <span className="font-mono font-semibold" style={{ color: colors.accent }}>{fmtAED(Math.max(0, data.subtotal - data.total_amount))}</span>
+              </div>
+              <div
+                className="flex justify-between py-1.5 px-2.5 font-bold text-slate-900 border-b"
+                style={{
+                  backgroundColor: colors.totalHighlight,
+                  borderColor: colors.border,
+                }}
+              >
+                <span>Closing Balance:</span>
+                <span className="font-mono" style={{ color: colors.primary }}>{fmtAED(data.total_amount)}</span>
+              </div>
+            </div>
+          );
+        }
+
+        if ((layout.documentType === "delivery_note" || layout.documentType === "project_handover") && data.total_amount === 0) {
+          return (
+            <div
+              className="w-full h-full p-2.5 rounded text-xs select-text flex flex-col justify-center bg-slate-50 border"
+              style={{
+                borderColor: elem.borderColor || colors.border,
+                ...elementAppearance(elem),
+              }}
+            >
+              <div className="font-bold text-slate-800 text-[11px] mb-1">
+                {layout.documentType === "delivery_note" ? "Goods Receipt Status:" : "Handover Status:"}
+              </div>
+              <div className="text-[10px] text-slate-600">
+                {layout.documentType === "delivery_note"
+                  ? "All dispatch quantities verified and accepted at site."
+                  : "Works inspected and formally accepted with snag list acknowledged."}
+              </div>
+            </div>
+          );
+        }
+
         return (
           <div
             className="w-full h-full overflow-hidden text-xs rounded select-text flex flex-col justify-between"
@@ -1046,8 +1157,8 @@ export default function DynamicDocumentRenderer({
         />
       )}
 
-      {/* Render all visible layout elements */}
-      {layout.elements
+      {/* Render all visible layout elements with dynamic flow-aware geometry */}
+      {effectiveGeometry.elements
         .filter((elem) => {
           if (!elem.visible || (elem.pageNumber !== undefined && elem.pageNumber !== pageNumber)) return false;
           if (isLastPage) return true;
@@ -1055,16 +1166,22 @@ export default function DynamicDocumentRenderer({
         })
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((elem) => {
+          const posX = isDesignerPreview ? elem.x : elem.effectiveX;
+          const posY = isDesignerPreview ? elem.y : elem.effectiveY;
+          const width = isDesignerPreview ? elem.width : elem.effectiveWidth;
+          const height = isDesignerPreview ? elem.height : elem.effectiveHeight;
+
           return (
             <div
               key={elem.id}
               data-element-id={elem.id}
               className={`absolute ${isDesignerPreview ? "pointer-events-none" : ""}`}
               style={{
-                left: `${elem.x}mm`,
-                top: `${elem.y}mm`,
-                width: `${elem.width}mm`,
-                height: `${elem.height}mm`,
+                left: `${posX}mm`,
+                top: `${posY}mm`,
+                width: `${width}mm`,
+                minHeight: elem.type === "line_items" && !isDesignerPreview ? `${height}mm` : undefined,
+                height: elem.type === "line_items" && !isDesignerPreview ? "auto" : `${height}mm`,
                 zIndex: elem.zIndex,
               }}
             >

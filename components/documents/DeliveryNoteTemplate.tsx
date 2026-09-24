@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
-import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
+import { DocumentLayout, loadDocumentLayout } from "@/lib/documentDesigner";
 
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
@@ -53,11 +53,15 @@ export default function DeliveryNoteTemplate({
   deliveryNote,
   onClose,
 }: DeliveryNoteTemplateProps) {
-  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("delivery_note"));
+  const [customLayout, setCustomLayout] = useState<DocumentLayout | null>(null);
 
   useEffect(() => {
     loadDocumentLayout(company?.id, "delivery_note").then((res) => {
-      setCustomLayout(res.layout);
+      if (res.source === "local" || res.source === "database") {
+        setCustomLayout(res.layout);
+      } else {
+        setCustomLayout(null);
+      }
     });
   }, [company?.id]);
 
@@ -83,7 +87,9 @@ export default function DeliveryNoteTemplate({
     total_amount: 0,
     notes: deliveryNote.notes || undefined,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
+  const totalPages = customLayout
+    ? getDocumentPageCount(customLayout, rendererData.items.length)
+    : 1;
   return (
     <DocumentContainer
       docTypeLabel="Delivery Note"

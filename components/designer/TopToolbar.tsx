@@ -26,6 +26,7 @@ import {
   Type,
   PanelLeft,
   PanelRight,
+  ShieldCheck,
 } from "lucide-react";
 import { DocumentTypeId, DOCUMENT_TYPE_OPTIONS } from "@/lib/documentDesigner";
 
@@ -53,6 +54,7 @@ interface TopToolbarProps {
   onSave: () => void;
   onReset: () => void;
   onPreview: () => void;
+  onCheckLayout?: () => void;
   templateName: string;
   onOpenApplyModal: () => void;
   onPrint?: () => void;
@@ -88,6 +90,7 @@ export default function TopToolbar({
   onSave,
   onReset,
   onPreview,
+  onCheckLayout,
   templateName,
   onOpenApplyModal,
   onPrint,
@@ -221,6 +224,18 @@ export default function TopToolbar({
             <RotateCcw size={14} />
             <span className="hidden 2xl:inline">Reset</span>
           </button>
+
+          {onCheckLayout && (
+            <button
+              type="button"
+              onClick={onCheckLayout}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 p-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white cursor-pointer"
+              title="Audit document layout for gaps, overlaps, table sizing, and boundary clearance"
+            >
+              <ShieldCheck size={14} className="text-teal-400" />
+              <span className="hidden xl:inline">Check Layout</span>
+            </button>
+          )}
 
           <button
             type="button"

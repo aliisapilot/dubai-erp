@@ -20,6 +20,7 @@ import ApplyToOthersModal from "./ApplyToOthersModal";
 import DocumentCanvas from "./DocumentCanvas";
 import { CompanyDocInfo } from "../documents/DocHeader";
 import DocumentPreviewModal from "./DocumentPreviewModal";
+import LayoutValidatorModal from "./LayoutValidatorModal";
 import { getDocumentPageCount, SAMPLE_DOCUMENT_DATA } from "../documents/DynamicDocumentRenderer";
 import { processAndOptimizeImage } from "@/lib/documentDesigner";
 import { AlertCircle, CheckCircle2, RotateCcw } from "lucide-react";
@@ -62,6 +63,7 @@ export default function DocumentDesigner() {
   }, []);
 
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showValidatorModal, setShowValidatorModal] = useState(false);
 
   // ── 1. Load Company Profile & Initial Layout ────────────────────────────────
   useEffect(() => {
@@ -610,6 +612,7 @@ export default function DocumentDesigner() {
           onSave={handleSave}
           onReset={() => setShowResetModal(true)}
           onPreview={() => setShowPreviewModal(true)}
+          onCheckLayout={() => setShowValidatorModal(true)}
           onPrint={() => setShowPreviewModal(true)}
           onAddImage={handleAddImage}
           onAddText={() => handleAddCustomElement("custom_text")}
@@ -758,6 +761,27 @@ export default function DocumentDesigner() {
           company={company}
           docTitle={DOCUMENT_TYPE_OPTIONS.find((d) => d.id === selectedDocType)?.label || "Document"}
           totalPages={totalPages}
+        />
+      )}
+
+      {/* Layout Health & Flow Validator Modal */}
+      {showValidatorModal && (
+        <LayoutValidatorModal
+          isOpen={showValidatorModal}
+          onClose={() => setShowValidatorModal(false)}
+          layout={layout}
+          onSelectElement={(elId) => {
+            setSelectedElementId(elId);
+            setShowValidatorModal(false);
+          }}
+          onApplyLayoutFix={(fixedLayout) => {
+            pushHistory(fixedLayout);
+            setNotification({
+              message: "Dynamic follower spacing aligned cleanly.",
+              type: "success",
+            });
+            setTimeout(() => setNotification(null), 3500);
+          }}
         />
       )}
     </div>

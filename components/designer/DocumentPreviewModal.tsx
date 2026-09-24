@@ -3,8 +3,121 @@
 import React, { useEffect, useState } from "react";
 import { Printer, X, ZoomIn, ZoomOut, Maximize2, FileText, ChevronLeft } from "lucide-react";
 import { DocumentLayout } from "@/lib/documentDesigner";
-import DynamicDocumentRenderer, { SAMPLE_DOCUMENT_DATA } from "../documents/DynamicDocumentRenderer";
+import DynamicDocumentRenderer, {
+  SAMPLE_DOCUMENT_DATA,
+  getDocumentPageCount,
+  MockDocumentData,
+} from "../documents/DynamicDocumentRenderer";
 import { CompanyDocInfo } from "../documents/DocHeader";
+
+const TEST_DATASETS: Record<string, { label: string; count: number; data: MockDocumentData }> = {
+  short_1: {
+    label: "1 Item",
+    count: 1,
+    data: {
+      ...SAMPLE_DOCUMENT_DATA,
+      items: [SAMPLE_DOCUMENT_DATA.items[0]],
+      subtotal: SAMPLE_DOCUMENT_DATA.items[0].line_total,
+      vat_amount: SAMPLE_DOCUMENT_DATA.items[0].vat_amount,
+      total_amount: SAMPLE_DOCUMENT_DATA.items[0].line_total + SAMPLE_DOCUMENT_DATA.items[0].vat_amount,
+    },
+  },
+  compact_2: {
+    label: "2 Items",
+    count: 2,
+    data: {
+      ...SAMPLE_DOCUMENT_DATA,
+      items: SAMPLE_DOCUMENT_DATA.items.slice(0, 2),
+      subtotal: SAMPLE_DOCUMENT_DATA.items.slice(0, 2).reduce((s, i) => s + i.line_total, 0),
+      vat_amount: SAMPLE_DOCUMENT_DATA.items.slice(0, 2).reduce((s, i) => s + i.vat_amount, 0),
+      total_amount: SAMPLE_DOCUMENT_DATA.items.slice(0, 2).reduce((s, i) => s + i.line_total + i.vat_amount, 0),
+    },
+  },
+  sample_4: {
+    label: "4 Items",
+    count: 4,
+    data: SAMPLE_DOCUMENT_DATA,
+  },
+  medium_8: {
+    label: "8 Items",
+    count: 8,
+    data: {
+      ...SAMPLE_DOCUMENT_DATA,
+      items: [
+        ...SAMPLE_DOCUMENT_DATA.items,
+        {
+          description: "Heavy Duty Ground Anchor Pins & Tension Ratchet Straps (5 Ton Rated)",
+          quantity: 24,
+          unit: "Sets",
+          unit_price: 180,
+          vat_rate: 5,
+          vat_amount: 216,
+          line_total: 4536,
+        },
+        {
+          description: "Fire Retardant Heavy Gauge White Roof Lining with Decorative Gold Trim",
+          quantity: 1,
+          unit: "Lot",
+          unit_price: 8500,
+          vat_rate: 5,
+          vat_amount: 425,
+          line_total: 8925,
+        },
+        {
+          description: "Industrial Portable Air Conditioning Packaged Unit (10 Ton Capacity)",
+          quantity: 4,
+          unit: "Units",
+          unit_price: 6800,
+          vat_rate: 5,
+          vat_amount: 1360,
+          line_total: 28560,
+        },
+        {
+          description: "Temporary Power Distribution Board & Heavy Gauge Rubberized Cables",
+          quantity: 1,
+          unit: "Job",
+          unit_price: 4500,
+          vat_rate: 5,
+          vat_amount: 225,
+          line_total: 4725,
+        },
+      ],
+      subtotal: 184500,
+      vat_amount: 9225,
+      total_amount: 193725,
+    },
+  },
+  long_18: {
+    label: "18 Items",
+    count: 18,
+    data: {
+      ...SAMPLE_DOCUMENT_DATA,
+      items: Array.from({ length: 18 }, (_, i) => ({
+        description: `Industrial PVC Structural Arch Assembly Component #${i + 1} with UAE Civil Defence Certification`,
+        quantity: i + 1,
+        unit: "Nos",
+        unit_price: 1200 + i * 150,
+        vat_rate: 5,
+        vat_amount: Math.round((1200 + i * 150) * (i + 1) * 0.05),
+        line_total: Math.round((1200 + i * 150) * (i + 1) * 1.05),
+      })),
+      subtotal: 312000,
+      vat_amount: 15600,
+      total_amount: 327600,
+    },
+  },
+  empty_0: {
+    label: "0 Items",
+    count: 0,
+    data: {
+      ...SAMPLE_DOCUMENT_DATA,
+      items: [],
+      subtotal: 0,
+      vat_amount: 0,
+      total_amount: 0,
+    },
+  },
+};
 
 interface DocumentPreviewModalProps {
   isOpen: boolean;
@@ -12,7 +125,7 @@ interface DocumentPreviewModalProps {
   layout: DocumentLayout;
   company: CompanyDocInfo | null;
   docTitle: string;
-  totalPages: number;
+  totalPages?: number;
 }
 
 export default function DocumentPreviewModal({
@@ -21,8 +134,8 @@ export default function DocumentPreviewModal({
   layout,
   company,
   docTitle,
-  totalPages,
 }: DocumentPreviewModalProps) {
+  const [selectedDatasetKey, setSelectedDatasetKey] = useState<string>("sample_4");
   const [scale, setScale] = useState<number>(() => {
     if (typeof window !== "undefined") {
       const vh = window.innerHeight;
@@ -31,6 +144,9 @@ export default function DocumentPreviewModal({
     }
     return 0.85;
   });
+
+  const activeDataset = TEST_DATASETS[selectedDatasetKey]?.data || SAMPLE_DOCUMENT_DATA;
+  const computedTotalPages = getDocumentPageCount(layout, activeDataset.items.length);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -68,9 +184,24 @@ export default function DocumentPreviewModal({
                 A4 Print Preview
               </span>
             </h2>
-            <p className="text-[11px] text-slate-400">
-              {totalPages} Page{totalPages > 1 ? "s" : ""} • Exact 210mm × 297mm
-            </p>
+            <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+              <span>{computedTotalPages} Page{computedTotalPages > 1 ? "s" : ""}</span>
+              <span>•</span>
+              <div className="flex items-center gap-1">
+                <span>Dataset:</span>
+                <select
+                  value={selectedDatasetKey}
+                  onChange={(e) => setSelectedDatasetKey(e.target.value)}
+                  className="bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-[11px] text-amber-300 font-semibold cursor-pointer outline-none"
+                >
+                  {Object.entries(TEST_DATASETS).map(([key, info]) => (
+                    <option key={key} value={key}>
+                      {info.label} ({info.count} items)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -153,7 +284,7 @@ export default function DocumentPreviewModal({
 
       {/* ── Document Scroll Area ──────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto overflow-x-auto p-8 flex flex-col items-center gap-8 print:p-0 print:m-0 print:overflow-visible print:block print:w-[210mm] print:bg-white">
-        {Array.from({ length: totalPages }, (_, index) => {
+        {Array.from({ length: computedTotalPages }, (_, index) => {
           const pageNum = index + 1;
           return (
             <div
@@ -164,7 +295,7 @@ export default function DocumentPreviewModal({
               <div className="no-print print-hide mb-2 text-xs font-medium text-slate-400 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-blue-400" />
                 <span>
-                  Page {pageNum} of {totalPages}
+                  Page {pageNum} of {computedTotalPages}
                 </span>
               </div>
 
@@ -180,11 +311,11 @@ export default function DocumentPreviewModal({
                 <DynamicDocumentRenderer
                   layout={layout}
                   company={company}
-                  data={SAMPLE_DOCUMENT_DATA}
+                  data={activeDataset}
                   isDesignerPreview={false}
                   scale={1}
                   pageNumber={pageNum}
-                  totalPages={totalPages}
+                  totalPages={computedTotalPages}
                 />
               </div>
             </div>
