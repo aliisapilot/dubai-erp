@@ -129,6 +129,7 @@ export default function QuotationsPage() {
     setLines(ls => ls.map((l, i) => i !== idx ? l : recalc({
       ...l, product_id: productId,
       description: prod?.name || l.description,
+      unit: prod?.unit || l.unit || "Nos",
       unit_price: prod?.selling_price ?? l.unit_price,
       vat_rate: prod?.vat_rate ?? 5,
       vat_category: "Standard Rated",

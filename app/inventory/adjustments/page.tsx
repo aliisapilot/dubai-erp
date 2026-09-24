@@ -91,7 +91,6 @@ export default function StockAdjustmentsPage() {
         supabase
           .from("products")
           .select("id, name, sku, unit, cost_price, current_stock")
-          .eq("company_id", companyId)
           .eq("active", true)
           .order("name", { ascending: true })
       ]);

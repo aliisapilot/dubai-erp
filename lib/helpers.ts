@@ -125,7 +125,9 @@ export async function generateDocNumber(companyId: string, prefix: string): Prom
 /** Format AED currency */
 export function fmtAED(value: number | null | undefined): string {
   if (value == null) return "—";
-  return `AED ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+  const num = Number(value);
+  if (isNaN(num) || !isFinite(num)) return "AED 0.00";
+  return `AED ${num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
 }
 
 /** Format date as DD/MM/YYYY */
@@ -141,14 +143,19 @@ export function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Calculate line item totals */
+/** Calculate line item totals with exact 2-decimal UAE VAT rounding and NaN protection */
 export function calcLineItem(qty: number, unitPrice: number, discountPct: number, vatRate: number) {
-  const gross = qty * unitPrice;
-  const discountAmt = gross * (discountPct / 100);
-  const taxable = gross - discountAmt;
-  const vatAmount = taxable * (vatRate / 100);
-  const lineTotal = taxable + vatAmount;
-  return { taxable, vatAmount, lineTotal };
+  const q = Number(qty) || 0;
+  const p = Number(unitPrice) || 0;
+  const d = Math.max(0, Math.min(100, Number(discountPct) || 0));
+  const v = Math.max(0, Number(vatRate) || 0);
+
+  const gross = Math.round(q * p * 100) / 100;
+  const discountAmt = Math.round(gross * (d / 100) * 100) / 100;
+  const taxable = Math.max(0, Math.round((gross - discountAmt) * 100) / 100);
+  const vatAmount = Math.round(taxable * (v / 100) * 100) / 100;
+  const lineTotal = Math.round((taxable + vatAmount) * 100) / 100;
+  return { taxable, vatAmount, lineTotal, gross, discountAmt };
 }
 
 /** Status color classes */
@@ -194,3 +201,86 @@ export const VAT_CATEGORIES = [
 export const PAYMENT_METHODS = [
   "Cash", "Cheque", "Bank Transfer", "Credit Card", "Debit Card",
 ];
+
+export const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+export interface ParsedPayrollMonth {
+  year: number;
+  month: number;
+  dateStr: string; // YYYY-MM-DD
+  periodStr: string; // YYYY-MM
+  label: string; // e.g. "September 2026"
+}
+
+/**
+ * Robustly parses a payroll month value which could be:
+ * - An ISO date string ("2026-09-01")
+ * - A period string ("2026-09")
+ * - A month number (1 - 12)
+ * - null / undefined (falls back to current month/year)
+ */
+export function parsePayrollMonth(
+  val: string | number | null | undefined,
+  fallbackYear?: number | null
+): ParsedPayrollMonth {
+  const now = new Date();
+  const defaultYear = fallbackYear && fallbackYear > 1900 ? fallbackYear : now.getFullYear();
+
+  if (!val) {
+    const m = now.getMonth() + 1;
+    return {
+      year: defaultYear,
+      month: m,
+      dateStr: `${defaultYear}-${String(m).padStart(2, "0")}-01`,
+      periodStr: `${defaultYear}-${String(m).padStart(2, "0")}`,
+      label: `${MONTH_NAMES[m - 1] || "Unknown"} ${defaultYear}`,
+    };
+  }
+
+  // Handle ISO date format (YYYY-MM-DD) or (YYYY-MM)
+  if (typeof val === "string" && val.includes("-")) {
+    const parts = val.split("-");
+    const y = parseInt(parts[0], 10) || defaultYear;
+    const m = Math.min(12, Math.max(1, parseInt(parts[1], 10) || (now.getMonth() + 1)));
+    return {
+      year: y,
+      month: m,
+      dateStr: `${y}-${String(m).padStart(2, "0")}-01`,
+      periodStr: `${y}-${String(m).padStart(2, "0")}`,
+      label: `${MONTH_NAMES[m - 1] || "Unknown"} ${y}`,
+    };
+  }
+
+  // Handle numeric month (1 - 12)
+  const num = Number(val);
+  const m = (!isNaN(num) && num >= 1 && num <= 12) ? num : (now.getMonth() + 1);
+  const y = defaultYear;
+  return {
+    year: y,
+    month: m,
+    dateStr: `${y}-${String(m).padStart(2, "0")}-01`,
+    periodStr: `${y}-${String(m).padStart(2, "0")}`,
+    label: `${MONTH_NAMES[m - 1] || "Unknown"} ${y}`,
+  };
+}
+
+/** Ensure date values are safe ISO YYYY-MM-DD strings for database writes */
+export function toISODate(dateVal: string | Date | null | undefined): string | null {
+  if (!dateVal) return null;
+  if (typeof dateVal === "string") {
+    const trimmed = dateVal.trim();
+    if (!trimmed) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+    return null;
+  }
+  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
+    return dateVal.toISOString().split("T")[0];
+  }
+  return null;
+}
+

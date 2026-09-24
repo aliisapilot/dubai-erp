@@ -11,13 +11,13 @@ import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn?: string | null; address?: string | null };
 type Project = { id: string; project_number: string; name: string };
-type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null };
-type LineItem = { id?: string; product_id: string; description: string; quantity: number; unit_price: number; discount_pct: number; vat_rate: number; line_total: number; vat_amount: number; sort_order: number };
+type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; unit?: string | null };
+type LineItem = { id?: string; product_id: string; description: string; quantity: number; unit?: string; unit_price: number; discount_pct: number; vat_rate: number; line_total: number; vat_amount: number; sort_order: number };
 // DB: proforma_invoices has: valid_until (not due_date), no project_id, no payment_terms
 type PI = { id: string; company_id: string; proforma_number: string | null; customer_id: string | null; quotation_id: string | null; proforma_date: string | null; valid_until: string | null; status: string | null; subtotal: number | null; vat_amount: number | null; total_amount: number | null; notes: string | null; created_at: string | null };
 type PIForm = { customer_id: string; proforma_date: string; valid_until: string; status: string; payment_terms: string; notes: string };
 const emptyForm: PIForm = { customer_id:"", proforma_date: todayISO(), valid_until:"", status:"draft", payment_terms:"30 days", notes:"" };
-const emptyLine = (): LineItem => ({ product_id:"", description:"", quantity:1, unit_price:0, discount_pct:0, vat_rate:5, line_total:0, vat_amount:0, sort_order:0 });
+const emptyLine = (): LineItem => ({ product_id:"", description:"", quantity:1, unit:"Nos", unit_price:0, discount_pct:0, vat_rate:5, line_total:0, vat_amount:0, sort_order:0 });
 const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none";
 const sel = inp + " appearance-none";
 function recalc(item: LineItem): LineItem { const { vatAmount, lineTotal } = calcLineItem(item.quantity, item.unit_price, item.discount_pct, item.vat_rate); return { ...item, line_total: lineTotal, vat_amount: vatAmount }; }
@@ -59,7 +59,7 @@ function PIContent() {
       supabase.from("proforma_invoices").select("*").order("created_at", { ascending: false }),
       supabase.from("customers").select("id, name, customer_code, trn, address").eq("active", true).order("name"),
       supabase.from("projects").select("id, project_number, name").order("project_number"),
-      supabase.from("products").select("id, name, sku, selling_price, vat_rate").eq("active", true).order("name"),
+      supabase.from("products").select("id, name, sku, selling_price, vat_rate, unit").eq("active", true).order("name"),
       getCurrentCompany(),
     ]);
     setInvoices((pi || []) as PI[]);
@@ -110,7 +110,7 @@ function PIContent() {
 
   function onProductSelect(idx: number, pid: string) {
     const prod = products.find(p => p.id === pid);
-    setLines(ls => ls.map((l,i) => i!==idx?l:recalc({ ...l, product_id: pid, description: prod?.name||l.description, unit_price: prod?.selling_price??l.unit_price, vat_rate: prod?.vat_rate??5 })));
+    setLines(ls => ls.map((l,i) => i!==idx?l:recalc({ ...l, product_id: pid, description: prod?.name||l.description, unit: prod?.unit || l.unit || "Nos", unit_price: prod?.selling_price??l.unit_price, vat_rate: prod?.vat_rate??5 })));
   }
   function updateLine(idx: number, u: Partial<LineItem>) { setLines(ls => ls.map((l,i) => i!==idx?l:recalc({...l,...u}))); }
   function addLine() { setLines(ls => [...ls, emptyLine()]); }

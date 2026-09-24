@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { FileText, Search, Loader2, Printer, Receipt } from "lucide-react";
-import { statusClass, fmtAED, getCurrentCompany } from "@/lib/helpers";
+import { statusClass, fmtAED, getCurrentCompany, parsePayrollMonth, MONTH_NAMES } from "@/lib/helpers";
 import SalarySlipTemplate, { SalarySlipData } from "@/components/documents/SalarySlipTemplate";
 import EmployeePaymentVoucherTemplate, { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -27,7 +27,7 @@ type SS = {
   employee_id: string | null;
   payroll_period?: string | null;
   payroll_year?: number | null;
-  payroll_month: number | null;
+  payroll_month: string | number | null;
   basic_salary: number | null;
   housing_allowance?: number | null;
   transport_allowance?: number | null;
@@ -101,6 +101,7 @@ export default function PayslipsPage() {
   function handleOpenSlip(r: SS) {
     const emp = empMap[r.employee_id || ""];
     const now = new Date();
+    const parsed = parsePayrollMonth(r.payroll_month, r.payroll_year);
     const slipData: SalarySlipData = {
       employee_name: emp?.first_name || "Employee",
       employee_id: emp?.employee_number || emp?.id?.slice(0, 8) || "EMP-001",
@@ -110,8 +111,8 @@ export default function PayslipsPage() {
       account_number: emp?.account_number || emp?.iban || null,
       bank_name: emp?.bank_name || null,
       iban: emp?.iban || null,
-      month: r.payroll_month || 1,
-      year: r.payroll_year || now.getFullYear(),
+      month: parsed.month,
+      year: r.payroll_year || parsed.year,
       basic_salary: Number(r.basic_salary) || 0,
       housing_allowance: Number(r.housing_allowance) || 0,
       transport_allowance: Number(r.transport_allowance) || 0,
@@ -133,7 +134,8 @@ export default function PayslipsPage() {
   function handleOpenVoucher(r: SS) {
     const emp = empMap[r.employee_id || ""];
     const now = new Date();
-    const voucherNumber = `PV-${r.payroll_year || now.getFullYear()}${String(r.payroll_month || now.getMonth() + 1).padStart(2, "0")}-${(emp?.employee_number || "EMP").replace(/[^a-zA-Z0-9]/g, "")}`;
+    const parsed = parsePayrollMonth(r.payroll_month, r.payroll_year);
+    const voucherNumber = `PV-${parsed.year}${String(parsed.month).padStart(2, "0")}-${(emp?.employee_number || "EMP").replace(/[^a-zA-Z0-9]/g, "")}`;
 
     const voucherData: PaymentVoucherData = {
       voucher_number: voucherNumber,
@@ -141,13 +143,13 @@ export default function PayslipsPage() {
       employee_name: emp?.first_name || "Employee",
       employee_id: emp?.employee_number || emp?.id?.slice(0, 8) || "EMP-001",
       designation: emp?.designation || "Staff",
-      month: r.payroll_month || 1,
-      year: r.payroll_year || now.getFullYear(),
+      month: parsed.month,
+      year: r.payroll_year || parsed.year,
       net_amount: Number(r.net_salary) || 0,
       payment_method: r.payment_method || "Bank Transfer",
       bank_reference: emp?.iban ? `WPS IBAN: ${emp.iban}` : (emp?.account_number || "Cash / Cheque Disbursement"),
       bank_name: emp?.bank_name || null,
-      notes: `Disbursement of net salary for ${MONTHS[(r.payroll_month || 1) - 1]} ${r.payroll_year || now.getFullYear()}`,
+      notes: `Disbursement of net salary for ${parsed.label}`,
       prepared_by: "HR & Accounts",
       approved_by: "Management",
     };
@@ -156,9 +158,10 @@ export default function PayslipsPage() {
   }
 
   const filtered = records.filter(r => {
-    if (filterPeriod && String(r.payroll_month) !== filterPeriod) return false;
+    const parsed = parsePayrollMonth(r.payroll_month, r.payroll_year);
+    if (filterPeriod && parsed.periodStr !== filterPeriod) return false;
     const empName = empMap[r.employee_id || ""]?.first_name || "";
-    return [empName, String(r.payroll_month)].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
+    return [empName, parsed.label].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
 
   return (
@@ -225,7 +228,7 @@ export default function PayslipsPage() {
                       <div className="text-xs text-slate-400">{empMap[r.employee_id || ""]?.employee_number || ""} · {empMap[r.employee_id || ""]?.designation || ""}</div>
                     </td>
                     <td className="px-4 py-3 text-slate-600 font-medium">
-                      {r.payroll_month ? `${MONTHS[(r.payroll_month || 1) - 1]} ${r.payroll_year || new Date().getFullYear()}` : "—"}
+                      {r.payroll_month ? parsePayrollMonth(r.payroll_month, r.payroll_year).label : "—"}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {r.payment_method || "Bank Transfer"}

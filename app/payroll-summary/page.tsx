@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { BarChart3, Loader2 } from "lucide-react";
 import { fmtAED } from "@/lib/helpers";
 
-type SS = { id: string; employee_id: string | null; payroll_month: number | null; gross_salary: number | null; net_salary: number | null; overtime_amount: number | null; status: string | null };
+type SS = { id: string; employee_id: string | null; payroll_month: string | number | null; gross_salary: number | null; net_salary: number | null; overtime_amount: number | null; status: string | null };
 type Employee = { id: string; first_name: string | null; name?: string | null };
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const now = new Date();
@@ -17,8 +17,13 @@ export default function PayrollSummaryPage() {
   const [loading, setLoading] = useState(true);
 
   async function load() {
+    setLoading(true);
+    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
     const [{ data: ss }, { data: emps }] = await Promise.all([
-      supabase.from("salary_statements").select("*").eq("payroll_month", month),
+      supabase.from("salary_statements").select("*").gte("payroll_month", startDate).lte("payroll_month", endDate),
       supabase.from("employees").select("id, first_name").order("first_name"),
     ]);
     setRecords((ss || []) as SS[]);

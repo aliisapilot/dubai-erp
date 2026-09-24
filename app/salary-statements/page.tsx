@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, Banknote, X, Save, Loader2, Pencil, Eye, Printer, Receipt, Trash2 } from "lucide-react";
-import { getCompanyId, getCurrentCompany, statusClass, fmtAED } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, statusClass, fmtAED, parsePayrollMonth, MONTH_NAMES } from "@/lib/helpers";
 import SalarySlipTemplate, { SalarySlipData } from "@/components/documents/SalarySlipTemplate";
 import EmployeePaymentVoucherTemplate, { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -28,7 +28,7 @@ type SS = {
   employee_id: string | null;
   payroll_period?: string | null;
   payroll_year?: number | null;
-  payroll_month: number | null;
+  payroll_month: string | number | null;
   basic_salary: number | null;
   housing_allowance?: number | null;
   transport_allowance?: number | null;
@@ -197,10 +197,11 @@ export default function SalaryStatementsPage() {
     setError("");
     setSuccess("");
     setEditing(ss);
+    const parsed = parsePayrollMonth(ss.payroll_month, ss.payroll_year);
     setForm({
       employee_id: ss.employee_id || "",
-      payroll_year: String(ss.payroll_year || now.getFullYear()),
-      payroll_month: String(ss.payroll_month || (now.getMonth() + 1)),
+      payroll_year: String(ss.payroll_year || parsed.year),
+      payroll_month: String(parsed.month),
       basic_salary: String(ss.basic_salary ?? 0),
       housing_allowance: String(ss.housing_allowance ?? 0),
       transport_allowance: String(ss.transport_allowance ?? 0),
@@ -240,7 +241,9 @@ export default function SalaryStatementsPage() {
     setSuccess("");
 
     const { gross, net } = calcTotals(form);
+    const yr = Number(form.payroll_year) || now.getFullYear();
     const mo = Number(form.payroll_month) || (now.getMonth() + 1);
+    const payrollDate = `${yr}-${String(mo).padStart(2, "0")}-01`;
 
     const cid = await getCompanyId();
     const otherDeductions = (Number(form.other_deductions) || 0) +
@@ -251,7 +254,7 @@ export default function SalaryStatementsPage() {
     const payload = {
       company_id: cid,
       employee_id: form.employee_id,
-      payroll_month: mo,
+      payroll_month: payrollDate,
       basic_salary: Number(form.basic_salary) || 0,
       friday_pay: Number(form.friday_pay) || 0,
       overtime_amount: Number(form.overtime_amount) || 0,
@@ -305,6 +308,7 @@ export default function SalaryStatementsPage() {
 
   function handleOpenSlip(r: SS) {
     const emp = empMap[r.employee_id || ""];
+    const parsed = parsePayrollMonth(r.payroll_month, r.payroll_year);
     const slipData: SalarySlipData = {
       employee_name: emp?.first_name || "Employee",
       employee_id: emp?.employee_number || r.employee_id || "EMP-001",
@@ -314,8 +318,8 @@ export default function SalaryStatementsPage() {
       account_number: emp?.account_number,
       bank_name: emp?.bank_name,
       iban: emp?.iban,
-      month: r.payroll_month || (now.getMonth() + 1),
-      year: r.payroll_year || now.getFullYear(),
+      month: parsed.month,
+      year: r.payroll_year || parsed.year,
       basic_salary: r.basic_salary ?? 0,
       housing_allowance: r.housing_allowance ?? 0,
       transport_allowance: r.transport_allowance ?? 0,
@@ -336,19 +340,20 @@ export default function SalaryStatementsPage() {
 
   function handleOpenVoucher(r: SS) {
     const emp = empMap[r.employee_id || ""];
+    const parsed = parsePayrollMonth(r.payroll_month, r.payroll_year);
     const vData: PaymentVoucherData = {
-      voucher_number: `PV-SAL-${now.getFullYear()}${String(r.payroll_month || now.getMonth() + 1).padStart(2, "0")}-${(emp?.employee_number || "EMP").replace(/[^a-zA-Z0-9]/g, "")}`,
+      voucher_number: `PV-SAL-${parsed.year}${String(parsed.month).padStart(2, "0")}-${(emp?.employee_number || "EMP").replace(/[^a-zA-Z0-9]/g, "")}`,
       voucher_date: r.payment_date || now.toISOString().split("T")[0],
       employee_name: emp?.first_name || "Employee",
       employee_id: emp?.employee_number || r.employee_id || "EMP-001",
       designation: emp?.designation,
-      month: r.payroll_month || (now.getMonth() + 1),
-      year: r.payroll_year || now.getFullYear(),
+      month: parsed.month,
+      year: r.payroll_year || parsed.year,
       net_amount: r.net_salary ?? 0,
       payment_method: r.payment_method || "Bank Transfer",
       bank_name: emp?.bank_name,
       bank_reference: r.payment_method === "Bank Transfer" ? (emp?.iban || emp?.account_number || undefined) : undefined,
-      notes: `Salary settlement for ${MONTHS[(r.payroll_month || 1) - 1]} ${r.payroll_year || now.getFullYear()} per approved payroll statement`,
+      notes: `Salary settlement for ${parsed.label} per approved payroll statement`,
       prepared_by: "HR & Accounts",
       approved_by: "Finance Manager",
     };
@@ -357,9 +362,10 @@ export default function SalaryStatementsPage() {
 
   const filtered = records.filter(r => {
     if (filterEmp && r.employee_id !== filterEmp) return false;
-    if (filterPeriod && String(r.payroll_month) !== filterPeriod) return false;
+    const parsed = parsePayrollMonth(r.payroll_month, r.payroll_year);
+    if (filterPeriod && parsed.periodStr !== filterPeriod) return false;
     const empName = empMap[r.employee_id||""]?.first_name || "";
-    return [empName, String(r.payroll_month), r.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
+    return [empName, parsed.label, r.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
 
   return (
@@ -397,7 +403,7 @@ export default function SalaryStatementsPage() {
                       <div className="font-semibold text-slate-900">{empMap[r.employee_id||""]?.first_name || "—"}</div>
                       <div className="text-xs text-slate-400">{empMap[r.employee_id||""]?.employee_number||""} · {empMap[r.employee_id||""]?.designation||""}</div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{r.payroll_month ? `${MONTHS[(r.payroll_month||1)-1]} ${now.getFullYear()}` : "—"}</td>
+                    <td className="px-4 py-3 text-slate-600">{r.payroll_month ? parsePayrollMonth(r.payroll_month, r.payroll_year).label : "—"}</td>
                     <td className="px-4 py-3 text-right text-slate-700">{fmtAED(r.gross_salary)}</td>
                     <td className="px-4 py-3 text-right text-red-600">- {fmtAED((r.gross_salary || 0) - (r.net_salary || 0))}</td>
                     <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">{fmtAED(r.net_salary)}</td>
@@ -489,7 +495,7 @@ export default function SalaryStatementsPage() {
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={()=>setViewRec(null)} />
           <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl p-6 space-y-4">
             <div className="flex justify-between"><h2 className="text-lg font-bold text-slate-900">Salary Statement</h2><button onClick={()=>setViewRec(null)}><X size={20} /></button></div>
-            <div className="flex justify-between text-sm"><span className="text-slate-500">{emp?.first_name || "—"} ({emp?.employee_number||"—"})</span><span className="font-semibold text-slate-700">{viewRec.payroll_month ? `${MONTHS[(viewRec.payroll_month||1)-1]} ${now.getFullYear()}` : "—"}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-slate-500">{emp?.first_name || "—"} ({emp?.employee_number||"—"})</span><span className="font-semibold text-slate-700">{viewRec.payroll_month ? parsePayrollMonth(viewRec.payroll_month, viewRec.payroll_year).label : "—"}</span></div>
             <table className="w-full text-sm"><tbody>
               {[["Basic Salary",viewRec.basic_salary],["Housing Allowance",viewRec.housing_allowance],["Transport Allowance",viewRec.transport_allowance],["Other Allowances",viewRec.other_allowances],["Friday / Weekend Pay",viewRec.friday_pay],["Overtime",viewRec.overtime_amount],["Bonus",viewRec.bonus]].map(([l,v])=>(
                 <tr key={String(l)}><td className="py-1 text-slate-500">{l}</td><td className="py-1 text-right text-slate-900">{fmtAED(v as number)}</td></tr>

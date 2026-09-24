@@ -14,9 +14,11 @@ import { CompanyDocInfo } from "@/components/documents/DocHeader";
 type Supplier = { id: string; name: string | null; trn: string | null; address: string | null };
 type PO = { id: string; purchase_order_number?: string | null; total_amount: number | null };
 type Project = { id: string; name: string | null; project_number: string | null };
+type Product = { id: string; name: string; sku: string | null; cost_price: number | null; selling_price: number | null; vat_rate: number | null; unit: string | null };
 
 type BillItem = {
   id?: string;
+  product_id?: string | null;
   description: string;
   quantity: number;
   unit: string;
@@ -87,6 +89,7 @@ export default function SupplierBillsPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [pos, setPos] = useState<PO[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
 
   const [form, setForm] = useState<BillForm>(emptyForm);
@@ -109,17 +112,19 @@ export default function SupplierBillsPage() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [{ data: bList }, { data: supList }, { data: poList }, { data: prjList }, co] = await Promise.all([
+      const [{ data: bList }, { data: supList }, { data: poList }, { data: prjList }, { data: prodList }, co] = await Promise.all([
         supabase.from("supplier_bills").select("*").order("bill_date", { ascending: false }),
         supabase.from("suppliers").select("id, name, trn, address").eq("active", true).order("name"),
         supabase.from("purchase_orders").select("id, purchase_order_number, total_amount").order("order_date", { ascending: false }),
         supabase.from("projects").select("id, name, project_number").order("created_at", { ascending: false }),
+        supabase.from("products").select("id, name, sku, cost_price, selling_price, vat_rate, unit").eq("active", true).order("name"),
         getCurrentCompany(),
       ]);
       setBills((bList || []) as Bill[]);
       setSuppliers((supList || []) as Supplier[]);
       setPos((poList || []) as PO[]);
       setProjects((prjList || []) as Project[]);
+      setProducts((prodList || []) as Product[]);
       if (co) setCompany(co as CompanyDocInfo);
     } catch (err: unknown) {
       console.error(err);
@@ -138,6 +143,23 @@ export default function SupplierBillsPage() {
     setLines(ls => ls.map((l, i) => {
       if (i !== idx) return l;
       const updated = { ...l, ...u };
+      const { vatAmount, lineTotal } = calcLineItem(updated.quantity, updated.unit_price, 0, updated.vat_rate);
+      return { ...updated, vat_amount: vatAmount, line_total: lineTotal };
+    }));
+  }
+
+  function onProductSelect(idx: number, productId: string) {
+    const prod = products.find(p => p.id === productId);
+    setLines(ls => ls.map((l, i) => {
+      if (i !== idx) return l;
+      const updated = {
+        ...l,
+        product_id: productId,
+        description: prod?.name || l.description,
+        unit: prod?.unit || l.unit || "Nos",
+        unit_price: prod?.cost_price ?? l.unit_price,
+        vat_rate: prod?.vat_rate ?? 5,
+      };
       const { vatAmount, lineTotal } = calcLineItem(updated.quantity, updated.unit_price, 0, updated.vat_rate);
       return { ...updated, vat_amount: vatAmount, line_total: lineTotal };
     }));
@@ -615,6 +637,7 @@ export default function SupplierBillsPage() {
                   <table className="w-full text-xs text-left">
                     <thead className="bg-slate-100 text-slate-700 font-semibold">
                       <tr>
+                        <th className="p-2 w-48">Product</th>
                         <th className="p-2">Description</th>
                         <th className="p-2 w-16 text-center">Qty</th>
                         <th className="p-2 w-16 text-center">Unit</th>
@@ -627,6 +650,20 @@ export default function SupplierBillsPage() {
                     <tbody className="divide-y divide-slate-200 bg-white">
                       {lines.map((l, i) => (
                         <tr key={i}>
+                          <td className="p-2">
+                            <select
+                              value={l.product_id || ""}
+                              onChange={e => onProductSelect(i, e.target.value)}
+                              className={sel}
+                            >
+                              <option value="">— Select Product —</option>
+                              {products.map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}{p.sku ? ` (${p.sku})` : ""}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
                           <td className="p-2">
                             <input
                               type="text"

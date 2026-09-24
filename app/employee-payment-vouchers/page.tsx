@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, getCurrentCompany, fmtAED } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, fmtAED, parsePayrollMonth, MONTH_NAMES } from "@/lib/helpers";
 import {
   FileCheck2, Search, ArrowLeft, Printer, X, Banknote,
   Users2, CheckCircle2, Filter
@@ -27,7 +27,7 @@ type SalaryStatement = {
   id: string;
   employee_id: string | null;
   payroll_year?: number | null;
-  payroll_month: number | null;
+  payroll_month: string | number | null;
   net_salary: number | null;
   payment_date: string | null;
   payment_method: string | null;
@@ -86,8 +86,9 @@ export default function EmployeePaymentVouchersPage() {
 
   function handleOpenVoucher(ss: SalaryStatement, idx: number) {
     const emp = ss.employee_id ? empMap[ss.employee_id] : null;
-    const year = ss.payroll_year || new Date().getFullYear();
-    const month = ss.payroll_month || (new Date().getMonth() + 1);
+    const parsed = parsePayrollMonth(ss.payroll_month, ss.payroll_year);
+    const year = ss.payroll_year || parsed.year;
+    const month = parsed.month;
     const voucherNo = `EPV-${year}-${String(month).padStart(2, "0")}-${String(idx + 1).padStart(3, "0")}`;
 
     setActiveVoucher({
@@ -113,7 +114,8 @@ export default function EmployeePaymentVouchersPage() {
     const empNo = emp?.employee_number?.toLowerCase() || "";
     const q = search.toLowerCase();
     const matchSearch = name.includes(q) || empNo.includes(q);
-    const matchMonth = monthFilter === "all" || String(ss.payroll_month) === monthFilter;
+    const parsed = parsePayrollMonth(ss.payroll_month, ss.payroll_year);
+    const matchMonth = monthFilter === "all" || String(parsed.month) === monthFilter;
     return matchSearch && matchMonth;
   });
 
@@ -231,7 +233,7 @@ export default function EmployeePaymentVouchersPage() {
               ) : (
                 filtered.map((ss, idx) => {
                   const emp = ss.employee_id ? empMap[ss.employee_id] : null;
-                  const monthName = ss.payroll_month ? MONTHS[ss.payroll_month - 1] : "-";
+                  const parsed = parsePayrollMonth(ss.payroll_month, ss.payroll_year);
 
                   return (
                     <tr key={ss.id} className="hover:bg-slate-50/75 transition-colors">
@@ -242,7 +244,7 @@ export default function EmployeePaymentVouchersPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3 font-medium text-slate-800">
-                        {monthName} {ss.payroll_year || new Date().getFullYear()}
+                        {parsed.label}
                       </td>
                       <td className="px-4 py-3 text-slate-700">
                         {ss.payment_method || "Bank Transfer"}
