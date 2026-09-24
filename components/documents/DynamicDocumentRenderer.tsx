@@ -1160,9 +1160,8 @@ export default function DynamicDocumentRenderer({
       {/* Render all visible layout elements with dynamic flow-aware geometry */}
       {effectiveGeometry.elements
         .filter((elem) => {
-          if (!elem.visible || (elem.pageNumber !== undefined && elem.pageNumber !== pageNumber)) return false;
-          if (isLastPage) return true;
-          return !["amount_in_words", "totals", "bank_details", "payment_terms", "company_signature", "company_stamp"].includes(elem.type);
+          if (!elem.visible || elem.effectiveVisible === false) return false;
+          return true;
         })
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((elem) => {

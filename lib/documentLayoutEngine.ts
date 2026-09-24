@@ -17,6 +17,7 @@ export interface EffectiveLayoutElement extends LayoutElement {
   effectiveHeight: number;
   isFollower?: boolean;
   shiftY?: number;
+  effectiveVisible?: boolean;
 }
 
 export interface PaginationPlan {
@@ -239,8 +240,8 @@ export function computePaginationPlan(
 export function computeEffectiveLayout(
   layout: DocumentLayout,
   pageItemsCount: number,
-  _isLastPage: boolean,
-  _pageNumber: number = 1
+  isLastPage: boolean,
+  pageNumber: number = 1
 ): {
   elements: EffectiveLayoutElement[];
   actualTableHeight: number;
@@ -260,6 +261,9 @@ export function computeEffectiveLayout(
   const footerBaselineY = layout.page.heightMm - layout.page.margins.bottom;
 
   const elements: EffectiveLayoutElement[] = layout.elements.map((el) => {
+    // Check if element is page-specific
+    const pageMatches = el.pageNumber === undefined || el.pageNumber === pageNumber;
+
     // 1. Table itself: dynamic height, fixed X and Y
     if (table && el.id === table.id) {
       return {
@@ -270,6 +274,7 @@ export function computeEffectiveLayout(
         effectiveHeight: actualTableHeight,
         isFollower: false,
         shiftY: 0,
+        effectiveVisible: el.visible && pageMatches,
       };
     }
 
@@ -287,6 +292,7 @@ export function computeEffectiveLayout(
         effectiveHeight: el.height,
         isFollower: false,
         shiftY: naturalY - el.y,
+        effectiveVisible: el.visible && pageMatches,
       };
     }
 
@@ -300,6 +306,7 @@ export function computeEffectiveLayout(
         effectiveHeight: el.height,
         isFollower: false,
         shiftY: 0,
+        effectiveVisible: el.visible && pageMatches,
       };
     }
 
@@ -312,6 +319,9 @@ export function computeEffectiveLayout(
         actualTableBottom + relOffsetFromTable
       );
 
+      // Follower cards are only visible on the last page of multi-page documents
+      const followerVisibleOnThisPage = isLastPage;
+
       return {
         ...el,
         effectiveX: el.x,
@@ -320,6 +330,7 @@ export function computeEffectiveLayout(
         effectiveHeight: el.height,
         isFollower: true,
         shiftY: effectiveY - el.y,
+        effectiveVisible: el.visible && pageMatches && followerVisibleOnThisPage,
       };
     }
 
@@ -332,6 +343,7 @@ export function computeEffectiveLayout(
       effectiveHeight: el.height,
       isFollower: false,
       shiftY: 0,
+      effectiveVisible: el.visible && pageMatches,
     };
   });
 
@@ -475,34 +487,39 @@ export function validateDocumentLayout(
     }
   }
 
-  // 3. Dynamic Table Expansion Test
+  // 3. Dynamic Table Expansion & Multi-Page Clearance Test
   const table = visibleElements.find((el) => el.type === "line_items");
   const footer = visibleElements.find((el) => el.type === "footer");
 
   if (table && footer) {
-    const renderedTableHeight = calculateTableRenderedHeight(table, sampleItemsCount);
-    const tableBottom = table.y + renderedTableHeight;
+    const pagination = computePaginationPlan(layout, sampleItemsCount);
 
-    // Check if table alone collides with footer
-    if (tableBottom > footer.y - 4) {
+    // Check if even a single page cannot fit minimum rows
+    const minRowsFit = pagination.pageItemRanges[0]?.itemCount || 0;
+    if (minRowsFit === 0 && sampleItemsCount > 0) {
       issues.push({
-        id: "table_footer_collision",
+        id: "table_no_space",
         elementId: table.id,
         elementLabel: table.label,
-        severity: "warning",
+        severity: "error",
         category: "table",
-        message: `Line items table with ${sampleItemsCount} items extends to ${tableBottom.toFixed(1)}mm, colliding with footer at ${footer.y}mm.`,
-        suggestedFix: "Multi-page pagination will automatically split items. Consider reducing default row height if fewer pages are desired.",
+        message: `Line items table has insufficient vertical space to render any rows before colliding with follower sections or footer.`,
+        suggestedFix: "Move table up or reduce height of header/customer info cards.",
       });
     }
 
-    // Check follower cards collision with footer
+    // Check final page: do remaining items + follower cards fit above the footer?
+    const finalPageRange = pagination.pageItemRanges[pagination.pageItemRanges.length - 1];
+    const finalItemCount = finalPageRange ? finalPageRange.itemCount : sampleItemsCount;
+    const finalTableHeight = calculateTableRenderedHeight(table, finalItemCount);
+    const finalTableBottom = table.y + finalTableHeight;
+
     const followers = visibleElements.filter((el) => isFollowerElement(el, table));
     const tableBaseline = table.y + table.height;
 
     for (const f of followers) {
       const relOffset = f.y - tableBaseline;
-      const dynamicY = tableBottom + relOffset;
+      const dynamicY = finalTableBottom + relOffset;
       if (dynamicY + f.height > footer.y) {
         issues.push({
           id: `follower_footer_collision_${f.id}`,
@@ -510,8 +527,8 @@ export function validateDocumentLayout(
           elementLabel: f.label,
           severity: "warning",
           category: "footer",
-          message: `Follower section "${f.label}" would extend to ${(dynamicY + f.height).toFixed(1)}mm when table has ${sampleItemsCount} items, colliding with footer (${footer.y}mm).`,
-          suggestedFix: "Enable multi-page mode or reduce row height.",
+          message: `Follower section "${f.label}" would extend to ${(dynamicY + f.height).toFixed(1)}mm on final page (${finalItemCount} items), colliding with footer (${footer.y}mm).`,
+          suggestedFix: "Increase page margins or reduce section height.",
         });
       }
     }
