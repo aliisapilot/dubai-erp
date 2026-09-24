@@ -35,13 +35,13 @@ export default function ReportsPage() {
       } else if (tab === "customers") {
         const [{ data: c }, { data: pay }] = await Promise.all([
           supabase.from("customers").select("*").order("name"),
-          supabase.from("payments").select("*").eq("payment_type","customer"),
+          supabase.from("payments").select("*").in("payment_type", ["customer_receipt", "customer"]),
         ]);
         d.customers = c||[]; d.payments = pay||[];
       } else if (tab === "suppliers") {
         const [{ data: s }, { data: pay }] = await Promise.all([
           supabase.from("suppliers").select("*").order("name"),
-          supabase.from("payments").select("*").eq("payment_type","supplier"),
+          supabase.from("payments").select("*").in("payment_type", ["supplier_payment", "supplier"]),
         ]);
         d.suppliers = s||[]; d.payments = pay||[];
       } else if (tab === "inventory") {

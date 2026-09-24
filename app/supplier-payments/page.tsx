@@ -7,6 +7,12 @@ import {
   Truck, ArrowUpRight, DollarSign, Calendar, FileText
 } from "lucide-react";
 import { getCompanyId, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber } from "@/lib/helpers";
+import {
+  normalizePaymentMethod,
+  formatPaymentMethod,
+  PAYMENT_METHOD_OPTIONS,
+  parseDatabaseError,
+} from "@/lib/paymentTypes";
 
 type Supplier = { id: string; name: string | null; trn: string | null };
 type SupplierBill = { id: string; bill_number: string; total_amount: number; paid_amount: number; status: string };
@@ -42,7 +48,7 @@ const emptyForm: PaymentForm = {
   bill_id: "",
   payment_date: todayISO(),
   amount: "0",
-  payment_method: "Bank Transfer",
+  payment_method: "bank_transfer",
   reference_number: "",
   bank_name: "",
   notes: "",
@@ -73,7 +79,7 @@ export default function SupplierPaymentsPage() {
     setLoading(true);
     try {
       const [{ data: payData }, { data: supData }, { data: billData }] = await Promise.all([
-        supabase.from("payments").select("*").eq("payment_type", "supplier").order("payment_date", { ascending: false }),
+        supabase.from("payments").select("*").in("payment_type", ["supplier_payment", "supplier"]).order("payment_date", { ascending: false }),
         supabase.from("suppliers").select("id, name, trn").eq("active", true).order("name"),
         supabase.from("supplier_bills").select("id, bill_number, total_amount, paid_amount, status, supplier_id"),
       ]);
@@ -135,33 +141,37 @@ export default function SupplierPaymentsPage() {
       const cid = await getCompanyId();
       const pno = await generateDocNumber(cid, "SPAY");
 
-      // Record in payments table
-      const { error: pErr } = await supabase.from("payments").insert({
+      // Record in payments table with canonical types
+      const { data: insertedPayment, error: pErr } = await supabase.from("payments").insert({
         company_id: cid,
         payment_number: pno,
-        payment_type: "supplier",
+        payment_type: "supplier_payment",
         supplier_id: form.supplier_id,
         payment_date: form.payment_date || todayISO(),
         amount: amt,
-        payment_method: form.payment_method,
+        payment_method: normalizePaymentMethod(form.payment_method),
         reference_number: form.reference_number.trim() || null,
         bank_name: form.bank_name.trim() || null,
         notes: form.notes.trim() || (form.bill_id ? `Settlement for Bill ${bills.find(b => b.id === form.bill_id)?.bill_number}` : null),
-      });
+      }).select("id").single();
       if (pErr) throw pErr;
 
-      // Update bill paid amount if bill is linked
-      if (form.bill_id) {
+      // Update bill paid amount if bill is linked, with safe rollback
+      if (form.bill_id && insertedPayment) {
         const bill = bills.find(b => b.id === form.bill_id);
         if (bill) {
-          const newPaid = Number(bill.paid_amount) + amt;
+          const newPaid = Number(bill.paid_amount || 0) + amt;
           const newStatus = newPaid >= Number(bill.total_amount) - 0.01 ? "Paid" : "Partially Paid";
           const { error: billUpdateErr } = await supabase.from("supplier_bills").update({
             paid_amount: newPaid,
             status: newStatus,
             updated_at: new Date().toISOString(),
           }).eq("id", form.bill_id);
-          if (billUpdateErr) throw billUpdateErr;
+          if (billUpdateErr) {
+            // Roll back payment to avoid partial/corrupted record
+            await supabase.from("payments").delete().eq("id", insertedPayment.id);
+            throw billUpdateErr;
+          }
         }
       }
 
@@ -170,7 +180,7 @@ export default function SupplierPaymentsPage() {
       setForm(emptyForm);
       await loadAll();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error saving payment");
+      setError(parseDatabaseError(err, "Error saving payment"));
     } finally {
       setSaving(false);
     }
@@ -272,7 +282,7 @@ export default function SupplierPaymentsPage() {
                       <td className="px-5 py-3.5 font-bold font-mono text-slate-900">{p.payment_number || "SPAY"}</td>
                       <td className="px-4 py-3.5 font-medium text-slate-800">{sName}</td>
                       <td className="px-4 py-3.5 text-slate-600">{fmtDate(p.payment_date)}</td>
-                      <td className="px-4 py-3.5 font-medium text-slate-700">{p.payment_method || "Bank Transfer"}</td>
+                      <td className="px-4 py-3.5 font-medium text-slate-700">{formatPaymentMethod(p.payment_method)}</td>
                       <td className="px-4 py-3.5 text-slate-600 font-mono">{p.reference_number || "—"}</td>
                       <td className="px-4 py-3.5 text-right font-mono font-bold text-emerald-700">{fmtAED(p.amount)}</td>
                       <td className="px-4 py-3.5 text-center">
@@ -377,10 +387,9 @@ export default function SupplierPaymentsPage() {
                     onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}
                     className={sel}
                   >
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="Cash">Cash</option>
-                    <option value="Credit Card">Credit Card</option>
+                    {PAYMENT_METHOD_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div>

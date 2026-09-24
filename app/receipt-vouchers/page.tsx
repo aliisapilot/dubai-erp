@@ -7,6 +7,7 @@ import { getCompanyId, getCurrentCompany, fmtAED, statusClass, todayISO, generat
 import ReceiptVoucherTemplate, { ReceiptVoucherData } from "@/components/documents/ReceiptVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { parseDatabaseError } from "@/lib/paymentTypes";
 
 type Customer = { id: string; name: string | null; trn: string | null };
 type Invoice = { id: string; invoice_number: string | null; total_amount: number | null };
@@ -198,7 +199,7 @@ export default function ReceiptVouchersPage() {
       setEditing(null);
       await loadData();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error saving receipt voucher");
+      setError(parseDatabaseError(err, "Failed to save receipt voucher"));
     } finally {
       setSaving(false);
     }

@@ -7,6 +7,7 @@ import { getCompanyId, getCurrentCompany, statusClass, fmtDate, todayISO, genera
 import DeliveryNoteTemplate, { DeliveryNoteData } from "@/components/documents/DeliveryNoteTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { parseDatabaseError } from "@/lib/paymentTypes";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; address: string | null; phone: string | null };
 type Product = { id: string; name: string | null; sku: string | null; unit: string | null; current_stock: number | null };
@@ -338,7 +339,7 @@ export default function DeliveryNotesPage() {
       closeForm();
       await loadAll();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(parseDatabaseError(err, "Failed to save delivery note"));
     } finally {
       setSaving(false);
     }
@@ -418,9 +419,9 @@ export default function DeliveryNotesPage() {
             className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm appearance-none focus:outline-none"
           >
             <option value="">All Status</option>
-            <option>Draft</option>
-            <option>Dispatched</option>
-            <option>Delivered</option>
+            <option value="draft">Draft</option>
+            <option value="delivered">Delivered</option>
+            <option value="cancelled">Cancelled</option>
           </select>
         </div>
 
@@ -594,8 +595,8 @@ export default function DeliveryNotesPage() {
                       <label className="mb-1 block text-xs font-medium text-slate-700">Status</label>
                       <select value={form.status} onChange={e => ff("status", e.target.value)} className={sel}>
                         <option value="draft">Draft</option>
-                        <option value="dispatched">Dispatched</option>
                         <option value="delivered">Delivered</option>
+                        <option value="cancelled">Cancelled</option>
                       </select>
                     </div>
                     <div>
