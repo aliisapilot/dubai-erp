@@ -300,6 +300,7 @@ export default function SupplierBillsPage() {
 
       const itemRows = lines.map((l, i) => ({
         bill_id: billId,
+        product_id: l.product_id || null,
         description: l.description.trim(),
         quantity: l.quantity,
         unit: l.unit || "Nos",
@@ -801,3 +802,5 @@ export default function SupplierBillsPage() {
     </main>
   );
 }
+
+
