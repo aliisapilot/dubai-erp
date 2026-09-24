@@ -150,7 +150,7 @@ export default function DashboardPage() {
           projects: pj.length,
           activeProjects: pj.filter(prj => prj.status === "In Progress" || prj.status === "Planning").length,
           employees: em.length,
-          currentPayroll: ssList.filter(s => s.status === "Finalized").reduce((s, r) => s + (Number(r.net_salary) || 0), 0),
+          currentPayroll: ssList.filter(s => ["paid", "approved", "Finalized", "Paid", "Approved"].includes(s.status || "")).reduce((s, r) => s + (Number(r.net_salary) || 0), 0),
           customerPaymentsTotal: totalCustomerPaid,
           supplierPaymentsTotal: totalSupplierPaid,
         });

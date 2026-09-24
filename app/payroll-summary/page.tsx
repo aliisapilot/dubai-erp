@@ -39,8 +39,8 @@ export default function PayrollSummaryPage() {
   const totalOT = records.reduce((s,r) => s + (r.overtime_amount||0), 0);
   const totalDed = records.reduce((s,r) => s + ((r.gross_salary||0) - (r.net_salary||0)), 0);
   const totalNet = records.reduce((s,r) => s + (r.net_salary||0), 0);
-  const finalized = records.filter(r => r.status === "Finalized").length;
-  const draft = records.filter(r => r.status !== "Finalized").length;
+  const finalized = records.filter(r => ["paid", "approved", "Finalized", "Paid", "Approved"].includes(r.status || "")).length;
+  const draft = records.filter(r => !["paid", "approved", "Finalized", "Paid", "Approved"].includes(r.status || "")).length;
 
   return (
     <main className="min-h-screen bg-slate-50">

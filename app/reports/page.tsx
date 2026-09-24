@@ -242,7 +242,7 @@ export default function ReportsPage() {
                 <div className="space-y-6">
                   <div className="grid grid-cols-4 gap-4">
                     {statCard("Employees", emps.filter(e=>e.status?.toLowerCase()==="active").length, "Active")}
-                    {statCard("Total Payroll", fmtAED(sss.filter(s=>s.status==="Finalized").reduce((s,r)=>s+(r.net_salary||0),0)), "Finalized")}
+                    {statCard("Total Payroll", fmtAED(sss.filter(s=>["paid", "approved", "Finalized", "Paid", "Approved"].includes(s.status || "")).reduce((s,r)=>s+(r.net_salary||0),0)), "Approved / Paid")}
                     {statCard("Approved OT Hours", ots.filter(o=>o.approval_status?.toLowerCase()==="approved").reduce((s,o)=>s+(Number(o.hours)||0),0).toFixed(1))}
                     {statCard("Attendance Records", atts.length)}
                   </div>

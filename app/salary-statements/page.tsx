@@ -3,6 +3,13 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, Banknote, X, Save, Loader2, Pencil, Eye, Printer, Receipt, Trash2 } from "lucide-react";
 import { getCompanyId, getCurrentCompany, statusClass, fmtAED, parsePayrollMonth, MONTH_NAMES } from "@/lib/helpers";
+import {
+  SalaryStatementStatus,
+  SALARY_STATEMENT_STATUS_OPTIONS,
+  normalizeSalaryStatementStatus,
+  formatSalaryStatementStatus,
+  parseSalaryStatementError,
+} from "@/lib/payrollTypes";
 import SalarySlipTemplate, { SalarySlipData } from "@/components/documents/SalarySlipTemplate";
 import EmployeePaymentVoucherTemplate, { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -70,7 +77,7 @@ type SSForm = {
   other_deductions: string;
   payment_date: string;
   payment_method: string;
-  status: string;
+  status: SalaryStatementStatus;
   notes: string;
 };
 
@@ -95,7 +102,7 @@ const empty: SSForm = {
   other_deductions: "0",
   payment_date: "",
   payment_method: "Bank Transfer",
-  status: "Draft",
+  status: "draft",
   notes: "",
 };
 
@@ -217,7 +224,7 @@ export default function SalaryStatementsPage() {
       other_deductions: String(ss.other_deductions ?? 0),
       payment_method: ss.payment_method || "Bank Transfer",
       payment_date: ss.payment_date || "",
-      status: ss.status || "Draft",
+      status: normalizeSalaryStatementStatus(ss.status),
       notes: ss.notes || "",
     });
     setShowForm(true);
@@ -265,7 +272,7 @@ export default function SalaryStatementsPage() {
       net_salary: net,
       payment_method: form.payment_method,
       payment_date: form.payment_date || null,
-      status: form.status,
+      status: normalizeSalaryStatementStatus(form.status),
     };
 
     let res;
@@ -277,7 +284,7 @@ export default function SalaryStatementsPage() {
     }
 
     if (res.error) {
-      setError(res.error.message);
+      setError(parseSalaryStatementError(res.error));
     } else {
       setSuccess(editing ? "Statement updated successfully." : "Statement created successfully.");
       setShowForm(false);
@@ -288,8 +295,8 @@ export default function SalaryStatementsPage() {
   }
 
   async function deleteStatement(r: SS) {
-    if (r.status === "Finalized") {
-      setError("Finalized salary statements cannot be deleted.");
+    if (normalizeSalaryStatementStatus(r.status) === "paid") {
+      setError("Paid salary statements cannot be deleted.");
       return;
     }
     const emp = empMap[r.employee_id || ""];
@@ -407,7 +414,7 @@ export default function SalaryStatementsPage() {
                     <td className="px-4 py-3 text-right text-slate-700">{fmtAED(r.gross_salary)}</td>
                     <td className="px-4 py-3 text-right text-red-600">- {fmtAED((r.gross_salary || 0) - (r.net_salary || 0))}</td>
                     <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">{fmtAED(r.net_salary)}</td>
-                    <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(r.status||"Draft")}`}>{r.status||"Draft"}</span></td>
+                    <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(r.status||"draft")}`}>{formatSalaryStatementStatus(r.status)}</span></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1.5 flex-wrap">
                         <button
@@ -425,8 +432,8 @@ export default function SalaryStatementsPage() {
                           <Receipt size={12} /> Voucher
                         </button>
                         <button onClick={() => setViewRec(r)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Quick View"><Eye size={14} /></button>
-                        {r.status !== "Finalized" && <button onClick={() => openEdit(r)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Edit Statement"><Pencil size={14} /></button>}
-                        {r.status !== "Finalized" && <button onClick={() => deleteStatement(r)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600" title="Delete Draft Statement"><Trash2 size={14} /></button>}
+                        {normalizeSalaryStatementStatus(r.status) !== "paid" && <button onClick={() => openEdit(r)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Edit Statement"><Pencil size={14} /></button>}
+                        {normalizeSalaryStatementStatus(r.status) !== "paid" && <button onClick={() => deleteStatement(r)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600" title="Delete Statement"><Trash2 size={14} /></button>}
                       </div>
                     </td>
                   </tr>
@@ -474,7 +481,18 @@ export default function SalaryStatementsPage() {
                 <div className="grid grid-cols-3 gap-4">
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Payment Date</label><input type="date" value={form.payment_date} onChange={e=>ff("payment_date",e.target.value)} className={inp} /></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Payment Method</label><select value={form.payment_method} onChange={e=>ff("payment_method",e.target.value)} className={sel}><option>Bank Transfer</option><option>Cash</option><option>Cheque</option></select></div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Status</label><select value={form.status} onChange={e=>ff("status",e.target.value)} className={sel}><option>Draft</option><option>Reviewed</option><option>Finalized</option></select></div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
+                    <select
+                      value={form.status}
+                      onChange={e=>ff("status", e.target.value as SalaryStatementStatus)}
+                      className={sel}
+                    >
+                      {SALARY_STATEMENT_STATUS_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div><label className="mb-1 block text-sm font-medium text-slate-700">Notes</label><textarea value={form.notes} onChange={e=>ff("notes",e.target.value)} rows={2} className={inp} /></div>
               </form>
@@ -506,7 +524,7 @@ export default function SalaryStatementsPage() {
               ))}
               <tr className="border-t-2 border-slate-900 bg-slate-900"><td className="py-2 px-2 font-bold text-white rounded-bl-lg">Net Salary</td><td className="py-2 px-2 text-right font-bold text-white rounded-br-lg">{fmtAED(viewRec.net_salary)}</td></tr>
             </tbody></table>
-            <div className="text-xs text-slate-400 text-center">{viewRec.payment_method} · {viewRec.payment_date||"No payment date"} · <span className={`rounded-full px-2 py-0.5 font-semibold ${statusClass(viewRec.status||"Draft")}`}>{viewRec.status}</span></div>
+            <div className="text-xs text-slate-400 text-center">{viewRec.payment_method} · {viewRec.payment_date||"No payment date"} · <span className={`rounded-full px-2 py-0.5 font-semibold ${statusClass(viewRec.status||"draft")}`}>{formatSalaryStatementStatus(viewRec.status)}</span></div>
           </div>
         </div>
       ); })()}

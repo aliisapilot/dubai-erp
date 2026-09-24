@@ -76,7 +76,7 @@ export default function PayslipsPage() {
       supabase
         .from("salary_statements")
         .select("*")
-        .eq("status", "Finalized")
+        .in("status", ["approved", "paid", "Finalized", "Approved", "Paid"])
         .order("payroll_month", { ascending: false }),
       supabase
         .from("employees")
