@@ -2,7 +2,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, Users2, X, Save, Loader2, Pencil, Power, Trash2 } from "lucide-react";
-import { getCompanyId, statusClass, fmtDate, generateDocNumber } from "@/lib/helpers";
+import { getCompanyId, statusClass, generateDocNumber } from "@/lib/helpers";
 
 // DB verified: employees columns: id, first_name, employee_number, designation, department, phone, email,
 // joining_date, employee_code, account_number, basic_salary, bank_name, iban, payment_method, status, company_id

@@ -6,9 +6,11 @@ import { DocumentLayout } from "@/lib/documentDesigner";
 import DynamicDocumentRenderer, {
   SAMPLE_DOCUMENT_DATA,
   getDocumentPageCount,
+  getSampleDocumentData,
   MockDocumentData,
 } from "../documents/DynamicDocumentRenderer";
 import { CompanyDocInfo } from "../documents/DocHeader";
+import { printCurrentDocument } from "@/lib/print";
 
 const TEST_DATASETS: Record<string, { label: string; count: number; data: MockDocumentData }> = {
   short_1: {
@@ -145,7 +147,10 @@ export default function DocumentPreviewModal({
     return 0.85;
   });
 
-  const activeDataset = TEST_DATASETS[selectedDatasetKey]?.data || SAMPLE_DOCUMENT_DATA;
+  const activeDataset =
+    layout.documentType === "tax_invoice"
+      ? TEST_DATASETS[selectedDatasetKey]?.data || SAMPLE_DOCUMENT_DATA
+      : getSampleDocumentData(layout.documentType);
   const computedTotalPages = getDocumentPageCount(layout, activeDataset.items.length);
 
   useEffect(() => {
@@ -157,7 +162,7 @@ export default function DocumentPreviewModal({
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") {
         e.preventDefault();
-        window.print();
+        void printCurrentDocument();
       }
     };
 
@@ -264,7 +269,7 @@ export default function DocumentPreviewModal({
 
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() => void printCurrentDocument()}
             className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow cursor-pointer"
           >
             <Printer size={15} />

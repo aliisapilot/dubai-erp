@@ -5,8 +5,8 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId, generateDocNumber } from "@/lib/helpers";
 import {
-  CreditCard, Search, ArrowLeft, Plus, Loader2, X, Trash2,
-  Edit2, Filter, Receipt, CheckCircle2, AlertCircle, DollarSign,
+  CreditCard, Search, Plus, Loader2, X, Trash2,
+  Edit2, Receipt, CheckCircle2,
   Briefcase, Truck, User
 } from "lucide-react";
 

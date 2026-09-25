@@ -31,9 +31,11 @@ import {
   CreditCard,
   FileSignature,
   ArrowDownRight,
+  Printer,
   type LucideIcon,
 } from "lucide-react";
 import { getCurrentCompany } from "@/lib/helpers";
+import { printCurrentDocument } from "@/lib/print";
 
 type UserProfile = {
   email: string;
@@ -261,6 +263,17 @@ export default function Navbar() {
 
         {/* Right Section: PDF Designer Action + UAE Badge + User Profile Dropdown */}
         <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => void printCurrentDocument()}
+            className="no-print flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-500/20 hover:text-blue-200"
+            title={`Print ${pageMeta.title}`}
+            aria-label={`Print ${pageMeta.title}`}
+          >
+            <Printer size={13} />
+            <span className="hidden md:inline">Print Page</span>
+          </button>
+
           {/* PDF Designer Shortcut Action Button */}
           <Link
             href="/settings/designer"

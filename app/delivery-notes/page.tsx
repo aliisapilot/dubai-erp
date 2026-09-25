@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Search, Truck, X, Save, Loader2, Pencil, Eye, Printer, Trash2, ClipboardList } from "lucide-react";
+import { Plus, Search, X, Save, Loader2, Pencil, Printer, Trash2, ClipboardList } from "lucide-react";
 import { getCompanyId, getCurrentCompany, statusClass, fmtDate, todayISO, generateDocNumber } from "@/lib/helpers";
 import DeliveryNoteTemplate, { DeliveryNoteData } from "@/components/documents/DeliveryNoteTemplate";
 import PrintModal from "@/components/documents/PrintModal";

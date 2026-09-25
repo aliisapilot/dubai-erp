@@ -6,9 +6,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Users, Truck, Package, FileText, FileSpreadsheet, FileCheck2,
-  ShoppingBag, Wallet, Users2, AlertTriangle, Plus, BarChart3,
-  TrendingUp, Loader2, ArrowRight, Briefcase, CreditCard,
-  CheckCircle2, Clock, DollarSign
+  ShoppingBag, Wallet, Users2, AlertTriangle, BarChart3,
+  TrendingUp, Loader2, ArrowRight, Briefcase, Clock
 } from "lucide-react";
 import { fmtAED, getCurrentCompany } from "@/lib/helpers";
 

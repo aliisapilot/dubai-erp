@@ -5,8 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId, getCurrentCompany } from "@/lib/helpers";
 import {
-  FileText, ArrowLeft, Printer, Calendar, ShieldCheck,
-  TrendingUp, TrendingDown, DollarSign, RefreshCw
+   ArrowLeft, Printer, ShieldCheck
 } from "lucide-react";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
@@ -18,7 +17,6 @@ export default function VatReportPage() {
   const [bills, setBills] = useState<BillVatRow[]>([]);
   const [expenses, setExpenses] = useState<ExpenseVatRow[]>([]);
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
-  const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -43,7 +41,7 @@ export default function VatReportPage() {
     } catch (err) {
       console.error("Error loading VAT data:", err);
     } finally {
-      setLoading(false);
+      // The report remains usable with an empty result when the query fails.
     }
   }
 

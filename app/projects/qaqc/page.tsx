@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { getCompanyId } from "@/lib/helpers";
 import {
   ShieldCheck, CheckCircle2, XCircle, AlertCircle, ArrowLeft, Search,
-  Plus, Loader2, X, Trash2, Edit2, Filter, ExternalLink
+  Plus, Loader2, X, Trash2, Edit2
 } from "lucide-react";
 
 type QAQCItem = {
@@ -55,7 +55,7 @@ export default function QAQCInspectionPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
+  const [, setSuccessMsg] = useState("");
 
   useEffect(() => {
     loadData();

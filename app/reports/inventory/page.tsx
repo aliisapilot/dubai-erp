@@ -4,39 +4,38 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId } from "@/lib/helpers";
+import { printCurrentDocument } from "@/lib/print";
 import {
-  Package, ArrowLeft, Printer, AlertTriangle, ArrowDownRight,
-  ArrowUpRight, RefreshCw, History, CheckCircle2
+  Package, ArrowLeft, Printer
 } from "lucide-react";
 
 export default function InventoryReportPage() {
   type ProductRow = { id: string; sku?: string | null; name?: string | null; category?: string | null; unit?: string | null; cost_price?: number | null; selling_price?: number | null; current_stock?: number | null; minimum_stock?: number | null; active?: boolean | null };
-  type MovementRow = Record<string, unknown>;
   const [products, setProducts] = useState<ProductRow[]>([]);
-  const [movements, setMovements] = useState<MovementRow[]>([]);
-  const [loading, setLoading] = useState(true);
 
   async function loadInventoryData() {
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
 
-      const [pRes, mRes] = await Promise.all([
-        supabase.from("products").select("*").eq("company_id", companyId).order("name"),
-        supabase.from("stock_movements").select("*, products(name, sku, unit)").eq("company_id", companyId).order("created_at", { ascending: false }).limit(50),
-      ]);
+      const pRes = await supabase
+        .from("products")
+        .select("*")
+        .eq("company_id", companyId)
+        .order("name");
 
       setProducts((pRes.data || []) as ProductRow[]);
-      setMovements((mRes.data || []) as MovementRow[]);
     } catch (err) {
       console.error("Error loading inventory report:", err);
     } finally {
-      setLoading(false);
+      // The report remains usable with an empty result when the query fails.
     }
   }
 
   useEffect(() => {
     void Promise.resolve().then(loadInventoryData);
+  // Report snapshot loads once on mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const totalValuation = products.reduce((acc, p) => acc + ((p.current_stock || 0) * (p.cost_price || 0)), 0);
@@ -44,7 +43,7 @@ export default function InventoryReportPage() {
   const outOfStockItems = products.filter(p => (p.current_stock ?? 0) <= 0 && p.active);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-7xl mx-auto space-y-6" data-print-root>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Link
@@ -66,7 +65,7 @@ export default function InventoryReportPage() {
 
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={() => void printCurrentDocument()}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors"
         >
           <Printer size={15} /> Print Report

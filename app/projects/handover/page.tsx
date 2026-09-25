@@ -6,9 +6,9 @@ import { supabase } from "@/lib/supabase";
 import { getCompanyId, getCurrentCompany, generateDocNumber } from "@/lib/helpers";
 import {
   CheckCircle, ArrowLeft, Search, Plus, Printer, Loader2, X,
-  Trash2, Edit2, ExternalLink, FileCheck, AlertCircle
+  Trash2, Edit2, FileCheck
 } from "lucide-react";
-import ProjectHandoverTemplate, { HandoverData } from "@/components/documents/ProjectHandoverTemplate";
+import ProjectHandoverTemplate from "@/components/documents/ProjectHandoverTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 

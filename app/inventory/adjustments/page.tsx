@@ -5,8 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId, generateDocNumber } from "@/lib/helpers";
 import {
-  RefreshCw, Plus, Search, ArrowLeft, Loader2, CheckCircle2,
-  AlertTriangle, X, Trash2, Eye, Calendar, FileText
+  RefreshCw, Plus, Search, ArrowLeft, Loader2, CheckCircle2, X, Trash2, Eye
 } from "lucide-react";
 
 type ProductOption = {
@@ -58,7 +57,6 @@ export default function StockAdjustmentsPage() {
 
   // Modal create state
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [adjustmentNumber, setAdjustmentNumber] = useState("");
   const [adjustmentDate, setAdjustmentDate] = useState(new Date().toISOString().split("T")[0]);
   const [reason, setReason] = useState("Physical Stock Count Variance");
   const [notes, setNotes] = useState("");
@@ -105,7 +103,6 @@ export default function StockAdjustmentsPage() {
   }
 
   function handleOpenCreate() {
-    setAdjustmentNumber("");
     setAdjustmentDate(new Date().toISOString().split("T")[0]);
     setReason("Physical Stock Count Variance");
     setNotes("");

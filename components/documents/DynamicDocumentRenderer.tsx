@@ -4,7 +4,13 @@ import React, { CSSProperties, useState } from "react";
 import Image from "next/image";
 import { Building2, Image as ImageIcon } from "lucide-react";
 import { getBrandConfig } from "@/lib/brandConfig";
-import { DocumentLayout, LayoutElement, TableColumnConfig } from "@/lib/documentDesigner";
+import {
+  documentUsesVat,
+  DocumentLayout,
+  DocumentTypeId,
+  LayoutElement,
+  TableColumnConfig,
+} from "@/lib/documentDesigner";
 import { CompanyDocInfo } from "./DocHeader";
 import { numberToWordsArabic, numberToWordsEnglish } from "@/lib/amountInWords";
 import { fmtAED, fmtDate } from "@/lib/helpers";
@@ -116,6 +122,113 @@ export const SAMPLE_DOCUMENT_DATA: MockDocumentData = {
   notes: "All materials conform to UAE Civil Defence and Dubai Municipality structural standards.",
 };
 
+const SAMPLE_NUMBERS: Record<DocumentTypeId, string> = {
+  tax_invoice: "INV-2026-0042",
+  quotation: "QUO-2026-0042",
+  proforma_invoice: "PRO-2026-0042",
+  delivery_note: "DN-2026-0042",
+  purchase_order: "PO-2026-0042",
+  receipt_voucher: "RCV-2026-0042",
+  customer_statement: "SOA-2026-0042",
+  supplier_bill: "BILL-2026-0042",
+  salary_statement: "SLIP-2026-0042",
+  project_handover: "HO-2026-0042",
+  work_method_statement: "WMS-2026-0042",
+  employee_payment_voucher: "EPV-2026-0042",
+};
+
+export function getSampleDocumentData(docType: DocumentTypeId): MockDocumentData {
+  const base: MockDocumentData = {
+    ...SAMPLE_DOCUMENT_DATA,
+    document_number: SAMPLE_NUMBERS[docType],
+    items: SAMPLE_DOCUMENT_DATA.items.map((item) => ({ ...item })),
+  };
+
+  if (docType === "delivery_note") {
+    return {
+      ...base,
+      items: base.items.map((item) => ({ ...item, unit_price: 0, vat_amount: 0, line_total: 0 })),
+      subtotal: 0,
+      vat_amount: 0,
+      total_amount: 0,
+      payment_terms: undefined,
+      notes: "Goods received in good condition. Receiver name, signature, and delivery time must be recorded.",
+    };
+  }
+
+  if (docType === "receipt_voucher" || docType === "employee_payment_voucher") {
+    const isReceipt = docType === "receipt_voucher";
+    return {
+      ...base,
+      customer_name: isReceipt ? "AL NABOODAH CONTRACTING CO. L.L.C" : "AHMED MOHAMMED (EMP-0042)",
+      customer_trn: isReceipt ? base.customer_trn : undefined,
+      items: [],
+      subtotal: 25000,
+      vat_amount: 0,
+      total_amount: 25000,
+      advance_amount: undefined,
+      payment_terms: isReceipt ? "Bank Transfer" : "Salary Advance - Bank Transfer",
+      notes: isReceipt ? "Part payment received against customer account." : "Approved employee payment against authorized request.",
+    };
+  }
+
+  if (docType === "customer_statement") {
+    return {
+      ...base,
+      items: [
+        { description: "Opening balance", date: "01/09/2026", type: "Opening", reference: "-", debit: 0, credit: 0, balance: 50000, quantity: 1, unit_price: 0, vat_amount: 0, line_total: 50000 },
+        { description: "Tax invoice", date: "05/09/2026", type: "Invoice", reference: "INV-0041", debit: 145300, credit: 0, balance: 195300, quantity: 1, unit_price: 145300, vat_amount: 0, line_total: 195300 },
+        { description: "Payment received", date: "18/09/2026", type: "Receipt", reference: "RCV-0042", debit: 0, credit: 50000, balance: 145300, quantity: 1, unit_price: 50000, vat_amount: 0, line_total: 145300 },
+      ],
+      subtotal: 145300,
+      vat_amount: 0,
+      total_amount: 145300,
+      advance_amount: undefined,
+      payment_terms: undefined,
+      notes: undefined,
+    };
+  }
+
+  if (docType === "salary_statement") {
+    return {
+      ...base,
+      customer_name: "AHMED MOHAMMED (EMP-0042)",
+      customer_trn: undefined,
+      customer_address: "Operations Department - Site Supervisor",
+      items: [
+        { description: "Basic Salary", quantity: 1, unit_price: 9000, vat_amount: 0, line_total: 9000 },
+        { description: "Housing Allowance", quantity: 1, unit_price: 2500, vat_amount: 0, line_total: 2500 },
+        { description: "Transport Allowance", quantity: 1, unit_price: 1000, vat_amount: 0, line_total: 1000 },
+        { description: "Advance Deduction", quantity: 1, unit_price: -500, vat_amount: 0, line_total: -500 },
+      ],
+      subtotal: 12500,
+      vat_amount: 0,
+      total_amount: 12000,
+      advance_amount: undefined,
+      payment_terms: undefined,
+      notes: "Payroll period: September 2026 | Bank transfer reference: PAY-SEP-0042",
+    };
+  }
+
+  if (docType === "project_handover" || docType === "work_method_statement") {
+    return {
+      ...base,
+      items: [],
+      subtotal: 0,
+      vat_amount: 0,
+      total_amount: 0,
+      advance_amount: undefined,
+      payment_terms: undefined,
+      notes:
+        docType === "project_handover"
+          ? "The completed scope has been inspected and handed over with all required documentation. Outstanding observations, if any, are recorded below."
+          : "Execute the described works in accordance with the approved sequence, risk controls, permits, and site safety requirements.",
+    };
+  }
+
+  return base;
+}
+
 interface DynamicDocumentRendererProps {
   layout: DocumentLayout;
   company: CompanyDocInfo | null;
@@ -132,8 +245,8 @@ import {
 } from "@/lib/documentLayoutEngine";
 
 export function getItemsPerPage(layout: DocumentLayout): number {
-  const lineItems = layout.elements.find((element) => element.type === "line_items");
-  if (!lineItems) return 1;
+  const lineItems = layout.elements.find((element) => element.type === "line_items" && element.visible);
+  if (!lineItems) return Number.MAX_SAFE_INTEGER;
   const rowHeight = Math.max(4, lineItems.tableSettings?.rowHeight || 8.5);
   const headerHeight = Math.max(7, lineItems.tableSettings?.headerFontSize ? lineItems.tableSettings.headerFontSize * 0.35 + 4 : rowHeight);
   return Math.max(1, Math.floor((lineItems.height - headerHeight) / rowHeight));
@@ -146,12 +259,13 @@ export function getDocumentPageCount(layout: DocumentLayout, itemCount: number):
 export default function DynamicDocumentRenderer({
   layout,
   company,
-  data = SAMPLE_DOCUMENT_DATA,
+  data: providedData,
   isDesignerPreview = false,
   scale = 1,
   pageNumber = 1,
   totalPages,
 }: DynamicDocumentRendererProps) {
+  const data = providedData || getSampleDocumentData(layout.documentType);
   const brand = getBrandConfig(company);
   const [logoFailed, setLogoFailed] = useState(false);
 
@@ -182,6 +296,9 @@ export default function DynamicDocumentRenderer({
   const firstItemIndex = currentPageInfo.startIndex;
   const pageItems = data.items.slice(currentPageInfo.startIndex, currentPageInfo.endIndex);
   const isLastPage = pageNumber >= resolvedTotalPages || currentPageInfo.isLastPage;
+  const usesVat = documentUsesVat(layout.documentType);
+  const totalCredits = data.items.reduce((sum, item) => sum + (Number(item.credit) || 0), 0);
+  const totalDeductions = Math.max(0, data.subtotal - data.total_amount);
 
   // Calculate dynamic effective layout geometry with flow-aware positioning
   const effectiveGeometry = computeEffectiveLayout(
@@ -414,6 +531,22 @@ export default function DynamicDocumentRenderer({
       }
 
       case "customer_info": {
+        const partyHeading =
+          layout.documentType === "receipt_voucher"
+            ? "Received From / Payer (المستلم منه):"
+            : layout.documentType === "employee_payment_voucher"
+            ? "Employee / Payee (المستفيد):"
+            : layout.documentType === "salary_statement"
+            ? "Employee Details (بيانات الموظف):"
+            : "Customer / Client Details (بيانات العميل):";
+        const partyRole =
+          layout.documentType === "receipt_voucher"
+            ? "Payer"
+            : layout.documentType === "employee_payment_voucher"
+            ? "Payee"
+            : layout.documentType === "salary_statement"
+            ? "Employee"
+            : "Buyer";
         return (
           <div
             className="w-full h-full p-2.5 flex flex-col justify-between select-text"
@@ -427,8 +560,8 @@ export default function DynamicDocumentRenderer({
             }}
           >
             <div className="flex justify-between border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
-              <span style={{ color: colors.primary }}>Customer / Client Details (بيانات العميل):</span>
-              <span style={{ color: colors.muted }}>Buyer</span>
+              <span style={{ color: colors.primary }}>{partyHeading}</span>
+              <span style={{ color: colors.muted }}>{partyRole}</span>
             </div>
             <div className="space-y-0.5 mt-1 text-[11px] leading-tight">
               <div className="font-bold text-slate-900">{data.customer_name}</div>
@@ -523,6 +656,9 @@ export default function DynamicDocumentRenderer({
 
 
       case "doc_meta": {
+        const showSupplyDate = ["tax_invoice", "delivery_note", "purchase_order", "supplier_bill"].includes(layout.documentType);
+        const showDueDate = ["tax_invoice", "quotation", "proforma_invoice", "supplier_bill"].includes(layout.documentType);
+        const showTerms = ["tax_invoice", "quotation", "proforma_invoice", "purchase_order", "supplier_bill"].includes(layout.documentType);
         return (
           <div
             className="w-full h-full p-2.5 flex flex-col justify-between select-text"
@@ -544,17 +680,19 @@ export default function DynamicDocumentRenderer({
                 <span style={{ color: colors.muted }}>Date: </span>
                 <span className="font-semibold text-slate-900">{fmtDate(data.document_date)}</span>
               </div>
-              <div>
-                <span style={{ color: colors.muted }}>Supply: </span>
-                <span className="font-semibold text-slate-900">{fmtDate(data.supply_date || data.document_date)}</span>
-              </div>
-              {data.due_date && (
+              {showSupplyDate && (
+                <div>
+                  <span style={{ color: colors.muted }}>{layout.documentType === "delivery_note" ? "Delivery" : "Supply"}: </span>
+                  <span className="font-semibold text-slate-900">{fmtDate(data.supply_date || data.document_date)}</span>
+                </div>
+              )}
+              {showDueDate && data.due_date && (
                 <div>
                   <span style={{ color: colors.muted }}>Due: </span>
                   <span className="font-semibold text-slate-900">{fmtDate(data.due_date)}</span>
                 </div>
               )}
-              {data.payment_terms && (
+              {showTerms && data.payment_terms && (
                 <div>
                   <span style={{ color: colors.muted }}>Terms: </span>
                   <span className="font-semibold text-slate-900">{data.payment_terms}</span>
@@ -745,6 +883,27 @@ export default function DynamicDocumentRenderer({
       }
 
       case "totals": {
+        if (layout.documentType === "receipt_voucher" || layout.documentType === "employee_payment_voucher") {
+          const isReceipt = layout.documentType === "receipt_voucher";
+          return (
+            <div
+              className="w-full h-full rounded select-text flex flex-col items-stretch justify-center overflow-hidden"
+              style={{
+                border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+                borderRadius: `${elem.borderRadius || 4}px`,
+                ...elementAppearance(elem),
+              }}
+            >
+              <div className="px-2.5 py-1 text-[10px] font-semibold uppercase" style={{ color: colors.muted }}>
+                {isReceipt ? "Amount Received" : "Amount Paid"}
+              </div>
+              <div className="px-2.5 py-1.5 text-right font-mono text-base font-bold" style={{ backgroundColor: colors.totalHighlight, color: colors.primary }}>
+                {fmtAED(data.total_amount)}
+              </div>
+            </div>
+          );
+        }
+
         if (layout.documentType === "customer_statement") {
           return (
             <div
@@ -762,7 +921,7 @@ export default function DynamicDocumentRenderer({
               </div>
               <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
                 <span style={{ color: colors.muted }}>Total Paid (Credits):</span>
-                <span className="font-mono font-semibold" style={{ color: colors.accent }}>{fmtAED(Math.max(0, data.subtotal - data.total_amount))}</span>
+                <span className="font-mono font-semibold" style={{ color: colors.accent }}>{fmtAED(totalCredits)}</span>
               </div>
               <div
                 className="flex justify-between py-1.5 px-2.5 font-bold text-slate-900 border-b"
@@ -773,6 +932,25 @@ export default function DynamicDocumentRenderer({
               >
                 <span>Closing Balance:</span>
                 <span className="font-mono" style={{ color: colors.primary }}>{fmtAED(data.total_amount)}</span>
+              </div>
+            </div>
+          );
+        }
+
+        if (layout.documentType === "salary_statement") {
+          return (
+            <div className="w-full h-full overflow-hidden rounded border text-[10px]" style={{ borderColor: elem.borderColor || colors.border }}>
+              <div className="flex justify-between border-b px-2.5 py-1" style={{ borderColor: colors.border }}>
+                <span style={{ color: colors.muted }}>Gross Earnings:</span>
+                <span className="font-mono font-semibold">{fmtAED(data.subtotal)}</span>
+              </div>
+              <div className="flex justify-between border-b px-2.5 py-1" style={{ borderColor: colors.border }}>
+                <span style={{ color: colors.muted }}>Deductions:</span>
+                <span className="font-mono font-semibold">{fmtAED(totalDeductions)}</span>
+              </div>
+              <div className="flex justify-between px-2.5 py-1.5 font-bold" style={{ backgroundColor: colors.totalHighlight, color: colors.primary }}>
+                <span>Net Pay:</span>
+                <span className="font-mono">{fmtAED(data.total_amount)}</span>
               </div>
             </div>
           );
@@ -801,7 +979,7 @@ export default function DynamicDocumentRenderer({
 
         return (
           <div
-            className="w-full h-full overflow-hidden text-xs rounded select-text flex flex-col justify-between"
+            className="w-full h-full overflow-hidden text-xs rounded select-text flex flex-col justify-start"
             style={{
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
@@ -813,10 +991,12 @@ export default function DynamicDocumentRenderer({
               <span style={{ color: colors.muted }}>Subtotal:</span>
               <span className="font-mono font-semibold">{fmtAED(data.subtotal)}</span>
             </div>
-            <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
-              <span style={{ color: colors.muted }}>VAT Total (5%):</span>
-              <span className="font-mono font-semibold" style={{ color: colors.accent }}>{fmtAED(data.vat_amount)}</span>
-            </div>
+            {usesVat && (
+              <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
+                <span style={{ color: colors.muted }}>VAT Total (5%):</span>
+                <span className="font-mono font-semibold" style={{ color: colors.accent }}>{fmtAED(data.vat_amount)}</span>
+              </div>
+            )}
             <div
               className="flex justify-between py-1.5 px-2.5 font-bold text-slate-900 border-b"
               style={{
@@ -861,6 +1041,20 @@ export default function DynamicDocumentRenderer({
       }
 
       case "payment_terms": {
+        const sectionHeading =
+          layout.documentType === "delivery_note"
+            ? "Delivery Notes & Condition:"
+            : layout.documentType === "receipt_voucher"
+            ? "Payment Method & Receipt Purpose:"
+            : layout.documentType === "employee_payment_voucher"
+            ? "Payment Purpose & Method:"
+            : layout.documentType === "salary_statement"
+            ? "Payroll Notes & Bank Reference:"
+            : layout.documentType === "project_handover"
+            ? "Handover Scope & Completion Remarks:"
+            : layout.documentType === "work_method_statement"
+            ? "Method, Scope & Safety Notes:"
+            : "Terms & Remarks:";
         return (
           <div
             className="w-full h-full text-[10px] leading-relaxed select-text p-1"
@@ -870,8 +1064,8 @@ export default function DynamicDocumentRenderer({
               ...elementAppearance(elem),
             }}
           >
-            <div className="font-bold text-slate-800 mb-0.5">Terms &amp; Remarks:</div>
-            <div>{data.notes || "Standard payment within 30 days of invoice date."}</div>
+            <div className="font-bold text-slate-800 mb-0.5">{sectionHeading}</div>
+            <div>{data.notes || "No additional remarks."}</div>
             {data.payment_terms && <div className="mt-0.5 italic">{data.payment_terms}</div>}
           </div>
         );
@@ -1028,7 +1222,9 @@ export default function DynamicDocumentRenderer({
           >
             <div>{elem.customText || `${brand.legal_name} | Tel: ${brand.phone} | Email: ${brand.email} | Web: ${brand.website}`}</div>
             <div className="text-[8px] text-slate-400 mt-0.5">
-              This is a computer generated document issued in accordance with UAE VAT regulations.
+              {usesVat
+                ? "This is a computer generated document issued in accordance with UAE VAT regulations."
+                : "This is a computer generated business document and does not require a physical signature unless stated."}
             </div>
             {resolvedTotalPages > 1 && (
               <div className="mt-0.5 font-mono text-[8px] text-slate-400">

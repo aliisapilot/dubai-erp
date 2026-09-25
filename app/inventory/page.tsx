@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { getCompanyId } from "@/lib/helpers";
 import {
   Package, AlertTriangle, ArrowDownRight, ArrowUpRight,
-  RefreshCw, Search, Filter, Plus, FileText, CheckCircle2, History
+  RefreshCw, Search, CheckCircle2, History
 } from "lucide-react";
 
 type ProductStock = {

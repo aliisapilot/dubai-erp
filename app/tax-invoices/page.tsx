@@ -51,6 +51,8 @@ function TIContent() {
       const pid = searchParams.get("from_proforma");
       if (pid) loadFromProforma(pid);
     });
+  // Load the initial list and optional proforma conversion once.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**

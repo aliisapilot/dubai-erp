@@ -8,6 +8,7 @@ import {
   ZoomOut,
   Save,
   RotateCcw,
+  WandSparkles,
   Printer,
   AlignLeft,
   AlignCenter,
@@ -53,6 +54,7 @@ interface TopToolbarProps {
   saving: boolean;
   onSave: () => void;
   onReset: () => void;
+  onAutoFix: () => void;
   onPreview: () => void;
   onCheckLayout?: () => void;
   templateName: string;
@@ -89,6 +91,7 @@ export default function TopToolbar({
   saving,
   onSave,
   onReset,
+  onAutoFix,
   onPreview,
   onCheckLayout,
   templateName,
@@ -217,6 +220,17 @@ export default function TopToolbar({
           </button>
 
           <button
+            type="button"
+            onClick={onAutoFix}
+            disabled={saving}
+            className="flex items-center gap-1.5 rounded-lg border border-emerald-500/60 bg-emerald-500/15 p-1.5 text-xs font-bold text-emerald-300 shadow-sm transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Fix gaps, spacing, document sections, and VAT rules in one click"
+          >
+            <WandSparkles size={14} />
+            <span className="hidden xl:inline">Auto Fix PDF</span>
+          </button>
+
+          <button
             onClick={onReset}
             className="flex items-center gap-1 rounded-lg border border-slate-700 p-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-800 cursor-pointer"
             title="Reset to UAE Corporate Professional Default"
@@ -268,7 +282,7 @@ export default function TopToolbar({
           </button>
 
           {/* Responsive Panel Toggle Buttons */}
-          <div className="flex items-center gap-0.5 border-l border-slate-800 pl-1 md:hidden">
+          <div className="flex items-center gap-0.5 border-l border-slate-800 pl-1">
             {onToggleLeftSidebar && (
               <button
                 type="button"
@@ -375,7 +389,7 @@ export default function TopToolbar({
         {/* Zoom Controls */}
         <div className="flex shrink-0 items-center gap-1 bg-slate-800/80 p-1 rounded-lg border border-slate-700/80">
           <button
-            onClick={() => onZoomChange(Math.max(0.4, Number((zoom - 0.1).toFixed(2))))}
+            onClick={() => onZoomChange(Math.max(0.1, Number((zoom - 0.1).toFixed(2))))}
             className="p-1 rounded text-slate-300 hover:bg-slate-700"
             title="Zoom Out"
           >
@@ -391,6 +405,17 @@ export default function TopToolbar({
           >
             <ZoomIn size={14} />
           </button>
+          <input
+            type="range"
+            min="0.1"
+            max="1.8"
+            step="0.05"
+            value={zoom}
+            onChange={(event) => onZoomChange(Number(event.target.value))}
+            className="hidden w-20 cursor-pointer accent-amber-500 xl:block"
+            aria-label="PDF zoom level"
+            title={`Zoom ${Math.round(zoom * 100)}%`}
+          />
           <span className="w-[1px] h-3.5 bg-slate-700 mx-0.5" />
           <button
             onClick={onFitWidth}

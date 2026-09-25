@@ -28,6 +28,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     void Promise.resolve().then(checkExistingSession);
+  // Session presence is checked once when the login screen mounts.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {

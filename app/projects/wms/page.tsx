@@ -5,8 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId, getCurrentCompany } from "@/lib/helpers";
 import {
-  FileText, Search, ArrowLeft, Printer, ExternalLink, Plus,
-  CheckCircle2, AlertCircle, Clock, X, Eye
+  FileText, Search, ArrowLeft, Printer, ExternalLink, Plus
 } from "lucide-react";
 import WorkMethodStatementTemplate, { WMSData, RiskAssessmentRow, QAQCChecklistItem } from "@/components/documents/WorkMethodStatementTemplate";
 import PrintModal from "@/components/documents/PrintModal";

@@ -31,13 +31,18 @@ body,
   --doc-border: #CBD5E1;
   --doc-table-header: #0F172A;
   --doc-total-highlight: #F8F6ED;
+
+  /* Local, offline-safe font stacks. PDF rendering must never depend on a
+     build-time request to an external font service. */
+  --font-app-sans: Arial, Helvetica, "Segoe UI", sans-serif;
+  --font-app-mono: "Cascadia Mono", "Courier New", monospace;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-app-sans);
+  --font-mono: var(--font-app-mono);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -50,13 +55,66 @@ body,
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-app-sans);
   margin: 0 !important;
   padding: 0 !important;
 }
 
 .font-arabic {
   font-family: 'Segoe UI Arabic', 'Amiri', 'Scheherazade New', 'Traditional Arabic', 'Noto Naskh Arabic', Arial, sans-serif;
+}
+
+/* Shared document colour mapping. DocumentContainer publishes these variables
+   once so every legacy and designer-backed template uses the saved brand kit. */
+.print-document {
+  color: var(--doc-text, #334155);
+}
+
+.print-document .text-slate-950,
+.print-document .text-slate-900,
+.print-document .text-slate-800 {
+  color: var(--doc-primary, #0F172A);
+}
+
+.print-document .text-slate-700,
+.print-document .text-slate-600 {
+  color: var(--doc-text, #334155);
+}
+
+.print-document .text-slate-500,
+.print-document .text-slate-400 {
+  color: var(--doc-muted, #64748B);
+}
+
+.print-document .text-amber-300,
+.print-document .text-amber-400,
+.print-document .text-amber-700,
+.print-document .text-emerald-700,
+.print-document .text-emerald-800 {
+  color: var(--doc-accent, #C9A227);
+}
+
+.print-document .bg-slate-900,
+.print-document thead.bg-slate-900 {
+  background-color: var(--doc-table-header, var(--doc-primary, #0F172A));
+}
+
+.print-document .bg-emerald-50,
+.print-document .bg-emerald-50\/40,
+.print-document .bg-emerald-50\/60,
+.print-document .bg-emerald-50\/80 {
+  background-color: var(--doc-total-highlight, #F8F6ED);
+}
+
+.print-document .border-slate-200,
+.print-document .border-slate-200\/60,
+.print-document .border-slate-200\/80,
+.print-document .border-slate-300,
+.print-document .border-slate-400,
+.print-document .border-emerald-200,
+.print-document .divide-slate-200 > :not(:last-child),
+.print-document .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--doc-border, #CBD5E1);
 }
 
 /* ==========================================================================
@@ -115,6 +173,14 @@ body {
     display: block !important;
     float: none !important;
     position: static !important;
+  }
+
+  /* Preserve URLs, identifiers and bank coordinates without letting a single
+     long token widen or clip an A4 page. */
+  .print-document,
+  .dynamic-document-page {
+    overflow-wrap: anywhere;
+    word-break: normal;
   }
 
   /* 2. Universal Non-Print Application Chrome & UI Elimination */
@@ -314,6 +380,89 @@ body {
   .page-break {
     page-break-before: always !important;
     break-before: page !important;
+  }
+
+  /* 7b. Application-module reports
+     The shared navbar print action turns every ERP screen into a compact,
+     unclipped report. Document/PDF templates keep their dedicated A4 rules. */
+  body.module-printing [data-print-root] {
+    display: block !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  body.module-printing [data-print-root] > * {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 8mm !important;
+  }
+
+  body.module-printing [data-print-root] :is(.min-h-screen, [class*="min-h-"]) {
+    min-height: 0 !important;
+  }
+
+  body.module-printing [data-print-root] :is(.space-y-4, .space-y-5, .space-y-6, .space-y-8) > :not(:last-child) {
+    margin-block-end: 3mm !important;
+  }
+
+  body.module-printing [data-print-root] :is(.gap-4, .gap-5, .gap-6, .gap-8) {
+    gap: 3mm !important;
+  }
+
+  /* Search/filter bars are screen controls, not report content. Removing the
+     whole bar prevents the empty bordered strip visible in print preview. */
+  body.module-printing [data-print-root] div:has(> div > input[placeholder*="Search"]):has(> div > select),
+  body.module-printing [data-print-root] div:has(> div > input[placeholder*="search"]):has(> div > select),
+  body.module-printing [data-print-root] .print-action-column,
+  body.module-printing [data-print-root] a:has(svg) {
+    display: none !important;
+  }
+
+  body.module-printing [data-print-root] table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: auto !important;
+    font-size: 7.5pt !important;
+  }
+
+  body.module-printing [data-print-root] :is(th, td) {
+    min-width: 0 !important;
+    max-width: none !important;
+    padding: 1.5mm !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    overflow-wrap: anywhere !important;
+    text-overflow: clip !important;
+  }
+
+  body.module-printing [data-print-root] :is(.truncate, [class*="max-w-"]) {
+    max-width: none !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
+  body.module-printing [data-print-root] :is(.rounded-xl, .rounded-2xl) {
+    border-radius: 2mm !important;
+  }
+
+  body.module-printing [data-print-root]::after {
+    content: "Dubai ERP  •  Internal business report";
+    display: block;
+    margin: 6mm 8mm 0 !important;
+    padding-top: 2mm;
+    border-top: 0.2mm solid #cbd5e1;
+    color: #64748b;
+    font-size: 7pt;
+    text-align: center;
   }
 
   /* 8. Document Lines & Borders Preservation */

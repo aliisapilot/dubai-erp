@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { FileText, Search, Loader2, Printer, Receipt } from "lucide-react";
-import { statusClass, fmtAED, getCurrentCompany, parsePayrollMonth, MONTH_NAMES } from "@/lib/helpers";
+import { fmtAED, getCurrentCompany, parsePayrollMonth } from "@/lib/helpers";
 import SalarySlipTemplate, { SalarySlipData } from "@/components/documents/SalarySlipTemplate";
 import EmployeePaymentVoucherTemplate, { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -48,11 +48,6 @@ type SS = {
   payment_method: string | null;
   status: string | null;
 };
-
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"
-];
 
 export default function PayslipsPage() {
   const [records, setRecords] = useState<SS[]>([]);
@@ -100,7 +95,6 @@ export default function PayslipsPage() {
 
   function handleOpenSlip(r: SS) {
     const emp = empMap[r.employee_id || ""];
-    const now = new Date();
     const parsed = parsePayrollMonth(r.payroll_month, r.payroll_year);
     const slipData: SalarySlipData = {
       employee_name: emp?.first_name || "Employee",

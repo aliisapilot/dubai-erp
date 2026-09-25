@@ -5,8 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId } from "@/lib/helpers";
 import {
-  DollarSign, TrendingUp, TrendingDown, ArrowLeft, Search,
-  Briefcase, Filter, ExternalLink, PieChart, Layers
+   TrendingUp, ArrowLeft, Search, ExternalLink
 } from "lucide-react";
 
 type ProjectCostingSummary = {

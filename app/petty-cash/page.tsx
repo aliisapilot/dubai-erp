@@ -3,12 +3,14 @@
 import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, generateDocNumber } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, generateDocNumber } from "@/lib/helpers";
 import {
-  Wallet, Search, ArrowLeft, Plus, ArrowDownRight, ArrowUpRight,
-  Loader2, X, Trash2, Edit2, Filter, Receipt, CheckCircle2,
-  AlertTriangle, DollarSign, Calendar
+  Wallet, Search, ArrowLeft, ArrowDownRight, ArrowUpRight,
+  Loader2, X, Trash2, CheckCircle2, Printer
 } from "lucide-react";
+import PettyCashVoucherTemplate, { PettyCashVoucherData } from "@/components/documents/PettyCashVoucherTemplate";
+import PrintModal from "@/components/documents/PrintModal";
+import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
 type PettyCashTx = {
   id: string;
@@ -42,11 +44,12 @@ export default function PettyCashPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [company, setCompany] = useState<CompanyDocInfo | null>(null);
+  const [printVoucher, setPrintVoucher] = useState<PettyCashVoucherData | null>(null);
 
   // Modal
   const [showModal, setShowModal] = useState(false);
   const [txType, setTxType] = useState<"DISBURSEMENT" | "REPLENISHMENT">("DISBURSEMENT");
-  const [formVoucher, setFormVoucher] = useState("");
   const [formDate, setFormDate] = useState(new Date().toISOString().split("T")[0]);
   const [formPayee, setFormPayee] = useState("");
   const [formCategory, setFormCategory] = useState(PETTY_CATEGORIES[0]);
@@ -78,6 +81,9 @@ export default function PettyCashPage() {
 
       if (error) throw error;
       setTransactions(data || []);
+
+      const co = await getCurrentCompany();
+      if (co) setCompany(co as CompanyDocInfo);
     } catch (err) {
       console.error("Error loading petty cash transactions:", err);
     } finally {
@@ -91,7 +97,6 @@ export default function PettyCashPage() {
 
   function handleOpenCreate(type: "DISBURSEMENT" | "REPLENISHMENT") {
     setTxType(type);
-    setFormVoucher("");
     setFormDate(new Date().toISOString().split("T")[0]);
     setFormPayee(type === "REPLENISHMENT" ? "Bank Cash Withdrawal (Company Account)" : "");
     setFormCategory(type === "REPLENISHMENT" ? "Bank Cash Withdrawal (Replenishment)" : PETTY_CATEGORIES[0]);
@@ -364,14 +369,35 @@ export default function PettyCashPage() {
                         {tx.approved_by || "-"}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(tx.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setPrintVoucher({
+                              voucher_number: tx.voucher_number,
+                              transaction_date: tx.transaction_date,
+                              transaction_type: tx.transaction_type,
+                              payee: tx.payee,
+                              category: tx.category,
+                              amount: tx.amount,
+                              balance_after: tx.balance_after,
+                              receipt_ref: tx.receipt_ref,
+                              description: tx.description,
+                              approved_by: tx.approved_by,
+                            })}
+                            className="p-1 text-slate-400 hover:text-slate-700 rounded transition-colors"
+                            title="Print / View Voucher"
+                          >
+                            <Printer size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(tx.id)}
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -528,6 +554,17 @@ export default function PettyCashPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* PRINT MODAL */}
+      {printVoucher && (
+        <PrintModal isOpen={Boolean(printVoucher)} onClose={() => setPrintVoucher(null)}>
+          <PettyCashVoucherTemplate
+            company={company}
+            voucher={printVoucher}
+            onClose={() => setPrintVoucher(null)}
+          />
+        </PrintModal>
       )}
     </div>
   );

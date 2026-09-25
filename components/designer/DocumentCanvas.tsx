@@ -2,7 +2,7 @@
 
 import React, { useRef, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { DocumentLayout, LayoutElement } from "@/lib/documentDesigner";
-import DynamicDocumentRenderer, { SAMPLE_DOCUMENT_DATA } from "../documents/DynamicDocumentRenderer";
+import DynamicDocumentRenderer, { getSampleDocumentData } from "../documents/DynamicDocumentRenderer";
 import { CompanyDocInfo } from "../documents/DocHeader";
 
 interface DocumentCanvasProps {
@@ -345,7 +345,7 @@ export default function DocumentCanvas({
           onAddImage(file);
         }
       }}
-      className="relative flex min-w-0 flex-1 select-none items-start justify-center overflow-auto bg-slate-950 p-6 sm:p-8 md:p-10"
+      className="relative flex min-w-0 flex-1 select-none items-start justify-start overflow-auto bg-slate-950 p-6 sm:p-8 md:p-10"
       style={{
         backgroundImage: "radial-gradient(circle at center, rgba(51,65,85,0.25) 1px, transparent 1px)",
         backgroundSize: "24px 24px",
@@ -389,7 +389,7 @@ export default function DocumentCanvas({
           <DynamicDocumentRenderer
             layout={layout}
             company={company}
-            data={SAMPLE_DOCUMENT_DATA}
+            data={getSampleDocumentData(layout.documentType)}
             isDesignerPreview={true}
             scale={1}
             pageNumber={pageNumber}

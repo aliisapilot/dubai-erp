@@ -1,7 +1,7 @@
 "use client";
 import { FormEvent, useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Search, ShoppingCart, X, Save, Loader2, Pencil, Eye, Printer, Trash2, FileSignature } from "lucide-react";
+import { Plus, Search, X, Save, Loader2, Pencil, Eye, Printer, Trash2, FileSignature } from "lucide-react";
 import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, calcLineItem } from "@/lib/helpers";
 import PurchaseOrderTemplate, { PurchaseOrderData, POLineItem } from "@/components/documents/PurchaseOrderTemplate";
 import PrintModal from "@/components/documents/PrintModal";

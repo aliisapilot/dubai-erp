@@ -20,7 +20,7 @@ export default function ERPLayout({ children }: { children: ReactNode }) {
       <Sidebar />
       <div className="flex-1 min-w-0 flex flex-col m-0 p-0 overflow-x-hidden print:block print:w-[210mm] print:overflow-visible print:m-0 print:p-0">
         {!isDesigner && <Navbar />}
-        <div className="flex-1 min-w-0 flex flex-col m-0 p-0 overflow-y-auto bg-slate-50 text-slate-900">
+        <div data-print-root className="flex-1 min-w-0 flex flex-col m-0 p-0 overflow-y-auto bg-slate-50 text-slate-900">
           {children}
         </div>
       </div>

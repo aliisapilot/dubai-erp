@@ -124,7 +124,6 @@ async function testSalaryStatementSeptember2026() {
 
   // 5. Test Editing / Updating the Statement to "approved" and then "paid"
   console.log("\nStep 3: Editing statement (updating bonus to 2000 and status to 'approved')...");
-  const updatedBonus = 2000;
   const updatedGross = grossSalary + 1000; // 19000
   const updatedNet = updatedGross - totalDeductions; // 16500
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, FormEvent, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId, generateDocNumber } from "@/lib/helpers";
@@ -32,7 +32,6 @@ type StockInRecord = {
 function StockInForm() {
   const searchParams = useSearchParams();
   const initialProductId = searchParams.get("productId") || "";
-  const router = useRouter();
 
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [selectedProductId, setSelectedProductId] = useState(initialProductId);
@@ -42,7 +41,6 @@ function StockInForm() {
   const [referenceNumber, setReferenceNumber] = useState("");
   const [notes, setNotes] = useState("");
 
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -50,10 +48,11 @@ function StockInForm() {
 
   useEffect(() => {
     loadData();
+  // Initial inventory lookup only.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadData() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -86,7 +85,6 @@ function StockInForm() {
     } catch (err) {
       console.error("Error loading stock in data:", err);
     } finally {
-      setLoading(false);
     }
   }
 

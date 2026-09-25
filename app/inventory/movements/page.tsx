@@ -5,8 +5,8 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId } from "@/lib/helpers";
 import {
-  History, Search, Filter, ArrowLeft, ArrowDownRight, ArrowUpRight,
-  RefreshCw, Package, Calendar, Download
+  History, Search, ArrowLeft, ArrowDownRight, ArrowUpRight,
+  RefreshCw
 } from "lucide-react";
 
 type StockMovement = {
