@@ -8,7 +8,6 @@
  */
 
 import { supabase } from "./supabase";
-import { DEFAULT_BRAND_COLORS } from "./brandConfig";
 
 // ── Document Type Definitions ──────────────────────────────────────────────────
 export type DocumentTypeId =
@@ -259,7 +258,34 @@ export interface DocumentLayout {
   elements: LayoutElement[];
 }
 
-export const CURRENT_LAYOUT_VERSION = 2;
+export const CURRENT_LAYOUT_VERSION = 7;
+
+const VAT_DOCUMENT_TYPES = new Set<DocumentTypeId>([
+  "tax_invoice",
+  "quotation",
+  "proforma_invoice",
+  "purchase_order",
+  "supplier_bill",
+]);
+
+export function documentUsesVat(docType: DocumentTypeId): boolean {
+  return VAT_DOCUMENT_TYPES.has(docType);
+}
+
+const DOCUMENT_STYLES: Record<DocumentTypeId, DocumentLayout["branding"]> = {
+  tax_invoice: { primaryColor: "#0F172A", accentColor: "#C9A227", textColor: "#334155", mutedColor: "#64748B", borderColor: "#CBD5E1", tableHeaderColor: "#0F172A", totalHighlightColor: "#F8F6ED" },
+  quotation: { primaryColor: "#0F4C5C", accentColor: "#D4A72C", textColor: "#263238", mutedColor: "#607D8B", borderColor: "#B0BEC5", tableHeaderColor: "#0F4C5C", totalHighlightColor: "#EDF7F8" },
+  proforma_invoice: { primaryColor: "#312E81", accentColor: "#F59E0B", textColor: "#312E4A", mutedColor: "#6B7280", borderColor: "#C7D2FE", tableHeaderColor: "#3730A3", totalHighlightColor: "#EEF2FF" },
+  delivery_note: { primaryColor: "#065F46", accentColor: "#10B981", textColor: "#1F2937", mutedColor: "#64748B", borderColor: "#A7F3D0", tableHeaderColor: "#047857", totalHighlightColor: "#ECFDF5" },
+  purchase_order: { primaryColor: "#7F1D1D", accentColor: "#D4A72C", textColor: "#3F2A2A", mutedColor: "#78716C", borderColor: "#E7C7C7", tableHeaderColor: "#7F1D1D", totalHighlightColor: "#FFF7ED" },
+  receipt_voucher: { primaryColor: "#075985", accentColor: "#16A34A", textColor: "#1E3A5F", mutedColor: "#64748B", borderColor: "#BAE6FD", tableHeaderColor: "#0369A1", totalHighlightColor: "#F0FDF4" },
+  customer_statement: { primaryColor: "#1E293B", accentColor: "#2563EB", textColor: "#334155", mutedColor: "#64748B", borderColor: "#CBD5E1", tableHeaderColor: "#334155", totalHighlightColor: "#EFF6FF" },
+  supplier_bill: { primaryColor: "#78350F", accentColor: "#D97706", textColor: "#422006", mutedColor: "#78716C", borderColor: "#FED7AA", tableHeaderColor: "#92400E", totalHighlightColor: "#FFFBEB" },
+  salary_statement: { primaryColor: "#5B21B6", accentColor: "#0D9488", textColor: "#312E4A", mutedColor: "#6B7280", borderColor: "#DDD6FE", tableHeaderColor: "#6D28D9", totalHighlightColor: "#F5F3FF" },
+  project_handover: { primaryColor: "#14532D", accentColor: "#CA8A04", textColor: "#26352B", mutedColor: "#64748B", borderColor: "#BBF7D0", tableHeaderColor: "#166534", totalHighlightColor: "#F7FEE7" },
+  work_method_statement: { primaryColor: "#9A3412", accentColor: "#F59E0B", textColor: "#431407", mutedColor: "#78716C", borderColor: "#FED7AA", tableHeaderColor: "#C2410C", totalHighlightColor: "#FFF7ED" },
+  employee_payment_voucher: { primaryColor: "#164E63", accentColor: "#0891B2", textColor: "#243B45", mutedColor: "#64748B", borderColor: "#A5F3FC", tableHeaderColor: "#155E75", totalHighlightColor: "#ECFEFF" },
+};
 
 // ── Default Table Columns ──────────────────────────────────────────────────────
 export const DEFAULT_INVOICE_COLUMNS: TableColumnConfig[] = [
@@ -290,9 +316,174 @@ export const DEFAULT_STATEMENT_COLUMNS: TableColumnConfig[] = [
   { key: "balance", label: "Balance (AED)", visible: true, widthPct: 10, align: "right" },
 ];
 
+export const DEFAULT_SALARY_COLUMNS: TableColumnConfig[] = [
+  { key: "index", label: "#", visible: true, widthPct: 8, align: "center" },
+  { key: "description", label: "Earnings / Deductions", visible: true, widthPct: 62, align: "left" },
+  { key: "line_total", label: "Amount (AED)", visible: true, widthPct: 30, align: "right" },
+];
+
+type ElementOverrides = Record<string, Partial<LayoutElement>>;
+
+/**
+ * Enforces the business purpose of each PDF. Financial tax documents keep VAT,
+ * while operational, payroll, statement, and voucher documents get dedicated
+ * content blocks and compact geometry without invoice-only gaps.
+ */
+function applyDocumentBusinessProfile(
+  sourceElements: LayoutElement[],
+  docType: DocumentTypeId
+): LayoutElement[] {
+  const style = DOCUMENT_STYLES[docType];
+  const headerIds = ["watermark", "logo", "company_name_en", "company_name_ar", "company_address", "doc_title", "doc_meta", "footer"];
+  const allowedIds = new Set(headerIds);
+  const overrides: ElementOverrides = {
+    watermark: { x: 55, y: 92, width: 100, height: 112 },
+    footer: { x: 12, y: 262, width: 186, height: 16 },
+  };
+
+  const add = (...ids: string[]) => ids.forEach((id) => allowedIds.add(id));
+  const compactTable = {
+    x: 12,
+    y: 95,
+    width: 186,
+    height: 48,
+    label: "Line Items Table",
+  } satisfies Partial<LayoutElement>;
+
+  if (["tax_invoice", "quotation", "proforma_invoice"].includes(docType)) {
+    add("customer_info", "line_items", "amount_in_words", "totals", "bank_details", "payment_terms", "company_signature", "company_stamp");
+    Object.assign(overrides, {
+      line_items: compactTable,
+      amount_in_words: { x: 12, y: 145, width: 105, height: 26 },
+      totals: { x: 121, y: 145, width: 77, height: 30, label: "Subtotal, VAT & Grand Total" },
+      bank_details: { x: 12, y: 174, width: 105, height: 24 },
+      payment_terms: { x: 12, y: 201, width: 105, height: 34 },
+      company_signature: { x: 121, y: 179, width: 44, height: 41 },
+      company_stamp: { x: 167, y: 179, width: 31, height: 41 },
+    });
+  } else if (docType === "purchase_order" || docType === "supplier_bill") {
+    add("customer_info", "line_items", "amount_in_words", "totals", "payment_terms", "company_signature", "company_stamp");
+    Object.assign(overrides, {
+      customer_info: { type: "supplier_info", label: "Supplier / Vendor Information" },
+      line_items: compactTable,
+      amount_in_words: { x: 12, y: 145, width: 105, height: 26 },
+      totals: { x: 121, y: 145, width: 77, height: 30, label: "Subtotal, VAT & Grand Total" },
+      payment_terms: { x: 12, y: 192, width: 105, height: 40 },
+      company_signature: { x: 121, y: 179, width: 44, height: 40 },
+      company_stamp: { x: 167, y: 179, width: 31, height: 40 },
+    });
+  } else if (docType === "delivery_note") {
+    add("customer_info", "line_items", "payment_terms", "company_signature", "company_stamp");
+    Object.assign(overrides, {
+      line_items: { x: 12, y: 95, width: 186, height: 48, label: "Delivered Items Table" },
+      payment_terms: { x: 12, y: 146, width: 186, height: 45, label: "Delivery Notes & Condition", backgroundColor: "#F8FAFC", borderColor: style.borderColor, borderWidth: 1, borderRadius: 4, padding: 3 },
+      company_signature: { x: 121, y: 202, width: 44, height: 42, customText: "DELIVERED BY" },
+      company_stamp: { x: 167, y: 202, width: 31, height: 42 },
+    });
+  } else if (docType === "receipt_voucher" || docType === "employee_payment_voucher") {
+    add("customer_info", "amount_in_words", "totals", "payment_terms", "company_signature", "company_stamp");
+    Object.assign(overrides, {
+      customer_info: {
+        label: docType === "receipt_voucher" ? "Received From / Payer" : "Employee / Payee Information",
+      },
+      amount_in_words: { x: 12, y: 96, width: 105, height: 29 },
+      totals: {
+        x: 121,
+        y: 96,
+        width: 77,
+        height: 29,
+        label: docType === "receipt_voucher" ? "Amount Received" : "Amount Paid",
+      },
+      payment_terms: {
+        x: 12,
+        y: 129,
+        width: 186,
+        height: 62,
+        label: docType === "receipt_voucher" ? "Payment Method & Purpose" : "Payment Purpose & Method",
+        backgroundColor: "#F8FAFC",
+        borderColor: style.borderColor,
+        borderWidth: 1,
+        borderRadius: 4,
+        padding: 3,
+      },
+      company_signature: {
+        x: 121,
+        y: 204,
+        width: 44,
+        height: 44,
+        customText: docType === "receipt_voucher" ? "RECEIVED BY" : "AUTHORIZED BY",
+      },
+      company_stamp: { x: 167, y: 204, width: 31, height: 44 },
+    });
+  } else if (docType === "customer_statement") {
+    add("customer_info", "line_items", "totals");
+    Object.assign(overrides, {
+      line_items: { x: 12, y: 95, width: 186, height: 39, label: "Account Transactions" },
+      totals: { x: 121, y: 137, width: 77, height: 38, label: "Account Summary" },
+    });
+  } else if (docType === "salary_statement") {
+    add("customer_info", "line_items", "totals", "payment_terms", "company_signature", "company_stamp");
+    Object.assign(overrides, {
+      customer_info: { label: "Employee Information" },
+      line_items: { x: 12, y: 95, width: 186, height: 48, label: "Salary Earnings & Deductions" },
+      totals: { x: 121, y: 146, width: 77, height: 39, label: "Payroll Summary" },
+      payment_terms: { x: 12, y: 146, width: 105, height: 39, label: "Payroll Notes & Bank Reference", backgroundColor: "#F8FAFC", borderColor: style.borderColor, borderWidth: 1, borderRadius: 4, padding: 3 },
+      company_signature: { x: 121, y: 191, width: 44, height: 36, customText: "PAYROLL AUTHORIZED" },
+      company_stamp: { x: 167, y: 191, width: 31, height: 36 },
+    });
+  } else if (docType === "project_handover" || docType === "work_method_statement") {
+    add("customer_info", "payment_terms", "company_signature", "company_stamp");
+    Object.assign(overrides, {
+      customer_info: { type: "project_info", label: "Project Information" },
+      payment_terms: {
+        x: 12,
+        y: 96,
+        width: 186,
+        height: 100,
+        label: docType === "project_handover" ? "Handover Scope & Completion Remarks" : "Method, Scope & Safety Notes",
+        backgroundColor: "#F8FAFC",
+        borderColor: style.borderColor,
+        borderWidth: 1,
+        borderRadius: 4,
+        padding: 3,
+      },
+      company_signature: {
+        x: 121,
+        y: 207,
+        width: 44,
+        height: 45,
+        customText: docType === "project_handover" ? "HANDOVER AUTHORIZED" : "PREPARED / APPROVED BY",
+      },
+      company_stamp: { x: 167, y: 207, width: 31, height: 45 },
+    });
+  }
+
+  return sourceElements
+    .filter((element) => allowedIds.has(element.id))
+    .map((element) => {
+      const profiled = { ...element, ...(overrides[element.id] || {}) };
+      if (profiled.id === "line_items" && profiled.tableSettings) {
+        const columns =
+          docType === "delivery_note"
+            ? DEFAULT_DELIVERY_COLUMNS
+            : docType === "customer_statement"
+            ? DEFAULT_STATEMENT_COLUMNS
+            : docType === "salary_statement"
+            ? DEFAULT_SALARY_COLUMNS
+            : DEFAULT_INVOICE_COLUMNS;
+        profiled.tableSettings = {
+          ...profiled.tableSettings,
+          columns: columns.map((column) => ({ ...column })),
+        };
+      }
+      return profiled;
+    });
+}
+
 // ── Default UAE Corporate Template Generator ───────────────────────────────────
 export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
   const docConfig = DOCUMENT_TYPE_OPTIONS.find((d) => d.id === docType) || DOCUMENT_TYPE_OPTIONS[0];
+  const documentStyle = DOCUMENT_STYLES[docType];
 
   const elements: LayoutElement[] = [
     // 0. Watermark (Background layer, centered)
@@ -344,7 +535,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       fontSize: 13.5,
       fontWeight: "bold",
       textAlign: "center",
-      color: "#0F172A",
+      color: documentStyle.primaryColor,
     },
 
     // 3. Arabic Company Name (prominent focal point in Gold accent)
@@ -362,7 +553,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       fontSize: 20,
       fontWeight: "bold",
       textAlign: "center",
-      color: "#C9A227",
+      color: documentStyle.accentColor,
     },
 
     // 4. Company Address & TRN Strip
@@ -398,7 +589,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       fontWeight: "extrabold",
       textAlign: "left",
       color: "#FFFFFF",
-      backgroundColor: "#0F172A",
+      backgroundColor: documentStyle.primaryColor,
       borderRadius: 4,
       padding: 2.5,
       customText: `${docConfig.defaultTitle} — ${docConfig.defaultTitleAr}`,
@@ -410,7 +601,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "customer_info",
       label: "Customer Information Card",
       x: 12,
-      y: 64,
+      y: 63,
       width: 91,
       height: 30,
       visible: true,
@@ -428,9 +619,9 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
     {
       id: "doc_meta",
       type: "doc_meta",
-      label: "Invoice Date & Reference Meta",
+      label: "Document Date & Reference",
       x: 107,
-      y: 64,
+      y: 63,
       width: 91,
       height: 30,
       visible: true,
@@ -457,14 +648,14 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       locked: false,
       zIndex: 17,
       tableSettings: {
-        headerBg: "#0F172A",
+        headerBg: documentStyle.tableHeaderColor,
         headerTextColor: "#FFFFFF",
         fontSize: 10.5,
         headerFontSize: 10.5,
         rowHeight: 9.5,
         borderThickness: 1,
-        borderColor: "#CBD5E1",
-        bodyTextColor: "#334155",
+        borderColor: documentStyle.borderColor,
+        bodyTextColor: documentStyle.textColor,
         columns:
           docType === "delivery_note"
             ? DEFAULT_DELIVERY_COLUMNS
@@ -772,16 +963,8 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       background: "#FFFFFF",
       watermarkOpacity: 0.045,
     },
-    branding: {
-      primaryColor: DEFAULT_BRAND_COLORS.primary,
-      accentColor: DEFAULT_BRAND_COLORS.accent,
-      textColor: DEFAULT_BRAND_COLORS.text,
-      mutedColor: DEFAULT_BRAND_COLORS.muted,
-      borderColor: DEFAULT_BRAND_COLORS.border,
-      tableHeaderColor: DEFAULT_BRAND_COLORS.tableHeader,
-      totalHighlightColor: DEFAULT_BRAND_COLORS.totalHighlight,
-    },
-    elements,
+    branding: documentStyle,
+    elements: applyDocumentBusinessProfile(elements, docType),
   };
 }
 
@@ -802,8 +985,25 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
   const pageWidth = Number.isFinite(layout.page?.widthMm) ? layout.page.widthMm : 210;
   const pageHeight = Number.isFinite(layout.page?.heightMm) ? layout.page.heightMm : 297;
 
-  const elements = layout.elements.map((element) => {
+  const migratedElements = sourceVersion < 7
+    ? applyDocumentBusinessProfile(layout.elements, layout.documentType)
+    : layout.elements;
+
+  const elements = migratedElements.map((element) => {
     let el = { ...element };
+
+    if (sourceVersion < 6 && ["tax_invoice", "quotation", "proforma_invoice", "purchase_order", "supplier_bill"].includes(layout.documentType)) {
+      const isLegacyTotals =
+        el.id === "totals" &&
+        ((Math.abs(el.y - 145) < 0.01 && Math.abs(el.height - 43) < 0.01) ||
+          (Math.abs(el.y - 167) < 0.01 && Math.abs(el.height - 46) < 0.01));
+      if (isLegacyTotals) el = { ...el, y: 145, height: 30 };
+
+      const isLegacyApproval =
+        (el.id === "company_signature" || el.id === "company_stamp") &&
+        (Math.abs(el.y - 192) < 0.01 || Math.abs(el.y - 194) < 0.01);
+      if (isLegacyApproval) el = { ...el, y: 179 };
+    }
 
     if (sourceVersion < 2 && el.id === "logo") {
       const originalFullWidth = Math.abs(el.width - 186) < 0.01 && Math.abs(el.height - 24) < 0.01;
@@ -829,6 +1029,7 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
     ...layout,
     version: CURRENT_LAYOUT_VERSION,
     page: { ...layout.page, paper: "A4", widthMm: 210, heightMm: 297 },
+    branding: sourceVersion < 7 ? DOCUMENT_STYLES[layout.documentType] : layout.branding,
     elements,
   };
 }

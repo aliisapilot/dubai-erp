@@ -2,7 +2,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, Wallet, X, Save, Loader2, Pencil } from "lucide-react";
-import { getCompanyId, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber } from "@/lib/helpers";
+import { getCompanyId, fmtAED, fmtDate, todayISO, generateDocNumber } from "@/lib/helpers";
 import {
   PaymentType,
   PaymentMethod,
@@ -10,7 +10,6 @@ import {
   normalizePaymentType,
   normalizePaymentMethod,
   formatPaymentMethod,
-  formatPaymentType,
   parseDatabaseError,
 } from "@/lib/paymentTypes";
 

@@ -3,6 +3,7 @@
 import React, { ReactNode } from "react";
 import { Printer } from "lucide-react";
 import { getBrandConfig, BrandColors, CompanyBrandInput } from "@/lib/brandConfig";
+import { printCurrentDocument } from "@/lib/print";
 
 interface DocumentContainerProps {
   children: ReactNode;
@@ -35,11 +36,11 @@ export default function DocumentContainer({
   company,
   noPadding = false,
 }: DocumentContainerProps) {
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (onPrint) {
       onPrint();
     } else {
-      window.print();
+      await printCurrentDocument();
     }
   };
 
@@ -59,6 +60,7 @@ export default function DocumentContainer({
     "--doc-border": colors.border,
     "--doc-table-header": colors.tableHeader,
     "--doc-total-highlight": colors.totalHighlight,
+    "--doc-white": colors.white,
   } as React.CSSProperties;
 
   return (
@@ -109,14 +111,6 @@ export default function DocumentContainer({
           className={`print-page print-document document-sheet relative mx-auto box-border min-h-[297mm] w-[210mm] border border-slate-200 bg-white p-[12mm] shadow-xl print:m-0 print:min-h-[297mm] print:w-[210mm] print:border-none print:p-[12mm] print:shadow-none ${className}`}
           style={{
             ...brandVars,
-            ...(showWatermark
-              ? {
-                  backgroundImage: `url('${bgImg}')`,
-                  backgroundPosition: "center top",
-                  backgroundRepeat: "repeat-y",
-                  backgroundSize: "210mm 297mm",
-                }
-              : {}),
           }}
         >
           {showWatermark && (
@@ -124,12 +118,15 @@ export default function DocumentContainer({
               className="print-background-container absolute inset-0 z-0 h-full w-full select-none overflow-hidden pointer-events-none"
               aria-hidden="true"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={bgImg}
-                alt=""
-                className="print-background h-full w-full select-none object-cover pointer-events-none"
-                style={{ position: "absolute", inset: 0, opacity: 0.045 }}
+              <div
+                className="print-background absolute inset-0 h-full w-full select-none pointer-events-none"
+                style={{
+                  backgroundImage: `url(${JSON.stringify(bgImg)})`,
+                  backgroundPosition: "center top",
+                  backgroundRepeat: "repeat-y",
+                  backgroundSize: "210mm 297mm",
+                  opacity: 0.045,
+                }}
               />
             </div>
           )}

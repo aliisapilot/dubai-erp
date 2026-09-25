@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, FormEvent, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId, generateDocNumber } from "@/lib/helpers";
@@ -31,7 +31,6 @@ type StockOutRecord = {
 function StockOutForm() {
   const searchParams = useSearchParams();
   const initialProductId = searchParams.get("productId") || "";
-  const router = useRouter();
 
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [selectedProductId, setSelectedProductId] = useState(initialProductId);
@@ -41,7 +40,6 @@ function StockOutForm() {
   const [notes, setNotes] = useState("");
   const [allowNegative, setAllowNegative] = useState(false);
 
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -52,7 +50,6 @@ function StockOutForm() {
   }, []);
 
   async function loadData() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -78,7 +75,6 @@ function StockOutForm() {
     } catch (err) {
       console.error("Error loading stock out data:", err);
     } finally {
-      setLoading(false);
     }
   }
 

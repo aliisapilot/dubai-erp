@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { getCompanyId } from "@/lib/helpers";
 import {
   FileCode2, Search, ArrowLeft, Plus, ExternalLink, Loader2, X,
-  Trash2, Edit2, Filter, Paperclip, CheckCircle2, AlertCircle
+  Trash2, Paperclip, CheckCircle2
 } from "lucide-react";
 
 type TechnicalDoc = {

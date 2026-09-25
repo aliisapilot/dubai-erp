@@ -3,18 +3,16 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, fmtAED } from "@/lib/helpers";
+import { getCompanyId } from "@/lib/helpers";
+import { printCurrentDocument } from "@/lib/print";
 import {
-  BarChart3, ArrowLeft, Search, Calendar, Download, Printer,
-  Receipt, FileText, CheckCircle2, TrendingUp
+   ArrowLeft, Printer, TrendingUp
 } from "lucide-react";
 
 export default function SalesReportPage() {
   type SalesDocumentRow = { id: string; status?: string | null; subtotal?: number | null; vat_amount?: number | null; total_amount?: number | null; invoice_number?: string | null; invoice_date?: string | null; customers?: { name?: string | null } | { name?: string | null }[] | null };
   const [invoices, setInvoices] = useState<SalesDocumentRow[]>([]);
   const [quotations, setQuotations] = useState<SalesDocumentRow[]>([]);
-  const [proformas, setProformas] = useState<SalesDocumentRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -23,27 +21,27 @@ export default function SalesReportPage() {
       const companyId = await getCompanyId();
       if (!companyId) return;
 
-      const [invRes, qRes, piRes] = await Promise.all([
+      const [invRes, qRes] = await Promise.all([
         supabase.from("tax_invoices").select("*, customers(name)").eq("company_id", companyId).order("invoice_date", { ascending: false }),
         supabase.from("quotations").select("*, customers(name)").eq("company_id", companyId).order("quotation_date", { ascending: false }),
-        supabase.from("proforma_invoices").select("*, customers(name)").eq("company_id", companyId).order("proforma_date", { ascending: false }),
       ]);
 
-      const queryError = invRes.error || qRes.error || piRes.error;
+      const queryError = invRes.error || qRes.error;
       if (queryError) throw new Error(queryError.message);
 
       setInvoices((invRes.data || []) as SalesDocumentRow[]);
       setQuotations((qRes.data || []) as SalesDocumentRow[]);
-      setProformas((piRes.data || []) as SalesDocumentRow[]);
     } catch (err) {
       console.error("Error loading sales report:", err);
     } finally {
-      setLoading(false);
+      // The report remains usable with an empty result when the query fails.
     }
   }
 
   useEffect(() => {
     void Promise.resolve().then(loadSalesData);
+  // Report snapshot loads once on mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filteredInvoices = invoices.filter(inv => {
@@ -61,7 +59,7 @@ export default function SalesReportPage() {
   const quoteWinRate = quotations.length > 0 ? (acceptedQuotes / quotations.length) * 100 : 0;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-7xl mx-auto space-y-6" data-print-root>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Link
@@ -83,7 +81,7 @@ export default function SalesReportPage() {
 
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={() => void printCurrentDocument()}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors"
         >
           <Printer size={15} /> Print Report

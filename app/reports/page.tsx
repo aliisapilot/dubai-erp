@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { BarChart3, Loader2, Download } from "lucide-react";
+import { BarChart3, Loader2 } from "lucide-react";
 import { fmtAED, fmtDate } from "@/lib/helpers";
 
 type Tab = "sales" | "purchasing" | "vat" | "customers" | "suppliers" | "inventory" | "hr";
@@ -9,8 +9,6 @@ type Tab = "sales" | "purchasing" | "vat" | "customers" | "suppliers" | "invento
 export default function ReportsPage() {
   const [tab, setTab] = useState<Tab>("sales");
   const [loading, setLoading] = useState(false);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
   const [data, setData] = useState<Record<string, unknown[]>>({});
 
   async function loadReport() {
@@ -64,6 +62,8 @@ export default function ReportsPage() {
     setLoading(false);
   }
 
+  // The active report tab is the complete refresh key.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void Promise.resolve().then(loadReport); }, [tab]);
 
   const tabs: {key: Tab; label: string}[] = [

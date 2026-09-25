@@ -33,6 +33,8 @@ export default function PayrollSummaryPage() {
     setLoading(false);
   }
 
+  // The selected payroll period is the complete refresh key.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void Promise.resolve().then(load); }, [year, month]);
 
   const totalGross = records.reduce((s,r) => s + (r.gross_salary||0), 0);

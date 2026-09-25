@@ -21,7 +21,7 @@ import DocumentCanvas from "./DocumentCanvas";
 import { CompanyDocInfo } from "../documents/DocHeader";
 import DocumentPreviewModal from "./DocumentPreviewModal";
 import LayoutValidatorModal from "./LayoutValidatorModal";
-import { getDocumentPageCount, SAMPLE_DOCUMENT_DATA } from "../documents/DynamicDocumentRenderer";
+import { getDocumentPageCount, getSampleDocumentData } from "../documents/DynamicDocumentRenderer";
 import { processAndOptimizeImage } from "@/lib/documentDesigner";
 import { AlertCircle, CheckCircle2, RotateCcw } from "lucide-react";
 
@@ -44,7 +44,8 @@ export default function DocumentDesigner() {
   const [snapGrid, setSnapGrid] = useState<boolean>(true);
   const [snapMargins, setSnapMargins] = useState<boolean>(true);
   const [pageNumber, setPageNumber] = useState<number>(1);
-  const totalPages = getDocumentPageCount(layout, SAMPLE_DOCUMENT_DATA.items.length);
+  const sampleData = getSampleDocumentData(selectedDocType);
+  const totalPages = getDocumentPageCount(layout, sampleData.items.length);
   const displayedPageNumber = Math.min(pageNumber, totalPages);
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -444,6 +445,37 @@ export default function DocumentDesigner() {
     setTimeout(() => setNotification(null), 4000);
   }, [companyId, selectedDocType, layout]);
 
+  const handleAutoFix = useCallback(async () => {
+    setSaving(true);
+    setNotification(null);
+
+    const defaultLayout = createDefaultLayout(selectedDocType);
+    const fixedLayout: DocumentLayout = {
+      ...defaultLayout,
+      page: {
+        ...defaultLayout.page,
+        background: layout.page.background || defaultLayout.page.background,
+      },
+      elements: defaultLayout.elements.map((element) => {
+        const currentElement = layout.elements.find((candidate) => candidate.id === element.id);
+        return currentElement?.imageSrc ? { ...element, imageSrc: currentElement.imageSrc } : element;
+      }),
+    };
+
+    pushHistory(fixedLayout);
+    setSelectedElementId(null);
+    setPageNumber(1);
+    const result = await saveDocumentLayout(companyId, selectedDocType, fixedLayout);
+    setSaving(false);
+    setNotification({
+      message: result.success
+        ? `PDF layout fixed and saved: gaps corrected and ${selectedDocType.replaceAll("_", " ")} VAT rules applied.`
+        : `PDF layout fixed in the designer, but could not be saved: ${result.error || "Unknown persistence error"}`,
+      type: result.success ? "success" : "error",
+    });
+    setTimeout(() => setNotification(null), 4500);
+  }, [companyId, layout, pushHistory, selectedDocType]);
+
   // ── 11. Reset Layout to Default ────────────────────────────────────────────
   const handleConfirmReset = useCallback(async () => {
     const result = await resetDocumentLayout(companyId, selectedDocType);
@@ -461,9 +493,14 @@ export default function DocumentDesigner() {
   // ── 12. Zoom Fitting Actions ───────────────────────────────────────────────
   const handleFitWidth = useCallback(() => {
     if (canvasContainerRef.current) {
-      const containerW = canvasContainerRef.current.clientWidth - 64;
+      const container = canvasContainerRef.current;
+      const styles = window.getComputedStyle(container);
+      const horizontalPadding =
+        (Number.parseFloat(styles.paddingLeft) || 0) +
+        (Number.parseFloat(styles.paddingRight) || 0);
+      const containerW = Math.max(40, container.getBoundingClientRect().width - horizontalPadding - 16);
       const a4WidthPx = 210 * 3.779527559; // ~793.7px
-      const calculatedZoom = Math.max(0.3, Math.min(2.0, containerW / a4WidthPx));
+      const calculatedZoom = Math.max(0.05, Math.min(2.0, containerW / a4WidthPx));
       setZoom(Math.round(calculatedZoom * 100) / 100);
     } else {
       setZoom(1.0);
@@ -472,30 +509,77 @@ export default function DocumentDesigner() {
 
   const handleFitPage = useCallback(() => {
     if (canvasContainerRef.current) {
-      const containerW = Math.max(300, canvasContainerRef.current.clientWidth - 80);
-      const containerH = Math.max(300, canvasContainerRef.current.clientHeight - 80);
+      const container = canvasContainerRef.current;
+      const styles = window.getComputedStyle(container);
+      const horizontalPadding =
+        (Number.parseFloat(styles.paddingLeft) || 0) +
+        (Number.parseFloat(styles.paddingRight) || 0);
+      const verticalPadding =
+        (Number.parseFloat(styles.paddingTop) || 0) +
+        (Number.parseFloat(styles.paddingBottom) || 0);
+      const bounds = container.getBoundingClientRect();
+      const containerW = Math.max(40, bounds.width - horizontalPadding - 16);
+      const containerH = Math.max(60, bounds.height - verticalPadding - 16);
       const a4WidthPx = 210 * 3.779527559;
       const a4HeightPx = 297 * 3.779527559; // ~1122.5px
       const zoomW = containerW / a4WidthPx;
       const zoomH = containerH / a4HeightPx;
-      const calculatedZoom = Math.max(0.3, Math.min(2.0, Math.min(zoomW, zoomH)));
+      const calculatedZoom = Math.max(0.05, Math.min(2.0, Math.min(zoomW, zoomH) * 0.98));
       setZoom(Math.round(calculatedZoom * 100) / 100);
     } else {
       setZoom(0.75);
     }
   }, []);
 
-  // Auto-fit page on initial layout load and window resize
+  // Keep narrow workspaces usable. Actual canvas-size changes are handled by
+  // the ResizeObserver below so browser zoom and toolbar wrapping cannot crop A4.
   useEffect(() => {
-    const timer = setTimeout(() => {
-      handleFitPage();
-    }, 150);
-    window.addEventListener("resize", handleFitPage);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("resize", handleFitPage);
+    const collapsePanelsForViewport = () => {
+      if (window.innerWidth < 1280) {
+        setLeftSidebarOpen(false);
+        setRightInspectorOpen(false);
+      }
     };
-  }, [handleFitPage]);
+    collapsePanelsForViewport();
+    const handleResize = () => {
+      collapsePanelsForViewport();
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container) return;
+
+    let animationFrame = 0;
+    let lastWidth = -1;
+    let lastHeight = -1;
+    const refit = (entries?: ResizeObserverEntry[]) => {
+      const entry = entries?.[0];
+      const borderBox = entry?.borderBoxSize?.[0];
+      const width = borderBox?.inlineSize ?? container.getBoundingClientRect().width;
+      const height = borderBox?.blockSize ?? container.getBoundingClientRect().height;
+
+      // Scrollbars can appear while manually zooming. They must not trigger an
+      // automatic Fit Page and overwrite the user's chosen zoom level.
+      if (Math.abs(width - lastWidth) < 0.5 && Math.abs(height - lastHeight) < 0.5) return;
+      lastWidth = width;
+      lastHeight = height;
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(handleFitPage);
+    };
+    const observer = new ResizeObserver(refit);
+    observer.observe(container, { box: "border-box" });
+    refit();
+
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [handleFitPage, leftSidebarOpen, rightInspectorOpen]);
 
   // ── 13. Keyboard Shortcuts ─────────────────────────────────────────────────
   useEffect(() => {
@@ -610,6 +694,7 @@ export default function DocumentDesigner() {
           onPageChange={setPageNumber}
           saving={saving}
           onSave={handleSave}
+          onAutoFix={handleAutoFix}
           onReset={() => setShowResetModal(true)}
           onPreview={() => setShowPreviewModal(true)}
           onCheckLayout={() => setShowValidatorModal(true)}
@@ -628,16 +713,18 @@ export default function DocumentDesigner() {
         <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
           {/* Left Sidebar: Document Layers */}
           {leftSidebarOpen && (
-            <LeftSidebar
-              elements={layout.elements}
-              selectedElementId={selectedElementId}
-              onSelectElement={setSelectedElementId}
-              onToggleVisibility={handleToggleVisibility}
-              onToggleLock={handleToggleLock}
-              onMoveLayer={handleMoveLayer}
-              onAddCustomElement={handleAddCustomElement}
-              onAddImage={handleAddImage}
-            />
+            <div className="absolute inset-y-0 left-0 z-40 xl:static xl:z-auto">
+              <LeftSidebar
+                elements={layout.elements}
+                selectedElementId={selectedElementId}
+                onSelectElement={setSelectedElementId}
+                onToggleVisibility={handleToggleVisibility}
+                onToggleLock={handleToggleLock}
+                onMoveLayer={handleMoveLayer}
+                onAddCustomElement={handleAddCustomElement}
+                onAddImage={handleAddImage}
+              />
+            </div>
           )}
 
           {/* Center: Interactive A4 Canvas */}
@@ -657,19 +744,21 @@ export default function DocumentDesigner() {
 
           {/* Right Sidebar: Selected Element Inspector / Page Settings */}
           {rightInspectorOpen && (
-            <RightInspector
-              layout={layout}
-              selectedElement={selectedElement}
-              onUpdateElement={handleUpdateElement}
-              onUpdateLayoutBranding={handleUpdateLayoutBranding}
-              onUpdatePageSettings={handleUpdatePageSettings}
-              onDeleteElement={handleDeleteElement}
-              onMoveLayer={handleMoveLayer}
-              onResetElement={handleResetElement}
-              onApplyElementToOthers={(elem) => handleOpenApplyModal(elem)}
-              onDuplicateElement={handleDuplicateElement}
-              onReplaceImage={handleReplaceImage}
-            />
+            <div className="absolute inset-y-0 right-0 z-40 xl:static xl:z-auto">
+              <RightInspector
+                layout={layout}
+                selectedElement={selectedElement}
+                onUpdateElement={handleUpdateElement}
+                onUpdateLayoutBranding={handleUpdateLayoutBranding}
+                onUpdatePageSettings={handleUpdatePageSettings}
+                onDeleteElement={handleDeleteElement}
+                onMoveLayer={handleMoveLayer}
+                onResetElement={handleResetElement}
+                onApplyElementToOthers={(elem) => handleOpenApplyModal(elem)}
+                onDuplicateElement={handleDuplicateElement}
+                onReplaceImage={handleReplaceImage}
+              />
+            </div>
           )}
         </div>
       </div>

@@ -3,10 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, getCurrentCompany, fmtAED, parsePayrollMonth, MONTH_NAMES } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, parsePayrollMonth } from "@/lib/helpers";
 import {
-  FileCheck2, Search, ArrowLeft, Printer, X, Banknote,
-  Users2, CheckCircle2, Filter
+  FileCheck2, Search, ArrowLeft, Printer, Banknote
 } from "lucide-react";
 import EmployeePaymentVoucherTemplate, { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";

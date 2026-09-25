@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Receipt, Plus, Search, Loader2, X, Save, Printer, Pencil } from "lucide-react";
+import { Receipt, Plus, Search, Loader2, X, Printer, Pencil } from "lucide-react";
 import { getCompanyId, getCurrentCompany, fmtAED, statusClass, todayISO, generateDocNumber } from "@/lib/helpers";
 import ReceiptVoucherTemplate, { ReceiptVoucherData } from "@/components/documents/ReceiptVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";

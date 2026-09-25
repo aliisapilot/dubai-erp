@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, Banknote, X, Save, Loader2, Pencil, Eye, Printer, Receipt, Trash2 } from "lucide-react";
-import { getCompanyId, getCurrentCompany, statusClass, fmtAED, parsePayrollMonth, MONTH_NAMES } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, statusClass, fmtAED, parsePayrollMonth } from "@/lib/helpers";
 import {
   SalaryStatementStatus,
   SALARY_STATEMENT_STATUS_OPTIONS,
@@ -277,7 +277,8 @@ export default function SalaryStatementsPage() {
 
     let res;
     if (editing) {
-      const { company_id: _cid, ...updatePayload } = payload;
+      const updatePayload: Partial<typeof payload> = { ...payload };
+      delete updatePayload.company_id;
       res = await supabase.from("salary_statements").update(updatePayload).eq("id", editing.id);
     } else {
       res = await supabase.from("salary_statements").insert(payload);

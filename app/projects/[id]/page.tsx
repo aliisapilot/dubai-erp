@@ -12,15 +12,10 @@ import {
   Wrench,
   FileText,
   ShieldCheck,
-  CheckCircle,
   Plus,
   Trash2,
   Printer,
-  Save,
   Loader2,
-  Calendar,
-  MapPin,
-  Building,
 } from "lucide-react";
 import { fmtAED, statusClass, todayISO, getCurrentCompany, generateDocNumber } from "@/lib/helpers";
 import WorkMethodStatementTemplate, { WMSData, RiskAssessmentRow, QAQCChecklistItem } from "@/components/documents/WorkMethodStatementTemplate";
@@ -162,7 +157,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [expDesc, setExpDesc] = useState("");
   const [expCat, setExpCat] = useState("Permits & Government Fees");
   const [expAmount, setExpAmount] = useState(500);
-  const [expDate, setExpDate] = useState(todayISO());
+  const expDate = todayISO();
   const [expRef, setExpRef] = useState("");
 
   // New WMS Form State
@@ -211,6 +206,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     loadProjectDetails();
+  // Project identity is the complete refresh key.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   async function loadProjectDetails() {

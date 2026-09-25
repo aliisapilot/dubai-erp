@@ -10,7 +10,6 @@ import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn?: string | null; address?: string | null };
-type Project = { id: string; project_number: string; name: string };
 type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; unit?: string | null };
 type LineItem = { id?: string; product_id: string; description: string; quantity: number; unit?: string; unit_price: number; discount_pct: number; vat_rate: number; line_total: number; vat_amount: number; sort_order: number };
 // DB: proforma_invoices has: valid_until (not due_date), no project_id, no payment_terms
@@ -30,7 +29,6 @@ function PIContent() {
   const searchParams = useSearchParams();
   const [invoices, setInvoices] = useState<PI[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [form, setForm] = useState<PIForm>(emptyForm);
   const [lines, setLines] = useState<LineItem[]>([emptyLine()]);
@@ -51,20 +49,20 @@ function PIContent() {
       const qid = searchParams.get("from_quotation");
       if (qid) loadFromQuotation(qid);
     });
+  // Load the initial list and optional quotation conversion once.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadAll() {
     setLoading(true);
-    const [{ data: pi }, { data: c }, { data: pr }, { data: p }, co] = await Promise.all([
+    const [{ data: pi }, { data: c }, { data: p }, co] = await Promise.all([
       supabase.from("proforma_invoices").select("*").order("created_at", { ascending: false }),
       supabase.from("customers").select("id, name, customer_code, trn, address").eq("active", true).order("name"),
-      supabase.from("projects").select("id, project_number, name").order("project_number"),
       supabase.from("products").select("id, name, sku, selling_price, vat_rate, unit").eq("active", true).order("name"),
       getCurrentCompany(),
     ]);
     setInvoices((pi || []) as PI[]);
     setCustomers((c || []) as Customer[]);
-    setProjects((pr || []) as Project[]);
     setProducts((p || []) as Product[]);
     if (co) setCompany(co as CompanyDocInfo);
     setLoading(false);

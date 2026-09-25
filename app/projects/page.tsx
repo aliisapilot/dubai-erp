@@ -14,7 +14,6 @@ import {
   DollarSign,
   TrendingUp,
   MapPin,
-  Calendar,
   ExternalLink,
   Trash2,
 } from "lucide-react";

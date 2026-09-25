@@ -5,8 +5,8 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId, getCurrentCompany } from "@/lib/helpers";
 import {
-  FileSpreadsheet, Search, ArrowLeft, Printer, Calendar,
-  Truck, CheckCircle2, RefreshCw, X
+  FileSpreadsheet, ArrowLeft, Printer,
+  Truck, RefreshCw
 } from "lucide-react";
 import StatementOfAccountTemplate, { StatementData, StatementEntry } from "@/components/documents/StatementOfAccountTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -47,9 +47,8 @@ export default function SupplierStatementOfAccountPage() {
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState(new Date().toISOString().split("T")[0]);
-  const [openingBalance, setOpeningBalance] = useState(0);
+  const [openingBalance] = useState(0);
 
-  const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [statement, setStatement] = useState<StatementData | null>(null);
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
@@ -75,7 +74,7 @@ export default function SupplierStatementOfAccountPage() {
     } catch (err) {
       console.error("Error loading suppliers:", err);
     } finally {
-      setLoading(false);
+      // The page renders its empty-state if supplier loading fails.
     }
   }
 

@@ -3,8 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
-  Plus, Search, Wallet, X, Save, Loader2, CheckCircle,
-  Truck, ArrowUpRight, DollarSign, Calendar, FileText
+  Plus, Search, Wallet, X, Save, Loader2, ArrowUpRight
 } from "lucide-react";
 import { getCompanyId, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber } from "@/lib/helpers";
 import {
@@ -69,7 +68,7 @@ export default function SupplierPaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [, setSuccess] = useState("");
 
   useEffect(() => {
     loadAll();

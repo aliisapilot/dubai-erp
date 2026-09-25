@@ -5,8 +5,8 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId } from "@/lib/helpers";
 import {
-  Calendar, CheckCircle2, Clock, AlertCircle, Plus, Search,
-  ArrowLeft, Loader2, X, Trash2, Edit2, Briefcase, Filter
+  Calendar, CheckCircle2, Plus, Search,
+  ArrowLeft, Loader2, X, Trash2, Edit2
 } from "lucide-react";
 
 type ProjectOption = {

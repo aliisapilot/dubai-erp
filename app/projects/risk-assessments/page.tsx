@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { getCompanyId } from "@/lib/helpers";
 import {
   ShieldAlert, AlertTriangle, CheckCircle2, ArrowLeft, Search,
-  Plus, Loader2, X, Trash2, Edit2, Filter, ExternalLink
+  Plus, Loader2, X, Trash2, Edit2
 } from "lucide-react";
 
 type RiskRow = {
@@ -57,7 +57,7 @@ export default function RiskAssessmentsPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
+  const [, setSuccessMsg] = useState("");
 
   useEffect(() => {
     loadData();

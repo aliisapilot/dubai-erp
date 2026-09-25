@@ -6,8 +6,8 @@ import { supabase } from "@/lib/supabase";
 import { getCompanyId } from "@/lib/helpers";
 import {
   FileText, Plus, Search, ArrowLeft, Loader2, X, Trash2,
-  ExternalLink, Paperclip, Download, Filter, FileSpreadsheet,
-  Image, FileCode, CheckCircle2
+  ExternalLink, Paperclip, FileSpreadsheet,
+  Image as ImageIcon, FileCode, CheckCircle2
 } from "lucide-react";
 
 type DocAttachment = {
@@ -41,7 +41,7 @@ export default function DocumentAttachmentsPage() {
   const [fileType, setFileType] = useState("PDF");
   const [fileSizeKb, setFileSizeKb] = useState("250");
   const [description, setDescription] = useState("");
-  const [uploadedBy, setUploadedBy] = useState("");
+  const [uploadedBy] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -162,7 +162,7 @@ export default function DocumentAttachmentsPage() {
     const t = (ext || "").toLowerCase();
     if (t.includes("pdf")) return <FileText className="text-rose-500" size={18} />;
     if (t.includes("xls") || t.includes("csv")) return <FileSpreadsheet className="text-emerald-600" size={18} />;
-    if (t.includes("jpg") || t.includes("png") || t.includes("jpeg")) return <Image className="text-blue-500" size={18} />;
+    if (t.includes("jpg") || t.includes("png") || t.includes("jpeg")) return <ImageIcon className="text-blue-500" size={18} />;
     return <FileCode className="text-slate-500" size={18} />;
   }
 

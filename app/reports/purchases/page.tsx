@@ -4,44 +4,43 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId } from "@/lib/helpers";
+import { printCurrentDocument } from "@/lib/print";
 import {
-  ShoppingBag, ArrowLeft, Search, Calendar, Download, Printer,
-  FileCheck2, CheckCircle2, TrendingDown, Truck
+  ShoppingBag, ArrowLeft, Printer
 } from "lucide-react";
 
 export default function PurchasesReportPage() {
-  type PurchaseOrderRow = Record<string, unknown>;
   type SupplierBillRow = { id: string; bill_number?: string | null; bill_date?: string | null; subtotal?: number | null; vat_amount?: number | null; total_amount?: number | null; paid_amount?: number | null; balance_due?: number | null; status?: string | null; suppliers?: { name?: string | null } | { name?: string | null }[] | null };
-  const [pos, setPos] = useState<PurchaseOrderRow[]>([]);
   const [bills, setBills] = useState<SupplierBillRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom] = useState("");
+  const [dateTo] = useState("");
 
   async function loadPurchasingData() {
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
 
-      const [poRes, billRes] = await Promise.all([
-        supabase.from("purchase_orders").select("*, suppliers(name)").eq("company_id", companyId).order("order_date", { ascending: false }),
-        supabase.from("supplier_bills").select("*, suppliers(name)").eq("company_id", companyId).order("bill_date", { ascending: false }),
-      ]);
+      const billRes = await supabase
+        .from("supplier_bills")
+        .select("*, suppliers(name)")
+        .eq("company_id", companyId)
+        .order("bill_date", { ascending: false });
 
-      const queryError = poRes.error || billRes.error;
+      const queryError = billRes.error;
       if (queryError) throw new Error(queryError.message);
 
-      setPos((poRes.data || []) as PurchaseOrderRow[]);
       setBills((billRes.data || []) as SupplierBillRow[]);
     } catch (err) {
       console.error("Error loading purchases report:", err);
     } finally {
-      setLoading(false);
+      // The report remains usable with an empty result when the query fails.
     }
   }
 
   useEffect(() => {
     void Promise.resolve().then(loadPurchasingData);
+  // Report snapshot loads once on mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filteredBills = bills.filter(b => {
@@ -52,12 +51,11 @@ export default function PurchasesReportPage() {
 
   const totalBillNet = filteredBills.reduce((acc, b) => acc + (Number(b.subtotal) || 0), 0);
   const totalBillVat = filteredBills.reduce((acc, b) => acc + (Number(b.vat_amount) || 0), 0);
-  const totalBillGross = filteredBills.reduce((acc, b) => acc + (Number(b.total_amount) || 0), 0);
   const totalPaid = filteredBills.reduce((acc, b) => acc + (Number(b.paid_amount) || 0), 0);
   const totalDue = filteredBills.reduce((acc, b) => acc + (Number(b.balance_due) || 0), 0);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-7xl mx-auto space-y-6" data-print-root>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Link
@@ -79,7 +77,7 @@ export default function PurchasesReportPage() {
 
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={() => void printCurrentDocument()}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors"
         >
           <Printer size={15} /> Print Report

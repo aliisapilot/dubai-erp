@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { FileSpreadsheet, Search, Loader2, Printer, Calendar, ArrowLeft } from "lucide-react";
+import { FileSpreadsheet, Loader2, Printer, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import StatementOfAccountTemplate, { StatementData, StatementEntry } from "@/components/documents/StatementOfAccountTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -223,6 +223,8 @@ export default function StatementOfAccountPage() {
     if (selectedCustomerId) {
       void Promise.resolve().then(generateStatement);
     }
+  // Inputs intentionally define when a statement is regenerated.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustomerId, fromDate, toDate, openingBalance]);
 
   return (

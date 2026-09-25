@@ -5,9 +5,8 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId, getCurrentCompany, generateDocNumber } from "@/lib/helpers";
 import {
-  Wallet, Search, ArrowLeft, Plus, ArrowDownRight, ArrowUpRight,
-  Loader2, X, Trash2, Edit2, Filter, Receipt, CheckCircle2,
-  AlertTriangle, DollarSign, Calendar, Printer
+  Wallet, Search, ArrowLeft, ArrowDownRight, ArrowUpRight,
+  Loader2, X, Trash2, CheckCircle2, Printer
 } from "lucide-react";
 import PettyCashVoucherTemplate, { PettyCashVoucherData } from "@/components/documents/PettyCashVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -51,7 +50,6 @@ export default function PettyCashPage() {
   // Modal
   const [showModal, setShowModal] = useState(false);
   const [txType, setTxType] = useState<"DISBURSEMENT" | "REPLENISHMENT">("DISBURSEMENT");
-  const [formVoucher, setFormVoucher] = useState("");
   const [formDate, setFormDate] = useState(new Date().toISOString().split("T")[0]);
   const [formPayee, setFormPayee] = useState("");
   const [formCategory, setFormCategory] = useState(PETTY_CATEGORIES[0]);
@@ -99,7 +97,6 @@ export default function PettyCashPage() {
 
   function handleOpenCreate(type: "DISBURSEMENT" | "REPLENISHMENT") {
     setTxType(type);
-    setFormVoucher("");
     setFormDate(new Date().toISOString().split("T")[0]);
     setFormPayee(type === "REPLENISHMENT" ? "Bank Cash Withdrawal (Company Account)" : "");
     setFormCategory(type === "REPLENISHMENT" ? "Bank Cash Withdrawal (Replenishment)" : PETTY_CATEGORIES[0]);

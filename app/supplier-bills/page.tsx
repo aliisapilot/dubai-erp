@@ -3,11 +3,11 @@
 import { FormEvent, useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
-  Plus, Search, FileText, X, Save, Loader2, Printer, CheckCircle,
-  Clock, DollarSign, Building2, ShoppingBag, Eye, ExternalLink, Pencil, Trash2
+  Plus, Search, X, Save, Loader2, Printer, CheckCircle,
+  Clock, ShoppingBag, Pencil, Trash2
 } from "lucide-react";
 import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, calcLineItem } from "@/lib/helpers";
-import SupplierBillTemplate, { SupplierBillData, SupplierBillLineItem } from "@/components/documents/SupplierBillTemplate";
+import SupplierBillTemplate, { SupplierBillData } from "@/components/documents/SupplierBillTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
@@ -101,7 +101,7 @@ export default function SupplierBillsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [, setSuccess] = useState("");
 
   const [printBill, setPrintBill] = useState<SupplierBillData | null>(null);
 
@@ -324,7 +324,6 @@ export default function SupplierBillsPage() {
   }
 
   const supMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]));
-  const prjMap = Object.fromEntries(projects.map(p => [p.id, p.name]));
 
   const filtered = bills.filter(b => {
     if (filterStatus && b.status !== filterStatus) return false;
