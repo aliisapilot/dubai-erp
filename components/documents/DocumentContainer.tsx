@@ -20,6 +20,10 @@ interface DocumentContainerProps {
   company?: CompanyBrandInput | null;
   /** When true, omits outer p-[12mm] padding (required when wrapping DynamicDocumentRenderer which renders its own A4 sheet) */
   noPadding?: boolean;
+  /** Computed total page count for A4 pagination */
+  totalPages?: number;
+  /** Optional warning message when content legitimately requires multiple pages */
+  warning?: string;
 }
 
 export default function DocumentContainer({
@@ -35,6 +39,8 @@ export default function DocumentContainer({
   className = "",
   company,
   noPadding = false,
+  totalPages,
+  warning,
 }: DocumentContainerProps) {
   const handlePrint = async () => {
     if (onPrint) {
@@ -68,7 +74,7 @@ export default function DocumentContainer({
       {/* Control Bar (Screen Only - Hidden in Print) */}
       {(docTypeLabel || onClose) && (
         <div className="no-print w-[210mm] max-w-full mx-auto mb-4 flex items-center justify-between bg-white px-4 py-3 rounded-lg border border-slate-200 shadow-sm">
-          <div className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+          <div className="text-sm font-semibold text-slate-700 flex items-center gap-2 flex-wrap">
             {docTypeLabel && <span>{docTypeLabel}:</span>}
             {docNumber && (
               <span className="font-mono text-blue-600 font-bold">{docNumber}</span>
@@ -77,6 +83,20 @@ export default function DocumentContainer({
               <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600 font-normal">
                 Status: {status}
               </span>
+            )}
+            {totalPages !== undefined && (
+              totalPages > 1 ? (
+                <span
+                  className="rounded bg-amber-50 border border-amber-200 px-2 py-0.5 text-xs text-amber-700 font-medium"
+                  title={warning || "Content exceeds single A4 page capacity. Formatted for multi-page printing without losing information."}
+                >
+                  ⚠️ Multi-Page ({totalPages} Pages)
+                </span>
+              ) : (
+                <span className="rounded bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-xs text-emerald-700 font-medium">
+                  ✓ 1 Page A4
+                </span>
+              )
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -108,7 +128,7 @@ export default function DocumentContainer({
       ) : (
         /* True A4 Document Sheet: exactly 210mm × 297mm. */
         <div
-          className={`print-page print-document document-sheet relative mx-auto box-border min-h-[297mm] w-[210mm] border border-slate-200 bg-white p-[12mm] shadow-xl print:m-0 print:min-h-[297mm] print:w-[210mm] print:border-none print:p-[12mm] print:shadow-none ${className}`}
+          className={`print-page print-document document-sheet relative mx-auto box-border min-h-[297mm] w-[210mm] border border-slate-200 bg-white p-[10mm] shadow-xl print:m-0 print:min-h-[297mm] print:w-[210mm] print:border-none print:p-[8mm] print:shadow-none ${className}`}
           style={{
             ...brandVars,
           }}

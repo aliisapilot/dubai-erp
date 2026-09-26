@@ -89,7 +89,7 @@ export default function SupplierBillTemplate({
     advance_amount: bill.paid_amount,
     notes: bill.notes || undefined,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
   const paid = Number(bill.paid_amount) || 0;
   const balance = Math.max(0, bill.total_amount - paid);
 
@@ -102,6 +102,7 @@ export default function SupplierBillTemplate({
       company={company ?? undefined}
       noPadding={Boolean(customLayout)}
       showWatermark={!customLayout}
+      totalPages={totalPages}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

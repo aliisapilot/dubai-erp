@@ -86,7 +86,7 @@ export default function ProformaInvoiceTemplate({
     payment_terms: proforma.payment_terms || undefined,
     notes: proforma.notes || undefined,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
   return (
     <DocumentContainer
       docTypeLabel="Proforma Invoice"
@@ -96,6 +96,7 @@ export default function ProformaInvoiceTemplate({
       company={company ?? undefined}
       noPadding={Boolean(customLayout)}
       showWatermark={!customLayout}
+      totalPages={totalPages}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

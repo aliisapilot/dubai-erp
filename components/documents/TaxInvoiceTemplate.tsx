@@ -105,7 +105,7 @@ export default function TaxInvoiceTemplate({
     payment_terms: invoice.payment_terms || undefined,
     notes: invoice.notes || undefined,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
 
   return (
     <DocumentContainer
@@ -116,6 +116,7 @@ export default function TaxInvoiceTemplate({
       company={company ?? undefined}
       noPadding={Boolean(customLayout)}
       showWatermark={!customLayout}
+      totalPages={totalPages}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

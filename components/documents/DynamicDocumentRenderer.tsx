@@ -242,6 +242,7 @@ interface DynamicDocumentRendererProps {
 import {
   computeEffectiveLayout,
   computePaginationPlan,
+  ItemDescriptionLike,
 } from "@/lib/documentLayoutEngine";
 
 export function getItemsPerPage(layout: DocumentLayout): number {
@@ -252,8 +253,12 @@ export function getItemsPerPage(layout: DocumentLayout): number {
   return Math.max(1, Math.floor((lineItems.height - headerHeight) / rowHeight));
 }
 
-export function getDocumentPageCount(layout: DocumentLayout, itemCount: number): number {
-  return computePaginationPlan(layout, itemCount).totalPages;
+export function getDocumentPageCount(
+  layout: DocumentLayout,
+  itemCount: number,
+  itemsData?: ItemDescriptionLike[]
+): number {
+  return computePaginationPlan(layout, itemCount, itemsData).totalPages;
 }
 
 export default function DynamicDocumentRenderer({
@@ -282,8 +287,8 @@ export default function DynamicDocumentRenderer({
   const advance = Number(data.advance_amount) || 0;
   const balanceDue = Math.max(0, data.total_amount - advance);
 
-  // Compute intelligent pagination plan
-  const paginationPlan = computePaginationPlan(layout, data.items.length);
+  // Compute intelligent pagination plan with item line-wrap awareness
+  const paginationPlan = computePaginationPlan(layout, data.items.length, data.items);
   const resolvedTotalPages = totalPages || paginationPlan.totalPages;
   const currentPageInfo = paginationPlan.pageItemRanges.find((p) => p.pageNumber === pageNumber) || {
     pageNumber,
@@ -300,12 +305,14 @@ export default function DynamicDocumentRenderer({
   const totalCredits = data.items.reduce((sum, item) => sum + (Number(item.credit) || 0), 0);
   const totalDeductions = Math.max(0, data.subtotal - data.total_amount);
 
-  // Calculate dynamic effective layout geometry with flow-aware positioning
+  // Calculate dynamic effective layout geometry with flow-aware positioning and intelligent single-page compaction
   const effectiveGeometry = computeEffectiveLayout(
     layout,
     pageItems.length,
     isLastPage,
-    pageNumber
+    pageNumber,
+    resolvedTotalPages,
+    pageItems
   );
 
   const fontWeight = (weight: LayoutElement["fontWeight"]): CSSProperties["fontWeight"] => {
@@ -731,6 +738,8 @@ export default function DynamicDocumentRenderer({
         };
 
         const activeCols = tSettings.columns.filter((c) => c.visible);
+        const isCompact = (tSettings.rowHeight || 8.5) < 7.5;
+        const cellPadding = isCompact ? "py-0.5 px-1.5" : "py-1 px-2";
 
         return (
           <div
@@ -748,13 +757,13 @@ export default function DynamicDocumentRenderer({
                     backgroundColor: tSettings.headerBg,
                     color: tSettings.headerTextColor,
                     fontSize: `${tSettings.headerFontSize}px`,
-                    height: `${Math.max(6, tSettings.rowHeight)}mm`,
+                    height: `${Math.max(5.5, tSettings.rowHeight)}mm`,
                   }}
                 >
                   {activeCols.map((col) => (
                     <th
                       key={col.key}
-                      className="py-1.5 px-2 font-semibold"
+                      className={`${cellPadding} font-semibold`}
                       style={{
                         width: `${col.widthPct}%`,
                         textAlign: col.align,
@@ -807,7 +816,7 @@ export default function DynamicDocumentRenderer({
                         return (
                           <td
                             key={col.key}
-                            className="px-2"
+                            className={cellPadding}
                             style={{
                               textAlign: col.align,
                               fontFamily: isMonetary ? "monospace" : "inherit",

@@ -40,8 +40,9 @@ export default function PettyCashVoucherTemplate({
       onClose={onClose}
       company={company ?? undefined}
       showWatermark={true}
+      totalPages={1}
     >
-      <div className="space-y-6">
+      <div className="space-y-4 print:space-y-2.5">
         {/* Letterhead Header */}
         <DocHeader
           company={company}
@@ -52,8 +53,8 @@ export default function PettyCashVoucherTemplate({
         />
 
         {/* Voucher Main Details Grid */}
-        <div className="rounded border-2 border-slate-300 p-4 text-xs space-y-4 bg-slate-50/50">
-          <div className="grid grid-cols-2 gap-4 pb-3 border-b border-slate-200">
+        <div className="rounded border-2 border-slate-300 p-3.5 print:p-2.5 text-xs space-y-3 print:space-y-2 bg-slate-50/50">
+          <div className="grid grid-cols-2 gap-4 pb-2.5 border-b border-slate-200">
             <div>
               <span className="text-slate-500 block text-[10px]">
                 {isReplenish ? "Replenished From / Bank (مصدر التغذية / البنك):" : "Paid To / Beneficiary (يصرف للسيد / المستفيد):"}
@@ -67,7 +68,7 @@ export default function PettyCashVoucherTemplate({
           </div>
 
           {/* Amount Box */}
-          <div className="rounded bg-white p-4 border border-slate-300 flex items-center justify-between">
+          <div className="rounded bg-white p-3 print:p-2 border border-slate-300 flex items-center justify-between">
             <div>
               <div className="text-[11px] font-bold text-slate-600 uppercase">
                 {isReplenish ? "Replenishment Sum (مبلغ التغذية):" : "Disbursement Amount (المبلغ المصروف):"}

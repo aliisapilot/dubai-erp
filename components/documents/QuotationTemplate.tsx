@@ -104,7 +104,7 @@ export default function QuotationTemplate({
     payment_terms: quotation.payment_terms || undefined,
     notes: quotation.notes || quotation.terms_conditions || undefined,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
   return (
     <DocumentContainer
       docTypeLabel="Quotation"
@@ -114,6 +114,7 @@ export default function QuotationTemplate({
       company={company ?? undefined}
       noPadding={Boolean(customLayout)}
       showWatermark={!customLayout}
+      totalPages={totalPages}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">
