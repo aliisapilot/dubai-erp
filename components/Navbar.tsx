@@ -206,7 +206,7 @@ export default function Navbar() {
     <nav className="sticky top-0 z-40 h-14 bg-slate-900 border-b border-slate-800 text-white select-none shrink-0 m-0 p-0">
       <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
         {/* Left Section: Mobile Menu Trigger + Brand (Mobile only) + Dynamic Page Title */}
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-3 shrink-0">
           {/* Mobile Menu Hamburger Button */}
           <button
             type="button"
@@ -225,30 +225,30 @@ export default function Navbar() {
           </Link>
 
           {/* Active Page Indicator */}
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-2.5 shrink-0">
             <div className="hidden sm:flex h-7 w-7 items-center justify-center rounded-lg bg-slate-800 text-emerald-400 border border-slate-700/60 shrink-0">
               <PageIcon size={15} />
             </div>
-            <div className="flex items-center gap-2 min-w-0">
-              <h1 className="text-sm font-bold tracking-tight text-white truncate">
+            <div className="flex items-center gap-2 shrink-0">
+              <h1 className="text-sm font-bold tracking-tight text-white whitespace-nowrap">
                 {pageMeta.title}
               </h1>
-              <span className="hidden xl:inline-flex items-center text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+              <span className="hidden 2xl:inline-flex items-center text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
                 UAE VAT 5%
               </span>
             </div>
           </div>
         </div>
 
-        {/* Center Section: Quick Navigation Links */}
-        <div className="hidden lg:flex items-center gap-1">
+        {/* Center Section: Quick Navigation Links (visible on wide screens with whitespace-nowrap) */}
+        <div className="hidden 2xl:flex items-center gap-1 shrink-0">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
               <Link
                 key={item.name}
                 href={item.href}
-                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${
                   item.active
                     ? "bg-slate-800 text-emerald-400 font-semibold border border-slate-700/60 shadow-sm"
                     : "text-slate-400 hover:text-white hover:bg-slate-800/60"
@@ -262,11 +262,11 @@ export default function Navbar() {
         </div>
 
         {/* Right Section: PDF Designer Action + UAE Badge + User Profile Dropdown */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
           <button
             type="button"
             onClick={() => void printCurrentDocument()}
-            className="no-print flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-500/20 hover:text-blue-200"
+            className="no-print flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-500/20 hover:text-blue-200 whitespace-nowrap"
             title={`Print ${pageMeta.title}`}
             aria-label={`Print ${pageMeta.title}`}
           >
@@ -277,7 +277,7 @@ export default function Navbar() {
           {/* PDF Designer Shortcut Action Button */}
           <Link
             href="/settings/designer"
-            className="hidden sm:flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 transition-colors"
+            className="hidden sm:flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 transition-colors whitespace-nowrap"
             title="Open PDF Document Designer"
           >
             <FileText size={13} />
@@ -285,7 +285,7 @@ export default function Navbar() {
           </Link>
 
           {/* UAE Region & Currency Badge */}
-          <div className="hidden sm:flex items-center gap-1.5 rounded-lg border border-slate-700/80 bg-slate-800/80 px-2.5 py-1 text-xs font-medium text-slate-300">
+          <div className="hidden xl:flex items-center gap-1.5 rounded-lg border border-slate-700/80 bg-slate-800/80 px-2.5 py-1 text-xs font-medium text-slate-300 whitespace-nowrap">
             <Globe size={13} className="text-emerald-400" />
             <span>UAE (AED)</span>
           </div>
@@ -295,10 +295,10 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() => setDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700/80 transition-colors"
+              className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700/80 transition-colors whitespace-nowrap"
               aria-expanded={dropdownOpen}
             >
-              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">
+              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold shrink-0">
                 {profile?.email ? profile.email.charAt(0).toUpperCase() : <UserIcon size={12} />}
               </div>
               <span className="max-w-[120px] truncate hidden md:inline text-slate-200">
@@ -306,7 +306,7 @@ export default function Navbar() {
               </span>
               <ChevronDown
                 size={13}
-                className={`text-slate-400 transition-transform duration-200 ${
+                className={`text-slate-400 transition-transform duration-200 shrink-0 ${
                   dropdownOpen ? "rotate-180" : ""
                 }`}
               />

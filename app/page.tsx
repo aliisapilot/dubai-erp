@@ -224,7 +224,7 @@ export default function DashboardPage() {
               <h1 className="text-3xl font-black text-slate-900 tracking-tight">Executive Dashboard</h1>
               <p className="text-slate-500 mt-0.5">{companyName} &bull; Dubai Enterprise ERP Operations</p>
             </div>
-            <div className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-2.5">
+            <div className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-2.5 shrink-0 whitespace-nowrap">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-sm font-semibold text-emerald-700">100% Live Database Feed</span>
             </div>
