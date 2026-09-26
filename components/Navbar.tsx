@@ -163,45 +163,6 @@ export default function Navbar() {
     }
   }
 
-  const navItems = [
-    {
-      name: "Dashboard",
-      href: "/",
-      icon: LayoutDashboard,
-      active: pathname === "/",
-    },
-    {
-      name: "Projects",
-      href: "/projects",
-      icon: Briefcase,
-      active: pathname.startsWith("/projects"),
-    },
-    {
-      name: "Delivery Notes",
-      href: "/delivery-notes",
-      icon: ClipboardList,
-      active: pathname.startsWith("/delivery-notes"),
-    },
-    {
-      name: "Customers",
-      href: "/customers",
-      icon: Users,
-      active: pathname.startsWith("/customers"),
-    },
-    {
-      name: "Suppliers",
-      href: "/suppliers",
-      icon: Truck,
-      active: pathname.startsWith("/suppliers"),
-    },
-    {
-      name: "Settings",
-      href: "/settings",
-      icon: Building2,
-      active: pathname.startsWith("/settings") && !pathname.startsWith("/settings/designer"),
-    },
-  ];
-
   return (
     <nav className="sticky top-0 z-40 h-14 bg-slate-900 border-b border-slate-800 text-white select-none shrink-0 m-0 p-0">
       <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
@@ -233,32 +194,11 @@ export default function Navbar() {
               <h1 className="text-sm font-bold tracking-tight text-white whitespace-nowrap">
                 {pageMeta.title}
               </h1>
-              <span className="hidden 2xl:inline-flex items-center text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
+              <span className="hidden sm:inline-flex items-center text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
                 UAE VAT 5%
               </span>
             </div>
           </div>
-        </div>
-
-        {/* Center Section: Quick Navigation Links (visible on wide screens with whitespace-nowrap) */}
-        <div className="hidden 2xl:flex items-center gap-1 shrink-0">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${
-                  item.active
-                    ? "bg-slate-800 text-emerald-400 font-semibold border border-slate-700/60 shadow-sm"
-                    : "text-slate-400 hover:text-white hover:bg-slate-800/60"
-                }`}
-              >
-                <Icon size={14} className={item.active ? "text-emerald-400" : "text-slate-400"} />
-                <span>{item.name}</span>
-              </Link>
-            );
-          })}
         </div>
 
         {/* Right Section: PDF Designer Action + UAE Badge + User Profile Dropdown */}
