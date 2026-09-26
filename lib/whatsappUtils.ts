@@ -33,7 +33,7 @@ export function normalizeWhatsAppNumber(rawPhone?: string | null): string | null
  * Generates a formal, professional UAE business WhatsApp reminder message
  * for a specific cheque.
  */
-export function generateChequeWhatsAppMessage(cheque: ChequeRecord, companyName?: string): string {
+export function generateChequeWhatsAppMessage(cheque: ChequeRecord, companyName?: string | null): string {
   const party = cheque.payee_name || cheque.customer?.name || cheque.supplier?.name || "Valued Client";
   const days = getDaysDifference(cheque.due_date);
   const company = companyName || "Dubai ERP Finance";
@@ -87,7 +87,7 @@ export function generateChequeWhatsAppMessage(cheque: ChequeRecord, companyName?
  * Generates a consolidated Daily Digest message of today's maturing & overdue cheques
  * to send to the company finance team or business owner.
  */
-export function generateDailyDigestWhatsAppMessage(cheques: ChequeRecord[], companyName?: string): string {
+export function generateDailyDigestWhatsAppMessage(cheques: ChequeRecord[], companyName?: string | null): string {
   const company = companyName || "Dubai ERP";
   const today = new Date().toISOString().split("T")[0];
 
@@ -145,17 +145,32 @@ export function getWhatsAppShareUrl(phone: string | null | undefined, message: s
   const encodedText = encodeURIComponent(message);
   
   if (normalizedPhone) {
-    return `https://wa.me/${normalizedPhone}?text=${encodedText}`;
+    return `https://api.whatsapp.com/send?phone=${normalizedPhone}&text=${encodedText}`;
   }
-  return `https://wa.me/?text=${encodedText}`;
+  return `https://api.whatsapp.com/send?text=${encodedText}`;
 }
 
 /**
  * Triggers opening WhatsApp in a new browser tab/app
+ * Uses a dynamic anchor element click to reliably bypass browser popup blockers.
  */
 export function openWhatsApp(phone: string | null | undefined, message: string): void {
   const url = getWhatsAppShareUrl(phone, message);
   if (typeof window !== "undefined") {
-    window.open(url, "_blank", "noopener,noreferrer");
+    try {
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (document.body.contains(link)) {
+          document.body.removeChild(link);
+        }
+      }, 300);
+    } catch {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
   }
 }

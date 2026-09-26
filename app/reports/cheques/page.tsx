@@ -14,6 +14,7 @@ import {
 import { getCurrentCompany, fmtAED, fmtDate, todayISO } from "@/lib/helpers";
 import ChequePrintTemplate from "@/components/cheques/ChequePrintTemplate";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { printCurrentDocument } from "@/lib/print";
 
 type ReportType = "incoming" | "outgoing" | "overdue" | "monthly_summary";
 
@@ -502,14 +503,14 @@ export default function ChequeReportsPage() {
 
       {/* PRINT PREVIEW MODAL */}
       {printOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-slate-900/80 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="mx-auto my-4 max-w-4xl w-full flex items-center justify-between bg-slate-900 text-white p-3 rounded-t-xl print:hidden">
+        <div className="print-modal-container fixed inset-0 z-50 flex flex-col bg-slate-900/80 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:m-0 print:bg-white print:static print:inset-auto">
+          <div className="no-print mx-auto my-4 max-w-4xl w-full flex items-center justify-between bg-slate-900 text-white p-3 rounded-t-xl print:hidden">
             <span className="font-bold text-sm">A4 Printable Cheque Report</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                onClick={() => printCurrentDocument()}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition-colors shadow-sm"
               >
                 <Printer size={14} /> Print A4 PDF
               </button>
@@ -523,7 +524,7 @@ export default function ChequeReportsPage() {
             </div>
           </div>
 
-          <div className="mx-auto max-w-4xl w-full bg-white shadow-2xl rounded-b-xl overflow-hidden print:w-full print:m-0 print:p-0 print:shadow-none">
+          <div className="mx-auto w-fit bg-transparent print:w-[210mm] print:m-0 print:p-0 shadow-2xl print:shadow-none">
             <ChequePrintTemplate
               mode="report"
               company={company}

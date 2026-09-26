@@ -7,7 +7,7 @@ import {
   Plus, Search, Wallet, X, Save, Loader2, ArrowUpRight, ArrowDownLeft,
   Calendar, CheckCircle2, AlertCircle, Ban, History, Printer, Eye,
   Building2, Upload, FileText, LayoutDashboard, ChevronRight, ShieldAlert,
-  MessageCircle
+  MessageCircle, Copy, Check
 } from "lucide-react";
 import { getCompanyId, getCurrentCompany, fmtAED, fmtDate, todayISO } from "@/lib/helpers";
 import {
@@ -20,11 +20,12 @@ import {
   fetchChequeById, uploadChequeDocument, getChequeDocumentSignedUrl
 } from "@/lib/chequeService";
 import { openWhatsApp, generateChequeWhatsAppMessage } from "@/lib/whatsappUtils";
+import { printCurrentDocument } from "@/lib/print";
 import ChequePrintTemplate from "@/components/cheques/ChequePrintTemplate";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
-type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null };
-type Supplier = { id: string; name: string | null; supplier_code: string | null; trn: string | null };
+type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; phone?: string | null };
+type Supplier = { id: string; name: string | null; supplier_code: string | null; trn: string | null; phone?: string | null };
 type Employee = { id: string; first_name?: string | null; name?: string | null };
 type TaxInvoice = { id: string; invoice_number: string | null; total_amount: number | null; customer_id: string | null };
 type SupplierBill = { id: string; bill_number: string | null; total_amount: number | null; paid_amount: number | null; supplier_id: string | null };
@@ -97,6 +98,11 @@ export default function ChequeRegisterPage() {
   // Print Preview
   const [printCheque, setPrintCheque] = useState<ChequeRecord | null>(null);
 
+  // WhatsApp Reminder Modal
+  const [whatsAppModalCheque, setWhatsAppModalCheque] = useState<ChequeRecord | null>(null);
+  const [whatsAppPhone, setWhatsAppPhone] = useState("");
+  const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
+
   useEffect(() => {
     loadAll();
   }, []);
@@ -106,8 +112,8 @@ export default function ChequeRegisterPage() {
     try {
       const [chqs, custs, supps, emps, invs, bls, co] = await Promise.all([
         fetchCheques(),
-        supabase.from("customers").select("id, name, customer_code, trn").eq("active", true).order("name"),
-        supabase.from("suppliers").select("id, name, supplier_code, trn").eq("active", true).order("name"),
+        supabase.from("customers").select("id, name, customer_code, trn, phone").eq("active", true).order("name"),
+        supabase.from("suppliers").select("id, name, supplier_code, trn, phone").eq("active", true).order("name"),
         supabase.from("employees").select("id, first_name, name").eq("status", "active").order("first_name"),
         supabase.from("tax_invoices").select("id, invoice_number, total_amount, customer_id").order("invoice_date", { ascending: false }).limit(200),
         supabase.from("supplier_bills").select("id, bill_number, total_amount, paid_amount, supplier_id").order("bill_date", { ascending: false }).limit(200),
@@ -126,6 +132,13 @@ export default function ChequeRegisterPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function openWhatsAppModal(c: ChequeRecord) {
+    const phone = c.cheque_type === "incoming" ? c.customer?.phone : c.supplier?.phone;
+    setWhatsAppModalCheque(c);
+    setWhatsAppPhone(phone || "");
+    setCopiedWhatsApp(false);
   }
 
   // Open Create Modal
@@ -700,11 +713,7 @@ export default function ChequeRegisterPage() {
                             {/* WhatsApp Reminder */}
                             <button
                               type="button"
-                              onClick={() => {
-                                const phone = c.cheque_type === "incoming" ? c.customer?.phone : c.supplier?.phone;
-                                const msg = generateChequeWhatsAppMessage(c);
-                                openWhatsApp(phone, msg);
-                              }}
+                              onClick={() => openWhatsAppModal(c)}
                               title="Send WhatsApp Reminder / Advice"
                               className="rounded p-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
                             >
@@ -1274,10 +1283,7 @@ export default function ChequeRegisterPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        const msg = generateChequeWhatsAppMessage(detailCheque);
-                        openWhatsApp(phone, msg);
-                      }}
+                      onClick={() => openWhatsAppModal(detailCheque)}
                       className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-colors"
                     >
                       <MessageCircle size={13} />
@@ -1395,16 +1401,16 @@ export default function ChequeRegisterPage() {
         </div>
       )}
 
-      {/* PRINT MODAL */}
+      {/* PRINT MODAL (Pixel-Perfect A4) */}
       {printCheque && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-slate-900/80 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="mx-auto my-4 max-w-4xl w-full flex items-center justify-between bg-slate-900 text-white p-3 rounded-t-xl print:hidden">
-            <span className="font-bold text-sm">Print Cheque Voucher</span>
+        <div className="print-modal-container fixed inset-0 z-50 flex flex-col bg-slate-900/80 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:m-0 print:bg-white print:static print:inset-auto">
+          <div className="no-print mx-auto my-4 max-w-4xl w-full flex items-center justify-between bg-slate-900 text-white p-3 rounded-t-xl print:hidden">
+            <span className="font-bold text-sm">Print Cheque Voucher (A4)</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                onClick={() => printCurrentDocument()}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition-colors shadow-sm"
               >
                 <Printer size={14} /> Print Document (A4)
               </button>
@@ -1418,12 +1424,129 @@ export default function ChequeRegisterPage() {
             </div>
           </div>
 
-          <div className="mx-auto max-w-4xl w-full bg-white shadow-2xl rounded-b-xl overflow-hidden print:w-full print:m-0 print:p-0 print:shadow-none">
+          <div className="mx-auto w-fit bg-transparent print:w-[210mm] print:m-0 print:p-0 shadow-2xl print:shadow-none">
             <ChequePrintTemplate
               mode="voucher"
               company={company}
               cheque={printCheque}
             />
+          </div>
+        </div>
+      )}
+
+      {/* WHATSAPP REMINDER DISPATCH MODAL */}
+      {whatsAppModalCheque && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between bg-emerald-700 text-white px-5 py-3.5">
+              <div className="flex items-center gap-2">
+                <MessageCircle size={18} className="text-emerald-200" />
+                <span className="font-bold text-sm">WhatsApp Cheque Reminder</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWhatsAppModalCheque(null)}
+                className="rounded-full p-1 text-emerald-200 hover:text-white hover:bg-emerald-800 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4 text-xs">
+              {/* Counterparty & Cheque Info */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Recipient</span>
+                  <p className="font-bold text-slate-800 text-sm mt-0.5">
+                    {whatsAppModalCheque.customer?.name ||
+                      whatsAppModalCheque.supplier?.name ||
+                      whatsAppModalCheque.payee_name ||
+                      "Counterparty"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Cheque</span>
+                  <p className="font-mono font-bold text-slate-900 mt-0.5">
+                    #{whatsAppModalCheque.cheque_number} ({fmtAED(whatsAppModalCheque.amount)})
+                  </p>
+                </div>
+              </div>
+
+              {/* Recipient Phone Input */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Recipient WhatsApp Number (UAE or International)
+                </label>
+                <div className="relative">
+                  <input
+                    type="tel"
+                    value={whatsAppPhone}
+                    onChange={(e) => setWhatsAppPhone(e.target.value)}
+                    placeholder="e.g. 050 123 4567 or +971 50 123 4567"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Numbers like 050... are automatically formatted as UAE +971 for WhatsApp.
+                </p>
+              </div>
+
+              {/* Message Preview */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-semibold text-slate-700">Message Preview</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const msg = generateChequeWhatsAppMessage(whatsAppModalCheque, company?.name);
+                      navigator.clipboard.writeText(msg);
+                      setCopiedWhatsApp(true);
+                      setTimeout(() => setCopiedWhatsApp(false), 2000);
+                    }}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 transition-colors"
+                  >
+                    {copiedWhatsApp ? (
+                      <>
+                        <Check size={12} className="text-emerald-600" /> Copied to Clipboard
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={12} /> Copy Text
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 max-h-48 overflow-y-auto whitespace-pre-wrap font-sans text-slate-700 text-[11px] leading-relaxed select-all">
+                  {generateChequeWhatsAppMessage(whatsAppModalCheque, company?.name)}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setWhatsAppModalCheque(null)}
+                className="px-4 py-2 rounded-lg border border-slate-200 bg-white font-semibold text-slate-600 hover:bg-slate-100 transition-colors text-xs"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const msg = generateChequeWhatsAppMessage(whatsAppModalCheque, company?.name);
+                  openWhatsApp(whatsAppPhone, msg);
+                }}
+                className="flex items-center gap-1.5 px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-colors"
+              >
+                <MessageCircle size={15} />
+                Open in WhatsApp
+              </button>
+            </div>
           </div>
         </div>
       )}

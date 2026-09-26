@@ -38,7 +38,7 @@ export default function ChequePrintTemplate({
     const words = numberToWordsEnglish(Number(cheque.amount) || 0);
 
     return (
-      <div className="w-[210mm] min-h-[297mm] mx-auto bg-white p-8 text-slate-800 font-sans text-xs leading-normal">
+      <div className="print-page print-document document-sheet relative mx-auto box-border min-h-[297mm] w-[210mm] border border-slate-200 bg-white p-[10mm] shadow-xl print:m-0 print:min-h-[297mm] print:w-[210mm] print:border-none print:p-[10mm] print:shadow-none text-slate-800 font-sans text-xs leading-normal">
         {/* Header */}
         <div className="flex items-start justify-between border-b-2 border-slate-900 pb-5">
           <div className="flex items-start gap-4">
@@ -170,7 +170,7 @@ export default function ChequePrintTemplate({
   const totalAmount = cheques.reduce((s, c) => s + (Number(c.amount) || 0), 0);
 
   return (
-    <div className="w-[210mm] min-h-[297mm] mx-auto bg-white p-8 text-slate-800 font-sans text-xs leading-normal">
+    <div className="print-page print-document document-sheet relative mx-auto box-border min-h-[297mm] w-[210mm] border border-slate-200 bg-white p-[10mm] shadow-xl print:m-0 print:min-h-[297mm] print:w-[210mm] print:border-none print:p-[10mm] print:shadow-none text-slate-800 font-sans text-xs leading-normal">
       {/* Header */}
       <div className="flex items-start justify-between border-b-2 border-slate-900 pb-4">
         <div>
