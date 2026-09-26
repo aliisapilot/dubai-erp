@@ -27,8 +27,8 @@ export async function fetchCheques(options?: {
     .select(
       `
       *,
-      customer:customers(id, name, customer_code, trn),
-      supplier:suppliers(id, name, supplier_code, trn),
+      customer:customers(id, name, customer_code, trn, phone),
+      supplier:suppliers(id, name, supplier_code, trn, phone),
       tax_invoice:tax_invoices(id, invoice_number, total_amount),
       supplier_bill:supplier_bills(id, bill_number, total_amount, paid_amount)
     `
@@ -72,8 +72,8 @@ export async function fetchChequeById(id: string): Promise<{
       .select(
         `
         *,
-        customer:customers(id, name, customer_code, trn),
-        supplier:suppliers(id, name, supplier_code, trn),
+        customer:customers(id, name, customer_code, trn, phone),
+        supplier:suppliers(id, name, supplier_code, trn, phone),
         tax_invoice:tax_invoices(id, invoice_number, total_amount),
         supplier_bill:supplier_bills(id, bill_number, total_amount, paid_amount)
       `

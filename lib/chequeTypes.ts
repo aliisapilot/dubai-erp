@@ -54,8 +54,8 @@ export interface ChequeRecord {
   updated_at: string;
 
   // Joined counterparty data
-  customer?: { id: string; name: string | null; customer_code?: string | null; trn?: string | null } | null;
-  supplier?: { id: string; name: string | null; supplier_code?: string | null; trn?: string | null } | null;
+  customer?: { id: string; name: string | null; customer_code?: string | null; trn?: string | null; phone?: string | null } | null;
+  supplier?: { id: string; name: string | null; supplier_code?: string | null; trn?: string | null; phone?: string | null } | null;
   tax_invoice?: { id: string; invoice_number: string | null; total_amount: number | null } | null;
   supplier_bill?: { id: string; bill_number: string | null; total_amount: number | null; paid_amount: number | null } | null;
 }

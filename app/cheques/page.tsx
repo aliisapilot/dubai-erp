@@ -6,7 +6,8 @@ import { supabase } from "@/lib/supabase";
 import {
   Plus, Search, Wallet, X, Save, Loader2, ArrowUpRight, ArrowDownLeft,
   Calendar, CheckCircle2, AlertCircle, Ban, History, Printer, Eye,
-  Building2, Upload, FileText, LayoutDashboard, ChevronRight, ShieldAlert
+  Building2, Upload, FileText, LayoutDashboard, ChevronRight, ShieldAlert,
+  MessageCircle
 } from "lucide-react";
 import { getCompanyId, getCurrentCompany, fmtAED, fmtDate, todayISO } from "@/lib/helpers";
 import {
@@ -18,6 +19,7 @@ import {
   fetchCheques, createCheque, updateCheque, transitionChequeStatus,
   fetchChequeById, uploadChequeDocument, getChequeDocumentSignedUrl
 } from "@/lib/chequeService";
+import { openWhatsApp, generateChequeWhatsAppMessage } from "@/lib/whatsappUtils";
 import ChequePrintTemplate from "@/components/cheques/ChequePrintTemplate";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
@@ -695,6 +697,20 @@ export default function ChequeRegisterPage() {
                               <Eye size={15} />
                             </button>
 
+                            {/* WhatsApp Reminder */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const phone = c.cheque_type === "incoming" ? c.customer?.phone : c.supplier?.phone;
+                                const msg = generateChequeWhatsAppMessage(c);
+                                openWhatsApp(phone, msg);
+                              }}
+                              title="Send WhatsApp Reminder / Advice"
+                              className="rounded p-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                            >
+                              <MessageCircle size={15} />
+                            </button>
+
                             {/* Print Voucher */}
                             <button
                               type="button"
@@ -1235,6 +1251,41 @@ export default function ChequeRegisterPage() {
                   <p className="font-mono font-bold text-slate-800 mt-0.5">{fmtDate(detailCheque.due_date)}</p>
                 </div>
               </div>
+
+              {/* WhatsApp Quick Reminder Card */}
+              {(() => {
+                const phone =
+                  detailCheque.cheque_type === "incoming"
+                    ? detailCheque.customer?.phone
+                    : detailCheque.supplier?.phone;
+
+                return (
+                  <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-8 w-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                        <MessageCircle size={16} />
+                      </div>
+                      <div>
+                        <span className="font-bold text-slate-900 block text-xs">WhatsApp Notice</span>
+                        <span className="text-[11px] text-slate-500 block">
+                          {phone ? `Phone: ${phone}` : "Instant formatted reminder"}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const msg = generateChequeWhatsAppMessage(detailCheque);
+                        openWhatsApp(phone, msg);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-colors"
+                    >
+                      <MessageCircle size={13} />
+                      WhatsApp
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Details List */}
               <div className="space-y-2 border border-slate-200 rounded-xl p-3.5">

@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Calendar as CalendarIcon, ChevronLeft, ChevronRight, Wallet, ArrowDownLeft,
   ArrowUpRight, Clock, AlertTriangle, CheckCircle2, ShieldAlert, Filter,
-  Building2, Search, ArrowRight, Printer, RefreshCw
+  Building2, Search, ArrowRight, Printer, RefreshCw, MessageCircle
 } from "lucide-react";
 import { fetchCheques } from "@/lib/chequeService";
 import {
@@ -13,6 +13,7 @@ import {
   chequeStatusBadge, getChequeUrgency, isChequeOverdue, UAE_BANKS
 } from "@/lib/chequeTypes";
 import { fmtAED, fmtDate, todayISO } from "@/lib/helpers";
+import { openWhatsApp, generateDailyDigestWhatsAppMessage } from "@/lib/whatsappUtils";
 
 export default function ChequeDashboardPage() {
   const [cheques, setCheques] = useState<ChequeRecord[]>([]);
@@ -145,6 +146,19 @@ export default function ChequeDashboardPage() {
               <Printer size={15} className="text-slate-500" />
               Cheque Reports
             </Link>
+
+            <button
+              type="button"
+              onClick={() => {
+                const msg = generateDailyDigestWhatsAppMessage(cheques);
+                openWhatsApp(null, msg);
+              }}
+              className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 shadow-xs transition-colors"
+              title="Share today's maturing & overdue cheques summary via WhatsApp"
+            >
+              <MessageCircle size={15} className="text-emerald-600" />
+              WhatsApp Digest
+            </button>
 
             <button
               type="button"

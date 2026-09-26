@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { ChequeReminderType, getDaysDifference } from "@/lib/chequeTypes";
+import { sendChequeReminderEmail, buildChequeReminderEmailHtml } from "@/lib/emailService";
 
 /**
  * Scheduled Cheque Reminder Processing Endpoint
@@ -70,6 +71,9 @@ export async function GET(req: NextRequest) {
 
         if (!reminderType) continue;
 
+        const recipientEmail = process.env.REMINDER_NOTIFICATION_EMAIL;
+        const channel = recipientEmail && process.env.RESEND_API_KEY ? "both" : "in_app";
+
         // Idempotent insertion protected by unique constraint
         const { data: inserted, error: insErr } = await supabase
           .from("cheque_reminders")
@@ -78,9 +82,10 @@ export async function GET(req: NextRequest) {
             cheque_id: c.id,
             reminder_type: reminderType,
             due_date: c.due_date,
+            recipient_email: recipientEmail || null,
             notification_title: title,
             notification_message: message,
-            channel: "in_app",
+            channel: channel,
             status: "pending",
           })
           .select("id");
@@ -94,6 +99,44 @@ export async function GET(req: NextRequest) {
           }
         } else if (inserted && inserted.length > 0) {
           totalCreated++;
+          const reminderId = inserted[0].id;
+
+          // Dispatch email if recipient and API key are configured
+          if (recipientEmail && process.env.RESEND_API_KEY) {
+            const html = buildChequeReminderEmailHtml({
+              title,
+              message,
+              chequeNumber: c.cheque_number,
+              amountFormatted: `AED ${Number(c.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+              bankName: c.bank_name,
+              dueDate: c.due_date,
+              counterparty: party,
+              typeLabel,
+            });
+
+            const emailRes = await sendChequeReminderEmail({
+              to: recipientEmail,
+              subject: `[Cheque Alert] ${title}`,
+              html,
+            });
+
+            if (emailRes.success) {
+              await supabase
+                .from("cheque_reminders")
+                .update({
+                  status: "sent",
+                  sent_at: new Date().toISOString(),
+                })
+                .eq("id", reminderId);
+            } else {
+              await supabase
+                .from("cheque_reminders")
+                .update({
+                  delivery_error: emailRes.error || "Email delivery failed",
+                })
+                .eq("id", reminderId);
+            }
+          }
         }
       }
     }

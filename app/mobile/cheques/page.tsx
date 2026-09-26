@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import MobileLayout from "@/components/mobile/MobileLayout";
 import {
   Wallet, Clock, AlertTriangle, CheckCircle2, Search,
-  ArrowDownLeft, ArrowUpRight, ShieldAlert, RefreshCw, Loader2
+  ArrowDownLeft, ArrowUpRight, ShieldAlert, RefreshCw, Loader2, MessageCircle
 } from "lucide-react";
 import { fetchCheques } from "@/lib/chequeService";
 import {
@@ -12,6 +12,7 @@ import {
   getChequeUrgency, isChequeOverdue, computeChequeMetrics
 } from "@/lib/chequeTypes";
 import { fmtAED, fmtDate, todayISO } from "@/lib/helpers";
+import { openWhatsApp, generateChequeWhatsAppMessage } from "@/lib/whatsappUtils";
 
 type TabType = "due_today" | "upcoming" | "overdue" | "all";
 
@@ -236,9 +237,25 @@ export default function MobileChequesPage() {
                       </span>
                     </div>
 
-                    <span className={`px-2 py-0.5 rounded text-[10px] ${urgency.badgeClass}`}>
-                      {urgency.label}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const phone = isInc ? c.customer?.phone : c.supplier?.phone;
+                          const msg = generateChequeWhatsAppMessage(c);
+                          openWhatsApp(phone, msg);
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shadow-sm transition-colors"
+                        title="Send WhatsApp notice"
+                      >
+                        <MessageCircle size={12} />
+                        WhatsApp
+                      </button>
+
+                      <span className={`px-2 py-0.5 rounded text-[10px] ${urgency.badgeClass}`}>
+                        {urgency.label}
+                      </span>
+                    </div>
                   </div>
                 </div>
               );
