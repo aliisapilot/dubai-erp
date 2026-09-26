@@ -1,7 +1,7 @@
 "use client";
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Search, CalendarCheck, X, Save, Loader2, Pencil } from "lucide-react";
+import { Plus, Search, CalendarCheck, X, Save, Loader2, Pencil, Trash2 } from "lucide-react";
 import { getCompanyId, statusClass, todayISO } from "@/lib/helpers";
 
 type Employee = { id: string; first_name: string | null; employee_number: string | null };
@@ -67,6 +67,32 @@ export default function AttendancePage() {
     setShowForm(true);
   }
   function closeForm() { if (saving) return; setShowForm(false); setEditing(null); setError(""); }
+
+  async function deleteAttendance(r: Att) {
+    const empName = empMap[r.employee_id || ""]?.first_name || "this employee";
+    const dateStr = r.attendance_date || "selected date";
+    if (!confirm(`Are you sure you want to delete the attendance record for "${empName}" on ${dateStr}? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      const { error: err } = await supabase.from("attendance").delete().eq("id", r.id);
+      if (err) {
+        if (err.code === "23503" || err.message?.includes("foreign key")) {
+          alert("Cannot delete attendance record because it is referenced by other records (e.g. payroll statements).");
+        } else {
+          alert("Error deleting attendance record: " + err.message);
+        }
+        return;
+      }
+      setSuccess("Attendance record deleted successfully.");
+      if (editing?.id === r.id) {
+        closeForm();
+      }
+      await loadAll();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to delete attendance record");
+    }
+  }
 
   async function save(e: FormEvent) {
     e.preventDefault(); setError(""); setSuccess("");
@@ -159,7 +185,16 @@ export default function AttendancePage() {
                     <td className="px-4 py-3 text-center text-slate-600">{r.total_hours != null ? r.total_hours.toFixed(1) : "—"}</td>
                     <td className="px-4 py-3 text-center text-slate-600">{r.overtime_hours != null ? r.overtime_hours.toFixed(1) : "0"}</td>
                     <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(formatAttendanceStatus(r.status))}`}>{formatAttendanceStatus(r.status)}</span></td>
-                    <td className="px-4 py-3 text-center"><button onClick={() => openEdit(r)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14} /></button></td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => openEdit(r)} title="Edit Attendance" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => deleteAttendance(r)} title="Delete Attendance" className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -201,11 +236,23 @@ export default function AttendancePage() {
                 <div><label className="mb-1 block text-sm font-medium text-slate-700">Remarks</label><textarea value={form.remarks} onChange={e=>f("remarks",e.target.value)} rows={2} className={inp} /></div>
               </form>
             </div>
-            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
-              <button type="button" onClick={closeForm} disabled={saving} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-              <button type="submit" form="att-form" disabled={saving} className="flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
-                {saving?<Loader2 size={16} className="animate-spin"/>:<Save size={16}/>} {saving?"Saving…":editing?"Save Changes":"Add Record"}
-              </button>
+            <div className="flex items-center justify-between border-t border-slate-200 px-6 py-4">
+              {editing ? (
+                <button
+                  type="button"
+                  onClick={() => deleteAttendance(editing)}
+                  disabled={saving}
+                  className="flex items-center gap-1.5 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50 transition"
+                >
+                  <Trash2 size={14} /> Delete
+                </button>
+              ) : <div />}
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={closeForm} disabled={saving} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+                <button type="submit" form="att-form" disabled={saving} className="flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
+                  {saving?<Loader2 size={16} className="animate-spin"/>:<Save size={16}/>} {saving?"Saving…":editing?"Save Changes":"Add Record"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
