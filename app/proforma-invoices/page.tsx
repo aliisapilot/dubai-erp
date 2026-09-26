@@ -169,7 +169,12 @@ function PIContent() {
       const { error: itemDeleteErr } = await supabase.from("proforma_invoice_items").delete().eq("proforma_invoice_id", pi.id);
       if (itemDeleteErr) throw itemDeleteErr;
       const { error: delErr } = await supabase.from("proforma_invoices").delete().eq("id", pi.id);
-      if (delErr) throw new Error(delErr.message);
+      if (delErr) {
+        if (delErr.code === "23503") {
+          throw new Error(`Cannot delete proforma invoice ${pi.proforma_number} because it has been converted to tax invoices or referenced by other records.`);
+        }
+        throw new Error(delErr.message);
+      }
       setSuccess(`Proforma invoice ${pi.proforma_number} deleted successfully.`);
       await loadAll();
     } catch (err: unknown) {

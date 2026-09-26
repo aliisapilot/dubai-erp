@@ -342,7 +342,12 @@ export default function QuotationsPage() {
     try {
       await supabase.from("quotation_items").delete().eq("quotation_id", q.id);
       const { error: delErr } = await supabase.from("quotations").delete().eq("id", q.id);
-      if (delErr) throw new Error(delErr.message);
+      if (delErr) {
+        if (delErr.code === "23503") {
+          throw new Error(`Cannot delete quotation ${q.quotation_number} because it is referenced in converted orders or invoices.`);
+        }
+        throw new Error(delErr.message);
+      }
       setSuccess(`Quotation ${q.quotation_number} deleted successfully.`);
       await loadAll();
     } catch (err: unknown) {
@@ -408,8 +413,8 @@ export default function QuotationsPage() {
                       <button onClick={() => openPrint(q)} title="Print / PDF Document" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-900"><Printer size={14} /></button>
                       {((q.status||"").toLowerCase() === "draft" || (q.status||"").toLowerCase() === "sent") && <button onClick={() => openEdit(q)} title="Edit" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14} /></button>}
                       {(q.status||"").toLowerCase() === "accepted" && <button onClick={() => convertToProforma(q)} title="Convert to Proforma" className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"><ArrowRight size={14} /></button>}
-                      {(q.status||"").toLowerCase() === "draft" && (
-                        <button onClick={() => deleteQuotation(q)} title="Delete Draft Quotation" className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                      {["draft", "sent", "rejected", "expired"].includes((q.status || "").toLowerCase()) && (
+                        <button onClick={() => deleteQuotation(q)} title="Delete Quotation" className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition">
                           <Trash2 size={14} />
                         </button>
                       )}

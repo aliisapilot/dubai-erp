@@ -346,7 +346,12 @@ export default function SupplierBillsPage() {
       const { error: itemDeleteErr } = await supabase.from("supplier_bill_items").delete().eq("bill_id", b.id);
       if (itemDeleteErr) throw itemDeleteErr;
       const { error: delErr } = await supabase.from("supplier_bills").delete().eq("id", b.id);
-      if (delErr) throw new Error(delErr.message);
+      if (delErr) {
+        if (delErr.code === "23503") {
+          throw new Error(`Cannot delete bill ${b.bill_number} because it is referenced in supplier payments or expense records. Remove payments first.`);
+        }
+        throw new Error(delErr.message);
+      }
       setSuccess(`Supplier bill ${b.bill_number} deleted successfully.`);
       await loadAll();
     } catch (err: unknown) {

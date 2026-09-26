@@ -210,7 +210,12 @@ export default function PurchaseOrdersPage() {
       const { error: itemDeleteErr } = await supabase.from("purchase_order_items").delete().eq("purchase_order_id", po.id);
       if (itemDeleteErr) throw itemDeleteErr;
       const { error: delErr } = await supabase.from("purchase_orders").delete().eq("id", po.id);
-      if (delErr) throw new Error(delErr.message);
+      if (delErr) {
+        if (delErr.code === "23503") {
+          throw new Error(`Cannot delete purchase order ${po.purchase_order_number} because it is referenced in supplier bills or receipt records.`);
+        }
+        throw new Error(delErr.message);
+      }
       setSuccess(`Purchase order ${po.purchase_order_number} deleted successfully.`);
       await loadAll();
     } catch (err: unknown) {

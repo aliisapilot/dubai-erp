@@ -403,6 +403,29 @@ export default function DocumentDesigner() {
     [layout, pushHistory, selectedElementId]
   );
 
+  const handleDeleteSelected = useCallback(() => {
+    if (!selectedElementId) return;
+    const elem = layout.elements.find((el) => el.id === selectedElementId);
+    if (!elem || elem.locked) return;
+
+    if (elem.type === "custom_text" || elem.type === "custom_image" || elem.type === "divider") {
+      handleDeleteElement(elem.id);
+      setNotification({
+        message: `Deleted "${elem.label}".`,
+        type: "success",
+      });
+      setTimeout(() => setNotification(null), 2500);
+    } else {
+      // Standard template element: toggle visibility off (hide) so document structure remains intact
+      handleToggleVisibility(elem.id);
+      setNotification({
+        message: `Hidden "${elem.label}" from document. Re-enable in left layers panel anytime.`,
+        type: "success",
+      });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, [selectedElementId, layout.elements, handleDeleteElement, handleToggleVisibility]);
+
   const handleResetElement = useCallback(
     (id: string) => {
       const defaultLayout = createDefaultLayout(selectedDocType);
@@ -643,11 +666,7 @@ export default function DocumentDesigner() {
           handleUpdateElement(elem.id, { y: Math.min(layout.page.heightMm - elem.height, elem.y + step) }, true);
         } else if (e.key === "Delete" || e.key === "Backspace") {
           e.preventDefault();
-          if (elem.type === "custom_text" || elem.type === "custom_image" || elem.type === "divider") {
-            handleDeleteElement(elem.id);
-          } else {
-            handleToggleVisibility(elem.id);
-          }
+          handleDeleteSelected();
         }
       }
     }
@@ -661,8 +680,7 @@ export default function DocumentDesigner() {
     selectedElementId,
     layout,
     handleUpdateElement,
-    handleDeleteElement,
-    handleToggleVisibility,
+    handleDeleteSelected,
   ]);
 
   const selectedElement = layout.elements.find((el) => el.id === selectedElementId) || null;
@@ -689,6 +707,8 @@ export default function DocumentDesigner() {
           onToggleSnapMargins={() => setSnapMargins(!snapMargins)}
           onAlign={handleAlign}
           hasSelectedElement={Boolean(selectedElement && !selectedElement.locked)}
+          selectedElementLabel={selectedElement?.label}
+          onDeleteSelected={handleDeleteSelected}
           pageNumber={displayedPageNumber}
           totalPages={totalPages}
           onPageChange={setPageNumber}

@@ -362,7 +362,12 @@ export default function DeliveryNotesPage() {
       const { error: itemDeleteErr } = await supabase.from("delivery_note_items").delete().eq("delivery_note_id", dn.id);
       if (itemDeleteErr) throw itemDeleteErr;
       const { error: delErr } = await supabase.from("delivery_notes").delete().eq("id", dn.id);
-      if (delErr) throw new Error(delErr.message);
+      if (delErr) {
+        if (delErr.code === "23503") {
+          throw new Error(`Cannot delete delivery note ${dn.delivery_note_number} because it is referenced by invoices or shipment records.`);
+        }
+        throw new Error(delErr.message);
+      }
       setSuccess(`Delivery note ${dn.delivery_note_number} deleted successfully.`);
       await loadAll();
     } catch (err: unknown) {
