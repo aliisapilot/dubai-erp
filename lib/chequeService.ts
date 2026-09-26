@@ -285,8 +285,6 @@ export async function transitionChequeStatus(params: {
         reference_number: current.cheque_number,
         bank_name: current.bank_name,
         notes: `Cheque clearance settlement for Cheque #${current.cheque_number} (${current.bank_name}). ${notes || ""}`,
-        status: "completed",
-        updated_at: new Date().toISOString(),
       };
 
       const { data: insertedPayment, error: payErr } = await supabase
