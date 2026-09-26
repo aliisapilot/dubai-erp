@@ -151,7 +151,7 @@ export default function DocumentPreviewModal({
     layout.documentType === "tax_invoice"
       ? TEST_DATASETS[selectedDatasetKey]?.data || SAMPLE_DOCUMENT_DATA
       : getSampleDocumentData(layout.documentType);
-  const computedTotalPages = getDocumentPageCount(layout, activeDataset.items.length);
+  const computedTotalPages = getDocumentPageCount(layout, activeDataset.items.length, activeDataset.items);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -190,7 +190,9 @@ export default function DocumentPreviewModal({
               </span>
             </h2>
             <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
-              <span>{computedTotalPages} Page{computedTotalPages > 1 ? "s" : ""}</span>
+              <span className={`px-1.5 py-0.2 rounded text-[10px] font-semibold ${computedTotalPages > 1 ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"}`}>
+                {computedTotalPages > 1 ? `⚠️ ${computedTotalPages} Pages` : "✓ 1 Page A4"}
+              </span>
               <span>•</span>
               <div className="flex items-center gap-1">
                 <span>Dataset:</span>

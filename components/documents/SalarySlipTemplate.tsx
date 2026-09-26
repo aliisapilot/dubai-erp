@@ -85,7 +85,7 @@ export default function SalarySlipTemplate({
     total_amount: slip.net_pay,
     notes: `Department: ${slip.department || "N/A"} | Bank: ${slip.bank_name || "N/A"} | IBAN: ${slip.iban || "N/A"}`,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
 
   return (
     <DocumentContainer
@@ -96,6 +96,7 @@ export default function SalarySlipTemplate({
       company={company ?? undefined}
       noPadding={Boolean(customLayout)}
       showWatermark={!customLayout}
+      totalPages={totalPages}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

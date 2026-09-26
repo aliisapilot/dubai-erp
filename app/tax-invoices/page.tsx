@@ -163,11 +163,12 @@ function TIContent() {
   const isCancelled = (s?: string | null) => (s || "").toLowerCase() === "cancelled";
 
   async function deleteDraftInvoice(ti: TI) {
-    if (!isDraft(ti.status)) {
-      setError("Only draft invoices can be permanently deleted. Issued or posted invoices must be cancelled to preserve accounting history.");
+    if (!isDraft(ti.status) && !isCancelled(ti.status)) {
+      setError("Only draft or cancelled invoices can be permanently deleted. Active issued invoices must be cancelled to preserve accounting history.");
       return;
     }
-    if (!confirm(`Are you sure you want to delete draft invoice "${ti.invoice_number}"? This action cannot be undone.`)) return;
+    const label = isCancelled(ti.status) ? "cancelled invoice" : "draft invoice";
+    if (!confirm(`Are you sure you want to delete ${label} "${ti.invoice_number}"? This action cannot be undone.`)) return;
     setError("");
     setSuccess("");
     try {
@@ -288,11 +289,11 @@ function TIContent() {
                     {!isCancelled(ti.status) && ti.status!=="issued" && ti.status!=="Final" && (
                       <button onClick={()=>openEdit(ti)} title="Edit Invoice" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"><Pencil size={14}/></button>
                     )}
-                    {isDraft(ti.status) ? (
-                      <button onClick={()=>deleteDraftInvoice(ti)} title="Delete Draft" className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition"><Trash2 size={14}/></button>
-                    ) : !isCancelled(ti.status) ? (
+                    {isDraft(ti.status) || isCancelled(ti.status) ? (
+                      <button onClick={()=>deleteDraftInvoice(ti)} title={isCancelled(ti.status) ? "Delete Cancelled Invoice" : "Delete Draft Invoice"} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition"><Trash2 size={14}/></button>
+                    ) : (
                       <button onClick={()=>cancelInvoice(ti)} title="Cancel / Void Invoice" className="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600 transition"><Ban size={14}/></button>
-                    ) : null}
+                    )}
                   </div></td>
                 </tr>
               ))}</tbody>

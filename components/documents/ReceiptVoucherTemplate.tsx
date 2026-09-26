@@ -75,7 +75,7 @@ export default function ReceiptVoucherTemplate({
     notes: voucher.notes || undefined,
   };
   const totalPages = customLayout
-    ? getDocumentPageCount(customLayout, rendererData.items.length)
+    ? getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items)
     : 1;
   return (
     <DocumentContainer
@@ -85,6 +85,7 @@ export default function ReceiptVoucherTemplate({
       company={company ?? undefined}
       noPadding={Boolean(customLayout)}
       showWatermark={!customLayout}
+      totalPages={totalPages}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

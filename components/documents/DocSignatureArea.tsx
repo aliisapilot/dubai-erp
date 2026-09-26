@@ -42,7 +42,7 @@ export default function DocSignatureArea({
 }: DocSignatureAreaProps) {
   if (mode === "delivery") {
     return (
-      <div className="mt-8 grid grid-cols-2 gap-6 border-t-2 pt-4 text-xs avoid-break" style={{ borderColor: "var(--doc-border)" }}>
+      <div className="mt-4 print:mt-2.5 grid grid-cols-2 gap-4 print:gap-3 border-t-2 pt-3 print:pt-2 text-xs avoid-break" style={{ borderColor: "var(--doc-border)" }}>
         {/* Left: Dispatch / Company Authorisation */}
         <div className="rounded border bg-slate-50/60 p-3" style={{ borderColor: "var(--doc-border)" }}>
           <div className="font-bold uppercase tracking-wide mb-2 text-[11px]" style={{ color: "var(--doc-primary)" }}>
@@ -114,7 +114,7 @@ export default function DocSignatureArea({
 
   if (mode === "salary") {
     return (
-      <div className="mt-8 grid grid-cols-3 gap-4 border-t-2 pt-4 text-xs avoid-break" style={{ borderColor: "var(--doc-border)" }}>
+      <div className="mt-4 print:mt-2.5 grid grid-cols-3 gap-3 print:gap-2 border-t-2 pt-3 print:pt-2 text-xs avoid-break" style={{ borderColor: "var(--doc-border)" }}>
         <div className="rounded border p-3 text-center" style={{ borderColor: "var(--doc-border)" }}>
           <div className="text-[10px] uppercase font-semibold" style={{ color: "var(--doc-muted)" }}>Prepared By (إعداد)</div>
           <div className="font-bold text-xs mt-1" style={{ color: "var(--doc-primary)" }}>{preparedBy || "HR Officer"}</div>
@@ -143,7 +143,7 @@ export default function DocSignatureArea({
 
   if (mode === "handover") {
     return (
-      <div className="mt-8 grid grid-cols-2 gap-6 border-t-2 pt-4 text-xs avoid-break" style={{ borderColor: "var(--doc-border)" }}>
+      <div className="mt-4 print:mt-2.5 grid grid-cols-2 gap-4 print:gap-3 border-t-2 pt-3 print:pt-2 text-xs avoid-break" style={{ borderColor: "var(--doc-border)" }}>
         <div className="rounded border p-3" style={{ borderColor: "var(--doc-border)" }}>
           <div className="font-bold uppercase text-[11px] mb-2" style={{ color: "var(--doc-primary)" }}>
             Main Contractor / Handover Sign-off
@@ -200,7 +200,7 @@ export default function DocSignatureArea({
 
   return (
     <div
-      className="mt-8 grid grid-cols-2 gap-6 border-t-2 pt-4 text-xs avoid-break"
+      className="mt-4 print:mt-2.5 grid grid-cols-2 gap-4 print:gap-3 border-t-2 pt-3 print:pt-2 text-xs avoid-break"
       style={{ borderTopColor: "#C9A227" }}
     >
       {/* ── LEFT: Company Authorized Signature & Stamp ─────────────────────── */}

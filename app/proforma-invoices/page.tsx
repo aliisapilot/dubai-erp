@@ -169,7 +169,12 @@ function PIContent() {
       const { error: itemDeleteErr } = await supabase.from("proforma_invoice_items").delete().eq("proforma_invoice_id", pi.id);
       if (itemDeleteErr) throw itemDeleteErr;
       const { error: delErr } = await supabase.from("proforma_invoices").delete().eq("id", pi.id);
-      if (delErr) throw new Error(delErr.message);
+      if (delErr) {
+        if (delErr.code === "23503") {
+          throw new Error(`Cannot delete proforma invoice ${pi.proforma_number} because it has been converted to tax invoices or referenced by other records.`);
+        }
+        throw new Error(delErr.message);
+      }
       setSuccess(`Proforma invoice ${pi.proforma_number} deleted successfully.`);
       await loadAll();
     } catch (err: unknown) {
@@ -208,7 +213,7 @@ function PIContent() {
                     <button onClick={()=>openView(pi)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Eye size={14}/></button>
                     {["draft", "sent"].includes((pi.status||"").toLowerCase())&&<button onClick={()=>openEdit(pi)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14}/></button>}
                     {!(["cancelled", "invoiced"].includes((pi.status||"").toLowerCase()))&&<button onClick={()=>router.push(`/tax-invoices?from_proforma=${pi.id}`)} title="Convert to Tax Invoice" className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"><ArrowRight size={14}/></button>}
-                    {(pi.status||"").toLowerCase()==="draft"&&<button onClick={()=>deleteProforma(pi)} title="Delete Draft Proforma" className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={14}/></button>}
+                    <button onClick={()=>deleteProforma(pi)} title="Delete Proforma Invoice" className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"><Trash2 size={14}/></button>
                   </div></td>
                 </tr>
               ))}</tbody>
@@ -300,6 +305,16 @@ function PIContent() {
                   className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1 text-xs font-semibold text-white hover:bg-slate-800 transition"
                 >
                   <Printer size={13} /> Print / Save PDF
+                </button>
+                <button
+                  onClick={() => {
+                    const target = viewing.pi;
+                    setViewing(null);
+                    deleteProforma(target);
+                  }}
+                  className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-100 transition"
+                >
+                  <Trash2 size={13} /> Delete
                 </button>
                 <button onClick={()=>setViewing(null)}><X size={20}/></button>
               </div>

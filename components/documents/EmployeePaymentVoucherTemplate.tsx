@@ -73,7 +73,7 @@ export default function EmployeePaymentVoucherTemplate({
     payment_terms: voucher.payment_method,
     notes: voucher.notes || `Bank: ${voucher.bank_name || "N/A"} | Ref: ${voucher.bank_reference || "N/A"}`,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
 
   return (
     <DocumentContainer
@@ -83,6 +83,7 @@ export default function EmployeePaymentVoucherTemplate({
       company={company ?? undefined}
       noPadding={Boolean(customLayout)}
       showWatermark={!customLayout}
+      totalPages={totalPages}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

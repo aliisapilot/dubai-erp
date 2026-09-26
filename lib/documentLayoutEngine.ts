@@ -20,8 +20,30 @@ export interface EffectiveLayoutElement extends LayoutElement {
   effectiveVisible?: boolean;
 }
 
+export type FitLevel = "standard" | "comfortable" | "compact" | "dense" | "multi_page";
+
+export interface FitProfile {
+  fits: boolean;
+  level: FitLevel;
+  rowHeight: number;
+  headerHeight: number;
+  fontSize: number;
+  headerFontSize: number;
+  followerScale: number;
+  gap: number;
+  tableY: number;
+  tableHeight: number;
+  followerSpan: number;
+  totalContentBottom: number;
+  footerY: number;
+  warning?: string;
+}
+
 export interface PaginationPlan {
   totalPages: number;
+  isSinglePage: boolean;
+  fitProfile?: FitProfile;
+  warning?: string;
   pageItemRanges: Array<{
     pageNumber: number;
     startIndex: number;
@@ -58,20 +80,57 @@ export interface LayoutValidationReport {
   };
 }
 
+export interface ItemDescriptionLike {
+  description?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Calculates estimated line wrapping height for a single table item row
+ */
+export function calculateItemRowHeight(
+  baseRowHeight: number,
+  description?: string
+): number {
+  if (!description) return baseRowHeight;
+  const lines = description.split("\n");
+  let totalVisualLines = 0;
+  for (const line of lines) {
+    totalVisualLines += Math.max(1, Math.ceil(line.length / 55));
+  }
+  const extraLines = Math.max(0, totalVisualLines - 1);
+  // Each extra wrapped line adds ~3.2mm in rendered print height
+  return baseRowHeight + (extraLines * 3.2);
+}
+
 /**
  * Calculates the exact rendered height in mm of a table with N items
  */
 export function calculateTableRenderedHeight(
   tableElement: LayoutElement | undefined,
-  itemCount: number
+  itemCount: number,
+  itemsData?: ItemDescriptionLike[],
+  rowHeightOverride?: number,
+  headerHeightOverride?: number
 ): number {
   if (!tableElement) return 0;
-  const rowHeight = Math.max(4, tableElement.tableSettings?.rowHeight || 8.5);
+  const baseRowHeight = rowHeightOverride || Math.max(4, tableElement.tableSettings?.rowHeight || 8.5);
   const headerFontSize = tableElement.tableSettings?.headerFontSize || 10;
-  const headerHeight = Math.max(7, Math.max(rowHeight, headerFontSize * 0.35 + 4));
+  const headerHeight = headerHeightOverride || Math.max(6, Math.max(baseRowHeight, headerFontSize * 0.35 + 4));
   const effectiveCount = Math.max(1, itemCount);
+
+  let itemsHeight = 0;
+  if (itemsData && itemsData.length > 0) {
+    const slice = itemsData.slice(0, effectiveCount);
+    for (const it of slice) {
+      itemsHeight += calculateItemRowHeight(baseRowHeight, it.description);
+    }
+  } else {
+    itemsHeight = effectiveCount * baseRowHeight;
+  }
+
   // Add 1.5mm for outer table borders and cell padding
-  return headerHeight + (effectiveCount * rowHeight) + 1.5;
+  return headerHeight + itemsHeight + 1.5;
 }
 
 /**
@@ -108,16 +167,221 @@ export function isFollowerElement(
 }
 
 /**
+ * Calculates the required vertical span in mm for all follower elements
+ * using visual two-column grouping with side-by-side detection (e.g. signature + stamp).
+ */
+export function calculateFollowerVerticalSpan(
+  followers: LayoutElement[],
+  scale: number,
+  gap: number
+): number {
+  if (followers.length === 0) return 0;
+
+  // Group followers into visual columns
+  // Column 1: Left / Center (x < 115) e.g. amount_in_words, bank_details, payment_terms
+  // Column 2: Right (x >= 115) e.g. totals, company_signature, company_stamp
+  const colLeft = followers.filter((f) => f.x < 115);
+  const colRight = followers.filter((f) => f.x >= 115);
+
+  const measureCol = (col: LayoutElement[]) => {
+    if (col.length === 0) return 0;
+    const sorted = [...col].sort((a, b) => a.y - b.y);
+    const rows: LayoutElement[][] = [];
+    for (const el of sorted) {
+      const existingRow = rows.find((r) => Math.abs(r[0].y - el.y) < 5);
+      if (existingRow) existingRow.push(el);
+      else rows.push([el]);
+    }
+    let totalH = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const rowMaxH = Math.max(...rows[i].map((el) => el.height * scale));
+      totalH += rowMaxH;
+      if (i < rows.length - 1) totalH += gap;
+    }
+    return totalH;
+  };
+
+  const spanLeft = measureCol(colLeft);
+  const spanRight = measureCol(colRight);
+  return Math.max(spanLeft, spanRight);
+}
+
+/**
+ * Computes an intelligent single-page A4 fitting profile for a given layout and item count.
+ * Evaluates four levels of non-destructive content tightening (standard, comfortable, compact, dense)
+ * before determining if multi-page pagination is genuinely required.
+ */
+export function computeIntelligentFitProfile(
+  layout: DocumentLayout,
+  totalItems: number,
+  itemsData?: ItemDescriptionLike[]
+): FitProfile {
+  const table = layout.elements.find((el) => el.type === "line_items" && el.visible);
+  const footer = layout.elements.find((el) => el.type === "footer" && el.visible);
+  const footerY = footer ? footer.y : layout.page.heightMm - layout.page.margins.bottom - 16;
+  const safetyBottom = footerY - 2.5;
+
+  if (!table || totalItems <= 0) {
+    return {
+      fits: true,
+      level: "standard",
+      rowHeight: Math.max(8.0, table?.tableSettings?.rowHeight || 8.5),
+      headerHeight: 7.5,
+      fontSize: table?.tableSettings?.fontSize || 10.5,
+      headerFontSize: table?.tableSettings?.headerFontSize || 10.5,
+      followerScale: 1.0,
+      gap: 3.0,
+      tableY: table?.y || 95,
+      tableHeight: 0,
+      followerSpan: 0,
+      totalContentBottom: table?.y || 95,
+      footerY,
+    };
+  }
+
+  // Elements above table (ignoring watermark)
+  const elementsAbove = layout.elements.filter(
+    (el) => el.visible && el.type !== "watermark" && el.y + el.height <= table.y + 2
+  );
+  const maxAboveBottom = elementsAbove.length > 0
+    ? Math.max(...elementsAbove.map((el) => el.y + el.height))
+    : 60;
+
+  const followers = layout.elements.filter(
+    (el) => el.visible && isFollowerElement(el, table)
+  );
+
+  // Progressive intelligent compaction tiers designed to keep A4 documents on one page
+  const tiers: Array<{
+    level: "standard" | "comfortable" | "compact" | "dense";
+    rowHeight: number;
+    headerHeight: number;
+    fontSize: number;
+    headerFontSize: number;
+    followerScale: number;
+    gap: number;
+    allowSlideTableUp: boolean;
+  }> = [
+    {
+      level: "standard",
+      rowHeight: Math.max(8.5, table.tableSettings?.rowHeight || 9.0),
+      headerHeight: 7.5,
+      fontSize: table.tableSettings?.fontSize || 10.5,
+      headerFontSize: table.tableSettings?.headerFontSize || 10.5,
+      followerScale: 1.0,
+      gap: 3.0,
+      allowSlideTableUp: false,
+    },
+    {
+      level: "comfortable",
+      rowHeight: 8.0,
+      headerHeight: 7.2,
+      fontSize: 9.5,
+      headerFontSize: 9.5,
+      followerScale: 0.92,
+      gap: 2.5,
+      allowSlideTableUp: true,
+    },
+    {
+      level: "compact",
+      rowHeight: 7.0,
+      headerHeight: 6.5,
+      fontSize: 9.0,
+      headerFontSize: 9.0,
+      followerScale: 0.84,
+      gap: 2.0,
+      allowSlideTableUp: true,
+    },
+    {
+      level: "dense",
+      rowHeight: 6.0,
+      headerHeight: 6.0,
+      fontSize: 8.2,
+      headerFontSize: 8.2,
+      followerScale: 0.76,
+      gap: 1.5,
+      allowSlideTableUp: true,
+    },
+  ];
+
+  for (const tier of tiers) {
+    // If compaction is enabled, tighten excessive gap between header/customer cards and table
+    let effectiveAbove = maxAboveBottom;
+    if (tier.allowSlideTableUp) {
+      const party = layout.elements.find((el) => el.visible && ["customer_info", "supplier_info", "project_info"].includes(el.type));
+      const meta = layout.elements.find((el) => el.visible && el.type === "doc_meta");
+      if (party && meta && Math.abs(party.y - meta.y) <= 8) {
+        const topY = Math.min(party.y, meta.y);
+        const cardH = tier.level === "dense" ? 23 : tier.level === "compact" ? 25 : 27;
+        effectiveAbove = Math.min(maxAboveBottom, topY + cardH);
+      }
+    }
+
+    const tableY = tier.allowSlideTableUp
+      ? Math.max(effectiveAbove + 2.5, Math.min(table.y, effectiveAbove + 4.5))
+      : table.y;
+
+    const tableHeight = calculateTableRenderedHeight(
+      table,
+      totalItems,
+      itemsData,
+      tier.rowHeight,
+      tier.headerHeight
+    );
+    const followerSpan = calculateFollowerVerticalSpan(followers, tier.followerScale, tier.gap);
+    const totalContentBottom = tableY + tableHeight + (followerSpan > 0 ? tier.gap + followerSpan : 0);
+
+    if (totalContentBottom <= safetyBottom) {
+      return {
+        fits: true,
+        level: tier.level,
+        rowHeight: tier.rowHeight,
+        headerHeight: tier.headerHeight,
+        fontSize: tier.fontSize,
+        headerFontSize: tier.headerFontSize,
+        followerScale: tier.followerScale,
+        gap: tier.gap,
+        tableY,
+        tableHeight,
+        followerSpan,
+        totalContentBottom,
+        footerY,
+      };
+    }
+  }
+
+  // When content legitimately exceeds single A4 capacity even under dense tier
+  return {
+    fits: false,
+    level: "multi_page",
+    rowHeight: 7.5,
+    headerHeight: 7.0,
+    fontSize: 9.0,
+    headerFontSize: 9.0,
+    followerScale: 0.88,
+    gap: 2.5,
+    tableY: table.y,
+    tableHeight: calculateTableRenderedHeight(table, totalItems, itemsData, 7.5, 7.0),
+    followerSpan: calculateFollowerVerticalSpan(followers, 0.88, 2.5),
+    totalContentBottom: 310,
+    footerY,
+    warning: `Document exceeds single-page A4 capacity (${totalItems} items). Formatted cleanly for multi-page printing without data loss.`,
+  };
+}
+
+/**
  * Computes intelligent pagination for a document layout and total item count
  */
 export function computePaginationPlan(
   layout: DocumentLayout,
-  totalItems: number
+  totalItems: number,
+  itemsData?: ItemDescriptionLike[]
 ): PaginationPlan {
   const table = layout.elements.find((el) => el.type === "line_items" && el.visible);
   if (!table || totalItems <= 0) {
     return {
       totalPages: 1,
+      isSinglePage: true,
       pageItemRanges: [
         {
           pageNumber: 1,
@@ -130,54 +394,13 @@ export function computePaginationPlan(
     };
   }
 
-  const rowHeight = Math.max(4, table.tableSettings?.rowHeight || 8.5);
-  const headerHeight = Math.max(7, table.tableSettings?.headerFontSize ? table.tableSettings.headerFontSize * 0.35 + 4 : rowHeight);
-  const footer = layout.elements.find((el) => el.type === "footer" && el.visible);
-  const footerTop = footer ? footer.y : layout.page.heightMm - layout.page.margins.bottom - 16;
-  const safetyMarginAboveFooter = 5; // mm
-  const maxContentY = footerTop - safetyMarginAboveFooter;
-
-  // Identify follower elements on the final page
-  const followers = layout.elements.filter((el) => isFollowerElement(el, table));
-  const tableBaseline = table.y + table.height;
-
-  let followerBlockSpan = 0;
-  if (followers.length > 0) {
-    let minRelTop = Infinity;
-    let maxRelBottom = -Infinity;
-    for (const f of followers) {
-      const relTop = f.y - tableBaseline;
-      const relBottom = relTop + f.height;
-      if (relTop < minRelTop) minRelTop = relTop;
-      if (relBottom > maxRelBottom) maxRelBottom = relBottom;
-    }
-    followerBlockSpan = Math.max(0, maxRelBottom);
-  }
-
-  // Space available on a page with followers (e.g. Page 1 if 1-page doc, or final page)
-  const spaceForTableWithFollowers = Math.max(
-    rowHeight * 2,
-    maxContentY - table.y - followerBlockSpan - 4
-  );
-  const maxItemsWithFollowers = Math.max(
-    1,
-    Math.floor((spaceForTableWithFollowers - headerHeight) / rowHeight)
-  );
-
-  // Space available on non-final pages (no follower cards rendered)
-  const spaceForTableWithoutFollowers = Math.max(
-    rowHeight * 3,
-    maxContentY - table.y - 2
-  );
-  const maxItemsWithoutFollowers = Math.max(
-    1,
-    Math.floor((spaceForTableWithoutFollowers - headerHeight) / rowHeight)
-  );
-
-  // Case 1: All items fit on a single page with all follower cards
-  if (totalItems <= maxItemsWithFollowers) {
+  // First: attempt intelligent single-page fitting
+  const fit = computeIntelligentFitProfile(layout, totalItems, itemsData);
+  if (fit.fits) {
     return {
       totalPages: 1,
+      isSinglePage: true,
+      fitProfile: fit,
       pageItemRanges: [
         {
           pageNumber: 1,
@@ -190,14 +413,42 @@ export function computePaginationPlan(
     };
   }
 
-  // Case 2: Multi-page distribution
+  // Multi-page distribution
+  const footer = layout.elements.find((el) => el.type === "footer" && el.visible);
+  const footerTop = footer ? footer.y : layout.page.heightMm - layout.page.margins.bottom - 16;
+  const safetyMarginAboveFooter = 3.5;
+  const maxContentY = footerTop - safetyMarginAboveFooter;
+
+  const rowHeight = fit.rowHeight;
+  const headerHeight = fit.headerHeight;
+
+  // Space on final page (with followers)
+  const followerSpan = fit.followerSpan;
+  const spaceForTableWithFollowers = Math.max(
+    rowHeight * 2,
+    maxContentY - fit.tableY - followerSpan - fit.gap - 2
+  );
+  const maxItemsWithFollowers = Math.max(
+    1,
+    Math.floor((spaceForTableWithFollowers - headerHeight) / rowHeight)
+  );
+
+  // Space on non-final pages (no followers, table utilizes full available vertical height)
+  const spaceForTableWithoutFollowers = Math.max(
+    rowHeight * 3,
+    maxContentY - fit.tableY - 2
+  );
+  const maxItemsWithoutFollowers = Math.max(
+    1,
+    Math.floor((spaceForTableWithoutFollowers - headerHeight) / rowHeight)
+  );
+
   const pageItemRanges: PaginationPlan["pageItemRanges"] = [];
   let remaining = totalItems;
   let currentIndex = 0;
   let currentPage = 1;
 
   while (remaining > 0) {
-    // If the remaining items can fit on this page with the follower cards, this is the final page
     if (remaining <= maxItemsWithFollowers) {
       pageItemRanges.push({
         pageNumber: currentPage,
@@ -209,7 +460,6 @@ export function computePaginationPlan(
       break;
     }
 
-    // Otherwise, fill this non-final page as much as possible (leaving at least 1 item for the final page)
     const canTake = Math.min(remaining - 1, maxItemsWithoutFollowers);
     const take = Math.max(1, canTake);
 
@@ -228,52 +478,146 @@ export function computePaginationPlan(
 
   return {
     totalPages: pageItemRanges.length,
+    isSinglePage: pageItemRanges.length === 1,
+    fitProfile: fit,
+    warning: fit.warning || (pageItemRanges.length > 1
+      ? `Multi-page document (${pageItemRanges.length} pages) — Content exceeds single-page A4 capacity.`
+      : undefined),
     pageItemRanges,
   };
+}
+
+export interface EffectiveLayoutResult {
+  elements: EffectiveLayoutElement[];
+  actualTableHeight: number;
+  deltaY: number;
+  fitProfile: FitProfile;
+  isSinglePage: boolean;
+  totalPages: number;
 }
 
 /**
  * Calculates effective geometry for all elements on a specific rendered page.
  * Shifts follower elements dynamically based on actual row count,
- * anchors footer baseline, and prevents clipping.
+ * anchors footer baseline, compacts spacing, and prevents clipping.
  */
 export function computeEffectiveLayout(
   layout: DocumentLayout,
   pageItemsCount: number,
   isLastPage: boolean,
-  pageNumber: number = 1
-): {
-  elements: EffectiveLayoutElement[];
-  actualTableHeight: number;
-  deltaY: number;
-} {
+  pageNumber: number = 1,
+  totalPages?: number,
+  itemsData?: ItemDescriptionLike[]
+): EffectiveLayoutResult {
   const table = layout.elements.find((el) => el.type === "line_items");
+
+  // Determine pagination plan and fit profile
+  const paginationPlan = computePaginationPlan(layout, pageItemsCount, itemsData);
+  const resolvedTotalPages = totalPages || paginationPlan.totalPages;
+  const isSinglePage = resolvedTotalPages === 1;
+  const fitProfile = paginationPlan.fitProfile || computeIntelligentFitProfile(layout, pageItemsCount, itemsData);
+
+  const effectiveTableY = isSinglePage && fitProfile.tableY ? fitProfile.tableY : (table ? table.y : 95);
+  const effectiveRowHeight = fitProfile.rowHeight;
+  const effectiveHeaderHeight = fitProfile.headerHeight;
+
   const actualTableHeight = table
-    ? calculateTableRenderedHeight(table, pageItemsCount)
+    ? calculateTableRenderedHeight(table, pageItemsCount, itemsData, effectiveRowHeight, effectiveHeaderHeight)
     : 0;
 
   const tableDesignedHeight = table ? table.height : 0;
   const deltaY = table ? actualTableHeight - tableDesignedHeight : 0;
-  const tableBaseline = table ? table.y + table.height : 0;
-  const actualTableBottom = table ? table.y + actualTableHeight : 0;
+  const actualTableBottom = effectiveTableY + actualTableHeight;
 
   // Footer anchor position
   const footerBaselineY = layout.page.heightMm - layout.page.margins.bottom;
 
+  // Identify follower elements
+  const followers = layout.elements.filter((el) => isFollowerElement(el, table));
+  const followerMap = new Map<string, { y: number; height: number }>();
+
+  if (followers.length > 0 && isLastPage) {
+    const colLeft = followers.filter((f) => f.x < 115);
+    const colRight = followers.filter((f) => f.x >= 115);
+
+    const positionColumn = (col: LayoutElement[]) => {
+      const sorted = [...col].sort((a, b) => a.y - b.y);
+      const rows: LayoutElement[][] = [];
+      for (const el of sorted) {
+        const existingRow = rows.find((r) => Math.abs(r[0].y - el.y) < 5);
+        if (existingRow) existingRow.push(el);
+        else rows.push([el]);
+      }
+
+      let currentY = actualTableBottom + fitProfile.gap;
+      for (const row of rows) {
+        const rowHeight = Math.max(
+          ...row.map((el) => Math.round(el.height * fitProfile.followerScale * 10) / 10)
+        );
+        for (const el of row) {
+          const scaledH = Math.round(el.height * fitProfile.followerScale * 10) / 10;
+          followerMap.set(el.id, { y: currentY, height: scaledH });
+        }
+        currentY += rowHeight + fitProfile.gap;
+      }
+    };
+
+    positionColumn(colLeft);
+    positionColumn(colRight);
+  }
+
+  // Identify side-by-side party card (customer_info, supplier_info, project_info) and doc_meta card
+  const partyElement = layout.elements.find(
+    (el) => el.visible && ["customer_info", "supplier_info", "project_info"].includes(el.type)
+  );
+  const metaElement = layout.elements.find((el) => el.visible && el.type === "doc_meta");
+
+  let partyMetaAlignedY: number | null = null;
+  let partyMetaEqualHeight: number | null = null;
+
+  if (partyElement && metaElement && Math.abs(partyElement.y - metaElement.y) <= 8) {
+    // 1. Align both boxes horizontally
+    partyMetaAlignedY = Math.min(partyElement.y, metaElement.y);
+
+    // 2. Maintain equal visual heights
+    let rawHeight = Math.max(partyElement.height, metaElement.height);
+
+    // 3. Compact cleanly if compact or dense fitProfile is active
+    if (isSinglePage && fitProfile.level !== "standard") {
+      if (fitProfile.level === "dense") {
+        rawHeight = Math.max(22, Math.min(rawHeight, 23.5));
+      } else if (fitProfile.level === "compact") {
+        rawHeight = Math.max(23.5, Math.min(rawHeight, 25.5));
+      } else if (fitProfile.level === "comfortable") {
+        rawHeight = Math.max(25, Math.min(rawHeight, 27.5));
+      }
+    }
+    partyMetaEqualHeight = rawHeight;
+  }
+
   const elements: EffectiveLayoutElement[] = layout.elements.map((el) => {
-    // Check if element is page-specific
     const pageMatches = el.pageNumber === undefined || el.pageNumber === pageNumber;
 
-    // 1. Table itself: dynamic height, fixed X and Y
+    // 1. Table itself: dynamic height, fitted settings, effective Y
     if (table && el.id === table.id) {
+      const updatedTableSettings = el.tableSettings
+        ? {
+            ...el.tableSettings,
+            rowHeight: effectiveRowHeight,
+            fontSize: fitProfile.fontSize,
+            headerFontSize: fitProfile.headerFontSize,
+          }
+        : undefined;
+
       return {
         ...el,
         effectiveX: el.x,
-        effectiveY: el.y,
+        effectiveY: effectiveTableY,
         effectiveWidth: el.width,
         effectiveHeight: actualTableHeight,
+        tableSettings: updatedTableSettings,
         isFollower: false,
-        shiftY: 0,
+        shiftY: effectiveTableY - el.y,
         effectiveVisible: el.visible && pageMatches,
       };
     }
@@ -312,29 +656,45 @@ export function computeEffectiveLayout(
 
     // 4. Follower elements below the dynamic table
     if (table && isFollowerElement(el, table)) {
-      const relOffsetFromTable = el.y - tableBaseline;
-      // Min gap between table bottom and follower is 2mm
-      const effectiveY = Math.max(
-        actualTableBottom + 2,
-        actualTableBottom + relOffsetFromTable
-      );
-
-      // Follower cards are only visible on the last page of multi-page documents
       const followerVisibleOnThisPage = isLastPage;
+      const planned = followerMap.get(el.id);
+
+      const effectiveY = planned
+        ? planned.y
+        : Math.max(actualTableBottom + 2.5, actualTableBottom + (el.y - (table.y + table.height)));
+      const effectiveHeight = planned ? planned.height : el.height;
 
       return {
         ...el,
         effectiveX: el.x,
-        effectiveY: effectiveY,
+        effectiveY,
         effectiveWidth: el.width,
-        effectiveHeight: el.height,
+        effectiveHeight,
         isFollower: true,
         shiftY: effectiveY - el.y,
         effectiveVisible: el.visible && pageMatches && followerVisibleOnThisPage,
       };
     }
 
-    // 5. Fixed header/info elements above the table
+    // 5. Customer info & Document Meta: synchronized horizontal alignment and equal visual heights
+    if (
+      partyMetaAlignedY !== null &&
+      partyMetaEqualHeight !== null &&
+      (el.id === partyElement?.id || el.id === metaElement?.id)
+    ) {
+      return {
+        ...el,
+        effectiveX: el.x,
+        effectiveY: partyMetaAlignedY,
+        effectiveWidth: el.width,
+        effectiveHeight: partyMetaEqualHeight,
+        isFollower: false,
+        shiftY: partyMetaAlignedY - el.y,
+        effectiveVisible: el.visible && pageMatches,
+      };
+    }
+
+    // 6. Fixed header/info elements above the table
     return {
       ...el,
       effectiveX: el.x,
@@ -351,6 +711,9 @@ export function computeEffectiveLayout(
     elements,
     actualTableHeight,
     deltaY,
+    fitProfile,
+    isSinglePage,
+    totalPages: resolvedTotalPages,
   };
 }
 
@@ -511,23 +874,28 @@ export function validateDocumentLayout(
     // Check final page: do remaining items + follower cards fit above the footer?
     const finalPageRange = pagination.pageItemRanges[pagination.pageItemRanges.length - 1];
     const finalItemCount = finalPageRange ? finalPageRange.itemCount : sampleItemsCount;
-    const finalTableHeight = calculateTableRenderedHeight(table, finalItemCount);
-    const finalTableBottom = table.y + finalTableHeight;
+    const finalPageEffective = computeEffectiveLayout(
+      layout,
+      finalItemCount,
+      true,
+      pagination.totalPages,
+      pagination.totalPages
+    );
 
     const followers = visibleElements.filter((el) => isFollowerElement(el, table));
-    const tableBaseline = table.y + table.height;
 
     for (const f of followers) {
-      const relOffset = f.y - tableBaseline;
-      const dynamicY = finalTableBottom + relOffset;
-      if (dynamicY + f.height > footer.y) {
+      const effEl = finalPageEffective.elements.find((el) => el.id === f.id);
+      const dynamicY = effEl ? effEl.effectiveY : f.y;
+      const dynamicH = effEl ? effEl.effectiveHeight : f.height;
+      if (dynamicY + dynamicH > footer.y + 0.5) {
         issues.push({
           id: `follower_footer_collision_${f.id}`,
           elementId: f.id,
           elementLabel: f.label,
           severity: "warning",
           category: "footer",
-          message: `Follower section "${f.label}" would extend to ${(dynamicY + f.height).toFixed(1)}mm on final page (${finalItemCount} items), colliding with footer (${footer.y}mm).`,
+          message: `Follower section "${f.label}" would extend to ${(dynamicY + dynamicH).toFixed(1)}mm on final page (${finalItemCount} items), colliding with footer (${footer.y}mm).`,
           suggestedFix: "Increase page margins or reduce section height.",
         });
       }

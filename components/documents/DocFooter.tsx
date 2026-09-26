@@ -41,7 +41,7 @@ export default function DocFooter({
   const footerImg = footerImageUrl || brand.assets.footer || brand.assets.footerGraphic;
 
   return (
-    <div className="mt-8 pt-4 border-t border-slate-300 text-[10px] text-slate-500 avoid-break">
+    <div className="mt-4 print:mt-2 pt-3 print:pt-1.5 border-t border-slate-300 text-[10px] text-slate-500 avoid-break">
       {/* Optional Bank Coordinates for Invoices/Quotations */}
       {showBankDetails && (
         <div className="mb-4 rounded border border-slate-200 bg-slate-50/80 p-2.5 text-slate-700">

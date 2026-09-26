@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Receipt, Plus, Search, Loader2, X, Printer, Pencil } from "lucide-react";
+import { Receipt, Plus, Search, Loader2, X, Printer, Pencil, Trash2 } from "lucide-react";
 import { getCompanyId, getCurrentCompany, fmtAED, statusClass, todayISO, generateDocNumber } from "@/lib/helpers";
 import ReceiptVoucherTemplate, { ReceiptVoucherData } from "@/components/documents/ReceiptVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -228,6 +228,25 @@ export default function ReceiptVouchersPage() {
     setPrintVoucher(vData);
   }
 
+  async function deleteReceiptVoucher(v: RCV) {
+    if (!window.confirm(`Are you sure you want to delete receipt voucher ${v.voucher_number}? This action cannot be undone.`)) return;
+    setError("");
+    setSuccess("");
+    try {
+      const { error: delErr } = await supabase.from("receipt_vouchers").delete().eq("id", v.id);
+      if (delErr) {
+        if (delErr.code === "23503") {
+          throw new Error(`Cannot delete receipt voucher ${v.voucher_number} because it is referenced in payments or financial entries.`);
+        }
+        throw delErr;
+      }
+      setSuccess(`Receipt voucher ${v.voucher_number} deleted successfully.`);
+      await loadData();
+    } catch (err: unknown) {
+      setError(parseDatabaseError(err, "Failed to delete receipt voucher"));
+    }
+  }
+
   const filtered = vouchers.filter(v =>
     [v.voucher_number, v.received_from, v.payment_method, v.cheque_number]
       .filter(Boolean)
@@ -329,6 +348,13 @@ export default function ReceiptVouchersPage() {
                           title="Edit Voucher"
                         >
                           <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => deleteReceiptVoucher(v)}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"
+                          title="Delete Voucher"
+                        >
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     </td>

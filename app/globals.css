@@ -268,7 +268,7 @@ body {
     min-height: 297mm !important;
     height: auto !important;
     margin: 0 !important;
-    padding: 12mm 12mm 14mm 12mm !important;
+    padding: 8mm 10mm 10mm 10mm !important;
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
@@ -302,6 +302,8 @@ body {
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
     break-after: page !important;
     page-break-after: always !important;
   }
@@ -385,7 +387,8 @@ body {
   /* 7b. Application-module reports
      The shared navbar print action turns every ERP screen into a compact,
      unclipped report. Document/PDF templates keep their dedicated A4 rules. */
-  body.module-printing [data-print-root] {
+  body.module-printing [data-print-root],
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] {
     display: block !important;
     width: 210mm !important;
     max-width: 210mm !important;
@@ -396,65 +399,137 @@ body {
     background: #ffffff !important;
   }
 
-  body.module-printing [data-print-root] > * {
+  body.module-printing [data-print-root] > *,
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] > * {
     display: block !important;
     width: 100% !important;
     max-width: none !important;
     min-height: 0 !important;
     margin: 0 !important;
     padding: 8mm !important;
+    box-sizing: border-box !important;
   }
 
-  body.module-printing [data-print-root] :is(.min-h-screen, [class*="min-h-"]) {
+  body.module-printing [data-print-root] :is(.min-h-screen, [class*="min-h-"]),
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] :is(.min-h-screen, [class*="min-h-"]) {
     min-height: 0 !important;
   }
 
-  body.module-printing [data-print-root] :is(.space-y-4, .space-y-5, .space-y-6, .space-y-8) > :not(:last-child) {
+  body.module-printing [data-print-root] :is(.space-y-4, .space-y-5, .space-y-6, .space-y-8) > :not(:last-child),
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] :is(.space-y-4, .space-y-5, .space-y-6, .space-y-8) > :not(:last-child) {
     margin-block-end: 3mm !important;
   }
 
-  body.module-printing [data-print-root] :is(.gap-4, .gap-5, .gap-6, .gap-8) {
+  body.module-printing [data-print-root] :is(.gap-4, .gap-5, .gap-6, .gap-8),
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] :is(.gap-4, .gap-5, .gap-6, .gap-8) {
     gap: 3mm !important;
+  }
+
+  /* Unconstrain scroll/overflow wrappers so table and card borders span the full 100% page width */
+  body.module-printing [data-print-root] div[class*="overflow"],
+  body.module-printing [data-print-root] [class*="overflow"],
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] div[class*="overflow"],
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] [class*="overflow"] {
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   /* Search/filter bars are screen controls, not report content. Removing the
      whole bar prevents the empty bordered strip visible in print preview. */
   body.module-printing [data-print-root] div:has(> div > input[placeholder*="Search"]):has(> div > select),
   body.module-printing [data-print-root] div:has(> div > input[placeholder*="search"]):has(> div > select),
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] div:has(> div > input[placeholder*="Search"]):has(> div > select),
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] div:has(> div > input[placeholder*="search"]):has(> div > select),
   body.module-printing [data-print-root] .print-action-column,
-  body.module-printing [data-print-root] a:has(svg) {
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] .print-action-column,
+  body.module-printing [data-print-root] a:has(svg),
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] a:has(svg) {
     display: none !important;
   }
 
-  body.module-printing [data-print-root] table {
+  body.module-printing [data-print-root] table,
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] table {
+    display: table !important;
     width: 100% !important;
+    min-width: 100% !important;
     max-width: 100% !important;
     table-layout: auto !important;
+    border-collapse: collapse !important;
     font-size: 7.5pt !important;
+    box-sizing: border-box !important;
   }
 
-  body.module-printing [data-print-root] :is(th, td) {
+  body.module-printing [data-print-root] thead,
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] thead {
+    display: table-header-group !important;
+    background-color: #f8fafc !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body.module-printing [data-print-root] thead th,
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] thead th {
+    white-space: nowrap !important;
+    font-weight: 700 !important;
+    color: #334155 !important;
+    border-bottom: 1.5px solid #cbd5e1 !important;
+    padding: 2mm 2.5mm !important;
+    vertical-align: bottom !important;
+  }
+
+  body.module-printing [data-print-root] tbody tr,
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] tbody tr {
+    border-bottom: 1px solid #e2e8f0 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  body.module-printing [data-print-root] tbody td,
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] tbody td {
+    padding: 2.5mm 2.5mm !important;
+    vertical-align: top !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+  }
+
+  body.module-printing [data-print-root] :is(th, td),
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] :is(th, td) {
     min-width: 0 !important;
     max-width: none !important;
-    padding: 1.5mm !important;
-    white-space: normal !important;
     overflow: visible !important;
-    overflow-wrap: anywhere !important;
-    text-overflow: clip !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
   }
 
-  body.module-printing [data-print-root] :is(.truncate, [class*="max-w-"]) {
+  body.module-printing [data-print-root] td.font-mono,
+  body.module-printing [data-print-root] td [class*="font-mono"],
+  body.module-printing [data-print-root] span[class*="rounded-full"],
+  body.module-printing [data-print-root] [class*="whitespace-nowrap"],
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] td.font-mono,
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] td [class*="font-mono"],
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] span[class*="rounded-full"],
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] [class*="whitespace-nowrap"] {
+    white-space: nowrap !important;
+  }
+
+  body.module-printing [data-print-root] :is(.truncate, [class*="max-w-"]),
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] :is(.truncate, [class*="max-w-"]) {
     max-width: none !important;
     white-space: normal !important;
     overflow: visible !important;
     text-overflow: clip !important;
   }
 
-  body.module-printing [data-print-root] :is(.rounded-xl, .rounded-2xl) {
+  body.module-printing [data-print-root] :is(.rounded-xl, .rounded-2xl),
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] :is(.rounded-xl, .rounded-2xl) {
     border-radius: 2mm !important;
   }
 
-  body.module-printing [data-print-root]::after {
+  body.module-printing [data-print-root]::after,
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root]::after {
     content: "Dubai ERP  •  Internal business report";
     display: block;
     margin: 6mm 8mm 0 !important;

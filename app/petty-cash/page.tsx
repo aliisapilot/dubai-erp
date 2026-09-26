@@ -304,15 +304,15 @@ export default function PettyCashPage() {
           <table className="w-full text-left text-xs text-slate-600">
             <thead className="bg-slate-50 text-[11px] uppercase font-semibold text-slate-700 border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3">Voucher #</th>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3 text-center">Type</th>
-                <th className="px-4 py-3">Payee / Source</th>
+                <th className="px-4 py-3 whitespace-nowrap">Voucher #</th>
+                <th className="px-4 py-3 whitespace-nowrap">Date</th>
+                <th className="px-4 py-3 text-center whitespace-nowrap">Type</th>
+                <th className="px-4 py-3 whitespace-nowrap">Payee / Source</th>
                 <th className="px-4 py-3">Category &amp; Description</th>
-                <th className="px-4 py-3 text-right">Amount (AED)</th>
-                <th className="px-4 py-3 text-right">Running Balance (AED)</th>
-                <th className="px-4 py-3">Approved By</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3 text-right whitespace-nowrap">Amount (AED)</th>
+                <th className="px-4 py-3 text-right whitespace-nowrap">Running Balance (AED)</th>
+                <th className="px-4 py-3 whitespace-nowrap">Approved By</th>
+                <th className="px-4 py-3 text-right whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -334,14 +334,14 @@ export default function PettyCashPage() {
 
                   return (
                     <tr key={tx.id} className="hover:bg-slate-50/75 transition-colors">
-                      <td className="px-4 py-3 font-semibold text-slate-900 font-mono">
+                      <td className="px-4 py-3 font-semibold text-slate-900 font-mono whitespace-nowrap">
                         {tx.voucher_number}
                         {tx.receipt_ref && <span className="block text-[10px] text-slate-400 font-mono">Rec: {tx.receipt_ref}</span>}
                       </td>
                       <td className="px-4 py-3 font-mono text-slate-500 whitespace-nowrap">
                         {tx.transaction_date}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3 text-center whitespace-nowrap">
                         <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                           isReplenish
                             ? "bg-emerald-100 text-emerald-800"
@@ -357,15 +357,15 @@ export default function PettyCashPage() {
                         <div className="font-medium text-slate-900">{tx.category}</div>
                         <div className="text-[11px] text-slate-500 truncate max-w-xs">{tx.description}</div>
                       </td>
-                      <td className="px-4 py-3 text-right font-mono font-bold">
+                      <td className="px-4 py-3 text-right font-mono font-bold whitespace-nowrap">
                         <span className={isReplenish ? "text-emerald-600" : "text-amber-600"}>
                           {isReplenish ? "+" : "-"}{tx.amount.toFixed(2)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right font-mono font-semibold text-slate-900">
+                      <td className="px-4 py-3 text-right font-mono font-semibold text-slate-900 whitespace-nowrap">
                         {tx.balance_after.toFixed(2)}
                       </td>
-                      <td className="px-4 py-3 text-slate-500">
+                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
                         {tx.approved_by || "-"}
                       </td>
                       <td className="px-4 py-3 text-right">

@@ -93,7 +93,7 @@ export default function PurchaseOrderTemplate({
     payment_terms: po.payment_terms || undefined,
     notes: po.notes || po.terms_conditions || undefined,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
   return (
     <DocumentContainer
       docTypeLabel="Purchase Order"
@@ -103,6 +103,7 @@ export default function PurchaseOrderTemplate({
       company={company ?? undefined}
       noPadding={Boolean(customLayout)}
       showWatermark={!customLayout}
+      totalPages={totalPages}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">
