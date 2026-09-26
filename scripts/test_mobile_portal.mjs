@@ -2,6 +2,7 @@ import {
   getCategoryLabel,
   getCategoryBadgeColor,
   DEFAULT_PERMISSIONS,
+  isMissingMobilePermissionsSchema,
 } from "../lib/mobilePortalTypes.ts";
 import { getChequeUrgency, isChequeOverdue } from "../lib/chequeTypes.ts";
 
@@ -47,6 +48,14 @@ function runTests() {
   assert(DEFAULT_PERMISSIONS.canViewFinancials === true, "Financial view permitted");
   assert(DEFAULT_PERMISSIONS.canShareDocuments === true, "Native sharing permitted");
   assert(DEFAULT_PERMISSIONS.canDownloadDocuments === true, "File download permitted");
+  assert(
+    isMissingMobilePermissionsSchema({ code: "PGRST204", message: "Could not find the mobile_access_enabled column in the schema cache" }),
+    "Legacy mobile-permissions schema is detected safely"
+  );
+  assert(
+    isMissingMobilePermissionsSchema({ code: "42501", message: "permission denied" }) === false,
+    "Unrelated authorization errors never trigger legacy fallback"
+  );
 
   // 3. Verify Cheque Reminder Categorization Logic
   const dateOnly = (offsetDays) => {

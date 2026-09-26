@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import type { MobileDocumentCategory } from "@/lib/mobilePortalTypes";
+import {
+  DEFAULT_PERMISSIONS,
+  isMissingMobilePermissionsSchema,
+  type MobileDocumentCategory,
+} from "@/lib/mobilePortalTypes";
 
 const DOWNLOADABLE_TYPES = new Set<MobileDocumentCategory>(["cheque", "company_file"]);
 
@@ -54,13 +58,25 @@ export async function GET(req: NextRequest) {
       .eq("id", user.id)
       .maybeSingle();
 
+    if (profileError && !isMissingMobilePermissionsSchema(profileError)) {
+      return NextResponse.json({ error: "Document permissions could not be verified." }, { status: 503 });
+    }
+
+    const { data: ownedCompanies } = await supabase
+      .from("companies")
+      .select("id")
+      .eq("owner_id", user.id);
+    const ownedCompanyIds = new Set((ownedCompanies || []).map((company) => company.id));
+    const isOwnerFallback = !profile && ownedCompanyIds.size > 0;
+    const allowedTypes = Array.isArray(profile?.mobile_allowed_doc_types)
+      ? profile.mobile_allowed_doc_types
+      : DEFAULT_PERMISSIONS.allowedCategories;
+
     if (
-      profileError ||
-      !profile ||
-      profile.mobile_access_enabled === false ||
-      profile.can_download_documents === false ||
-      !Array.isArray(profile.mobile_allowed_doc_types) ||
-      !profile.mobile_allowed_doc_types.includes(docType)
+      (!profile && !isOwnerFallback) ||
+      profile?.mobile_access_enabled === false ||
+      profile?.can_download_documents === false ||
+      !allowedTypes.includes(docType)
     ) {
       return NextResponse.json({ error: "You do not have permission to open this document." }, { status: 403 });
     }
@@ -93,7 +109,10 @@ export async function GET(req: NextRequest) {
       fileLocation = attachment.file_url;
     }
 
-    if (!companyId || companyId !== profile.company_id || !fileLocation) {
+    const belongsToAuthorizedCompany =
+      Boolean(companyId) &&
+      (companyId === profile?.company_id || ownedCompanyIds.has(companyId as string));
+    if (!belongsToAuthorizedCompany || !fileLocation) {
       return NextResponse.json({ error: "Document access is not permitted." }, { status: 403 });
     }
 

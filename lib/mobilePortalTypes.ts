@@ -71,6 +71,19 @@ export const DENIED_PERMISSIONS: MobilePortalPermissions = {
   canDownloadDocuments: false,
 };
 
+/** Identifies deployments where the optional mobile-permission columns are not installed yet. */
+export function isMissingMobilePermissionsSchema(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const value = error as { code?: unknown; message?: unknown };
+  const code = String(value.code || "");
+  const message = String(value.message || "").toLowerCase();
+  return (
+    code === "PGRST204" ||
+    (message.includes("schema cache") &&
+      (message.includes("mobile_access_enabled") || message.includes("mobile_allowed_doc_types")))
+  );
+}
+
 export interface CategoryTabMeta {
   key: MobileDocumentCategory | "all";
   label: string;

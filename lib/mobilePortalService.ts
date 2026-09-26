@@ -6,6 +6,7 @@ import {
   MobilePortalPermissions,
   DEFAULT_PERMISSIONS,
   DENIED_PERMISSIONS,
+  isMissingMobilePermissionsSchema,
   getCategoryLabel,
 } from "./mobilePortalTypes";
 
@@ -17,13 +18,35 @@ export async function getMobilePermissions(): Promise<MobilePortalPermissions> {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) return DENIED_PERMISSIONS;
 
-    const { data: prof } = await supabase
+    const { data: prof, error: profileError } = await supabase
       .from("profiles")
       .select("role, mobile_access_enabled, mobile_role, mobile_allowed_doc_types, can_view_financials, can_share_documents, can_download_documents")
       .eq("id", userData.user.id)
       .maybeSingle();
 
-    if (!prof) return DENIED_PERMISSIONS;
+    if (profileError) {
+      if (!isMissingMobilePermissionsSchema(profileError)) return DENIED_PERMISSIONS;
+
+      // Legacy deployments have no per-user mobile controls. Only the company owner
+      // receives a compatibility fallback; members stay denied until permissions exist.
+      const { data: ownedCompany } = await supabase
+        .from("companies")
+        .select("id")
+        .eq("owner_id", userData.user.id)
+        .limit(1)
+        .maybeSingle();
+      return ownedCompany?.id ? { ...DEFAULT_PERMISSIONS, role: "owner" } : DENIED_PERMISSIONS;
+    }
+
+    if (!prof) {
+      const { data: ownedCompany } = await supabase
+        .from("companies")
+        .select("id")
+        .eq("owner_id", userData.user.id)
+        .limit(1)
+        .maybeSingle();
+      return ownedCompany?.id ? { ...DEFAULT_PERMISSIONS, role: "owner" } : DENIED_PERMISSIONS;
+    }
 
     return {
       mobileAccessEnabled: prof.mobile_access_enabled ?? true,
