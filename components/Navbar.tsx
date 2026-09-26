@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { getCurrentCompany } from "@/lib/helpers";
 import { printCurrentDocument } from "@/lib/print";
+import ChequeReminderBell from "@/components/cheques/ChequeReminderBell";
 
 type UserProfile = {
   email: string;
@@ -66,9 +67,13 @@ function getPageMeta(pathname: string): { title: string; icon: LucideIcon } {
   if (pathname.startsWith("/payslips")) return { title: "Payslips", icon: Receipt };
   if (pathname.startsWith("/payroll-summary")) return { title: "Payroll Summary", icon: BarChart3 };
   if (pathname.startsWith("/employee-payment-vouchers")) return { title: "Payment Vouchers", icon: Wallet };
+  if (pathname.startsWith("/cheques/dashboard")) return { title: "Cheque Calendar & Dashboard", icon: CalendarCheck };
+  if (pathname.startsWith("/cheques")) return { title: "Cheque Register", icon: Wallet };
   if (pathname.startsWith("/payments")) return { title: "Payments & Banking", icon: Wallet };
   if (pathname.startsWith("/expenses")) return { title: "Expenses", icon: Receipt };
+  if (pathname.startsWith("/reports/cheques")) return { title: "Cheque Reports", icon: TrendingUp };
   if (pathname.startsWith("/reports")) return { title: "Reports & Analytics", icon: TrendingUp };
+  if (pathname.startsWith("/mobile")) return { title: "Mobile Portal", icon: FileText };
   if (pathname.startsWith("/settings/designer")) return { title: "PDF Designer", icon: FileText };
   if (pathname.startsWith("/settings")) return { title: "Company Settings", icon: Building2 };
 
@@ -289,6 +294,9 @@ export default function Navbar() {
             <Globe size={13} className="text-emerald-400" />
             <span>UAE (AED)</span>
           </div>
+
+          {/* Cheque Reminders Notification Bell */}
+          <ChequeReminderBell />
 
           {/* User Account Controls */}
           <div className="relative" ref={dropdownRef}>

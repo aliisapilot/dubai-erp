@@ -107,6 +107,7 @@ export default function Sidebar() {
 
   const [financeOpen, setFinanceOpen] = useState(
     pathname.startsWith("/payments") ||
+    pathname.startsWith("/cheques") ||
     pathname.startsWith("/expenses") ||
     pathname.startsWith("/petty-cash")
   );
@@ -345,6 +346,8 @@ export default function Sidebar() {
           </button>
           {financeOpen && (
             <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
+              <SubLink href="/cheques" icon={<Receipt size={14} />} label="Cheque Register" />
+              <SubLink href="/cheques/dashboard" icon={<Calendar size={14} />} label="Cheque Calendar" />
               <SubLink href="/payments" icon={<Wallet size={14} />} label="Payments" />
               <SubLink href="/expenses" icon={<CreditCard size={14} />} label="Expenses" />
               <SubLink href="/petty-cash" icon={<Receipt size={14} />} label="Petty Cash" />
@@ -367,6 +370,7 @@ export default function Sidebar() {
           </button>
           {reportsOpen && (
             <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
+              <SubLink href="/reports/cheques" icon={<FileText size={14} />} label="Cheque Reports" />
               <SubLink href="/reports/sales" icon={<TrendingUp size={14} />} label="Sales Reports" />
               <SubLink href="/reports/purchases" icon={<ShoppingBag size={14} />} label="Purchase Reports" />
               <SubLink href="/reports/customer-statements" icon={<FileSpreadsheet size={14} />} label="Customer Statements" />

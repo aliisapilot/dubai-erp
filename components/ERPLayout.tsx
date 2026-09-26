@@ -8,8 +8,8 @@ import Navbar from "@/components/Navbar";
 export default function ERPLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
-  // On login page, render children directly without ERP sidebar/header
-  if (pathname === "/login") {
+  // On login or mobile portal pages, render children directly without ERP desktop sidebar/header
+  if (pathname === "/login" || pathname.startsWith("/mobile")) {
     return <>{children}</>;
   }
 
