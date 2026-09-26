@@ -7,7 +7,7 @@ import {
   Plus, Search, Wallet, X, Save, Loader2, ArrowUpRight, ArrowDownLeft,
   Calendar, CheckCircle2, AlertCircle, Ban, History, Printer, Eye,
   Building2, Upload, FileText, LayoutDashboard, ChevronRight, ShieldAlert,
-  MessageCircle, Copy, Check
+  MessageCircle, Copy, Check, FileSpreadsheet, Bell
 } from "lucide-react";
 import { getCompanyId, getCurrentCompany, fmtAED, fmtDate, todayISO } from "@/lib/helpers";
 import {
@@ -139,6 +139,50 @@ export default function ChequeRegisterPage() {
     setWhatsAppModalCheque(c);
     setWhatsAppPhone(phone || "");
     setCopiedWhatsApp(false);
+  }
+
+  function exportChequesToCSV() {
+    if (!filteredCheques || filteredCheques.length === 0) return;
+    const headers = [
+      "Cheque Number",
+      "Direction",
+      "Bank Name",
+      "Branch",
+      "Amount (AED)",
+      "Issue Date",
+      "Due Date",
+      "Counterparty",
+      "Tax Invoice",
+      "Supplier Bill",
+      "Status",
+      "Clearance Date",
+      "Notes",
+    ];
+
+    const rows = filteredCheques.map((c) => [
+      `"${c.cheque_number}"`,
+      `"${c.cheque_type}"`,
+      `"${c.bank_name || ""}"`,
+      `"${c.branch_name || ""}"`,
+      `"${Number(c.amount || 0).toFixed(2)}"`,
+      `"${c.issue_date || ""}"`,
+      `"${c.due_date || ""}"`,
+      `"${(c.cheque_type === "incoming" ? c.customer?.name : c.supplier?.name) || c.payee_name || ""}"`,
+      `"${c.tax_invoice?.invoice_number || ""}"`,
+      `"${c.supplier_bill?.bill_number || ""}"`,
+      `"${c.status || ""}"`,
+      `"${c.clearance_date || ""}"`,
+      `"${(c.notes || "").replace(/"/g, '""')}"`,
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Dubai_ERP_Cheques_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   // Open Create Modal
@@ -375,6 +419,24 @@ export default function ChequeRegisterPage() {
               <Printer size={15} className="text-slate-500" />
               Cheque Reports
             </Link>
+
+            <Link
+              href="/cheques/settings"
+              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
+            >
+              <Bell size={15} className="text-slate-500" />
+              Reminder Settings
+            </Link>
+
+            <button
+              type="button"
+              onClick={exportChequesToCSV}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
+              title="Export filtered cheques to CSV / Excel spreadsheet"
+            >
+              <FileSpreadsheet size={15} className="text-emerald-600" />
+              Export CSV
+            </button>
 
             <button
               type="button"

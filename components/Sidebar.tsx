@@ -12,7 +12,7 @@ import {
   LogOut, X, Wallet, Briefcase, TrendingUp, Calendar,
   Paperclip, ShieldAlert, ShieldCheck, FileCode2,
   CreditCard, ArrowDownRight, ArrowUpRight, RefreshCw, History,
-  FileCheck
+  FileCheck, Bell
 } from "lucide-react";
 import { getCurrentCompany } from "@/lib/helpers";
 
@@ -348,6 +348,7 @@ export default function Sidebar() {
             <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
               <SubLink href="/cheques" icon={<Receipt size={14} />} label="Cheque Register" />
               <SubLink href="/cheques/dashboard" icon={<Calendar size={14} />} label="Cheque Calendar" />
+              <SubLink href="/cheques/settings" icon={<Bell size={14} />} label="Reminder Settings" />
               <SubLink href="/payments" icon={<Wallet size={14} />} label="Payments" />
               <SubLink href="/expenses" icon={<CreditCard size={14} />} label="Expenses" />
               <SubLink href="/petty-cash" icon={<Receipt size={14} />} label="Petty Cash" />

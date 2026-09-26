@@ -33,11 +33,8 @@ export default function ChequeReportsPage() {
   // Print Mode
   const [printOpen, setPrintOpen] = useState(false);
 
-  useEffect(() => {
-    loadAll();
-  }, []);
-
   async function loadAll() {
+    await Promise.resolve();
     setLoading(true);
     try {
       const [chqs, co] = await Promise.all([fetchCheques(), getCurrentCompany()]);
@@ -49,6 +46,12 @@ export default function ChequeReportsPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    // Initial report hydration from Supabase is intentionally effect-driven.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadAll();
+  }, []);
 
   // Filtered dataset for the active report
   const filteredData = useMemo(() => {

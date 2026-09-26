@@ -364,3 +364,62 @@ export function computeChequeMetrics(cheques: ChequeRecord[]): ChequeDashboardMe
     dueThisWeekCount,
   };
 }
+
+export type RecipientCategory = "supervisor" | "developer" | "external";
+
+export type NotificationChannel = "email" | "whatsapp" | "both";
+
+export interface RecipientPreferences {
+  incoming: boolean;
+  outgoing: boolean;
+  due_today: boolean;
+  overdue: boolean;
+  summary: boolean;
+  technical_alerts: boolean;
+}
+
+export interface ChequeReminderRecipientRecord {
+  id: string;
+  company_id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  recipient_category: RecipientCategory;
+  is_enabled: boolean;
+  channels: NotificationChannel;
+  preferences: RecipientPreferences;
+  assigned_customer_ids: string[];
+  assigned_cheque_ids: string[];
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerReminderConfigRecord {
+  id: string;
+  company_id: string;
+  customer_id: string;
+  override_email?: string | null;
+  override_phone?: string | null;
+  email_enabled: boolean;
+  whatsapp_enabled: boolean;
+  consent_given_at?: string | null;
+  consent_notes?: string | null;
+  opt_out: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompanyChequeSettingsRecord {
+  id?: string;
+  company_id: string;
+  reminder_days: number[];
+  overdue_reminders_enabled: boolean;
+  developer_email?: string | null;
+  developer_alerts_enabled: boolean;
+  whatsapp_provider: "manual" | "meta_cloud" | "twilio";
+  whatsapp_phone_number_id?: string | null;
+  whatsapp_business_account_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
