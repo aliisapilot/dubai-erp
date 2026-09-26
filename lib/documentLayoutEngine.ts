@@ -306,8 +306,19 @@ export function computeIntelligentFitProfile(
 
   for (const tier of tiers) {
     // If compaction is enabled, tighten excessive gap between header/customer cards and table
+    let effectiveAbove = maxAboveBottom;
+    if (tier.allowSlideTableUp) {
+      const party = layout.elements.find((el) => el.visible && ["customer_info", "supplier_info", "project_info"].includes(el.type));
+      const meta = layout.elements.find((el) => el.visible && el.type === "doc_meta");
+      if (party && meta && Math.abs(party.y - meta.y) <= 8) {
+        const topY = Math.min(party.y, meta.y);
+        const cardH = tier.level === "dense" ? 23 : tier.level === "compact" ? 25 : 27;
+        effectiveAbove = Math.min(maxAboveBottom, topY + cardH);
+      }
+    }
+
     const tableY = tier.allowSlideTableUp
-      ? Math.max(maxAboveBottom + 2.5, Math.min(table.y, maxAboveBottom + 5))
+      ? Math.max(effectiveAbove + 2.5, Math.min(table.y, effectiveAbove + 4.5))
       : table.y;
 
     const tableHeight = calculateTableRenderedHeight(
@@ -555,6 +566,35 @@ export function computeEffectiveLayout(
     positionColumn(colRight);
   }
 
+  // Identify side-by-side party card (customer_info, supplier_info, project_info) and doc_meta card
+  const partyElement = layout.elements.find(
+    (el) => el.visible && ["customer_info", "supplier_info", "project_info"].includes(el.type)
+  );
+  const metaElement = layout.elements.find((el) => el.visible && el.type === "doc_meta");
+
+  let partyMetaAlignedY: number | null = null;
+  let partyMetaEqualHeight: number | null = null;
+
+  if (partyElement && metaElement && Math.abs(partyElement.y - metaElement.y) <= 8) {
+    // 1. Align both boxes horizontally
+    partyMetaAlignedY = Math.min(partyElement.y, metaElement.y);
+
+    // 2. Maintain equal visual heights
+    let rawHeight = Math.max(partyElement.height, metaElement.height);
+
+    // 3. Compact cleanly if compact or dense fitProfile is active
+    if (isSinglePage && fitProfile.level !== "standard") {
+      if (fitProfile.level === "dense") {
+        rawHeight = Math.max(22, Math.min(rawHeight, 23.5));
+      } else if (fitProfile.level === "compact") {
+        rawHeight = Math.max(23.5, Math.min(rawHeight, 25.5));
+      } else if (fitProfile.level === "comfortable") {
+        rawHeight = Math.max(25, Math.min(rawHeight, 27.5));
+      }
+    }
+    partyMetaEqualHeight = rawHeight;
+  }
+
   const elements: EffectiveLayoutElement[] = layout.elements.map((el) => {
     const pageMatches = el.pageNumber === undefined || el.pageNumber === pageNumber;
 
@@ -636,7 +676,25 @@ export function computeEffectiveLayout(
       };
     }
 
-    // 5. Fixed header/info elements above the table
+    // 5. Customer info & Document Meta: synchronized horizontal alignment and equal visual heights
+    if (
+      partyMetaAlignedY !== null &&
+      partyMetaEqualHeight !== null &&
+      (el.id === partyElement?.id || el.id === metaElement?.id)
+    ) {
+      return {
+        ...el,
+        effectiveX: el.x,
+        effectiveY: partyMetaAlignedY,
+        effectiveWidth: el.width,
+        effectiveHeight: partyMetaEqualHeight,
+        isFollower: false,
+        shiftY: partyMetaAlignedY - el.y,
+        effectiveVisible: el.visible && pageMatches,
+      };
+    }
+
+    // 6. Fixed header/info elements above the table
     return {
       ...el,
       effectiveX: el.x,

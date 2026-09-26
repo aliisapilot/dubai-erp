@@ -603,7 +603,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       x: 12,
       y: 63,
       width: 91,
-      height: 30,
+      height: 27,
       visible: true,
       locked: false,
       zIndex: 15,
@@ -612,7 +612,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       borderColor: "#CBD5E1",
       borderWidth: 1,
       borderRadius: 4,
-      padding: 3,
+      padding: 3.2,
     },
 
     // 7. Document Meta & Project Ref
@@ -623,7 +623,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       x: 107,
       y: 63,
       width: 91,
-      height: 30,
+      height: 27,
       visible: true,
       locked: false,
       zIndex: 16,
@@ -632,7 +632,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       borderColor: "#CBD5E1",
       borderWidth: 1,
       borderRadius: 4,
-      padding: 3,
+      padding: 3.2,
     },
 
     // 8. Line Items Table (Generous height using available A4 space)
@@ -641,9 +641,9 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "line_items",
       label: "Line Items Table",
       x: 12,
-      y: 96,
+      y: 93,
       width: 186,
-      height: 68,
+      height: 70,
       visible: true,
       locked: false,
       zIndex: 17,

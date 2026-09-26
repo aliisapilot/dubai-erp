@@ -554,24 +554,26 @@ export default function DynamicDocumentRenderer({
             : layout.documentType === "salary_statement"
             ? "Employee"
             : "Buyer";
+        const padMm = elem.padding !== undefined ? elem.padding : 3.2;
         return (
           <div
-            className="w-full h-full p-2.5 flex flex-col justify-between select-text"
+            className="w-full h-full flex flex-col justify-start select-text"
             style={{
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
-              fontSize: `${elem.fontSize || 11}px`,
+              padding: `${padMm}mm`,
+              fontSize: `${elem.fontSize || 10.5}px`,
               color: colors.text,
               ...elementAppearance(elem),
             }}
           >
-            <div className="flex justify-between border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
+            <div className="flex justify-between items-center border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
               <span style={{ color: colors.primary }}>{partyHeading}</span>
               <span style={{ color: colors.muted }}>{partyRole}</span>
             </div>
-            <div className="space-y-0.5 mt-1 text-[11px] leading-tight">
-              <div className="font-bold text-slate-900">{data.customer_name}</div>
+            <div className="space-y-0.5 mt-1.5 text-[10.5px] leading-tight select-text">
+              <div className="font-bold text-slate-900 break-words leading-tight">{data.customer_name}</div>
               {data.customer_trn && (
                 <div>
                   <span style={{ color: colors.muted }}>TRN: </span>
@@ -579,12 +581,12 @@ export default function DynamicDocumentRenderer({
                 </div>
               )}
               {data.customer_address && (
-                <div className="line-clamp-1" style={{ color: colors.muted }}>
+                <div className="break-words line-clamp-2 text-[10px]" style={{ color: colors.muted }}>
                   {data.customer_address}
                 </div>
               )}
               {data.contact_person && (
-                <div style={{ color: colors.muted }}>
+                <div className="break-words text-[10px]" style={{ color: colors.muted }}>
                   Attn: {data.contact_person} {data.contact_number ? `(${data.contact_number})` : ""}
                 </div>
               )}
@@ -594,31 +596,33 @@ export default function DynamicDocumentRenderer({
       }
 
       case "supplier_info": {
+        const padMm = elem.padding !== undefined ? elem.padding : 3.2;
         return (
           <div
-            className="w-full h-full p-2.5 flex flex-col justify-between select-text"
+            className="w-full h-full flex flex-col justify-start select-text"
             style={{
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
-              fontSize: `${elem.fontSize || 11}px`,
+              padding: `${padMm}mm`,
+              fontSize: `${elem.fontSize || 10.5}px`,
               color: colors.text,
               ...elementAppearance(elem),
             }}
           >
-            <div className="flex justify-between border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
+            <div className="flex justify-between items-center border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
               <span style={{ color: colors.primary }}>Supplier / Vendor Details (بيانات المورد):</span>
               <span style={{ color: colors.muted }}>Vendor</span>
             </div>
-            <div className="space-y-0.5 mt-1 text-[11px] leading-tight">
-              <div className="font-bold text-slate-900">{data.supplier_name || data.customer_name || "Supplier Name"}</div>
+            <div className="space-y-0.5 mt-1.5 text-[10.5px] leading-tight select-text">
+              <div className="font-bold text-slate-900 break-words leading-tight">{data.supplier_name || data.customer_name || "Supplier Name"}</div>
               {data.contact_person && (
-                <div style={{ color: colors.muted }}>
+                <div className="break-words text-[10px]" style={{ color: colors.muted }}>
                   Attn: {data.contact_person} {data.contact_number ? `(${data.contact_number})` : ""}
                 </div>
               )}
               {data.customer_address && (
-                <div className="line-clamp-1" style={{ color: colors.muted }}>
+                <div className="break-words line-clamp-2 text-[10px]" style={{ color: colors.muted }}>
                   {data.customer_address}
                 </div>
               )}
@@ -628,26 +632,28 @@ export default function DynamicDocumentRenderer({
       }
 
       case "project_info": {
+        const padMm = elem.padding !== undefined ? elem.padding : 3.2;
         return (
           <div
-            className="w-full h-full p-2.5 flex flex-col justify-between select-text"
+            className="w-full h-full flex flex-col justify-start select-text"
             style={{
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
-              fontSize: `${elem.fontSize || 11}px`,
+              padding: `${padMm}mm`,
+              fontSize: `${elem.fontSize || 10.5}px`,
               color: colors.text,
               ...elementAppearance(elem),
             }}
           >
-            <div className="flex justify-between border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
+            <div className="flex justify-between items-center border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
               <span style={{ color: colors.primary }}>Project Details (بيانات المشروع):</span>
               <span className="font-mono font-bold" style={{ color: colors.accent }}>{data.project_number || "PRJ"}</span>
             </div>
-            <div className="space-y-0.5 mt-1 text-[11px] leading-tight">
-              <div className="font-bold text-slate-900">{data.project_name || "Project Name"}</div>
+            <div className="space-y-0.5 mt-1.5 text-[10.5px] leading-tight select-text">
+              <div className="font-bold text-slate-900 break-words leading-tight">{data.project_name || "Project Name"}</div>
               {data.location && (
-                <div style={{ color: colors.muted }}>
+                <div className="text-[10px]" style={{ color: colors.muted }}>
                   Location: <span className="font-semibold text-slate-800">{data.location}</span>
                 </div>
               )}
@@ -661,28 +667,29 @@ export default function DynamicDocumentRenderer({
         );
       }
 
-
       case "doc_meta": {
         const showSupplyDate = ["tax_invoice", "delivery_note", "purchase_order", "supplier_bill"].includes(layout.documentType);
         const showDueDate = ["tax_invoice", "quotation", "proforma_invoice", "supplier_bill"].includes(layout.documentType);
         const showTerms = ["tax_invoice", "quotation", "proforma_invoice", "purchase_order", "supplier_bill"].includes(layout.documentType);
+        const padMm = elem.padding !== undefined ? elem.padding : 3.2;
         return (
           <div
-            className="w-full h-full p-2.5 flex flex-col justify-between select-text"
+            className="w-full h-full flex flex-col justify-start select-text"
             style={{
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
-              fontSize: `${elem.fontSize || 11}px`,
+              padding: `${padMm}mm`,
+              fontSize: `${elem.fontSize || 10.5}px`,
               color: colors.text,
               ...elementAppearance(elem),
             }}
           >
-            <div className="flex justify-between border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
+            <div className="flex justify-between items-center border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
               <span style={{ color: colors.primary }}>Document Reference (البيانات):</span>
               <span className="font-mono font-bold" style={{ color: colors.accent }}>{data.document_number}</span>
             </div>
-            <div className="grid grid-cols-2 gap-1 mt-1 text-[10px] leading-tight">
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-1.5 text-[10px] leading-tight select-text">
               <div>
                 <span style={{ color: colors.muted }}>Date: </span>
                 <span className="font-semibold text-slate-900">{fmtDate(data.document_date)}</span>
@@ -816,7 +823,7 @@ export default function DynamicDocumentRenderer({
                         return (
                           <td
                             key={col.key}
-                            className={cellPadding}
+                            className={`${cellPadding} break-words`}
                             style={{
                               textAlign: col.align,
                               fontFamily: isMonetary ? "monospace" : "inherit",
@@ -861,7 +868,7 @@ export default function DynamicDocumentRenderer({
 
         return (
           <div
-            className="w-full h-full p-2 flex flex-col justify-between select-text"
+            className="w-full h-full p-2.5 flex flex-col justify-start gap-1 select-text"
             style={{
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
@@ -916,7 +923,7 @@ export default function DynamicDocumentRenderer({
         if (layout.documentType === "customer_statement") {
           return (
             <div
-              className="w-full h-full overflow-hidden text-xs rounded select-text flex flex-col justify-between"
+              className="w-full h-full overflow-hidden text-xs rounded select-text flex flex-col justify-start"
               style={{
                 border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
                 borderRadius: `${elem.borderRadius || 4}px`,
