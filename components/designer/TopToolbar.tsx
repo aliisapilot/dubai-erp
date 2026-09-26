@@ -131,34 +131,34 @@ export default function TopToolbar({
   return (
     <header className="shrink-0 border-b border-slate-800 bg-slate-900 text-white select-none z-30">
       {/* Primary Row: Document Selection, Editing & Main Actions */}
-      <div className="flex h-14 min-w-0 items-center justify-between gap-3 px-3">
-        {/* Left Section: Brand, Document Selector & Edit History */}
-        <div className="flex min-w-0 items-center gap-2.5">
-          {/* Brand & Template Badge */}
-          <div className="flex shrink-0 items-center gap-2 pr-2.5 border-r border-slate-800">
+      <div className="flex h-14 w-full items-center justify-between gap-2 px-3">
+        {/* Left Section: Brand, Document Selector & History / Delete */}
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Brand & Badge */}
+          <div className="flex shrink-0 items-center gap-2 pr-2 border-r border-slate-800">
             <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
-              <FileText size={18} />
+              <FileText size={17} />
             </div>
-            <div className="hidden lg:block">
+            <div className="hidden sm:block">
               <span className="font-bold text-xs tracking-wider text-slate-100 block uppercase leading-tight">
                 PDF Designer
               </span>
               {templateName && (
-                <span className="text-[10px] text-amber-400/90 font-mono block leading-none truncate max-w-[140px]">
+                <span className="text-[10px] text-amber-400/90 font-mono block leading-none truncate max-w-[120px]">
                   {templateName}
                 </span>
               )}
             </div>
           </div>
 
-          {/* Document Type Dropdown (Generous Width, Full Name Visible) */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          {/* Document Type Dropdown (Generous Width, Full Name Visible, Never Cut Off) */}
+          <div className="flex shrink-0 items-center gap-1.5">
             <label className="hidden text-xs font-medium text-slate-400 xl:inline">Document:</label>
             <div className="relative">
               <select
                 value={selectedDocType}
                 onChange={(e) => onSelectDocType(e.target.value as DocumentTypeId)}
-                className="w-[210px] sm:w-[250px] md:w-[290px] rounded-lg border border-slate-700 bg-slate-800 pl-3 pr-8 py-1.5 text-xs font-semibold text-white outline-none focus:border-amber-400 cursor-pointer shadow-inner appearance-none transition"
+                className="w-[210px] sm:w-[230px] md:w-[250px] rounded-lg border border-slate-700 bg-slate-800 pl-3 pr-8 py-1.5 text-xs font-semibold text-white outline-none focus:border-amber-400 cursor-pointer shadow-inner appearance-none transition"
                 aria-label="Document type"
                 title="Select document template to edit"
               >
@@ -173,7 +173,7 @@ export default function TopToolbar({
           </div>
 
           {/* History Controls: Undo & Redo */}
-          <div className="flex shrink-0 items-center gap-0.5 border-l border-slate-800 pl-2">
+          <div className="flex shrink-0 items-center gap-1 border-l border-slate-800 pl-2">
             <button
               type="button"
               onClick={onUndo}
@@ -199,16 +199,16 @@ export default function TopToolbar({
               <Redo2 size={16} />
             </button>
 
-            {/* Delete Selected Element Button */}
+            {/* Delete Selected Element Button (ALWAYS VISIBLE, RED ACCENT WHEN SELECTED) */}
             {onDeleteSelected && (
               <button
                 type="button"
                 onClick={onDeleteSelected}
                 disabled={!hasSelectedElement}
-                className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-semibold transition ml-1 ${
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ml-0.5 ${
                   hasSelectedElement
-                    ? "border-rose-500/50 bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 cursor-pointer shadow-sm"
-                    : "border-transparent text-slate-600 cursor-not-allowed opacity-40"
+                    ? "border-rose-500/60 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 cursor-pointer shadow-sm"
+                    : "border-slate-800 bg-slate-800/40 text-slate-500 cursor-not-allowed opacity-50"
                 }`}
                 title={
                   hasSelectedElement
@@ -217,8 +217,8 @@ export default function TopToolbar({
                 }
                 aria-label="Delete selected element"
               >
-                <Trash2 size={14} className={hasSelectedElement ? "text-rose-400" : "text-slate-600"} />
-                <span className="hidden sm:inline">Delete</span>
+                <Trash2 size={14} className={hasSelectedElement ? "text-rose-400" : "text-slate-500"} />
+                <span className="hidden sm:inline font-medium">Delete</span>
               </button>
             )}
           </div>
@@ -239,7 +239,7 @@ export default function TopToolbar({
           }}
         />
 
-        {/* Right Section: Insert, Secondary Tools, Primary Actions & Panels */}
+        {/* Right Section: Add Elements, Auto Fix, Overflow Tools, Preview/Print/Save, Panels */}
         <div className="flex shrink-0 items-center gap-1.5">
           {/* Insert Content Actions */}
           {onAddImage && (
@@ -247,11 +247,11 @@ export default function TopToolbar({
               type="button"
               onClick={() => imageUploadInputRef.current?.click()}
               className="flex items-center gap-1.5 rounded-lg border border-blue-500/40 bg-blue-500/10 px-2.5 py-1.5 text-xs font-semibold text-blue-300 shadow-sm transition hover:bg-blue-500/20 cursor-pointer"
-              title="Upload image from computer (PNG, JPG, WEBP)"
+              title="Upload image or logo from computer (PNG, JPG, WEBP)"
               aria-label="Add Image"
             >
               <ImageIcon size={14} className="text-blue-400" />
-              <span className="hidden md:inline">Add Image</span>
+              <span className="hidden lg:inline">Add Image</span>
             </button>
           )}
 
@@ -259,103 +259,66 @@ export default function TopToolbar({
             <button
               type="button"
               onClick={onAddText}
-              className="hidden lg:flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white cursor-pointer"
-              title="Add custom text block"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/90 px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white cursor-pointer"
+              title="Add custom text block (edit text directly in inspector)"
               aria-label="Add Text"
             >
-              <Type size={13} className="text-amber-400" />
-              <span className="hidden xl:inline">Add Text</span>
+              <Type size={14} className="text-amber-400" />
+              <span className="hidden lg:inline">Add Text</span>
             </button>
           )}
 
-          {/* Desktop Secondary Tools (Hidden on smaller screens and moved to overflow) */}
-          <div className="hidden 2xl:flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={onOpenApplyModal}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white cursor-pointer"
-              title="Apply current styling to other document templates"
-              aria-label="Apply to Others"
-            >
-              <Copy size={13} className="text-amber-400" />
-              <span>Apply to Others</span>
-            </button>
+          {/* Auto Fix PDF (One-Click Smart Layout Optimization) */}
+          <button
+            type="button"
+            onClick={onAutoFix}
+            disabled={saving}
+            className="flex items-center gap-1.5 rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-2.5 py-1.5 text-xs font-bold text-emerald-300 shadow-sm transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+            title="Auto Fix: One-click optimization to fit document neatly on single A4 page"
+            aria-label="Auto Fix PDF"
+          >
+            <WandSparkles size={14} className="text-emerald-400" />
+            <span className="hidden md:inline">Auto Fix PDF</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={onAutoFix}
-              disabled={saving}
-              className="flex items-center gap-1.5 rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-bold text-emerald-300 shadow-sm transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-              title="Auto Fix: optimizes spacing, table height, and single-page A4 fitting in one click"
-              aria-label="Auto Fix PDF"
-            >
-              <WandSparkles size={13} />
-              <span>Auto Fix PDF</span>
-            </button>
-
-            {onCheckLayout && (
-              <button
-                type="button"
-                onClick={onCheckLayout}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white cursor-pointer"
-                title="Audit layout for page-boundary clearance, gaps, and collisions"
-                aria-label="Check Layout"
-              >
-                <ShieldCheck size={13} className="text-teal-400" />
-                <span>Check Layout</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={onReset}
-              className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 px-2 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white cursor-pointer"
-              title="Reset document layout to UAE Corporate Default"
-              aria-label="Reset Template"
-            >
-              <RotateCcw size={13} />
-              <span>Reset</span>
-            </button>
-          </div>
-
-          {/* Responsive Overflow Dropdown Menu for Secondary Tools */}
-          <div className="relative 2xl:hidden" ref={moreMenuRef}>
+          {/* Tools & Overflow Menu (More Actions) */}
+          <div className="relative" ref={moreMenuRef}>
             <button
               type="button"
               onClick={() => setShowMoreMenu(!showMoreMenu)}
-              className="p-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition"
-              title="More Actions & Tools"
+              className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-semibold transition ${
+                showMoreMenu
+                  ? "border-amber-500/50 bg-slate-800 text-amber-400"
+                  : "border-slate-700 bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white"
+              }`}
+              title="More Actions: Apply to Others, Check Layout, Reset"
               aria-label="More Actions"
             >
-              <MoreHorizontal size={16} />
+              <MoreHorizontal size={15} />
+              <span className="hidden xl:inline">Tools</span>
+              <ChevronDown size={12} className={`transition-transform duration-150 ${showMoreMenu ? "rotate-180" : ""}`} />
             </button>
 
             {showMoreMenu && (
-              <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-2xl z-50 text-xs space-y-1 animate-in fade-in zoom-in-95">
-                {onAddText && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMoreMenu(false);
-                      onAddText();
-                    }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left font-medium text-slate-200 hover:bg-slate-800"
-                  >
-                    <Type size={14} className="text-amber-400" />
-                    <span>Add Custom Text</span>
-                  </button>
-                )}
+              <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-2xl z-50 text-xs space-y-1 animate-in fade-in zoom-in-95">
+                <div className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                  Document Tools
+                </div>
                 <button
                   type="button"
                   onClick={() => {
                     setShowMoreMenu(false);
-                    onAutoFix();
+                    onOpenApplyModal();
                   }}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left font-bold text-emerald-300 hover:bg-emerald-500/15"
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left font-medium text-slate-200 hover:bg-slate-800 transition"
                 >
-                  <WandSparkles size={14} className="text-emerald-400" />
-                  <span>Auto Fix PDF</span>
+                  <Copy size={15} className="text-amber-400 shrink-0" />
+                  <div>
+                    <div className="font-semibold text-slate-100">Apply to Other Documents</div>
+                    <div className="text-[11px] text-slate-400">Copy header, footer, & styling across templates</div>
+                  </div>
                 </button>
+
                 {onCheckLayout && (
                   <button
                     type="button"
@@ -363,41 +326,38 @@ export default function TopToolbar({
                       setShowMoreMenu(false);
                       onCheckLayout();
                     }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left font-medium text-slate-200 hover:bg-slate-800"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left font-medium text-slate-200 hover:bg-slate-800 transition"
                   >
-                    <ShieldCheck size={14} className="text-teal-400" />
-                    <span>Check Layout Audit</span>
+                    <ShieldCheck size={15} className="text-teal-400 shrink-0" />
+                    <div>
+                      <div className="font-semibold text-slate-100">Check Layout Audit</div>
+                      <div className="text-[11px] text-slate-400">Scan for overlaps, margins & single-page fit</div>
+                    </div>
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMoreMenu(false);
-                    onOpenApplyModal();
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left font-medium text-slate-200 hover:bg-slate-800"
-                >
-                  <Copy size={14} className="text-amber-400" />
-                  <span>Apply to Others</span>
-                </button>
+
                 <div className="border-t border-slate-800 my-1" />
+
                 <button
                   type="button"
                   onClick={() => {
                     setShowMoreMenu(false);
                     onReset();
                   }}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left font-medium text-rose-300 hover:bg-rose-500/15"
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left font-medium text-rose-300 hover:bg-rose-500/15 transition"
                 >
-                  <RotateCcw size={14} className="text-rose-400" />
-                  <span>Reset to Default</span>
+                  <RotateCcw size={15} className="text-rose-400 shrink-0" />
+                  <div>
+                    <div className="font-semibold text-rose-200">Reset to Default</div>
+                    <div className="text-[11px] text-rose-400/80">Restore official UAE corporate layout (with confirmation)</div>
+                  </div>
                 </button>
               </div>
             )}
           </div>
 
-          {/* Primary Actions: Preview, Print, and Save (ALWAYS VISIBLE) */}
-          <div className="flex items-center gap-1.5 border-l border-slate-800 pl-1.5">
+          {/* Primary Final Actions: Preview, Print, and Save (ALWAYS VISIBLE & PINNED) */}
+          <div className="flex shrink-0 items-center gap-1.5 border-l border-slate-800 pl-2">
             <button
               type="button"
               onClick={onPreview}
@@ -434,7 +394,7 @@ export default function TopToolbar({
           </div>
 
           {/* Responsive Panel Toggle Buttons */}
-          <div className="flex items-center gap-0.5 border-l border-slate-800 pl-1">
+          <div className="flex shrink-0 items-center gap-0.5 border-l border-slate-800 pl-1.5">
             {onToggleLeftSidebar && (
               <button
                 type="button"
