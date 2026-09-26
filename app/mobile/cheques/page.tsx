@@ -2,17 +2,20 @@
 
 import { useEffect, useState, useMemo } from "react";
 import MobileLayout from "@/components/mobile/MobileLayout";
+import MobilePdfModal from "@/components/mobile/MobilePdfModal";
 import {
-  Wallet, Clock, AlertTriangle, CheckCircle2, Search,
-  ArrowDownLeft, ArrowUpRight, ShieldAlert, RefreshCw, Loader2, MessageCircle
+  Wallet, CheckCircle2, Search,
+  RefreshCw, Loader2, MessageCircle, FileText
 } from "lucide-react";
 import { fetchCheques } from "@/lib/chequeService";
 import {
   ChequeRecord, formatChequeStatus, chequeStatusBadge,
   getChequeUrgency, isChequeOverdue, computeChequeMetrics
 } from "@/lib/chequeTypes";
-import { fmtAED, fmtDate, todayISO } from "@/lib/helpers";
+import { fmtAED, fmtDate, getCurrentCompany, todayISO } from "@/lib/helpers";
 import { openWhatsApp, generateChequeWhatsAppMessage } from "@/lib/whatsappUtils";
+import { MobilePortalDocument } from "@/lib/mobilePortalTypes";
+import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
 type TabType = "due_today" | "upcoming" | "overdue" | "all";
 
@@ -21,6 +24,8 @@ export default function MobileChequesPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>("due_today");
   const [search, setSearch] = useState("");
+  const [company, setCompany] = useState<CompanyDocInfo | null>(null);
+  const [previewDocument, setPreviewDocument] = useState<MobilePortalDocument | null>(null);
 
   useEffect(() => {
     loadData();
@@ -29,8 +34,9 @@ export default function MobileChequesPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const data = await fetchCheques();
+      const [data, currentCompany] = await Promise.all([fetchCheques(), getCurrentCompany()]);
       setCheques(data);
+      setCompany(currentCompany);
     } catch (err) {
       console.error("Failed to load cheques:", err);
     } finally {
@@ -70,7 +76,7 @@ export default function MobileChequesPage() {
 
   return (
     <MobileLayout>
-      <div className="p-4 space-y-4">
+      <div className="space-y-4 p-3 sm:p-5">
         {/* Header Title & Notice */}
         <div className="flex items-center justify-between">
           <div>
@@ -86,7 +92,7 @@ export default function MobileChequesPage() {
           <button
             type="button"
             onClick={loadData}
-            className="p-2 text-slate-400 hover:text-white"
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white"
             title="Refresh Reminders"
           >
             <RefreshCw size={14} className={loading ? "animate-spin text-emerald-400" : ""} />
@@ -94,11 +100,11 @@ export default function MobileChequesPage() {
         </div>
 
         {/* Tab Selector */}
-        <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+        <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-800 bg-slate-900 p-1 text-xs no-scrollbar sm:grid sm:grid-cols-4">
           <button
             type="button"
             onClick={() => setActiveTab("due_today")}
-            className={`py-2 rounded-lg font-bold transition-all text-center relative ${
+            className={`relative min-h-11 min-w-24 flex-1 rounded-lg px-2 py-2 text-center font-bold transition-all ${
               activeTab === "due_today" ? "bg-amber-600 text-white shadow-xs" : "text-slate-400 hover:text-white"
             }`}
           >
@@ -113,7 +119,7 @@ export default function MobileChequesPage() {
           <button
             type="button"
             onClick={() => setActiveTab("upcoming")}
-            className={`py-2 rounded-lg font-bold transition-all text-center ${
+            className={`min-h-11 min-w-24 flex-1 rounded-lg px-2 py-2 text-center font-bold transition-all ${
               activeTab === "upcoming" ? "bg-blue-600 text-white shadow-xs" : "text-slate-400 hover:text-white"
             }`}
           >
@@ -123,7 +129,7 @@ export default function MobileChequesPage() {
           <button
             type="button"
             onClick={() => setActiveTab("overdue")}
-            className={`py-2 rounded-lg font-bold transition-all text-center relative ${
+            className={`relative min-h-11 min-w-24 flex-1 rounded-lg px-2 py-2 text-center font-bold transition-all ${
               activeTab === "overdue" ? "bg-rose-600 text-white shadow-xs" : "text-slate-400 hover:text-white"
             }`}
           >
@@ -138,7 +144,7 @@ export default function MobileChequesPage() {
           <button
             type="button"
             onClick={() => setActiveTab("all")}
-            className={`py-2 rounded-lg font-bold transition-all text-center ${
+            className={`min-h-11 min-w-24 flex-1 rounded-lg px-2 py-2 text-center font-bold transition-all ${
               activeTab === "all" ? "bg-slate-800 text-white shadow-xs" : "text-slate-400 hover:text-white"
             }`}
           >
@@ -154,7 +160,7 @@ export default function MobileChequesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search cheques by #, bank, party..."
-            className="w-full rounded-xl border border-slate-800 bg-slate-900 pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+            className="min-h-11 w-full rounded-xl border border-slate-800 bg-slate-900 py-2 pl-9 pr-3 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
           />
         </div>
 
@@ -229,7 +235,7 @@ export default function MobileChequesPage() {
                   </div>
 
                   {/* Due Date & Urgency Badge */}
-                  <div className="flex items-center justify-between border-t border-slate-800/60 pt-2 text-xs">
+                  <div className="flex flex-col gap-3 border-t border-slate-800/60 pt-2 text-xs min-[390px]:flex-row min-[390px]:items-center min-[390px]:justify-between">
                     <div>
                       <span className="text-[10px] text-slate-500 block leading-none">Maturity Date</span>
                       <span className="font-mono text-xs text-white block mt-0.5 font-bold">
@@ -237,7 +243,30 @@ export default function MobileChequesPage() {
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between gap-2 min-[390px]:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewDocument({
+                          id: c.id,
+                          category: "cheque",
+                          categoryLabel: isInc ? "Inward Cheque" : "Outward Cheque",
+                          documentNumber: `#${c.cheque_number}`,
+                          date: c.issue_date,
+                          dueDate: c.due_date,
+                          partyName: party,
+                          partyRole: isInc ? "Customer" : "Supplier",
+                          amount: c.amount,
+                          status: formatChequeStatus(c.status),
+                          statusBadgeClass: chequeStatusBadge(c.status),
+                          fileUrl: c.cheque_image_front_url,
+                          hasAttachment: Boolean(c.cheque_image_front_url),
+                        })}
+                        className="flex min-h-11 items-center gap-1 rounded-xl bg-slate-800 px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-slate-700"
+                        title="Preview cheque PDF"
+                      >
+                        <FileText size={12} className="text-emerald-400" />
+                        PDF
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -245,7 +274,7 @@ export default function MobileChequesPage() {
                           const msg = generateChequeWhatsAppMessage(c);
                           openWhatsApp(phone, msg);
                         }}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shadow-sm transition-colors"
+                        className="flex min-h-11 items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-[11px] font-bold text-white shadow-sm transition-colors hover:bg-emerald-500"
                         title="Send WhatsApp notice"
                       >
                         <MessageCircle size={12} />
@@ -263,6 +292,13 @@ export default function MobileChequesPage() {
           )}
         </div>
       </div>
+      {previewDocument && (
+        <MobilePdfModal
+          document={previewDocument}
+          company={company}
+          onClose={() => setPreviewDocument(null)}
+        />
+      )}
     </MobileLayout>
   );
 }

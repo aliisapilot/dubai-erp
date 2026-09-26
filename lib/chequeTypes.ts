@@ -209,7 +209,11 @@ export function formatChequeType(type: string | null | undefined): string {
  */
 export function getDaysDifference(targetDate: string, baseDate = new Date()): number {
   if (!targetDate) return 0;
-  const t = new Date(targetDate);
+  const dateOnly = targetDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const t = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(targetDate);
+  if (Number.isNaN(t.getTime())) return 0;
   t.setHours(0, 0, 0, 0);
   const b = new Date(baseDate);
   b.setHours(0, 0, 0, 0);

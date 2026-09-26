@@ -1,18 +1,22 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import MobileLayout from "@/components/mobile/MobileLayout";
 import MobilePdfModal from "@/components/mobile/MobilePdfModal";
 import {
-  Search, Filter, FileText, Download, Share2, Eye,
-  RefreshCw, Loader2, ArrowDownLeft, ArrowUpRight, Check,
+  Search, FileText, Download, Share2, Eye,
+  RefreshCw, Loader2, Check,
   AlertCircle
 } from "lucide-react";
 import {
   MobilePortalDocument, MobileDocumentCategory, MOBILE_CATEGORY_TABS,
   shareDocument, getCategoryBadgeColor
 } from "@/lib/mobilePortalTypes";
-import { fetchUnifiedMobileDocuments, logDocumentAccess } from "@/lib/mobilePortalService";
+import {
+  fetchUnifiedMobileDocuments,
+  getAuthorizedMobileDocumentUrl,
+  logDocumentAccess,
+} from "@/lib/mobilePortalService";
 import { getCurrentCompany, fmtAED, fmtDate } from "@/lib/helpers";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
@@ -25,13 +29,11 @@ export default function MobileDocumentPortalPage() {
   const [activeDocForPreview, setActiveDocForPreview] = useState<MobilePortalDocument | null>(null);
   const [shareSuccessId, setShareSuccessId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    loadData();
-  }, [activeCategory]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const [docs, co] = await Promise.all([
         fetchUnifiedMobileDocuments({ category: activeCategory }),
@@ -41,10 +43,17 @@ export default function MobileDocumentPortalPage() {
       if (co) setCompany(co);
     } catch (err) {
       console.error("Failed to load mobile documents:", err);
+      setError(err instanceof Error ? err.message : "Documents could not be loaded.");
     } finally {
       setLoading(false);
     }
-  }
+  }, [activeCategory]);
+
+  useEffect(() => {
+    // Initial/category-driven remote data synchronization.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadData();
+  }, [loadData]);
 
   // Filter by search query
   const filteredDocs = useMemo(() => {
@@ -89,16 +98,8 @@ export default function MobileDocumentPortalPage() {
 
     setDownloadingId(doc.id);
     try {
-      const res = await fetch(
-        `/api/mobile/download?path=${encodeURIComponent(doc.fileUrl)}&bucket=cheques&doc_id=${doc.id}&doc_type=${doc.category}`
-      );
-      const data = await res.json();
-
-      if (data?.download_url) {
-        window.open(data.download_url, "_blank");
-      } else {
-        alert("Failed to generate download link.");
-      }
+      const url = await getAuthorizedMobileDocumentUrl(doc);
+      window.open(url, "_blank", "noopener,noreferrer");
     } catch (err) {
       console.error("Download error:", err);
       alert("Download failed. Please check network connection.");
@@ -109,7 +110,13 @@ export default function MobileDocumentPortalPage() {
 
   return (
     <MobileLayout>
-      <div className="p-4 space-y-4">
+        <div className="space-y-4 p-3 sm:p-5">
+        {error && (
+          <div className="flex items-start gap-2 rounded-xl border border-rose-900/60 bg-rose-950/30 p-3 text-xs text-rose-100" role="alert">
+            <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-400" />
+            <span>{error}</span>
+          </div>
+        )}
         {/* Search Bar */}
         <div className="relative">
           <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
@@ -118,7 +125,7 @@ export default function MobileDocumentPortalPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search documents by #, party, date..."
-            className="w-full rounded-xl border border-slate-800 bg-slate-900/90 pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none shadow-xs"
+            className="min-h-11 w-full rounded-xl border border-slate-800 bg-slate-900/90 py-2 pl-9 pr-3 text-sm text-white shadow-xs placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
           />
         </div>
 
@@ -131,7 +138,7 @@ export default function MobileDocumentPortalPage() {
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveCategory(tab.key)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-full font-semibold transition-all shrink-0 ${
+                className={`min-h-11 shrink-0 whitespace-nowrap rounded-full px-4 py-2 font-semibold transition-all ${
                   isActive
                     ? "bg-emerald-600 text-white shadow-xs"
                     : "bg-slate-900 text-slate-400 border border-slate-800 hover:text-white"
@@ -151,7 +158,7 @@ export default function MobileDocumentPortalPage() {
           <button
             type="button"
             onClick={loadData}
-            className="flex items-center gap-1 text-slate-400 hover:text-white transition-colors"
+            className="flex min-h-11 items-center gap-1 px-2 text-slate-400 transition-colors hover:text-white"
           >
             <RefreshCw size={12} className={loading ? "animate-spin text-emerald-400" : ""} />
             <span>Sync</span>
@@ -231,7 +238,7 @@ export default function MobileDocumentPortalPage() {
                     <button
                       type="button"
                       onClick={() => setActiveDocForPreview(doc)}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white transition-colors"
+                      className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-800 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-slate-700"
                     >
                       <Eye size={14} className="text-emerald-400" />
                       <span>View PDF</span>
@@ -240,7 +247,7 @@ export default function MobileDocumentPortalPage() {
                     <button
                       type="button"
                       onClick={() => handleShare(doc)}
-                      className="flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 hover:text-white transition-colors"
+                      className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-xl bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
                       title="Share via AirDrop, WhatsApp, Mail"
                     >
                       {shareSuccessId === doc.id ? (
@@ -254,7 +261,7 @@ export default function MobileDocumentPortalPage() {
                       type="button"
                       onClick={() => handleDownload(doc)}
                       disabled={downloadingId === doc.id}
-                      className="flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 hover:text-white transition-colors disabled:opacity-50"
+                      className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-xl bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-700 hover:text-white disabled:opacity-50"
                       title="Download Authorized File"
                     >
                       {downloadingId === doc.id ? (

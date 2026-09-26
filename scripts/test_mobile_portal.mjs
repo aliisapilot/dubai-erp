@@ -1,5 +1,4 @@
 import {
-  MOBILE_CATEGORY_TABS,
   getCategoryLabel,
   getCategoryBadgeColor,
   DEFAULT_PERMISSIONS,
@@ -50,11 +49,19 @@ function runTests() {
   assert(DEFAULT_PERMISSIONS.canDownloadDocuments === true, "File download permitted");
 
   // 3. Verify Cheque Reminder Categorization Logic
-  const today = new Date().toISOString().slice(0, 10);
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-  const in3Days = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
-  const in20Days = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
-  const past5Days = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+  const dateOnly = (offsetDays) => {
+    const value = new Date();
+    value.setHours(12, 0, 0, 0);
+    value.setDate(value.getDate() + offsetDays);
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+  const today = dateOnly(0);
+  const tomorrow = dateOnly(1);
+  const in3Days = dateOnly(3);
+  const past5Days = dateOnly(-5);
 
   const urgencyToday = getChequeUrgency(today, "pending");
   assert(urgencyToday.isDueToday === true, "Today's cheque correctly flagged as Due Today");

@@ -1,5 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
+import type { MobileDocumentCategory } from "@/lib/mobilePortalTypes";
+
+const DOWNLOADABLE_TYPES = new Set<MobileDocumentCategory>(["cheque", "company_file"]);
+
+function isHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Secure Mobile Document Proxy Download Endpoint
@@ -10,52 +22,109 @@ import { supabase } from "@/lib/supabase";
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const path = searchParams.get("path");
-    const bucket = searchParams.get("bucket") || "cheques";
-    const docId = searchParams.get("doc_id") || "unknown";
-    const docType = searchParams.get("doc_type") || "document";
+    const docId = searchParams.get("doc_id");
+    const docType = searchParams.get("doc_type") as MobileDocumentCategory | null;
 
-    if (!path) {
-      return NextResponse.json({ error: "Missing required document path." }, { status: 400 });
+    if (!docId || !docType || !DOWNLOADABLE_TYPES.has(docType)) {
+      return NextResponse.json({ error: "Invalid document request." }, { status: 400 });
     }
 
-    // 1. Session verification
     const authHeader = req.headers.get("authorization");
-    let user = null;
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    if (!token) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
 
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.replace("Bearer ", "");
-      const { data } = await supabase.auth.getUser(token);
-      user = data.user;
-    } else {
-      const { data } = await supabase.auth.getUser();
-      user = data.user;
-    }
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      {
+        global: { headers: { Authorization: `Bearer ${token}` } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      }
+    );
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+    const user = userData.user;
 
-    if (!user) {
+    if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized file download request." }, { status: 401 });
     }
 
-    // 2. Generate short-lived signed URL (valid for 60 seconds only)
-    const { data: signedData, error: signErr } = await supabase.storage
-      .from(bucket)
-      .createSignedUrl(path, 60);
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("company_id, mobile_access_enabled, mobile_allowed_doc_types, can_download_documents")
+      .eq("id", user.id)
+      .maybeSingle();
 
-    if (signErr || !signedData?.signedUrl) {
-      return NextResponse.json({ error: `File retrieval failed: ${signErr?.message || "File not found"}` }, { status: 404 });
+    if (
+      profileError ||
+      !profile ||
+      profile.mobile_access_enabled === false ||
+      profile.can_download_documents === false ||
+      !Array.isArray(profile.mobile_allowed_doc_types) ||
+      !profile.mobile_allowed_doc_types.includes(docType)
+    ) {
+      return NextResponse.json({ error: "You do not have permission to open this document." }, { status: 403 });
     }
 
-    // 3. Log sensitive access audit record
+    let companyId: string | null = null;
+    let fileLocation: string | null = null;
+    let documentRef: string | null = null;
+    let bucket: string | null = null;
+
+    if (docType === "cheque") {
+      const { data: cheque, error } = await supabase
+        .from("cheques")
+        .select("company_id, cheque_number, cheque_image_front_url")
+        .eq("id", docId)
+        .maybeSingle();
+      if (error || !cheque) return NextResponse.json({ error: "Document not found." }, { status: 404 });
+      companyId = cheque.company_id;
+      documentRef = cheque.cheque_number;
+      fileLocation = cheque.cheque_image_front_url;
+      bucket = "cheques";
+    } else {
+      const { data: attachment, error } = await supabase
+        .from("document_attachments")
+        .select("company_id, file_name, file_url")
+        .eq("id", docId)
+        .maybeSingle();
+      if (error || !attachment) return NextResponse.json({ error: "Document not found." }, { status: 404 });
+      companyId = attachment.company_id;
+      documentRef = attachment.file_name;
+      fileLocation = attachment.file_url;
+    }
+
+    if (!companyId || companyId !== profile.company_id || !fileLocation) {
+      return NextResponse.json({ error: "Document access is not permitted." }, { status: 403 });
+    }
+
+    let downloadUrl: string;
+    if (isHttpUrl(fileLocation)) {
+      downloadUrl = fileLocation;
+    } else {
+      if (!bucket || !fileLocation.startsWith(`${companyId}/`)) {
+        return NextResponse.json({ error: "Invalid document storage location." }, { status: 403 });
+      }
+      const { data: signedData, error: signErr } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(fileLocation, 60);
+
+      if (signErr || !signedData?.signedUrl) {
+        return NextResponse.json({ error: "The stored file could not be retrieved." }, { status: 404 });
+      }
+      downloadUrl = signedData.signedUrl;
+    }
+
     try {
       const clientIp = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
       const userAgent = req.headers.get("user-agent") || "unknown";
 
       await supabase.from("document_access_logs").insert({
-        company_id: user.user_metadata?.company_id || "00000000-0000-0000-0000-000000000000",
+        company_id: companyId,
         user_id: user.id,
         user_email: user.email,
         document_type: docType,
         document_id: docId,
+        document_ref: documentRef,
         action: "download",
         ip_address: clientIp,
         user_agent: userAgent,
@@ -66,7 +135,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      download_url: signedData.signedUrl,
+      download_url: downloadUrl,
       expires_in: 60,
     });
   } catch (err: unknown) {

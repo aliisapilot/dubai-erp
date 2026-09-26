@@ -5,6 +5,7 @@ import {
   MobilePortalDocument,
   MobilePortalPermissions,
   DEFAULT_PERMISSIONS,
+  DENIED_PERMISSIONS,
   getCategoryLabel,
 } from "./mobilePortalTypes";
 
@@ -14,7 +15,7 @@ import {
 export async function getMobilePermissions(): Promise<MobilePortalPermissions> {
   try {
     const { data: userData } = await supabase.auth.getUser();
-    if (!userData?.user) return DEFAULT_PERMISSIONS;
+    if (!userData?.user) return DENIED_PERMISSIONS;
 
     const { data: prof } = await supabase
       .from("profiles")
@@ -22,7 +23,7 @@ export async function getMobilePermissions(): Promise<MobilePortalPermissions> {
       .eq("id", userData.user.id)
       .maybeSingle();
 
-    if (!prof) return DEFAULT_PERMISSIONS;
+    if (!prof) return DENIED_PERMISSIONS;
 
     return {
       mobileAccessEnabled: prof.mobile_access_enabled ?? true,
@@ -33,8 +34,8 @@ export async function getMobilePermissions(): Promise<MobilePortalPermissions> {
       canDownloadDocuments: prof.can_download_documents ?? true,
     };
   } catch (err) {
-    console.warn("Could not load mobile permissions, falling back to default:", err);
-    return DEFAULT_PERMISSIONS;
+    console.warn("Could not load mobile permissions:", err);
+    return DENIED_PERMISSIONS;
   }
 }
 
@@ -397,6 +398,37 @@ export async function logDocumentAccess(params: {
     // Non-blocking log failure
     console.warn("Document access logging error:", err);
   }
+}
+
+/**
+ * Requests a short-lived, server-authorized URL for a stored mobile document.
+ * The server resolves the file from the document id; callers never choose a bucket or path.
+ */
+export async function getAuthorizedMobileDocumentUrl(
+  document: Pick<MobilePortalDocument, "id" | "category">
+): Promise<string> {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+
+  if (sessionError || !accessToken) {
+    throw new Error("Your session has expired. Please sign in again.");
+  }
+
+  const params = new URLSearchParams({
+    doc_id: document.id,
+    doc_type: document.category,
+  });
+  const response = await fetch(`/api/mobile/download?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  const payload = (await response.json()) as { download_url?: string; error?: string };
+
+  if (!response.ok || !payload.download_url) {
+    throw new Error(payload.error || "The document could not be opened.");
+  }
+
+  return payload.download_url;
 }
 
 /**

@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  X, Share2, Printer, ZoomIn, ZoomOut, RotateCcw,
-  Loader2, Check
+  X, Share2, Printer, ZoomIn, ZoomOut, ExternalLink,
+  Loader2, Check, AlertCircle
 } from "lucide-react";
 import { MobilePortalDocument, shareDocument } from "@/lib/mobilePortalTypes";
-import { fetchDocumentForPdf, logDocumentAccess } from "@/lib/mobilePortalService";
+import {
+  fetchDocumentForPdf,
+  getAuthorizedMobileDocumentUrl,
+  logDocumentAccess,
+} from "@/lib/mobilePortalService";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
 // Template imports
@@ -28,15 +32,45 @@ interface MobilePdfModalProps {
 export default function MobilePdfModal({ document, company, onClose }: MobilePdfModalProps) {
   const [fullDoc, setFullDoc] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
-  const [scale, setScale] = useState(0.48); // Optimal initial scale for iPhone screens
+  const [scale, setScale] = useState(0.45);
+  const [pageHeight, setPageHeight] = useState(1123);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [error, setError] = useState("");
   const [sharedNotice, setSharedNotice] = useState(false);
+  const pageRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fitPage = () => setScale(Math.min(0.92, Math.max(0.35, (window.innerWidth - 24) / 794)));
+    fitPage();
+    window.addEventListener("resize", fitPage);
+    return () => window.removeEventListener("resize", fitPage);
+  }, []);
+
+  useEffect(() => {
+    const previousOverflow = globalThis.document.body.style.overflow;
+    globalThis.document.body.style.overflow = "hidden";
+    const handleKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      globalThis.document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [onClose]);
 
   useEffect(() => {
     let isMounted = true;
     async function loadData() {
       setLoading(true);
+      setError("");
       try {
+        if (document.category === "company_file") {
+          const url = await getAuthorizedMobileDocumentUrl(document);
+          if (isMounted) setFileUrl(url);
+          return;
+        }
+
         const data = await fetchDocumentForPdf(document.category, document.id);
+        if (!data) throw new Error("This document is not available for preview.");
         if (isMounted) {
           setFullDoc(data);
           // Log access
@@ -49,6 +83,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
         }
       } catch (err) {
         console.error("Failed to load document for PDF preview:", err);
+        if (isMounted) setError(err instanceof Error ? err.message : "The document could not be opened.");
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -59,6 +94,16 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
       isMounted = false;
     };
   }, [document]);
+
+  useEffect(() => {
+    const page = pageRef.current;
+    if (!page) return;
+    const updateHeight = () => setPageHeight(page.scrollHeight || 1123);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(page);
+    return () => observer.disconnect();
+  }, [fullDoc]);
 
   async function handleNativeShare() {
     const res = await shareDocument({
@@ -107,14 +152,15 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-white animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex h-[100dvh] flex-col bg-slate-950 text-white animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label={`Preview ${document.documentNumber}`}>
       {/* Top Controls Bar */}
-      <header className="flex items-center justify-between px-3 py-2.5 bg-slate-900 border-b border-slate-800 pt-[calc(0.5rem+env(safe-area-inset-top))] shrink-0">
+      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-2 py-2 pt-[calc(0.5rem+env(safe-area-inset-top))] sm:px-4">
         <div className="flex items-center gap-2 truncate pr-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-slate-800"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white"
+            aria-label="Close preview"
           >
             <X size={20} />
           </button>
@@ -131,31 +177,31 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
         {/* Action Buttons */}
         <div className="flex items-center gap-1 shrink-0">
           {/* Zoom controls */}
-          <button
+          {document.category !== "company_file" && <button
             type="button"
             onClick={() => setScale((s) => Math.max(0.35, s - 0.08))}
-            className="p-1 text-slate-400 hover:text-white rounded"
+            className="hidden h-11 w-11 items-center justify-center rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white sm:flex"
             title="Zoom Out"
           >
             <ZoomOut size={16} />
-          </button>
-          <span className="text-[10px] font-mono text-slate-400 w-8 text-center">
+          </button>}
+          {document.category !== "company_file" && <span className="hidden w-9 text-center font-mono text-[10px] text-slate-400 sm:block">
             {Math.round(scale * 100)}%
-          </span>
-          <button
+          </span>}
+          {document.category !== "company_file" && <button
             type="button"
             onClick={() => setScale((s) => Math.min(1.0, s + 0.08))}
-            className="p-1 text-slate-400 hover:text-white rounded"
+            className="hidden h-11 w-11 items-center justify-center rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white sm:flex"
             title="Zoom In"
           >
             <ZoomIn size={16} />
-          </button>
+          </button>}
 
           {/* Native Share */}
           <button
             type="button"
             onClick={handleNativeShare}
-            className="ml-1 flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow-xs"
+            className="ml-1 flex min-h-11 items-center gap-1 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white shadow-xs"
           >
             {sharedNotice ? <Check size={14} /> : <Share2 size={14} />}
             <span>Share</span>
@@ -165,8 +211,8 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
           <button
             type="button"
             onClick={() => window.print()}
-            className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800"
-            title="Print PDF"
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white"
+            title="Print or save as PDF"
           >
             <Printer size={16} />
           </button>
@@ -174,21 +220,40 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
       </header>
 
       {/* Main Preview Surface with Responsive Scale Container */}
-      <div className="flex-1 overflow-auto bg-slate-900/60 p-2 flex justify-center items-start custom-scrollbar">
+      <div className="flex flex-1 items-start justify-center overflow-auto bg-slate-900/60 p-2 custom-scrollbar sm:p-4">
         {loading ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-400 py-20">
             <Loader2 className="animate-spin text-emerald-400 mb-2" size={26} />
             <p className="text-xs">Rendering Document PDF...</p>
           </div>
+        ) : error ? (
+          <div className="mx-auto mt-16 max-w-sm rounded-2xl border border-rose-900/60 bg-rose-950/30 p-6 text-center">
+            <AlertCircle className="mx-auto mb-3 text-rose-400" size={30} />
+            <p className="text-sm font-bold text-white">Unable to open document</p>
+            <p className="mt-1 text-xs leading-5 text-slate-300">{error}</p>
+          </div>
+        ) : document.category === "company_file" && fileUrl ? (
+          <div className="flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-700 bg-white">
+            <iframe src={fileUrl} title={document.documentNumber} className="min-h-0 flex-1 border-0" />
+            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="flex min-h-12 items-center justify-center gap-2 border-t border-slate-200 bg-white px-4 text-sm font-bold text-emerald-700">
+              <ExternalLink size={16} /> Open full PDF in device viewer
+            </a>
+          </div>
         ) : (
           <div
-            className="transition-transform duration-150 origin-top shadow-2xl rounded-sm bg-white print:scale-100 print:m-0 print:p-0 print:shadow-none"
+            className="relative shrink-0 print:h-auto print:w-auto"
             style={{
-              transform: `scale(${scale})`,
-              marginBottom: "2rem",
+              width: 794 * scale,
+              height: pageHeight * scale,
             }}
           >
-            {renderDocumentTemplate()}
+            <div
+              ref={pageRef}
+              className="absolute left-0 top-0 origin-top-left rounded-sm bg-white shadow-2xl transition-transform duration-150 print:static print:transform-none print:shadow-none"
+              style={{ transform: `scale(${scale})`, width: 794 }}
+            >
+              {renderDocumentTemplate()}
+            </div>
           </div>
         )}
       </div>

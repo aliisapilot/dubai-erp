@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
 /**
- * Server-Side Authorized Documents Query for Mobile Portal
- * =======================================================
- * Enforces authenticated user check, company isolation, and role authorization.
+ * Mobile Portal Session Verification
+ * ==================================
+ * Lightweight authenticated endpoint reserved for mobile portal health checks.
+ * Document records are loaded through Supabase RLS in the signed-in client.
  */
 export async function GET(req: NextRequest) {
   try {

@@ -2,12 +2,19 @@
 
 import { useEffect, useState, useMemo } from "react";
 import MobileLayout from "@/components/mobile/MobileLayout";
+import MobilePdfModal from "@/components/mobile/MobilePdfModal";
 import {
-  FolderLock, Search, Download, Share2, FileText,
-  FileCheck2, ShieldCheck, RefreshCw, Loader2, Check
+  FolderLock, Search, Download, Share2, FileText, Eye,
+  RefreshCw, Loader2, Check, AlertCircle
 } from "lucide-react";
 import { MobilePortalDocument, shareDocument } from "@/lib/mobilePortalTypes";
-import { fetchUnifiedMobileDocuments, logDocumentAccess } from "@/lib/mobilePortalService";
+import {
+  fetchUnifiedMobileDocuments,
+  getAuthorizedMobileDocumentUrl,
+  logDocumentAccess,
+} from "@/lib/mobilePortalService";
+import { getCurrentCompany } from "@/lib/helpers";
+import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
 export default function MobileFilesPage() {
   const [files, setFiles] = useState<MobilePortalDocument[]>([]);
@@ -15,6 +22,9 @@ export default function MobileFilesPage() {
   const [search, setSearch] = useState("");
   const [sharedId, setSharedId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [activeFile, setActiveFile] = useState<MobilePortalDocument | null>(null);
+  const [company, setCompany] = useState<CompanyDocInfo | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     loadFiles();
@@ -22,11 +32,17 @@ export default function MobileFilesPage() {
 
   async function loadFiles() {
     setLoading(true);
+    setError("");
     try {
-      const data = await fetchUnifiedMobileDocuments({ category: "company_file" });
+      const [data, currentCompany] = await Promise.all([
+        fetchUnifiedMobileDocuments({ category: "company_file" }),
+        getCurrentCompany(),
+      ]);
       setFiles(data);
+      setCompany(currentCompany);
     } catch (err) {
       console.error("Failed to load files:", err);
+      setError(err instanceof Error ? err.message : "Company files could not be loaded.");
     } finally {
       setLoading(false);
     }
@@ -67,16 +83,8 @@ export default function MobileFilesPage() {
 
     setDownloadingId(file.id);
     try {
-      const res = await fetch(
-        `/api/mobile/download?path=${encodeURIComponent(file.fileUrl)}&bucket=cheques&doc_id=${file.id}&doc_type=company_file`
-      );
-      const data = await res.json();
-
-      if (data?.download_url) {
-        window.open(data.download_url, "_blank");
-      } else {
-        alert("Failed to retrieve file download link.");
-      }
+      const url = await getAuthorizedMobileDocumentUrl(file);
+      window.open(url, "_blank", "noopener,noreferrer");
     } catch (err) {
       console.error("Download error:", err);
       alert("Download failed. Please check network connection.");
@@ -87,7 +95,13 @@ export default function MobileFilesPage() {
 
   return (
     <MobileLayout>
-      <div className="p-4 space-y-4">
+      <div className="space-y-4 p-3 sm:p-5">
+        {error && (
+          <div className="flex items-start gap-2 rounded-xl border border-rose-900/60 bg-rose-950/30 p-3 text-xs text-rose-100" role="alert">
+            <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-400" />
+            <span>{error}</span>
+          </div>
+        )}
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -103,7 +117,7 @@ export default function MobileFilesPage() {
           <button
             type="button"
             onClick={loadFiles}
-            className="p-2 text-slate-400 hover:text-white"
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white"
             title="Refresh Files"
           >
             <RefreshCw size={14} className={loading ? "animate-spin text-emerald-400" : ""} />
@@ -118,7 +132,7 @@ export default function MobileFilesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search company files & attachments..."
-            className="w-full rounded-xl border border-slate-800 bg-slate-900 pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+            className="min-h-11 w-full rounded-xl border border-slate-800 bg-slate-900 py-2 pl-9 pr-3 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
           />
         </div>
 
@@ -159,11 +173,19 @@ export default function MobileFilesPage() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800/60">
+                <div className="grid grid-cols-3 gap-2 border-t border-slate-800/60 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveFile(f)}
+                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-slate-800 px-2 text-xs font-semibold text-white hover:bg-slate-700"
+                  >
+                    <Eye size={14} className="text-emerald-400" />
+                    <span>Preview</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleShare(f)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 hover:text-white"
+                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-slate-800 px-2 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white"
                   >
                     {sharedId === f.id ? <Check size={13} className="text-emerald-400" /> : <Share2 size={13} />}
                     <span>Share</span>
@@ -173,7 +195,7 @@ export default function MobileFilesPage() {
                     type="button"
                     onClick={() => handleDownload(f)}
                     disabled={downloadingId === f.id}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold text-white shadow-xs disabled:opacity-50"
+                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50"
                   >
                     {downloadingId === f.id ? (
                       <Loader2 size={13} className="animate-spin" />
@@ -188,6 +210,9 @@ export default function MobileFilesPage() {
           )}
         </div>
       </div>
+      {activeFile && (
+        <MobilePdfModal document={activeFile} company={company} onClose={() => setActiveFile(null)} />
+      )}
     </MobileLayout>
   );
 }

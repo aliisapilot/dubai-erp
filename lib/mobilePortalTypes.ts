@@ -62,6 +62,15 @@ export const DEFAULT_PERMISSIONS: MobilePortalPermissions = {
   canDownloadDocuments: true,
 };
 
+export const DENIED_PERMISSIONS: MobilePortalPermissions = {
+  mobileAccessEnabled: false,
+  role: "none",
+  allowedCategories: [],
+  canViewFinancials: false,
+  canShareDocuments: false,
+  canDownloadDocuments: false,
+};
+
 export interface CategoryTabMeta {
   key: MobileDocumentCategory | "all";
   label: string;
