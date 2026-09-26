@@ -494,15 +494,13 @@ export default function DeliveryNotesPage() {
                             <Pencil size={14} />
                           </button>
                         )}
-                        {(dn.status || "").toLowerCase() === "draft" && (
-                          <button
-                            onClick={() => deleteDN(dn)}
-                            title="Delete Draft Delivery Note"
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => deleteDN(dn)}
+                          title="Delete Delivery Note"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </td>
                   </tr>

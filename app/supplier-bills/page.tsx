@@ -499,15 +499,13 @@ export default function SupplierBillsPage() {
                         >
                           <Pencil size={15} />
                         </button>
-                        {paid === 0 && (
-                          <button
-                            onClick={() => deleteBill(b)}
-                            className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"
-                            title="Delete Unpaid Bill"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => deleteBill(b)}
+                          className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"
+                          title="Delete Supplier Bill"
+                        >
+                          <Trash2 size={15} />
+                        </button>
                       </td>
                     </tr>
                   );

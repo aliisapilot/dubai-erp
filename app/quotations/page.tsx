@@ -413,11 +413,13 @@ export default function QuotationsPage() {
                       <button onClick={() => openPrint(q)} title="Print / PDF Document" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-900"><Printer size={14} /></button>
                       {((q.status||"").toLowerCase() === "draft" || (q.status||"").toLowerCase() === "sent") && <button onClick={() => openEdit(q)} title="Edit" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14} /></button>}
                       {(q.status||"").toLowerCase() === "accepted" && <button onClick={() => convertToProforma(q)} title="Convert to Proforma" className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"><ArrowRight size={14} /></button>}
-                      {["draft", "sent", "rejected", "expired"].includes((q.status || "").toLowerCase()) && (
-                        <button onClick={() => deleteQuotation(q)} title="Delete Quotation" className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition">
-                          <Trash2 size={14} />
-                        </button>
-                      )}
+                      <button
+                        onClick={() => deleteQuotation(q)}
+                        title="Delete Quotation"
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div></td>
                   </tr>
                 ))}
@@ -559,6 +561,16 @@ export default function QuotationsPage() {
                   className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1 text-xs font-semibold text-white hover:bg-slate-800 transition"
                 >
                   <Printer size={13} /> Print / Save PDF
+                </button>
+                <button
+                  onClick={() => {
+                    const target = viewing.q;
+                    setViewing(null);
+                    deleteQuotation(target);
+                  }}
+                  className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-100 transition"
+                >
+                  <Trash2 size={13} /> Delete
                 </button>
                 <button onClick={()=>setViewing(null)}><X size={20} /></button>
               </div>
