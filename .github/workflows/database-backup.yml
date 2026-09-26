@@ -1,0 +1,236 @@
+name: Automated Database Backup
+
+on:
+  schedule:
+    # Runs daily at 02:00 UTC (06:00 UAE GST)
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      retention_days:
+        description: 'Backup retention period in days'
+        required: false
+        default: '30'
+      dry_run:
+        description: 'Dry run (dump and verify integrity without uploading to cloud storage)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Backup and Verify Database
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL Client 16
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lsb-release ca-certificates curl gnupg
+          sudo install -d /etc/apt/keyrings
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+
+      - name: Prepare backup environment
+        id: prep
+        run: |
+          TIMESTAMP=$(date -u +'%Y-%m-%d_%H%M%S')
+          YEAR_MONTH=$(date -u +'%Y-%m')
+          FILENAME="dubai_erp_backup_${TIMESTAMP}.sql"
+          ARCHIVE_NAME="${FILENAME}.gz"
+          BACKUP_DIR="${RUNNER_TEMP}/db_backup"
+          mkdir -p "$BACKUP_DIR"
+
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "year_month=$YEAR_MONTH" >> $GITHUB_OUTPUT
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+          echo "backup_dir=$BACKUP_DIR" >> $GITHUB_OUTPUT
+
+      - name: Execute pg_dump
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not configured!"
+            exit 1
+          fi
+
+          BACKUP_DIR="${{ steps.prep.outputs.backup_dir }}"
+          FILENAME="${{ steps.prep.outputs.filename }}"
+          SQL_FILE="${BACKUP_DIR}/${FILENAME}"
+
+          echo "Starting pg_dump execution..."
+          # Dump database with clean drop-if-exists, standard quotes, skipping specific ownership constraints
+          pg_dump "$DB_URL" \
+            --format=plain \
+            --no-owner \
+            --no-privileges \
+            --clean \
+            --if-exists \
+            --quote-all-identifiers \
+            --file="$SQL_FILE"
+
+          if [ $? -ne 0 ]; then
+            echo "::error::pg_dump failed during execution!"
+            exit 1
+          fi
+
+          RAW_SIZE=$(stat -c%s "$SQL_FILE")
+          echo "Raw SQL dump generated successfully (${RAW_SIZE} bytes)."
+          if [ "$RAW_SIZE" -lt 5120 ]; then
+            echo "::error::Generated dump is suspiciously small (${RAW_SIZE} bytes). Aborting to prevent empty backup."
+            exit 1
+          fi
+
+      - name: Compress and Generate SHA-256 Checksum
+        id: compress
+        run: |
+          BACKUP_DIR="${{ steps.prep.outputs.backup_dir }}"
+          FILENAME="${{ steps.prep.outputs.filename }}"
+          ARCHIVE="${BACKUP_DIR}/${{ steps.prep.outputs.archive_name }}"
+          SQL_FILE="${BACKUP_DIR}/${FILENAME}"
+
+          # Compress with maximum compression
+          gzip -9 "$SQL_FILE"
+
+          # Verify gzip archive integrity
+          gzip -t "$ARCHIVE"
+          if [ $? -ne 0 ]; then
+            echo "::error::gzip integrity check failed!"
+            exit 1
+          fi
+
+          ARCHIVE_SIZE=$(stat -c%s "$ARCHIVE")
+          ARCHIVE_SIZE_HUMAN=$(du -h "$ARCHIVE" | cut -f1)
+
+          # Compute SHA-256 checksum
+          cd "$BACKUP_DIR"
+          sha256sum "${{ steps.prep.outputs.archive_name }}" > "${{ steps.prep.outputs.archive_name }}.sha256"
+          CHECKSUM=$(cat "${{ steps.prep.outputs.archive_name }}.sha256" | awk '{print $1}')
+
+          echo "archive_path=$ARCHIVE" >> $GITHUB_OUTPUT
+          echo "checksum_path=${ARCHIVE}.sha256" >> $GITHUB_OUTPUT
+          echo "archive_size=$ARCHIVE_SIZE" >> $GITHUB_OUTPUT
+          echo "archive_size_human=$ARCHIVE_SIZE_HUMAN" >> $GITHUB_OUTPUT
+          echo "checksum=$CHECKSUM" >> $GITHUB_OUTPUT
+
+      - name: Run Integrity & Content Verification
+        run: |
+          ARCHIVE="${{ steps.compress.outputs.archive_path }}"
+
+          echo "Verifying presence of core Dubai ERP schema tables in archive..."
+          REQUIRED_TABLES=("companies" "tax_invoices" "quotations" "customers" "employees")
+          MISSING_TABLES=0
+
+          for table in "${REQUIRED_TABLES[@]}"; do
+            if zgrep -qi "CREATE TABLE.*\"$table\"\|ALTER TABLE.*\"$table\"" "$ARCHIVE"; then
+              echo "  [OK] Table verified in dump: $table"
+            else
+              echo "  [WARNING] Table reference not found: $table"
+              MISSING_TABLES=$((MISSING_TABLES + 1))
+            fi
+          done
+
+          # Fail if more than 2 critical tables are missing from the dump
+          if [ "$MISSING_TABLES" -gt 2 ]; then
+            echo "::error::Integrity check failed: Multiple critical tables were missing from the database dump!"
+            exit 1
+          fi
+
+          echo "Backup archive integrity verified successfully."
+
+      - name: Upload Backup to Private Cloud Storage (Cloudflare R2 / AWS S3)
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_STORAGE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_STORAGE_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.BACKUP_STORAGE_REGION || 'auto' }}
+          BUCKET_NAME: ${{ secrets.BACKUP_STORAGE_BUCKET }}
+          ENDPOINT_URL: ${{ secrets.BACKUP_STORAGE_ENDPOINT }}
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ] || [ -z "$BUCKET_NAME" ]; then
+            echo "::error::Storage credentials (BACKUP_STORAGE_ACCESS_KEY_ID, BACKUP_STORAGE_SECRET_ACCESS_KEY, BACKUP_STORAGE_BUCKET) are not configured!"
+            exit 1
+          fi
+
+          ARCHIVE="${{ steps.compress.outputs.archive_path }}"
+          CHECKSUM_FILE="${{ steps.compress.outputs.checksum_path }}"
+          ARCHIVE_NAME="${{ steps.prep.outputs.archive_name }}"
+          YEAR_MONTH="${{ steps.prep.outputs.year_month }}"
+          DEST_PREFIX="backups/daily/${YEAR_MONTH}"
+
+          ENDPOINT_ARG=""
+          if [ -n "$ENDPOINT_URL" ]; then
+            ENDPOINT_ARG="--endpoint-url $ENDPOINT_URL"
+          fi
+
+          echo "Uploading $ARCHIVE_NAME to s3://${BUCKET_NAME}/${DEST_PREFIX}/${ARCHIVE_NAME}..."
+          aws s3 cp "$ARCHIVE" "s3://${BUCKET_NAME}/${DEST_PREFIX}/${ARCHIVE_NAME}" $ENDPOINT_ARG --sse AES256 || \
+          aws s3 cp "$ARCHIVE" "s3://${BUCKET_NAME}/${DEST_PREFIX}/${ARCHIVE_NAME}" $ENDPOINT_ARG
+
+          echo "Uploading checksum file..."
+          aws s3 cp "$CHECKSUM_FILE" "s3://${BUCKET_NAME}/${DEST_PREFIX}/${ARCHIVE_NAME}.sha256" $ENDPOINT_ARG --sse AES256 || \
+          aws s3 cp "$CHECKSUM_FILE" "s3://${BUCKET_NAME}/${DEST_PREFIX}/${ARCHIVE_NAME}.sha256" $ENDPOINT_ARG
+
+          echo "Backup uploaded successfully."
+
+      - name: Apply Retention Policy (Prune Old Backups)
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_STORAGE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_STORAGE_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.BACKUP_STORAGE_REGION || 'auto' }}
+          BUCKET_NAME: ${{ secrets.BACKUP_STORAGE_BUCKET }}
+          ENDPOINT_URL: ${{ secrets.BACKUP_STORAGE_ENDPOINT }}
+          RETENTION_DAYS: ${{ github.event.inputs.retention_days || '30' }}
+        run: |
+          ENDPOINT_ARG=""
+          if [ -n "$ENDPOINT_URL" ]; then
+            ENDPOINT_ARG="--endpoint-url $ENDPOINT_URL"
+          fi
+
+          echo "Checking for daily backups older than ${RETENTION_DAYS} days in s3://${BUCKET_NAME}/backups/daily/..."
+          CUTOFF_DATE=$(date -d "${RETENTION_DAYS} days ago" +%s 2>/dev/null || date -v-${RETENTION_DAYS}d +%s)
+
+          aws s3 ls "s3://${BUCKET_NAME}/backups/daily/" --recursive $ENDPOINT_ARG | while read -r line; do
+            OBJ_DATE=$(echo "$line" | awk '{print $1}')
+            OBJ_TIME=$(echo "$line" | awk '{print $2}')
+            OBJ_KEY=$(echo "$line" | awk '{print $4}')
+
+            if [ -n "$OBJ_KEY" ]; then
+              OBJ_TIMESTAMP=$(date -d "$OBJ_DATE $OBJ_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%d %H:%M:%S" "$OBJ_DATE $OBJ_TIME" +%s 2>/dev/null)
+              if [ -n "$OBJ_TIMESTAMP" ] && [ "$OBJ_TIMESTAMP" -lt "$CUTOFF_DATE" ]; then
+                echo "Pruning expired backup: $OBJ_KEY (Created: $OBJ_DATE $OBJ_TIME)"
+                aws s3 rm "s3://${BUCKET_NAME}/${OBJ_KEY}" $ENDPOINT_ARG
+              fi
+            fi
+          done
+          echo "Retention policy enforcement complete."
+
+      - name: Generate Run Summary
+        run: |
+          cat << 'EOF' >> $GITHUB_STEP_SUMMARY
+          ## 🛡️ Dubai ERP Database Backup Summary
+
+          | Metric | Value |
+          |---|---|
+          | **Status** | ✅ Success |
+          | **Timestamp (UTC)** | ${{ steps.prep.outputs.timestamp }} |
+          | **Archive File** | `${{ steps.prep.outputs.archive_name }}` |
+          | **Archive Size** | ${{ steps.compress.outputs.archive_size_human }} (${{ steps.compress.outputs.archive_size }} bytes) |
+          | **Integrity Check** | Passed (Archive verified + ERP schema confirmed) |
+          | **SHA-256 Checksum** | `${{ steps.compress.outputs.checksum }}` |
+          | **Target Storage** | `${{ secrets.BACKUP_STORAGE_BUCKET || 'Dry-run (Local verification only)' }}` |
+          | **Retention Window** | ${{ github.event.inputs.retention_days || '30' }} days |
+          EOF
