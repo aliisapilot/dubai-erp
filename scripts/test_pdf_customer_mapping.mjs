@@ -91,4 +91,8 @@ test("isolates the mobile PDF modal as the only print target", () => {
     globalCssSource,
     /\.mobile-pdf-print-surface,[\s\S]*?width: 210mm !important;[\s\S]*?background: #ffffff !important;[\s\S]*?transform: none !important;/
   );
+  assert.match(
+    globalCssSource,
+    /\.print-modal-container \.print-template-wrapper > \.no-print \{[\s\S]*?display: none !important;/
+  );
 });
