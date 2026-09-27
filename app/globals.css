@@ -120,13 +120,13 @@ body {
 /* MobilePdfModal already supplies its own title and actions. Remove the
    desktop document toolbar and its outer canvas spacing when a template is
    embedded in that viewer, while leaving normal desktop previews unchanged. */
-.print-modal-container .print-template-wrapper {
+.mobile-pdf-modal .print-template-wrapper {
   min-height: 0 !important;
   padding: 0 !important;
   background: transparent !important;
 }
 
-.print-modal-container .print-template-wrapper > .no-print {
+.mobile-pdf-modal .print-template-wrapper > .no-print {
   display: none !important;
 }
 
