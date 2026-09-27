@@ -85,7 +85,7 @@ export default function SalarySlipTemplate({
     total_amount: slip.net_pay,
     notes: `Department: ${slip.department || "N/A"} | Bank: ${slip.bank_name || "N/A"} | IBAN: ${slip.iban || "N/A"}`,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
 
   return (
     <DocumentContainer

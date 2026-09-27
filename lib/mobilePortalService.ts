@@ -129,7 +129,7 @@ export async function fetchUnifiedMobileDocuments(options?: {
       (async () => {
         const { data } = await supabase
           .from("quotations")
-          .select("id, quotation_number, quotation_date, valid_until, total_amount, status, notes, customer:customers(id, name, trn)")
+          .select("*, customer:customers(id, name, trn)")
           .order("quotation_date", { ascending: false })
           .limit(options?.limit || 50);
 
@@ -143,8 +143,8 @@ export async function fetchUnifiedMobileDocuments(options?: {
               documentNumber: item.quotation_number || `QUO-${item.id.slice(0, 6)}`,
               date: item.quotation_date || "",
               dueDate: item.valid_until,
-              partyName: cust?.name || "Customer",
-              partyTrn: cust?.trn,
+              partyName: item.customer_name || cust?.name || "",
+              partyTrn: item.customer_trn || cust?.trn,
               partyRole: "Customer",
               amount: permissions.canViewFinancials ? Number(item.total_amount) || 0 : null,
               status: item.status || "Sent",

@@ -244,6 +244,7 @@ import {
   computeEffectiveLayout,
   computePaginationPlan,
   ItemDescriptionLike,
+  DocumentFitText,
 } from "@/lib/documentLayoutEngine";
 
 export function getItemsPerPage(layout: DocumentLayout): number {
@@ -257,9 +258,10 @@ export function getItemsPerPage(layout: DocumentLayout): number {
 export function getDocumentPageCount(
   layout: DocumentLayout,
   itemCount: number,
-  itemsData?: ItemDescriptionLike[]
+  itemsData?: ItemDescriptionLike[],
+  documentText?: DocumentFitText
 ): number {
-  return computePaginationPlan(layout, itemCount, itemsData).totalPages;
+  return computePaginationPlan(layout, itemCount, itemsData, documentText).totalPages;
 }
 
 export default function DynamicDocumentRenderer({
@@ -289,7 +291,7 @@ export default function DynamicDocumentRenderer({
   const balanceDue = Math.max(0, data.total_amount - advance);
 
   // Compute intelligent pagination plan with item line-wrap awareness
-  const paginationPlan = computePaginationPlan(layout, data.items.length, data.items);
+  const paginationPlan = computePaginationPlan(layout, data.items.length, data.items, data);
   const resolvedTotalPages = totalPages || paginationPlan.totalPages;
   const currentPageInfo = paginationPlan.pageItemRanges.find((p) => p.pageNumber === pageNumber) || {
     pageNumber,
@@ -313,7 +315,8 @@ export default function DynamicDocumentRenderer({
     isLastPage,
     pageNumber,
     resolvedTotalPages,
-    pageItems
+    pageItems,
+    data
   );
 
   const fontWeight = (weight: LayoutElement["fontWeight"]): CSSProperties["fontWeight"] => {
@@ -555,13 +558,7 @@ export default function DynamicDocumentRenderer({
             : layout.documentType === "salary_statement"
             ? "Employee"
             : "Buyer";
-        const populatedDetails = [data.customer_trn, data.customer_address, data.contact_person, data.contact_number, data.contact_email].filter(Boolean).length;
-        const partyTextLength = [data.customer_name, data.customer_address, data.contact_person, data.contact_number, data.contact_email]
-          .filter(Boolean)
-          .join(" ").length;
-        const useCompactPartyText = populatedDetails >= 4 || partyTextLength > 120;
-        const configuredPadMm = elem.padding !== undefined ? elem.padding : 3.2;
-        const padMm = useCompactPartyText ? Math.min(configuredPadMm, 1.2) : configuredPadMm;
+        const padMm = elem.padding !== undefined ? elem.padding : 3.2;
         return (
           <div
             className="w-full h-full flex flex-col justify-start select-text"
@@ -575,33 +572,33 @@ export default function DynamicDocumentRenderer({
               ...elementAppearance(elem),
             }}
           >
-            <div className={`flex justify-between items-center border-b font-bold uppercase ${useCompactPartyText ? "pb-px text-[7.5px]" : "pb-1 text-[10px]"}`} style={{ borderColor: colors.border }}>
+            <div className="flex justify-between items-center border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
               <span style={{ color: colors.primary }}>{partyHeading}</span>
               <span style={{ color: colors.muted }}>{partyRole}</span>
             </div>
-            <div className={`${useCompactPartyText ? "space-y-0 mt-px text-[7.5px]" : "space-y-0.5 mt-1.5 text-[10.5px]"} leading-tight select-text`}>
-              <div className={`font-bold text-slate-900 break-words leading-tight ${useCompactPartyText ? "text-[8px]" : ""}`}>{data.customer_name}</div>
+            <div className="space-y-0.5 mt-1.5 text-[10.5px] leading-tight select-text">
+              <div className="font-bold text-slate-900 break-words leading-tight" style={{ overflowWrap: "anywhere" }}>{data.customer_name}</div>
               {data.customer_trn && (
-                <div className={useCompactPartyText ? "text-[7.5px]" : ""}>
+                <div>
                   <span style={{ color: colors.muted }}>TRN: </span>
                   <span className="font-mono font-bold text-slate-900">{data.customer_trn}</span>
                 </div>
               )}
               {data.customer_address && (
-                <div className={`break-words leading-tight ${useCompactPartyText ? "text-[7px]" : "text-[9px]"}`} style={{ color: colors.muted, overflowWrap: "anywhere" }}>
+                <div className="break-words leading-tight text-[9.5px]" style={{ color: colors.muted, overflowWrap: "anywhere" }}>
                   {data.customer_address}
                 </div>
               )}
               {data.contact_person && (
-                <div className={`break-words ${useCompactPartyText ? "text-[7.5px]" : "text-[10px]"}`} style={{ color: colors.muted }}>
+                <div className="break-words text-[9.5px]" style={{ color: colors.muted, overflowWrap: "anywhere" }}>
                   Attn: {data.contact_person}
                 </div>
               )}
               {data.contact_number && (
-                <div className={`break-words ${useCompactPartyText ? "text-[7.5px]" : "text-[10px]"}`} style={{ color: colors.muted }}>Tel/Mob: {data.contact_number}</div>
+                <div className="break-words text-[9.5px]" style={{ color: colors.muted, overflowWrap: "anywhere" }}>Tel/Mob: {data.contact_number}</div>
               )}
               {data.contact_email && (
-                <div className={`break-words leading-tight ${useCompactPartyText ? "text-[7px]" : "text-[9px]"}`} style={{ color: colors.muted, overflowWrap: "anywhere" }}>Email: {data.contact_email}</div>
+                <div className="break-words leading-tight text-[9.5px]" style={{ color: colors.muted, overflowWrap: "anywhere" }}>Email: {data.contact_email}</div>
               )}
             </div>
           </div>
@@ -635,7 +632,7 @@ export default function DynamicDocumentRenderer({
                 </div>
               )}
               {data.customer_address && (
-                <div className="break-words line-clamp-2 text-[10px]" style={{ color: colors.muted }}>
+                <div className="break-words text-[10px]" style={{ color: colors.muted, overflowWrap: "anywhere" }}>
                   {data.customer_address}
                 </div>
               )}
@@ -671,7 +668,7 @@ export default function DynamicDocumentRenderer({
                 </div>
               )}
               {data.scope_of_work && (
-                <div className="line-clamp-2 text-[10px]" style={{ color: colors.muted }}>
+                <div className="text-[10px] break-words" style={{ color: colors.muted, overflowWrap: "anywhere" }}>
                   Scope: {data.scope_of_work}
                 </div>
               )}
@@ -726,7 +723,7 @@ export default function DynamicDocumentRenderer({
                 </div>
               )}
               {data.project_name && (
-                <div className="col-span-2 pt-0.5 border-t border-slate-200 line-clamp-1">
+                <div className="col-span-2 pt-0.5 border-t border-slate-200 break-words" style={{ overflowWrap: "anywhere" }}>
                   <span style={{ color: colors.muted }}>Project: </span>
                   <span className="font-semibold text-slate-900">{data.project_name}</span>
                 </div>

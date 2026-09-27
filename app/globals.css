@@ -130,6 +130,16 @@ body {
   display: none !important;
 }
 
+.print-modal-container .print-template-wrapper {
+  min-height: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.print-modal-container .print-template-wrapper > .no-print {
+  display: none !important;
+}
+
 /* ==========================================================================
    GLOBAL ENTERPRISE A4 PRINT / PDF STYLESHEET (DUBAI ERP STANDARD)
    ========================================================================== */
@@ -276,7 +286,10 @@ body {
      screen. Strip both for print so the document owns the full A4 surface. */
   .mobile-pdf-print-surface,
   .mobile-pdf-scale-shell,
-  .mobile-pdf-print-content {
+  .mobile-pdf-print-content,
+  .print-preview-surface,
+  .print-preview-scale-shell,
+  .print-preview-scale-content {
     display: block !important;
     position: static !important;
     width: 210mm !important;

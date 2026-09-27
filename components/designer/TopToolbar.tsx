@@ -33,6 +33,9 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { DocumentTypeId, DOCUMENT_TYPE_OPTIONS } from "@/lib/documentDesigner";
+import type { DocumentStylePreset } from "@/lib/documentStylePresetModel";
+
+export type AutoFixAction = "standard" | "saved" | "create" | "manage";
 
 interface TopToolbarProps {
   selectedDocType: DocumentTypeId;
@@ -60,6 +63,12 @@ interface TopToolbarProps {
   onSave: () => void;
   onReset: () => void;
   onAutoFix: () => void;
+  autoFixMode: "standard" | "saved";
+  onAutoFixAction: (action: AutoFixAction) => void;
+  stylePresets: DocumentStylePreset[];
+  selectedStylePresetId: string | null;
+  onSelectStylePreset: (id: string) => void;
+  onSaveMyStyle: () => void;
   onPreview: () => void;
   onCheckLayout?: () => void;
   templateName: string;
@@ -99,6 +108,12 @@ export default function TopToolbar({
   onSave,
   onReset,
   onAutoFix,
+  autoFixMode,
+  onAutoFixAction,
+  stylePresets,
+  selectedStylePresetId,
+  onSelectStylePreset,
+  onSaveMyStyle,
   onPreview,
   onCheckLayout,
   templateName,
@@ -131,7 +146,12 @@ export default function TopToolbar({
   return (
     <header className="shrink-0 border-b border-slate-800 bg-slate-900 text-white select-none z-30">
       {/* Primary Row: Document Selection, Editing & Main Actions */}
-      <div className="flex h-14 w-full items-center justify-between gap-1.5 px-2.5">
+      <div
+        className="flex h-14 w-full min-w-0 items-center justify-between gap-1.5 overflow-x-auto overscroll-x-contain px-2.5"
+        role="toolbar"
+        aria-label="PDF Designer primary actions"
+        tabIndex={0}
+      >
         {/* Left Section: Brand, Document Selector & History / Delete */}
         <div className="flex shrink-0 items-center gap-1.5">
           {/* Brand & Badge */}
@@ -275,6 +295,42 @@ export default function TopToolbar({
           >
             <WandSparkles size={14} className="text-emerald-400" />
             <span className="hidden xl:inline">Auto Fix</span>
+          </button>
+          <select
+            value={autoFixMode}
+            onChange={(event) => onAutoFixAction(event.target.value as AutoFixAction)}
+            disabled={saving}
+            className="h-8 max-w-[115px] rounded-lg border border-slate-700 bg-slate-800 px-1.5 text-[10px] font-semibold text-slate-200 outline-none focus:border-amber-400 sm:max-w-[145px] sm:px-2 sm:text-xs"
+            aria-label="Auto Fix style"
+            title="Choose Standard Auto Fix, a saved style, or manage styles"
+          >
+            <option value="standard">Standard Auto Fix</option>
+            <option value="saved">My Saved Style</option>
+            <option value="create">Create New Style</option>
+            <option value="manage">Manage Saved Styles</option>
+          </select>
+          {autoFixMode === "saved" && (
+            <select
+              value={selectedStylePresetId || ""}
+              onChange={(event) => onSelectStylePreset(event.target.value)}
+              disabled={saving || stylePresets.length === 0}
+              className="h-8 max-w-[130px] rounded-lg border border-amber-500/30 bg-slate-800 px-1.5 text-[10px] font-semibold text-amber-100 outline-none focus:border-amber-400 sm:max-w-[180px] sm:px-2 sm:text-xs"
+              aria-label="Choose saved style"
+            >
+              {stylePresets.length === 0 ? <option value="">No saved styles</option> : stylePresets.map((preset) => (
+                <option key={preset.id} value={preset.id}>{preset.template_name}{preset.is_default ? " (Default)" : ""}</option>
+              ))}
+            </select>
+          )}
+          <button
+            type="button"
+            onClick={onSaveMyStyle}
+            disabled={saving}
+            className="flex h-8 items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 text-[10px] font-bold text-amber-200 hover:bg-amber-500/20 disabled:opacity-50 sm:text-xs"
+            title="Save the complete current layout as a named style"
+            aria-label="Save My Style"
+          >
+            <Save size={13} /><span className="hidden 2xl:inline">Save My Style</span>
           </button>
 
           {/* Tools & Overflow Menu (More Actions) */}

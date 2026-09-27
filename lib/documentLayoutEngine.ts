@@ -36,6 +36,7 @@ export interface FitProfile {
   followerSpan: number;
   totalContentBottom: number;
   footerY: number;
+  partyInfoHeight?: number;
   warning?: string;
 }
 
@@ -83,6 +84,47 @@ export interface LayoutValidationReport {
 export interface ItemDescriptionLike {
   description?: string;
   [key: string]: unknown;
+}
+
+export interface DocumentFitText {
+  customer_name?: string;
+  customer_trn?: string;
+  customer_address?: string;
+  contact_person?: string;
+  contact_number?: string;
+  contact_email?: string;
+  supplier_name?: string;
+  project_name?: string;
+  location?: string;
+  scope_of_work?: string;
+}
+
+function estimateWrappedLines(value: string, widthMm: number, fontSizePx: number): number {
+  const charsPerLine = Math.max(16, Math.floor((widthMm * 3.7795) / (fontSizePx * 0.52)));
+  return value.split("\n").reduce((count, line) => count + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
+}
+
+function estimatePartyInfoHeight(layout: DocumentLayout, text?: DocumentFitText): number | undefined {
+  if (!text) return undefined;
+  const party = layout.elements.find((element) =>
+    element.visible && ["customer_info", "supplier_info", "project_info"].includes(element.type)
+  );
+  if (!party) return undefined;
+
+  const fields = party.type === "supplier_info"
+    ? [text.supplier_name || text.customer_name, text.contact_person, text.customer_address]
+    : party.type === "project_info"
+    ? [text.project_name, text.location, text.scope_of_work]
+    : [text.customer_name, text.customer_trn, text.customer_address, text.contact_person, text.contact_number, text.contact_email];
+  const fontSize = Math.max(9.5, party.fontSize || 10.5);
+  const textLines = fields.filter((value): value is string => Boolean(value?.trim())).reduce(
+    (count, value) => count + estimateWrappedLines(value, party.width - (party.padding || 3) * 2, fontSize),
+    1
+  );
+  const headingHeightMm = 4.5;
+  const lineHeightMm = (fontSize * 1.35) / 3.7795;
+  const contentHeight = headingHeightMm + textLines * lineHeightMm + (party.padding || 3) * 2 + 2;
+  return Math.max(party.height, contentHeight);
 }
 
 /**
@@ -214,12 +256,14 @@ export function calculateFollowerVerticalSpan(
 export function computeIntelligentFitProfile(
   layout: DocumentLayout,
   totalItems: number,
-  itemsData?: ItemDescriptionLike[]
+  itemsData?: ItemDescriptionLike[],
+  documentText?: DocumentFitText
 ): FitProfile {
   const table = layout.elements.find((el) => el.type === "line_items" && el.visible);
   const footer = layout.elements.find((el) => el.type === "footer" && el.visible);
   const footerY = footer ? footer.y : layout.page.heightMm - layout.page.margins.bottom - 16;
   const safetyBottom = footerY - 2.5;
+  const partyInfoHeight = estimatePartyInfoHeight(layout, documentText);
 
   if (!table || totalItems <= 0) {
     return {
@@ -236,6 +280,7 @@ export function computeIntelligentFitProfile(
       followerSpan: 0,
       totalContentBottom: table?.y || 95,
       footerY,
+      partyInfoHeight,
     };
   }
 
@@ -243,8 +288,9 @@ export function computeIntelligentFitProfile(
   const elementsAbove = layout.elements.filter(
     (el) => el.visible && el.type !== "watermark" && el.y + el.height <= table.y + 2
   );
+  const party = layout.elements.find((el) => el.visible && ["customer_info", "supplier_info", "project_info"].includes(el.type));
   const maxAboveBottom = elementsAbove.length > 0
-    ? Math.max(...elementsAbove.map((el) => el.y + el.height))
+    ? Math.max(...elementsAbove.map((el) => el.y + (el.id === party?.id && partyInfoHeight ? partyInfoHeight : el.height)))
     : 60;
 
   const followers = layout.elements.filter(
@@ -286,8 +332,8 @@ export function computeIntelligentFitProfile(
       level: "compact",
       rowHeight: 7.0,
       headerHeight: 6.5,
-      fontSize: 9.0,
-      headerFontSize: 9.0,
+      fontSize: 9.5,
+      headerFontSize: 9.5,
       followerScale: 0.84,
       gap: 2.0,
       allowSlideTableUp: true,
@@ -296,8 +342,8 @@ export function computeIntelligentFitProfile(
       level: "dense",
       rowHeight: 6.0,
       headerHeight: 6.0,
-      fontSize: 8.2,
-      headerFontSize: 8.2,
+      fontSize: 9.5,
+      headerFontSize: 9.5,
       followerScale: 0.76,
       gap: 1.5,
       allowSlideTableUp: true,
@@ -312,14 +358,17 @@ export function computeIntelligentFitProfile(
       const meta = layout.elements.find((el) => el.visible && el.type === "doc_meta");
       if (party && meta && Math.abs(party.y - meta.y) <= 8) {
         const topY = Math.min(party.y, meta.y);
-        const cardH = tier.level === "dense" ? 23 : tier.level === "compact" ? 25 : 27;
+        const cardH = Math.max(partyInfoHeight || 0, tier.level === "dense" ? 23 : tier.level === "compact" ? 25 : 27);
         effectiveAbove = Math.min(maxAboveBottom, topY + cardH);
       }
     }
 
-    const tableY = tier.allowSlideTableUp
-      ? Math.max(effectiveAbove + 2.5, Math.min(table.y, effectiveAbove + 4.5))
-      : table.y;
+    const tableY = Math.max(
+      table.y,
+      tier.allowSlideTableUp
+        ? Math.min(effectiveAbove + 4.5, Math.max(effectiveAbove + 2.5, table.y))
+        : maxAboveBottom + 2.5
+    );
 
     const tableHeight = calculateTableRenderedHeight(
       table,
@@ -346,6 +395,7 @@ export function computeIntelligentFitProfile(
         followerSpan,
         totalContentBottom,
         footerY,
+        partyInfoHeight,
       };
     }
   }
@@ -356,15 +406,16 @@ export function computeIntelligentFitProfile(
     level: "multi_page",
     rowHeight: 7.5,
     headerHeight: 7.0,
-    fontSize: 9.0,
-    headerFontSize: 9.0,
+    fontSize: 9.5,
+    headerFontSize: 9.5,
     followerScale: 0.88,
     gap: 2.5,
-    tableY: table.y,
+    tableY: Math.max(table.y, maxAboveBottom + 2.5),
     tableHeight: calculateTableRenderedHeight(table, totalItems, itemsData, 7.5, 7.0),
     followerSpan: calculateFollowerVerticalSpan(followers, 0.88, 2.5),
     totalContentBottom: 310,
     footerY,
+    partyInfoHeight,
     warning: `Document exceeds single-page A4 capacity (${totalItems} items). Formatted cleanly for multi-page printing without data loss.`,
   };
 }
@@ -375,7 +426,8 @@ export function computeIntelligentFitProfile(
 export function computePaginationPlan(
   layout: DocumentLayout,
   totalItems: number,
-  itemsData?: ItemDescriptionLike[]
+  itemsData?: ItemDescriptionLike[],
+  documentText?: DocumentFitText
 ): PaginationPlan {
   const table = layout.elements.find((el) => el.type === "line_items" && el.visible);
   if (!table || totalItems <= 0) {
@@ -395,7 +447,7 @@ export function computePaginationPlan(
   }
 
   // First: attempt intelligent single-page fitting
-  const fit = computeIntelligentFitProfile(layout, totalItems, itemsData);
+  const fit = computeIntelligentFitProfile(layout, totalItems, itemsData, documentText);
   if (fit.fits) {
     return {
       totalPages: 1,
@@ -428,52 +480,49 @@ export function computePaginationPlan(
     rowHeight * 2,
     maxContentY - fit.tableY - followerSpan - fit.gap - 2
   );
-  const maxItemsWithFollowers = Math.max(
-    1,
-    Math.floor((spaceForTableWithFollowers - headerHeight) / rowHeight)
-  );
-
-  // Space on non-final pages (no followers, table utilizes full available vertical height)
+  const finalPageCapacity = Math.max(rowHeight * 2, spaceForTableWithFollowers - headerHeight);
   const spaceForTableWithoutFollowers = Math.max(
     rowHeight * 3,
     maxContentY - fit.tableY - 2
   );
-  const maxItemsWithoutFollowers = Math.max(
-    1,
-    Math.floor((spaceForTableWithoutFollowers - headerHeight) / rowHeight)
+  const regularPageCapacity = Math.max(rowHeight * 3, spaceForTableWithoutFollowers - headerHeight);
+  const rowHeights = Array.from({ length: totalItems }, (_, index) =>
+    calculateItemRowHeight(rowHeight, itemsData?.[index]?.description)
   );
 
   const pageItemRanges: PaginationPlan["pageItemRanges"] = [];
-  let remaining = totalItems;
   let currentIndex = 0;
-  let currentPage = 1;
 
-  while (remaining > 0) {
-    if (remaining <= maxItemsWithFollowers) {
+  while (currentIndex < totalItems) {
+    const remainingHeight = rowHeights.slice(currentIndex).reduce((sum, height) => sum + height, 0);
+    if (remainingHeight <= finalPageCapacity) {
       pageItemRanges.push({
-        pageNumber: currentPage,
+        pageNumber: pageItemRanges.length + 1,
         startIndex: currentIndex,
-        endIndex: currentIndex + remaining,
-        itemCount: remaining,
+        endIndex: totalItems,
+        itemCount: totalItems - currentIndex,
         isLastPage: true,
       });
       break;
     }
 
-    const canTake = Math.min(remaining - 1, maxItemsWithoutFollowers);
-    const take = Math.max(1, canTake);
+    let endIndex = currentIndex;
+    let usedHeight = 0;
+    while (endIndex < totalItems - 1 && usedHeight + rowHeights[endIndex] <= regularPageCapacity) {
+      usedHeight += rowHeights[endIndex];
+      endIndex += 1;
+    }
+    if (endIndex === currentIndex) endIndex += 1;
 
     pageItemRanges.push({
-      pageNumber: currentPage,
+      pageNumber: pageItemRanges.length + 1,
       startIndex: currentIndex,
-      endIndex: currentIndex + take,
-      itemCount: take,
+      endIndex,
+      itemCount: endIndex - currentIndex,
       isLastPage: false,
     });
 
-    currentIndex += take;
-    remaining -= take;
-    currentPage += 1;
+    currentIndex = endIndex;
   }
 
   return {
@@ -507,15 +556,29 @@ export function computeEffectiveLayout(
   isLastPage: boolean,
   pageNumber: number = 1,
   totalPages?: number,
-  itemsData?: ItemDescriptionLike[]
+  itemsData?: ItemDescriptionLike[],
+  documentText?: DocumentFitText
 ): EffectiveLayoutResult {
   const table = layout.elements.find((el) => el.type === "line_items");
 
   // Determine pagination plan and fit profile
-  const paginationPlan = computePaginationPlan(layout, pageItemsCount, itemsData);
+  const paginationPlan = computePaginationPlan(layout, pageItemsCount, itemsData, documentText);
   const resolvedTotalPages = totalPages || paginationPlan.totalPages;
   const isSinglePage = resolvedTotalPages === 1;
-  const fitProfile = paginationPlan.fitProfile || computeIntelligentFitProfile(layout, pageItemsCount, itemsData);
+  const computedProfile = paginationPlan.fitProfile || computeIntelligentFitProfile(layout, pageItemsCount, itemsData, documentText);
+  const fitProfile: FitProfile = resolvedTotalPages > 1
+    ? {
+        ...computedProfile,
+        fits: false,
+        level: "multi_page",
+        rowHeight: 7.5,
+        headerHeight: 7,
+        fontSize: 9.5,
+        headerFontSize: 9.5,
+        followerScale: 0.88,
+        gap: 2.5,
+      }
+    : computedProfile;
 
   const effectiveTableY = isSinglePage && fitProfile.tableY ? fitProfile.tableY : (table ? table.y : 95);
   const effectiveRowHeight = fitProfile.rowHeight;
@@ -580,7 +643,7 @@ export function computeEffectiveLayout(
     partyMetaAlignedY = Math.min(partyElement.y, metaElement.y);
 
     // 2. Maintain equal visual heights
-    let rawHeight = Math.max(partyElement.height, metaElement.height);
+    let rawHeight = Math.max(partyElement.height, metaElement.height, fitProfile.partyInfoHeight || 0);
 
     // 3. Compact cleanly if compact or dense fitProfile is active
     if (isSinglePage && fitProfile.level !== "standard") {
@@ -695,12 +758,13 @@ export function computeEffectiveLayout(
     }
 
     // 6. Fixed header/info elements above the table
+    const isPartyInfo = ["customer_info", "supplier_info", "project_info"].includes(el.type);
     return {
       ...el,
       effectiveX: el.x,
       effectiveY: el.y,
       effectiveWidth: el.width,
-      effectiveHeight: el.height,
+      effectiveHeight: isPartyInfo ? Math.max(el.height, fitProfile.partyInfoHeight || 0) : el.height,
       isFollower: false,
       shiftY: 0,
       effectiveVisible: el.visible && pageMatches,

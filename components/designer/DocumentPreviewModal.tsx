@@ -151,7 +151,7 @@ export default function DocumentPreviewModal({
     layout.documentType === "tax_invoice"
       ? TEST_DATASETS[selectedDatasetKey]?.data || SAMPLE_DOCUMENT_DATA
       : getSampleDocumentData(layout.documentType);
-  const computedTotalPages = getDocumentPageCount(layout, activeDataset.items.length, activeDataset.items);
+  const computedTotalPages = getDocumentPageCount(layout, activeDataset.items.length, activeDataset.items, activeDataset);
 
   useEffect(() => {
     if (!isOpen) return;

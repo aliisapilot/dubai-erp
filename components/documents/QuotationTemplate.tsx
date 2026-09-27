@@ -105,7 +105,7 @@ export default function QuotationTemplate({
     payment_terms: quotation.payment_terms || undefined,
     notes: quotation.notes || quotation.terms_conditions || undefined,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
   return (
     <DocumentContainer
       docTypeLabel="Quotation"

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  X, Share2, Printer, ZoomIn, ZoomOut, ExternalLink,
+  X, Share2, Printer, ZoomIn, ZoomOut, Scan, ExternalLink,
   Loader2, Check, AlertCircle
 } from "lucide-react";
 import { MobilePortalDocument, shareDocument } from "@/lib/mobilePortalTypes";
@@ -12,6 +12,7 @@ import {
   logDocumentAccess,
 } from "@/lib/mobilePortalService";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { getDocumentPreviewScale } from "@/lib/documentPreview";
 
 // Template imports
 import TaxInvoiceTemplate, { TaxInvoiceData } from "@/components/documents/TaxInvoiceTemplate";
@@ -38,12 +39,17 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
   const [error, setError] = useState("");
   const [sharedNotice, setSharedNotice] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
+  const previewSurfaceRef = useRef<HTMLDivElement>(null);
+
+  function fitToWidth() {
+    const availableWidth = (previewSurfaceRef.current?.clientWidth || window.innerWidth) - 24;
+    setScale(getDocumentPreviewScale(availableWidth, 794, 0.92));
+  }
 
   useEffect(() => {
-    const fitPage = () => setScale(Math.min(0.92, Math.max(0.35, (window.innerWidth - 24) / 794)));
-    fitPage();
-    window.addEventListener("resize", fitPage);
-    return () => window.removeEventListener("resize", fitPage);
+    fitToWidth();
+    window.addEventListener("resize", fitToWidth);
+    return () => window.removeEventListener("resize", fitToWidth);
   }, []);
 
   useEffect(() => {
@@ -152,7 +158,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
   }
 
   return (
-    <div className="mobile-pdf-modal print-modal-container fixed inset-0 z-50 flex h-[100dvh] flex-col bg-slate-950 text-white animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label={`Preview ${document.documentNumber}`}>
+    <div className="mobile-pdf-modal print-modal-container fixed inset-0 z-50 flex h-[100dvh] flex-col bg-slate-950 text-white pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label={`Preview ${document.documentNumber}`}>
       {/* Top Controls Bar */}
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-2 py-2 pt-[calc(0.5rem+env(safe-area-inset-top))] sm:px-4">
         <div className="flex items-center gap-2 truncate pr-2">
@@ -197,6 +203,16 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
             <ZoomIn size={16} />
           </button>}
 
+          {document.category !== "company_file" && <button
+            type="button"
+            onClick={fitToWidth}
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white"
+            aria-label="Fit page to width"
+            title="Fit page to width"
+          >
+            <Scan size={16} />
+          </button>}
+
           {/* Native Share */}
           <button
             type="button"
@@ -212,6 +228,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
             type="button"
             onClick={() => window.print()}
             className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white"
+            aria-label="Print or save as PDF"
             title="Print or save as PDF"
           >
             <Printer size={16} />
@@ -220,7 +237,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
       </header>
 
       {/* Main Preview Surface with Responsive Scale Container */}
-      <div className="mobile-pdf-print-surface flex flex-1 items-start justify-center overflow-auto bg-slate-900/60 p-2 custom-scrollbar sm:p-4">
+      <div ref={previewSurfaceRef} className="mobile-pdf-print-surface flex flex-1 items-start justify-center overflow-auto bg-slate-900/60 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] custom-scrollbar sm:p-4">
         {loading ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-400 py-20">
             <Loader2 className="animate-spin text-emerald-400 mb-2" size={26} />

@@ -93,7 +93,7 @@ export default function PurchaseOrderTemplate({
     payment_terms: po.payment_terms || undefined,
     notes: po.notes || po.terms_conditions || undefined,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
   return (
     <DocumentContainer
       docTypeLabel="Purchase Order"

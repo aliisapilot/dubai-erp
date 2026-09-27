@@ -107,7 +107,7 @@ export default function TaxInvoiceTemplate({
     payment_terms: invoice.payment_terms || undefined,
     notes: invoice.notes || undefined,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
 
   return (
     <DocumentContainer

@@ -73,7 +73,7 @@ export default function EmployeePaymentVoucherTemplate({
     payment_terms: voucher.payment_method,
     notes: voucher.notes || `Bank: ${voucher.bank_name || "N/A"} | Ref: ${voucher.bank_reference || "N/A"}`,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
 
   return (
     <DocumentContainer

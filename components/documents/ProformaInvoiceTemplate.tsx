@@ -92,7 +92,7 @@ export default function ProformaInvoiceTemplate({
     payment_terms: proforma.payment_terms || undefined,
     notes: proforma.notes || undefined,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
   return (
     <DocumentContainer
       docTypeLabel="Proforma Invoice"

@@ -78,7 +78,7 @@ export default function StatementOfAccountTemplate({
     vat_amount: 0,
     total_amount: statement.closing_balance,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
 
   return (
     <DocumentContainer

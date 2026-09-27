@@ -18,7 +18,120 @@ const mobilePdfModalSource = await readFile(
   new URL("../components/mobile/MobilePdfModal.tsx", import.meta.url),
   "utf8"
 );
+const printModalSource = await readFile(new URL("../components/documents/PrintModal.tsx", import.meta.url), "utf8");
+const designerSource = await readFile(new URL("../components/designer/DocumentDesigner.tsx", import.meta.url), "utf8");
+const topToolbarSource = await readFile(new URL("../components/designer/TopToolbar.tsx", import.meta.url), "utf8");
+const dynamicRendererSource = await readFile(new URL("../components/documents/DynamicDocumentRenderer.tsx", import.meta.url), "utf8");
+const mobilePortalServiceSource = await readFile(new URL("../lib/mobilePortalService.ts", import.meta.url), "utf8");
 const globalCssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+const previewScaleSource = await readFile(new URL("../lib/documentPreview.ts", import.meta.url), "utf8");
+const presetModelSource = await readFile(new URL("../lib/documentStylePresetModel.ts", import.meta.url), "utf8");
+const layoutEngineSource = await readFile(new URL("../lib/documentLayoutEngine.ts", import.meta.url), "utf8");
+const templateRlsMigrationSource = await readFile(
+  new URL("../supabase/migrations/20260930000000_document_template_company_rls.sql", import.meta.url),
+  "utf8"
+);
+const previewScaleModule = ts.transpileModule(previewScaleSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2022,
+    target: ts.ScriptTarget.ES2022,
+  },
+}).outputText;
+const previewScaleUrl = `data:text/javascript;base64,${Buffer.from(previewScaleModule).toString("base64")}`;
+const { getDocumentPreviewScale } = await import(previewScaleUrl);
+const presetModelModule = ts.transpileModule(presetModelSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2022,
+    target: ts.ScriptTarget.ES2022,
+  },
+}).outputText;
+const presetModelUrl = `data:text/javascript;base64,${Buffer.from(presetModelModule).toString("base64")}`;
+const { createDocumentStylePresetManager } = await import(presetModelUrl);
+const layoutEngineModule = ts.transpileModule(layoutEngineSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2022,
+    target: ts.ScriptTarget.ES2022,
+  },
+}).outputText;
+const layoutEngineUrl = `data:text/javascript;base64,${Buffer.from(layoutEngineModule).toString("base64")}`;
+const { computeEffectiveLayout, computeIntelligentFitProfile, computePaginationPlan } = await import(layoutEngineUrl);
+
+function createMemoryPresetStore() {
+  const records = [];
+  let nextId = 1;
+  return {
+    records,
+    async list(companyId, documentType) {
+      return records.filter((row) => row.company_id === companyId && row.document_type === documentType);
+    },
+    async save({ companyId, documentType, name, layout }) {
+      const existing = records.find((row) => row.company_id === companyId && row.document_type === documentType && row.template_name === name);
+      const saved = {
+        id: existing?.id || `preset-${nextId++}`,
+        company_id: companyId,
+        document_type: documentType,
+        template_name: name,
+        layout_json: JSON.parse(JSON.stringify(layout)),
+        is_default: existing?.is_default || false,
+        updated_at: new Date().toISOString(),
+      };
+      if (existing) records.splice(records.indexOf(existing), 1, saved);
+      else records.push(saved);
+      return saved;
+    },
+    async update({ companyId, documentType, id, name, layout }) {
+      const preset = records.find((row) => row.company_id === companyId && row.document_type === documentType && row.id === id);
+      if (!preset) throw new Error("Preset not found");
+      preset.template_name = name;
+      preset.layout_json = JSON.parse(JSON.stringify(layout));
+      return preset;
+    },
+    async rename(companyId, documentType, id, name) {
+      const preset = records.find((row) => row.company_id === companyId && row.document_type === documentType && row.id === id);
+      if (!preset) throw new Error("Preset not found");
+      preset.template_name = name;
+    },
+    async delete(companyId, documentType, id) {
+      const index = records.findIndex((row) => row.company_id === companyId && row.document_type === documentType && row.id === id);
+      if (index >= 0) records.splice(index, 1);
+    },
+    async setDefault(companyId, documentType, id) {
+      for (const row of records) {
+        if (row.company_id === companyId && row.document_type === documentType) row.is_default = row.id === id;
+      }
+    },
+  };
+}
+
+function createFitTestLayout() {
+  const basicElement = (id, type, x, y, width, height) => ({
+    id,
+    type,
+    label: id,
+    x,
+    y,
+    width,
+    height,
+    visible: true,
+    locked: false,
+    zIndex: 1,
+  });
+  return {
+    version: 7,
+    documentType: "quotation",
+    templateName: "Regression layout",
+    page: { paper: "A4", orientation: "portrait", widthMm: 210, heightMm: 297, margins: { top: 12, right: 12, bottom: 12, left: 12 }, background: "#fff", watermarkOpacity: 0.04 },
+    branding: { primaryColor: "#123456", accentColor: "#C9A227", textColor: "#334155", mutedColor: "#64748B", borderColor: "#CBD5E1", tableHeaderColor: "#123456", totalHighlightColor: "#F8F6ED" },
+    elements: [
+      basicElement("customer_info", "customer_info", 12, 63, 91, 27),
+      basicElement("doc_meta", "doc_meta", 107, 63, 91, 27),
+      { ...basicElement("line_items", "line_items", 12, 95, 186, 65), tableSettings: { rowHeight: 9.5, fontSize: 10.5, headerFontSize: 10.5 } },
+      basicElement("amount_in_words", "amount_in_words", 12, 167, 105, 25),
+      basicElement("totals", "totals", 121, 167, 77, 40),
+      basicElement("footer", "footer", 12, 262, 186, 16),
+    ],
+  };
+}
 
 test("flattens the Supabase customer relationship used by mobile PDF previews", () => {
   const result = withCustomerDocumentDetails({
@@ -77,6 +190,157 @@ test("does not invent placeholder customer information", () => {
   assert.equal(result.contact_number, undefined);
 });
 
+test("fits A4 previews to narrow mobile widths without a minimum-scale overflow", () => {
+  for (const viewportWidth of [320, 360, 390]) {
+    const availableWidth = viewportWidth - 32;
+    const scale = getDocumentPreviewScale(availableWidth, 794);
+    assert.ok(794 * scale <= availableWidth);
+    assert.ok(Math.abs((1123 * scale) / (794 * scale) - 1123 / 794) < 1e-12);
+  }
+  assert.equal(getDocumentPreviewScale(1000, 794), 1);
+  assert.equal(getDocumentPreviewScale(1000, 794, 0.92), 0.92);
+});
+
+test("uses shared fit scaling and accessible actions in both preview modals", () => {
+  assert.match(printModalSource, /getDocumentPreviewScale/);
+  assert.match(printModalSource, /print-preview-scale-shell/);
+  assert.match(printModalSource, /height: dimensions\.height \* scale/);
+  assert.match(printModalSource, /aria-label="Fit page to width"/);
+  assert.match(printModalSource, /aria-label="Print or save as PDF"/);
+  assert.match(printModalSource, /aria-label="Close document preview"/);
+  assert.match(printModalSource, /window\.print\(\)/);
+  assert.match(mobilePdfModalSource, /getDocumentPreviewScale/);
+  assert.match(mobilePdfModalSource, /aria-label="Fit page to width"/);
+  assert.match(mobilePdfModalSource, /aria-label="Print or save as PDF"/);
+  assert.match(mobilePdfModalSource, /pl-\[env\(safe-area-inset-left\)\]/);
+  assert.match(mobilePdfModalSource, /env\(safe-area-inset-bottom\)/);
+  assert.match(printModalSource, /pr-\[env\(safe-area-inset-right\)\]/);
+});
+
+test("exposes all saved-style actions beside Auto Fix and preserves long party text", () => {
+  for (const label of ["Standard Auto Fix", "My Saved Style", "Create New Style", "Manage Saved Styles"]) {
+    assert.ok(topToolbarSource.includes(label));
+  }
+  assert.match(topToolbarSource, /aria-label="Save My Style"/);
+  assert.match(topToolbarSource, /overflow-x-auto overscroll-x-contain/);
+  const customerBlock = dynamicRendererSource.match(/case "customer_info": \{([\s\S]*?)case "supplier_info":/)[1];
+  const supplierBlock = dynamicRendererSource.match(/case "supplier_info": \{([\s\S]*?)case "project_info":/)[1];
+  const projectBlock = dynamicRendererSource.match(/case "project_info": \{([\s\S]*?)case "doc_meta":/)[1];
+  assert.doesNotMatch(customerBlock, /text-\[7(?:px|\.5px)\]/);
+  assert.doesNotMatch(supplierBlock + projectBlock, /line-clamp/);
+  assert.match(customerBlock, /overflowWrap: "anywhere"/);
+  const autoFixHandler = designerSource.match(/const handleAutoFix = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[autoFixMode/)[1];
+  assert.match(autoFixHandler, /proposedLayout = JSON\.parse\(JSON\.stringify\(layout\)\)/);
+  assert.doesNotMatch(autoFixHandler, /createDefaultLayout\(selectedDocType\)/);
+});
+
+test("keeps quotation snapshot names ahead of customer master data without placeholders", () => {
+  const quotationLoader = mobilePortalServiceSource.match(/\/\/ 2\. Quotations([\s\S]*?)\/\/ 3\. Proforma Invoices/)?.[1] || "";
+  assert.match(quotationLoader, /\.select\("\*, customer:customers\(id, name, trn\)"\)/);
+  assert.match(quotationLoader, /partyName: item\.customer_name \|\| cust\?\.name \|\| ""/);
+  assert.doesNotMatch(quotationLoader, /partyName: cust\?\.name \|\| "Customer"/);
+});
+
+test("saves, loads, applies, renames, duplicates and deletes complete company document styles", async () => {
+  const store = createMemoryPresetStore();
+  const manager = createDocumentStylePresetManager(store);
+  const layout = createFitTestLayout();
+  layout.elements.push({
+    id: "custom_stamp",
+    type: "custom_image",
+    label: "Stamp",
+    x: 160,
+    y: 220,
+    width: 25,
+    height: 25,
+    visible: true,
+    locked: false,
+    zIndex: 10,
+    imageSrc: "data:image/png;base64,stamp-fixture",
+    fontFamily: "Noto Naskh Arabic",
+    textAlign: "right",
+    color: "#008060",
+  });
+  layout.elements.find((element) => element.id === "line_items").tableSettings.columns = [
+    { key: "description", label: "Description / الوصف", labelAr: "الوصف", visible: true, widthPct: 60, align: "right" },
+  ];
+
+  const saved = await manager.save("company-a", "quotation", "Bilingual Brand", layout);
+  await assert.rejects(
+    () => manager.save("company-a", "quotation", "Bilingual Brand", layout),
+    /already exists/
+  );
+  const loaded = await manager.list("company-a", "quotation");
+  const applied = manager.apply(loaded[0], "quotation");
+  assert.equal(loaded.length, 1);
+  assert.equal(applied.templateName, "Bilingual Brand");
+  assert.deepEqual(applied.elements, layout.elements);
+  assert.equal(applied.elements.find((element) => element.id === "custom_stamp").imageSrc, "data:image/png;base64,stamp-fixture");
+  assert.equal(applied.elements.find((element) => element.id === "custom_stamp").fontFamily, "Noto Naskh Arabic");
+  assert.deepEqual(applied.elements.find((element) => element.id === "line_items").tableSettings.columns, layout.elements.find((element) => element.id === "line_items").tableSettings.columns);
+
+  const duplicate = await manager.duplicate("company-a", "quotation", saved, "Bilingual Brand Copy");
+  await manager.update("company-a", "quotation", duplicate.id, "Bilingual Brand Copy", layout);
+  await manager.rename("company-a", "quotation", duplicate.id, "Renamed Copy");
+  await manager.delete("company-a", "quotation", saved);
+  assert.equal((await manager.list("company-a", "quotation")).length, 1);
+  await manager.setDefault("company-a", "quotation", duplicate.id);
+  const afterRename = await manager.list("company-a", "quotation");
+  assert.equal(afterRename.find((preset) => preset.id === duplicate.id).template_name, "Renamed Copy");
+  assert.equal(afterRename.find((preset) => preset.id === duplicate.id).is_default, true);
+  assert.equal(afterRename.filter((preset) => preset.is_default).length, 1);
+  assert.throws(() => manager.delete("company-a", "quotation", afterRename.find((preset) => preset.id === duplicate.id)), /Choose another default/);
+  assert.equal((await manager.list("company-a", "quotation")).length, 1);
+  assert.equal((await manager.list("company-b", "quotation")).length, 0);
+  assert.throws(() => manager.apply(duplicate, "tax_invoice"), /different document type/);
+});
+
+test("keeps customer information readable and shifts the table for long saved details", () => {
+  const layout = createFitTestLayout();
+  const profile = computeIntelligentFitProfile(layout, 2, [{ description: "Arabic / English item" }], {
+    customer_name: "شركة النور العالمية للمقاولات والإنشاءات ذ.م.م. International Trading and Contracting Company LLC",
+    customer_trn: "100345678900003",
+    customer_address: "Office 1204, Sheikh Zayed Road, Trade Centre District, Dubai, United Arab Emirates, P.O. Box 123456",
+    contact_person: "مدير الحسابات المسؤول عن المشاريع الدولية / International Accounts and Projects Manager",
+    contact_number: "+971 50 123 4567",
+    contact_email: "accounts.international.projects@example.test",
+  });
+  assert.ok(profile.partyInfoHeight > 27);
+  assert.ok(profile.tableY > 95);
+  const effective = computeEffectiveLayout(layout, 2, true, 1, 1, [{ description: "Arabic / English item" }], {
+    customer_name: "شركة النور العالمية للمقاولات والإنشاءات ذ.م.م. International Trading and Contracting Company LLC",
+    customer_trn: "100345678900003",
+    customer_address: "Office 1204, Sheikh Zayed Road, Trade Centre District, Dubai, United Arab Emirates, P.O. Box 123456",
+    contact_person: "مدير الحسابات المسؤول عن المشاريع الدولية / International Accounts and Projects Manager",
+    contact_number: "+971 50 123 4567",
+    contact_email: "accounts.international.projects@example.test",
+  });
+  assert.ok(effective.elements.find((element) => element.id === "customer_info").effectiveHeight >= profile.partyInfoHeight);
+});
+
+test("paginates all long bilingual item rows and maintains readable compact text on A4", () => {
+  const layout = createFitTestLayout();
+  const items = Array.from({ length: 24 }, (_, index) => ({
+    description: `${index + 1}. ${"Custom industrial installation and safety specification ".repeat(3)} وصف عربي طويل للمواصفات والتركيب والسلامة والمواد المعتمدة في دولة الإمارات العربية المتحدة.`,
+  }));
+  const plan = computePaginationPlan(layout, items.length, items);
+  const coveredIndexes = plan.pageItemRanges.flatMap((range) => Array.from({ length: range.endIndex - range.startIndex }, (_, offset) => range.startIndex + offset));
+  assert.ok(plan.totalPages > 1);
+  assert.deepEqual(coveredIndexes, Array.from({ length: items.length }, (_, index) => index));
+  assert.ok(plan.fitProfile.fontSize >= 9.5);
+
+  const shortPlan = computePaginationPlan(layout, 2, [{ description: "Short item" }, { description: "Short description" }]);
+  assert.equal(shortPlan.totalPages, 1);
+});
+
+test("company template policy scopes access to owners and active company members", () => {
+  assert.match(templateRlsMigrationSource, /c\.owner_id = \(SELECT auth\.uid\(\)\)/);
+  assert.match(templateRlsMigrationSource, /p\.company_id = p_company_id/);
+  assert.doesNotMatch(templateRlsMigrationSource, /get_auth_user_company_ids/);
+  assert.doesNotMatch(templateRlsMigrationSource, /USING\s*\(true\)|WITH CHECK\s*\(true\)/i);
+  assert.match(templateRlsMigrationSource, /REVOKE ALL ON TABLE public\.document_templates FROM anon/);
+});
+
 test("isolates the mobile PDF modal as the only print target", () => {
   assert.match(mobilePdfModalSource, /className="mobile-pdf-modal print-modal-container fixed inset-0/);
   assert.match(mobilePdfModalSource, /mobile-pdf-print-surface/);
@@ -95,8 +359,12 @@ test("isolates the mobile PDF modal as the only print target", () => {
     globalCssSource,
     /\.mobile-pdf-modal \.print-template-wrapper > \.no-print \{[\s\S]*?display: none !important;/
   );
-  assert.doesNotMatch(
-    globalCssSource,
-    /\.print-modal-container \.print-template-wrapper > \.no-print/
-  );
+  assert.match(globalCssSource, /\.print-modal-container \.print-template-wrapper > \.no-print \{[\s\S]*?display: none !important;/);
+});
+
+test("keeps A4 export sizing independent from on-screen preview scaling", () => {
+  assert.match(globalCssSource, /@page\s*\{\s*size: A4 portrait;/);
+  assert.match(globalCssSource, /\.print-document,[\s\S]*?width: 210mm !important;[\s\S]*?min-height: 297mm !important;/);
+  assert.match(globalCssSource, /\.print-preview-scale-shell,[\s\S]*?width: 210mm !important;/);
+  assert.match(globalCssSource, /\.print-preview-scale-content[\s\S]*?transform: none !important;/);
 });

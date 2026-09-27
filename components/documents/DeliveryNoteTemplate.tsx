@@ -92,7 +92,7 @@ export default function DeliveryNoteTemplate({
     notes: deliveryNote.notes || undefined,
   };
   const totalPages = customLayout
-    ? getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items)
+    ? getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData)
     : 1;
   return (
     <DocumentContainer

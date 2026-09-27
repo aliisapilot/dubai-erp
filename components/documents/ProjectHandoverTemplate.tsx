@@ -73,7 +73,7 @@ export default function ProjectHandoverTemplate({
     notes: handover.snags_remarks || "Works inspected and formally accepted.",
   };
   const totalPages = customLayout
-    ? getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items)
+    ? getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData)
     : 1;
   return (
     <DocumentContainer

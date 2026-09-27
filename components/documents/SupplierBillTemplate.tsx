@@ -89,7 +89,7 @@ export default function SupplierBillTemplate({
     advance_amount: bill.paid_amount,
     notes: bill.notes || undefined,
   };
-  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items);
+  const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
   const paid = Number(bill.paid_amount) || 0;
   const balance = Math.max(0, bill.total_amount - paid);
 
