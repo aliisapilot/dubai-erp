@@ -26,6 +26,7 @@ export interface MockDocumentData {
   customer_address?: string;
   contact_person?: string;
   contact_number?: string;
+  contact_email?: string;
   supplier_name?: string;
   project_name?: string;
   project_number?: string;
@@ -554,7 +555,13 @@ export default function DynamicDocumentRenderer({
             : layout.documentType === "salary_statement"
             ? "Employee"
             : "Buyer";
-        const padMm = elem.padding !== undefined ? elem.padding : 3.2;
+        const populatedDetails = [data.customer_trn, data.customer_address, data.contact_person, data.contact_number, data.contact_email].filter(Boolean).length;
+        const partyTextLength = [data.customer_name, data.customer_address, data.contact_person, data.contact_number, data.contact_email]
+          .filter(Boolean)
+          .join(" ").length;
+        const useCompactPartyText = populatedDetails >= 4 || partyTextLength > 120;
+        const configuredPadMm = elem.padding !== undefined ? elem.padding : 3.2;
+        const padMm = useCompactPartyText ? Math.min(configuredPadMm, 1.2) : configuredPadMm;
         return (
           <div
             className="w-full h-full flex flex-col justify-start select-text"
@@ -568,27 +575,33 @@ export default function DynamicDocumentRenderer({
               ...elementAppearance(elem),
             }}
           >
-            <div className="flex justify-between items-center border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
+            <div className={`flex justify-between items-center border-b font-bold uppercase ${useCompactPartyText ? "pb-px text-[7.5px]" : "pb-1 text-[10px]"}`} style={{ borderColor: colors.border }}>
               <span style={{ color: colors.primary }}>{partyHeading}</span>
               <span style={{ color: colors.muted }}>{partyRole}</span>
             </div>
-            <div className="space-y-0.5 mt-1.5 text-[10.5px] leading-tight select-text">
-              <div className="font-bold text-slate-900 break-words leading-tight">{data.customer_name}</div>
+            <div className={`${useCompactPartyText ? "space-y-0 mt-px text-[7.5px]" : "space-y-0.5 mt-1.5 text-[10.5px]"} leading-tight select-text`}>
+              <div className={`font-bold text-slate-900 break-words leading-tight ${useCompactPartyText ? "text-[8px]" : ""}`}>{data.customer_name}</div>
               {data.customer_trn && (
-                <div>
+                <div className={useCompactPartyText ? "text-[7.5px]" : ""}>
                   <span style={{ color: colors.muted }}>TRN: </span>
                   <span className="font-mono font-bold text-slate-900">{data.customer_trn}</span>
                 </div>
               )}
               {data.customer_address && (
-                <div className="break-words line-clamp-2 text-[10px]" style={{ color: colors.muted }}>
+                <div className={`break-words leading-tight ${useCompactPartyText ? "text-[7px]" : "text-[9px]"}`} style={{ color: colors.muted, overflowWrap: "anywhere" }}>
                   {data.customer_address}
                 </div>
               )}
               {data.contact_person && (
-                <div className="break-words text-[10px]" style={{ color: colors.muted }}>
-                  Attn: {data.contact_person} {data.contact_number ? `(${data.contact_number})` : ""}
+                <div className={`break-words ${useCompactPartyText ? "text-[7.5px]" : "text-[10px]"}`} style={{ color: colors.muted }}>
+                  Attn: {data.contact_person}
                 </div>
+              )}
+              {data.contact_number && (
+                <div className={`break-words ${useCompactPartyText ? "text-[7.5px]" : "text-[10px]"}`} style={{ color: colors.muted }}>Tel/Mob: {data.contact_number}</div>
+              )}
+              {data.contact_email && (
+                <div className={`break-words leading-tight ${useCompactPartyText ? "text-[7px]" : "text-[9px]"}`} style={{ color: colors.muted, overflowWrap: "anywhere" }}>Email: {data.contact_email}</div>
               )}
             </div>
           </div>
@@ -1043,6 +1056,7 @@ export default function DynamicDocumentRenderer({
               borderRadius: `${elem.borderRadius || 4}px`,
               fontSize: `${elem.fontSize || 10}px`,
               ...elementAppearance(elem),
+              color: elem.color || colors.text || "#334155",
             }}
           >
             <div className="font-bold text-slate-800 text-[10px] mb-0.5" style={{ color: colors.primary }}>
@@ -1348,6 +1362,7 @@ export default function DynamicDocumentRenderer({
         transform: scale !== 1 ? `scale(${scale})` : undefined,
         transformOrigin: "top center",
         backgroundColor: layout.page.background || "#FFFFFF",
+        color: colors.text || "#334155",
         // CSS Custom variables mapped from layout branding
         ["--doc-primary" as string]: colors.primary,
         ["--doc-accent" as string]: colors.accent,

@@ -26,9 +26,11 @@ export type DeliveryNoteData = {
   delivery_date: string;
   dispatch_date?: string | null;
   customer_name: string;
+  customer_trn?: string | null;
   customer_address?: string | null;
   contact_person?: string | null;
   contact_number?: string | null;
+  contact_email?: string | null;
   order_ref?: string | null;
   driver_name?: string | null;
   driver_number?: string | null;
@@ -69,9 +71,11 @@ export default function DeliveryNoteTemplate({
     document_number: deliveryNote.delivery_number,
     document_date: deliveryNote.delivery_date,
     customer_name: deliveryNote.customer_name,
+    customer_trn: deliveryNote.customer_trn || undefined,
     customer_address: deliveryNote.customer_address || undefined,
     contact_person: deliveryNote.contact_person || deliveryNote.receiver_name || undefined,
     contact_number: deliveryNote.contact_number || deliveryNote.receiver_mobile || undefined,
+    contact_email: deliveryNote.contact_email || undefined,
     project_name: deliveryNote.project_name || undefined,
     project_number: deliveryNote.project_number || deliveryNote.order_ref || undefined,
     items: deliveryNote.items.map((it) => ({
@@ -136,6 +140,9 @@ export default function DeliveryNoteTemplate({
             </div>
             <div className="space-y-1 text-slate-700">
               <div className="font-bold text-sm text-slate-900">{deliveryNote.customer_name}</div>
+              {deliveryNote.customer_trn && (
+                <div className="text-[11px]"><span className="text-slate-500">TRN:</span> <span className="font-mono">{deliveryNote.customer_trn}</span></div>
+              )}
               {deliveryNote.project_name && (
                 <div className="text-[11px]"><span className="text-slate-500">Project / Job:</span> <span className="font-semibold text-slate-900">{deliveryNote.project_name}</span> {deliveryNote.project_number ? `(${deliveryNote.project_number})` : ""}</div>
               )}
@@ -147,6 +154,9 @@ export default function DeliveryNoteTemplate({
               )}
               {deliveryNote.contact_number && (
                 <div className="text-[11px]"><span className="text-slate-500">Contact Tel/Mob:</span> <span className="font-mono">{deliveryNote.contact_number}</span></div>
+              )}
+              {deliveryNote.contact_email && (
+                <div className="break-all text-[10px]"><span className="text-slate-500">Email:</span> {deliveryNote.contact_email}</div>
               )}
             </div>
           </div>

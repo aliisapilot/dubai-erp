@@ -8,12 +8,13 @@ import { Suspense } from "react";
 import ProformaInvoiceTemplate from "@/components/documents/ProformaInvoiceTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
 
-type Customer = { id: string; name: string | null; customer_code: string | null; trn?: string | null; address?: string | null };
+type Customer = { id: string; name: string | null; customer_code: string | null; trn?: string | null; address?: string | null; contact_person?: string | null; phone?: string | null; mobile?: string | null; email?: string | null; active?: boolean | null };
 type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; unit?: string | null };
 type LineItem = { id?: string; product_id: string; description: string; quantity: number; unit?: string; unit_price: number; discount_pct: number; vat_rate: number; line_total: number; vat_amount: number; sort_order: number };
 // DB: proforma_invoices has: valid_until (not due_date), no project_id, no payment_terms
-type PI = { id: string; company_id: string; proforma_number: string | null; customer_id: string | null; quotation_id: string | null; proforma_date: string | null; valid_until: string | null; status: string | null; subtotal: number | null; vat_amount: number | null; total_amount: number | null; notes: string | null; created_at: string | null };
+type PI = { id: string; company_id: string; proforma_number: string | null; customer_id: string | null; customer_name?: string; customer_trn?: string; customer_address?: string; contact_person?: string; contact_number?: string; contact_email?: string; quotation_id: string | null; proforma_date: string | null; valid_until: string | null; status: string | null; subtotal: number | null; vat_amount: number | null; total_amount: number | null; notes: string | null; created_at: string | null };
 type PIForm = { customer_id: string; proforma_date: string; valid_until: string; status: string; payment_terms: string; notes: string };
 const emptyForm: PIForm = { customer_id:"", proforma_date: todayISO(), valid_until:"", status:"draft", payment_terms:"30 days", notes:"" };
 const emptyLine = (): LineItem => ({ product_id:"", description:"", quantity:1, unit:"Nos", unit_price:0, discount_pct:0, vat_rate:5, line_total:0, vat_amount:0, sort_order:0 });
@@ -57,7 +58,7 @@ function PIContent() {
     setLoading(true);
     const [{ data: pi }, { data: c }, { data: p }, co] = await Promise.all([
       supabase.from("proforma_invoices").select("*").order("created_at", { ascending: false }),
-      supabase.from("customers").select("id, name, customer_code, trn, address").eq("active", true).order("name"),
+      supabase.from("customers").select("id, name, customer_code, trn, address, contact_person, phone, mobile, email, active").order("name"),
       supabase.from("products").select("id, name, sku, selling_price, vat_rate, unit").eq("active", true).order("name"),
       getCurrentCompany(),
     ]);
@@ -76,7 +77,8 @@ function PIContent() {
       ...it,
       discount_pct: Number(it.discount_percent ?? 0),
     }));
-    setPrintRec({ pi, lines: mapped as LineItem[] });
+    const customer = customers.find((item) => item.id === pi.customer_id);
+    setPrintRec({ pi: withCustomerDocumentDetails({ ...pi, customer }) as PI, lines: mapped as LineItem[] });
   }
 
   async function loadFromQuotation(quotationId: string) {
@@ -157,6 +159,7 @@ function PIContent() {
   }
 
   const custMap = Object.fromEntries(customers.map(c=>[c.id,c]));
+  const selectableCustomers = customers.filter(c => c.active !== false || c.id === form.customer_id);
   const filtered = invoices.filter(pi => { if (filterStatus && pi.status?.toLowerCase()!==filterStatus.toLowerCase()) return false; const cn=custMap[pi.customer_id||""]?.name||""; return [pi.proforma_number, cn, pi.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase()); });
   const { sub: fSub, vat: fVAT, total: fTotal } = totals();
 
@@ -244,7 +247,7 @@ function PIContent() {
               <form id="pi-form" onSubmit={save} className="p-6 space-y-5">
                 {error&&<div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Customer <span className="text-red-500">*</span></label><select value={form.customer_id} onChange={e=>ff("customer_id",e.target.value)} required className={sel}><option value="">— Select —</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Customer <span className="text-red-500">*</span></label><select value={form.customer_id} onChange={e=>ff("customer_id",e.target.value)} required className={sel}><option value="">— Select —</option>{selectableCustomers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Status</label><select value={form.status} onChange={e=>ff("status",e.target.value)} className={sel}><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="invoiced">Invoiced</option><option value="cancelled">Cancelled</option></select></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Proforma Date</label><input type="date" value={form.proforma_date} onChange={e=>ff("proforma_date",e.target.value)} className={inp}/></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Valid Until</label><input type="date" value={form.valid_until} onChange={e=>ff("valid_until",e.target.value)} className={inp}/></div>
@@ -335,9 +338,12 @@ function PIContent() {
             proforma={{
               proforma_number: printRec.pi.proforma_number || "PRO",
               proforma_date: printRec.pi.proforma_date || "",
-              customer_name: custMap[printRec.pi.customer_id || ""]?.name || "Customer",
-              customer_trn: custMap[printRec.pi.customer_id || ""]?.trn,
-              customer_address: custMap[printRec.pi.customer_id || ""]?.address,
+              customer_name: printRec.pi.customer_name || "",
+              customer_trn: printRec.pi.customer_trn,
+              customer_address: printRec.pi.customer_address,
+              contact_person: printRec.pi.contact_person,
+              contact_number: printRec.pi.contact_number,
+              contact_email: printRec.pi.contact_email,
               payment_terms: "30 days",
               notes: printRec.pi.notes,
               status: printRec.pi.status,

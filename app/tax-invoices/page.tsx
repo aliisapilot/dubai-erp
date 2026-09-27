@@ -8,15 +8,16 @@ import { Suspense } from "react";
 import TaxInvoiceTemplate from "@/components/documents/TaxInvoiceTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
 
-type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; address: string | null };
+type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; address: string | null; contact_person: string | null; phone: string | null; mobile: string | null; email: string | null; active: boolean | null };
 type Project = { id: string; project_number: string; name: string };
 type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; vat_category: string | null; unit: string | null };
 type Company = { name: string | null; legal_name: string | null; trn: string | null; address: string | null; city: string | null; phone: string | null; email: string | null };
 type LineItem = { id?: string; product_id: string; description: string; quantity: number; unit: string; unit_price: number; discount_pct: number; vat_rate: number; taxable_amount: number; vat_amount: number; line_total: number; sort_order: number };
 // DB verified: tax_invoices has project_id, payment_terms, supply_date — NO due_date
 // DB verified: tax_invoice_items FK is tax_invoice_id (NOT invoice_id), uses discount_percent (NOT discount_pct), NO vat_category
-type TI = { id: string; company_id: string; invoice_number: string | null; customer_id: string | null; project_id?: string | null; proforma_invoice_id: string | null; invoice_date: string | null; supply_date: string | null; status: string | null; subtotal: number | null; vat_amount: number | null; total_amount: number | null; payment_terms: string | null; notes: string | null; created_at: string | null };
+type TI = { id: string; company_id: string; invoice_number: string | null; customer_id: string | null; customer_name?: string; customer_trn?: string; customer_address?: string; contact_person?: string | null; contact_mobile?: string | null; contact_number?: string; contact_email?: string | null; project_id?: string | null; proforma_invoice_id: string | null; invoice_date: string | null; supply_date: string | null; status: string | null; subtotal: number | null; vat_amount: number | null; total_amount: number | null; payment_terms: string | null; notes: string | null; created_at: string | null };
 type TIForm = { customer_id: string; project_id: string; invoice_date: string; supply_date: string; status: string; payment_terms: string; notes: string };
 const emptyForm: TIForm = { customer_id:"", project_id:"", invoice_date: todayISO(), supply_date: todayISO(), status:"draft", payment_terms:"30 days", notes:"" };
 const emptyLine = (): LineItem => ({ product_id:"", description:"", quantity:1, unit:"", unit_price:0, discount_pct:0, vat_rate:5, taxable_amount:0, vat_amount:0, line_total:0, sort_order:0 });
@@ -96,7 +97,7 @@ function TIContent() {
 
       const [{ data: ti, error: tiErr }, { data: c }, { data: pr }, { data: p }] = await Promise.all([
         tiQuery.order("created_at", { ascending: false }),
-        supabase.from("customers").select("id, name, customer_code, trn, address").eq("active", true).order("name"),
+        supabase.from("customers").select("id, name, customer_code, trn, address, contact_person, phone, mobile, email, active").order("name"),
         supabase.from("projects").select("id, project_number, name").order("project_number"),
         supabase.from("products").select("id, name, sku, selling_price, vat_rate, unit").eq("active", true).order("name"),
       ]);
@@ -156,7 +157,7 @@ function TIContent() {
     setLines((items||[]).length>0?(items as DBTaxItem[]).map(it => ({ ...emptyLine(), ...it, discount_pct: Number(it.discount_percent??0) } as LineItem)):[emptyLine()]);
     setShowForm(true);
   }
-  async function openPrint(ti: TI) { const { data: items } = await supabase.from("tax_invoice_items").select("*").eq("tax_invoice_id", ti.id).order("sort_order"); setPrintRec({ ti, lines: (items||[]) as LineItem[] }); }
+  async function openPrint(ti: TI) { const { data: items } = await supabase.from("tax_invoice_items").select("*").eq("tax_invoice_id", ti.id).order("sort_order"); const customer = customers.find((item) => item.id === ti.customer_id); setPrintRec({ ti: withCustomerDocumentDetails({ ...ti, customer }) as TI, lines: (items||[]) as LineItem[] }); }
   function closeForm() { if (saving) return; setShowForm(false); setEditing(null); setError(""); }
 
   const isDraft = (s?: string | null) => (s || "").toLowerCase() === "draft";
@@ -241,6 +242,7 @@ function TIContent() {
   }
 
   const custMap = Object.fromEntries(customers.map(c=>[c.id,c]));
+  const selectableCustomers = customers.filter(c => c.active !== false || c.id === form.customer_id);
   const projMap = Object.fromEntries(projects.map(p=>[p.id,p]));
   const filtered = invoices.filter(ti => { if (filterStatus && ti.status!==filterStatus) return false; const cn=custMap[ti.customer_id||""]?.name||""; const pn=projMap[ti.project_id||""]?.project_number||""; return [ti.invoice_number, cn, pn, ti.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase()); });
   const { sub: fSub, vat: fVAT, total: fTotal } = totals();
@@ -324,7 +326,7 @@ function TIContent() {
               <form id="ti-form" onSubmit={save} className="p-6 space-y-5">
                 {error&&<div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
                 <div className="grid grid-cols-3 gap-4">
-                  <div className="col-span-2"><label className="mb-1 block text-sm font-medium text-slate-700">Customer <span className="text-red-500">*</span></label><select value={form.customer_id} onChange={e=>ff("customer_id",e.target.value)} required className={sel}><option value="">— Select Customer —</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}{c.trn?` (TRN: ${c.trn})`:""}</option>)}</select></div>
+                  <div className="col-span-2"><label className="mb-1 block text-sm font-medium text-slate-700">Customer <span className="text-red-500">*</span></label><select value={form.customer_id} onChange={e=>ff("customer_id",e.target.value)} required className={sel}><option value="">— Select Customer —</option>{selectableCustomers.map(c=><option key={c.id} value={c.id}>{c.name}{c.trn?` (TRN: ${c.trn})`:""}</option>)}</select></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Status</label><select value={form.status} onChange={e=>ff("status",e.target.value)} className={sel}><option value="draft">Draft</option><option value="issued">Final</option><option value="cancelled">Cancelled</option><option value="partially_paid">Partially Paid</option><option value="paid">Paid</option><option value="overdue">Overdue</option></select></div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Project / Job (Optional)</label>
@@ -387,9 +389,12 @@ function TIContent() {
               invoice_number: printRec.ti.invoice_number || "INV",
               invoice_date: printRec.ti.invoice_date || "",
               supply_date: printRec.ti.supply_date,
-              customer_name: custMap[printRec.ti.customer_id || ""]?.name || "Customer",
-              customer_trn: custMap[printRec.ti.customer_id || ""]?.trn,
-              customer_address: custMap[printRec.ti.customer_id || ""]?.address,
+              customer_name: printRec.ti.customer_name || "",
+              customer_trn: printRec.ti.customer_trn,
+              customer_address: printRec.ti.customer_address,
+              contact_person: printRec.ti.contact_person,
+              contact_number: printRec.ti.contact_number,
+              contact_email: printRec.ti.contact_email,
               project_number: printRec.ti.project_id ? projMap[printRec.ti.project_id]?.project_number : undefined,
               project_name: printRec.ti.project_id ? projMap[printRec.ti.project_id]?.name : undefined,
               payment_terms: printRec.ti.payment_terms,

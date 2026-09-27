@@ -34,6 +34,7 @@ export type TaxInvoiceData = {
   customer_address?: string | null;
   contact_person?: string | null;
   contact_number?: string | null;
+  contact_email?: string | null;
   project_name?: string | null;
   project_number?: string | null;
   location?: string | null;
@@ -84,6 +85,7 @@ export default function TaxInvoiceTemplate({
     customer_address: invoice.customer_address || undefined,
     contact_person: invoice.contact_person || undefined,
     contact_number: invoice.contact_number || undefined,
+    contact_email: invoice.contact_email || undefined,
     project_name: invoice.project_name || undefined,
     project_number: invoice.project_number || undefined,
     location: invoice.location || undefined,
@@ -170,6 +172,12 @@ export default function TaxInvoiceTemplate({
                   <span className="text-slate-500">Contact:</span> {invoice.contact_person}
                   {invoice.contact_number ? ` (${invoice.contact_number})` : ""}
                 </div>
+              )}
+              {invoice.contact_number && !invoice.contact_person && (
+                <div><span className="text-slate-500">Tel/Mob:</span> {invoice.contact_number}</div>
+              )}
+              {invoice.contact_email && (
+                <div className="break-all"><span className="text-slate-500">Email:</span> {invoice.contact_email}</div>
               )}
             </div>
           </div>

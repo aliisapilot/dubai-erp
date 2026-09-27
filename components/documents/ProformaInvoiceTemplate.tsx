@@ -31,6 +31,9 @@ export type ProformaInvoiceData = {
   customer_name: string;
   customer_trn?: string | null;
   customer_address?: string | null;
+  contact_person?: string | null;
+  contact_number?: string | null;
+  contact_email?: string | null;
   project_name?: string | null;
   project_number?: string | null;
   payment_terms?: string | null;
@@ -68,6 +71,9 @@ export default function ProformaInvoiceTemplate({
     customer_name: proforma.customer_name,
     customer_trn: proforma.customer_trn || undefined,
     customer_address: proforma.customer_address || undefined,
+    contact_person: proforma.contact_person || undefined,
+    contact_number: proforma.contact_number || undefined,
+    contact_email: proforma.contact_email || undefined,
     project_name: proforma.project_name || undefined,
     project_number: proforma.project_number || undefined,
     items: proforma.items.map((it) => ({
@@ -137,6 +143,15 @@ export default function ProformaInvoiceTemplate({
               )}
               {proforma.customer_address && (
                 <div><span className="text-slate-500">Address:</span> {proforma.customer_address}</div>
+              )}
+              {proforma.contact_person && (
+                <div><span className="text-slate-500">Contact:</span> {proforma.contact_person}</div>
+              )}
+              {proforma.contact_number && (
+                <div><span className="text-slate-500">Tel/Mob:</span> {proforma.contact_number}</div>
+              )}
+              {proforma.contact_email && (
+                <div className="break-all"><span className="text-slate-500">Email:</span> {proforma.contact_email}</div>
               )}
             </div>
           </div>

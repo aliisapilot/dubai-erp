@@ -8,8 +8,9 @@ import DeliveryNoteTemplate, { DeliveryNoteData } from "@/components/documents/D
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { parseDatabaseError } from "@/lib/paymentTypes";
+import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
 
-type Customer = { id: string; name: string | null; customer_code: string | null; address: string | null; phone: string | null };
+type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; address: string | null; contact_person: string | null; phone: string | null; mobile: string | null; email: string | null; active: boolean | null };
 type Product = { id: string; name: string | null; sku: string | null; unit: string | null; current_stock: number | null };
 type Project = { id: string; name: string | null; project_number: string | null };
 type DNLine = { product_id: string; description: string; quantity: number; unit: string; remarks?: string; sort_order: number };
@@ -107,7 +108,7 @@ export default function DeliveryNotesPage() {
     setLoading(true);
     const [{ data: dn }, { data: c }, { data: p }, co, { data: prjs }] = await Promise.all([
       supabase.from("delivery_notes").select("*").order("created_at", { ascending: false }),
-      supabase.from("customers").select("id, name, customer_code, address, phone").eq("active", true).order("name"),
+      supabase.from("customers").select("id, name, customer_code, trn, address, contact_person, phone, mobile, email, active").order("name"),
       supabase.from("products").select("id, name, sku, unit, current_stock").eq("active", true).order("name"),
       getCurrentCompany(),
       supabase.from("projects").select("id, name, project_number").order("created_at", { ascending: false }),
@@ -206,6 +207,7 @@ export default function DeliveryNotesPage() {
 
   async function handlePrintDN(dn: DN) {
     const cust = customers.find(c => c.id === dn.customer_id);
+    const customerDetails = withCustomerDocumentDetails({ ...dn, customer: cust });
     const prj = projects.find(p => p.id === dn.project_id);
     const { data: items } = await supabase
       .from("delivery_note_items")
@@ -218,10 +220,12 @@ export default function DeliveryNotesPage() {
       delivery_number: dn.delivery_note_number || "DN-XXXX", // DB: delivery_note_number
       delivery_date: dn.delivery_date || todayISO(),
       dispatch_date: dn.delivery_date || todayISO(),
-      customer_name: cust?.name || "Customer",
-      customer_address: dn.customer_address || cust?.address,
-      contact_person: dn.contact_person,
-      contact_number: dn.contact_number || cust?.phone,
+      customer_name: customerDetails.customer_name,
+      customer_trn: customerDetails.customer_trn,
+      customer_address: customerDetails.customer_address,
+      contact_person: customerDetails.contact_person,
+      contact_number: customerDetails.contact_number,
+      contact_email: customerDetails.contact_email,
       order_ref: dn.order_ref,
       driver_name: dn.driver_name,
       driver_number: dn.driver_number,
@@ -346,6 +350,7 @@ export default function DeliveryNotesPage() {
   }
 
   const custMap = Object.fromEntries(customers.map(c => [c.id, c]));
+  const selectableCustomers = customers.filter(c => c.active !== false || c.id === form.customer_id);
   const prjMap = Object.fromEntries(projects.map(p => [p.id, p]));
   const filtered = notes.filter(n => {
     if (filterStatus && (n.status || "").toLowerCase() !== filterStatus.toLowerCase()) return false;
@@ -548,7 +553,7 @@ export default function DeliveryNotesPage() {
                       <label className="mb-1 block text-xs font-medium text-slate-700">Customer <span className="text-red-500">*</span></label>
                       <select value={form.customer_id} onChange={e => onCustomerChange(e.target.value)} required className={sel}>
                         <option value="">— Select Customer —</option>
-                        {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        {selectableCustomers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
                     <div>

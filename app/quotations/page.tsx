@@ -7,8 +7,9 @@ import { useRouter } from "next/navigation";
 import QuotationTemplate from "@/components/documents/QuotationTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
 
-type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null };
+type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; address: string | null; contact_person: string | null; phone: string | null; mobile: string | null; email: string | null; active: boolean | null };
 type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; unit: string | null };
 type Project = { id: string; name: string | null; project_number: string | null };
 type LineItem = { id?: string; product_id: string; description: string; quantity: number; unit?: string | null; unit_price: number; discount_percent: number; discount_pct?: number; vat_rate: number; vat_category?: string; line_total: number; vat_amount: number; sort_order: number };
@@ -28,7 +29,7 @@ type RawItemRecord = {
   sort_order?: number;
 };
 
-type Quotation = { id: string; company_id: string; quotation_number: string | null; customer_id: string | null; project_id?: string | null; quotation_date: string | null; expiry_date: string | null; status: string | null; subtotal: number | null; discount_amount: number | null; vat_amount: number | null; total_amount: number | null; notes: string | null; terms: string | null; created_at: string | null };
+type Quotation = { id: string; company_id: string; quotation_number: string | null; customer_id: string | null; customer_name?: string; customer_trn?: string; customer_address?: string; contact_person?: string | null; contact_mobile?: string | null; contact_number?: string; contact_email?: string | null; project_id?: string | null; quotation_date: string | null; expiry_date: string | null; status: string | null; subtotal: number | null; discount_amount: number | null; vat_amount: number | null; total_amount: number | null; notes: string | null; terms: string | null; created_at: string | null };
 type QForm = { customer_id: string; project_id: string; quotation_date: string; expiry_date: string; status: string; notes: string; terms: string };
 
 type QuotationStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
@@ -91,7 +92,7 @@ export default function QuotationsPage() {
     setLoading(true);
     const [{ data: q }, { data: c }, { data: p }, { data: prjs }, co] = await Promise.all([
       supabase.from("quotations").select("*").order("created_at", { ascending: false }),
-      supabase.from("customers").select("id, name, customer_code, trn").eq("active", true).order("name"),
+      supabase.from("customers").select("id, name, customer_code, trn, address, contact_person, phone, mobile, email, active").order("name"),
       supabase.from("products").select("id, name, sku, selling_price, vat_rate, unit").eq("active", true).order("name"),
       supabase.from("projects").select("id, name, project_number").order("created_at", { ascending: false }),
       getCurrentCompany(),
@@ -111,7 +112,8 @@ export default function QuotationsPage() {
       ...it,
       discount_percent: Number(it.discount_percent ?? it.discount_pct ?? 0),
     }));
-    setPrintRec({ q, lines: mapped as LineItem[] });
+    const customer = customers.find((item) => item.id === q.customer_id);
+    setPrintRec({ q: withCustomerDocumentDetails({ ...q, customer }) as Quotation, lines: mapped as LineItem[] });
   }
 
   const totals = useCallback(() => {
@@ -325,6 +327,7 @@ export default function QuotationsPage() {
   }
 
   const custMap = Object.fromEntries(customers.map(c=>[c.id,c]));
+  const selectableCustomers = customers.filter(c => c.active !== false || c.id === form.customer_id);
   const prjMap = Object.fromEntries(projects.map(p=>[p.id,p]));
   const filtered = quotations.filter(q => {
     if (filterStatus && (q.status || "").toLowerCase() !== filterStatus.toLowerCase()) return false;
@@ -454,7 +457,7 @@ export default function QuotationsPage() {
                 {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
                 {/* Header */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Customer <span className="text-red-500">*</span></label><select value={form.customer_id} onChange={e=>ff("customer_id",e.target.value)} required className={sel}><option value="">— Select Customer —</option>{customers.map(c=><option key={c.id} value={c.id}>{c.customer_code?`${c.customer_code} - `:""}{c.name}</option>)}</select></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Customer <span className="text-red-500">*</span></label><select value={form.customer_id} onChange={e=>ff("customer_id",e.target.value)} required className={sel}><option value="">— Select Customer —</option>{selectableCustomers.map(c=><option key={c.id} value={c.id}>{c.customer_code?`${c.customer_code} - `:""}{c.name}</option>)}</select></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Project / Job (Optional)</label><select value={form.project_id} onChange={e=>ff("project_id",e.target.value)} className={sel}><option value="">— No Project Linked —</option>{projects.map(p=><option key={p.id} value={p.id}>{p.project_number} - {p.name}</option>)}</select></div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
@@ -608,8 +611,12 @@ export default function QuotationsPage() {
               quotation_number: printRec.q.quotation_number || "QUO",
               quotation_date: printRec.q.quotation_date || "",
               expiry_date: printRec.q.expiry_date,
-              customer_name: custMap[printRec.q.customer_id || ""]?.name || "Customer",
-              customer_trn: custMap[printRec.q.customer_id || ""]?.trn,
+              customer_name: printRec.q.customer_name || "",
+              customer_trn: printRec.q.customer_trn,
+              customer_address: printRec.q.customer_address,
+              contact_person: printRec.q.contact_person,
+              contact_number: printRec.q.contact_number,
+              contact_email: printRec.q.contact_email,
               project_number: printRec.q.project_id ? prjMap[printRec.q.project_id]?.project_number : undefined,
               project_name: printRec.q.project_id ? prjMap[printRec.q.project_id]?.name : undefined,
               payment_terms: "As per agreement",

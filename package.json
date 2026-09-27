@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:pdf": "node scripts/test_pdf_customer_mapping.mjs"
   },
   "dependencies": {
     "@supabase/server": "^1.8.0",

@@ -85,6 +85,7 @@ export default function QuotationTemplate({
     customer_address: quotation.customer_address || undefined,
     contact_person: quotation.contact_person || undefined,
     contact_number: quotation.contact_number || undefined,
+    contact_email: quotation.contact_email || undefined,
     project_name: quotation.project_name || undefined,
     project_number: quotation.project_number || undefined,
     scope_of_work: quotation.scope_of_work || undefined,

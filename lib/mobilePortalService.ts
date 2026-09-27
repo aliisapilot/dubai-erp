@@ -9,6 +9,7 @@ import {
   isMissingMobilePermissionsSchema,
   getCategoryLabel,
 } from "./mobilePortalTypes";
+import { withCustomerDocumentDetails } from "./documentCustomer";
 
 /**
  * Loads the user's mobile permissions from profiles.
@@ -463,7 +464,7 @@ export async function fetchDocumentForPdf(category: MobileDocumentCategory, id: 
       supabase.from("tax_invoices").select("*, customer:customers(*)").eq("id", id).single(),
       supabase.from("tax_invoice_items").select("*").eq("tax_invoice_id", id).order("sort_order"),
     ]);
-    return { ...inv, items: items || [] };
+    return withCustomerDocumentDetails({ ...inv, items: items || [] });
   }
 
   if (category === "quotation") {
@@ -471,7 +472,7 @@ export async function fetchDocumentForPdf(category: MobileDocumentCategory, id: 
       supabase.from("quotations").select("*, customer:customers(*)").eq("id", id).single(),
       supabase.from("quotation_items").select("*").eq("quotation_id", id).order("sort_order"),
     ]);
-    return { ...quo, items: items || [] };
+    return withCustomerDocumentDetails({ ...quo, items: items || [] });
   }
 
   if (category === "proforma") {
@@ -479,7 +480,7 @@ export async function fetchDocumentForPdf(category: MobileDocumentCategory, id: 
       supabase.from("proforma_invoices").select("*, customer:customers(*)").eq("id", id).single(),
       supabase.from("proforma_invoice_items").select("*").eq("proforma_invoice_id", id).order("sort_order"),
     ]);
-    return { ...pro, items: items || [] };
+    return withCustomerDocumentDetails({ ...pro, items: items || [] });
   }
 
   if (category === "delivery_note") {
@@ -487,7 +488,11 @@ export async function fetchDocumentForPdf(category: MobileDocumentCategory, id: 
       supabase.from("delivery_notes").select("*, customer:customers(*)").eq("id", id).single(),
       supabase.from("delivery_note_items").select("*").eq("delivery_note_id", id).order("sort_order"),
     ]);
-    return { ...dn, items: items || [] };
+    return withCustomerDocumentDetails({
+      ...dn,
+      delivery_number: dn?.delivery_number || dn?.delivery_note_number,
+      items: items || [],
+    });
   }
 
   if (category === "purchase_order") {
