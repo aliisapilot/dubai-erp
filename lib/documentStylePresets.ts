@@ -25,6 +25,18 @@ const store: DocumentStylePresetStore = {
     return (data || []) as DocumentStylePreset[];
   },
 
+  async listAll(companyId) {
+    const { data, error } = await supabase
+      .from("document_templates")
+      .select(PRESET_COLUMNS)
+      .eq("company_id", companyId)
+      .order("document_type")
+      .order("is_default", { ascending: false })
+      .order("template_name");
+    if (error) throwPresetStorageError(error);
+    return (data || []) as DocumentStylePreset[];
+  },
+
   async save({ companyId, documentType, name, layout }) {
     const { data, error } = await supabase
       .from("document_templates")

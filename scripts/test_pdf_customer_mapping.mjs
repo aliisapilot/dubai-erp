@@ -82,6 +82,9 @@ function createMemoryPresetStore() {
     async list(companyId, documentType) {
       return records.filter((row) => row.company_id === companyId && row.document_type === documentType);
     },
+    async listAll(companyId) {
+      return records.filter((row) => row.company_id === companyId);
+    },
     async save({ companyId, documentType, name, layout }) {
       const existing = records.find((row) => row.company_id === companyId && row.document_type === documentType && row.template_name === name);
       const saved = {
@@ -254,7 +257,7 @@ test("exposes all saved-style actions beside Auto Fix and preserves long party t
   assert.match(customerBlock, /min-h-0 overflow-hidden flex flex-col/);
   assert.match(customerBlock, /boxSizing: "border-box"/);
   assert.match(customerBlock, /detailFontSize = isCompactPartyCard \? 9 : 9\.5/);
-  const autoFixHandler = designerSource.match(/const handleAutoFix = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[autoFixMode/)[1];
+  const autoFixHandler = designerSource.match(/const handleAutoFix = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[[^\]]*autoFixMode/)[1];
   assert.match(autoFixHandler, /proposedLayout = JSON\.parse\(JSON\.stringify\(layout\)\)/);
   assert.doesNotMatch(autoFixHandler, /createDefaultLayout\(selectedDocType\)/);
 });
@@ -354,6 +357,16 @@ test("saves, loads, applies, renames, duplicates and deletes complete company do
   assert.equal((await manager.list("company-a", "quotation")).length, 1);
   assert.equal((await manager.list("company-b", "quotation")).length, 0);
   assert.throws(() => manager.apply(duplicate, "tax_invoice"), /different document type/);
+
+  const invoiceLayout = JSON.parse(JSON.stringify(layout));
+  invoiceLayout.documentType = "tax_invoice";
+  const invoiceStyle = await manager.save("company-a", "tax_invoice", "Invoice Brand", invoiceLayout);
+  const allCompanyStyles = await manager.listAll("company-a");
+  assert.equal(allCompanyStyles.length, 2);
+  assert.ok(allCompanyStyles.some((preset) => preset.id === duplicate.id));
+  assert.ok(allCompanyStyles.some((preset) => preset.id === invoiceStyle.id));
+  assert.equal((await manager.listAll("company-b")).length, 0);
+  assert.equal(getFallbackDocumentStylePreset(allCompanyStyles, "tax_invoice").id, invoiceStyle.id);
 });
 
 test("restores active styles independently by company and document type", () => {
@@ -392,10 +405,20 @@ test("hydrates remembered styles without allowing stale document loads to win", 
   assert.match(designerSource, /const documentLoadRequestRef = useRef\(0\)/);
   assert.match(designerSource, /requestId !== documentLoadRequestRef\.current/);
   assert.match(designerSource, /readActiveDocumentStylePresetId/);
-  assert.match(designerSource, /hydratedLayout = documentStylePresets\.apply\(activePreset, selectedDocType\)/);
-  assert.match(designerSource, /\}, \[companyId, selectedDocType\]\);/);
+  assert.match(designerSource, /documentStylePresets\.listAll\(companyId\)/);
+  assert.match(designerSource, /hydratedLayout = applyStylePreset\(activePreset, loaded\.layout, selectedDocType\)/);
+  assert.match(designerSource, /applyVisualSettingsToLayout\(preset\.layout_json, targetLayout, \{/);
+  assert.match(designerSource, /\}, \[applyStylePreset, companyId, selectedDocType\]\);/);
   assert.match(designerSource, /rememberActiveDocumentStylePresetId\(window\.localStorage, companyId, selectedDocType, updatedPreset\.id\)/);
   assert.match(designerSource, /rememberActiveDocumentStylePresetId\(window\.localStorage, companyId, selectedDocType, preset\.id\)/);
+});
+
+test("shows every company style across PDF types without overwriting the source record", () => {
+  assert.match(topToolbarSource, /preset\.template_name\} — \{DOCUMENT_TYPE_OPTIONS/);
+  assert.match(designerSource, /preset\.document_type === selectedDocType[\s\S]*?documentStylePresets\.update[\s\S]*?: await documentStylePresets\.save/);
+  assert.match(designerSource, /documentStylePresets\.rename\(companyId, preset\.document_type/);
+  assert.match(designerSource, /documentStylePresets\.delete\(companyId, preset\.document_type/);
+  assert.match(designerSource, /documentStylePresets\.setDefault\(companyId, preset\.document_type/);
 });
 
 test("keeps canonical layout saves separate from named saved-style records", () => {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Copy, Download, Pencil, Save, Star, Trash2, X } from "lucide-react";
-import { DocumentTypeId } from "@/lib/documentDesigner";
+import { DOCUMENT_TYPE_OPTIONS, DocumentTypeId } from "@/lib/documentDesigner";
 import { DocumentStylePreset } from "@/lib/documentStylePresetModel";
 
 interface StylePresetsModalProps {
@@ -11,6 +11,7 @@ interface StylePresetsModalProps {
   documentType: DocumentTypeId;
   presets: DocumentStylePreset[];
   activePresetId: string | null;
+  initialName?: string;
   busy: boolean;
   onClose: () => void;
   onSave: (name: string) => void;
@@ -27,6 +28,7 @@ export default function StylePresetsModal({
   documentType,
   presets,
   activePresetId,
+  initialName,
   busy,
   onClose,
   onSave,
@@ -37,7 +39,7 @@ export default function StylePresetsModal({
   onEdit,
 }: StylePresetsModalProps) {
   const activePreset = presets.find((preset) => preset.id === activePresetId);
-  const [name, setName] = useState(activePreset?.template_name || "");
+  const [name, setName] = useState(activePreset?.template_name || initialName || "");
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [duplicateId, setDuplicateId] = useState<string | null>(null);
@@ -75,7 +77,7 @@ export default function StylePresetsModal({
           <>
             <div className="designer-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
               {presets.length === 0 ? (
-                <p className="p-8 text-center text-sm text-slate-400">No saved styles for this document type yet.</p>
+                <p className="p-8 text-center text-sm text-slate-400">No saved styles for this company yet.</p>
               ) : (
                 <ul className="space-y-2">
                   {presets.map((preset) => (
@@ -90,6 +92,9 @@ export default function StylePresetsModal({
                           ) : (
                             <div className="flex items-center gap-2">
                               <span className="truncate text-sm font-semibold text-white">{preset.template_name}</span>
+                              <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">
+                                {DOCUMENT_TYPE_OPTIONS.find((option) => option.id === preset.document_type)?.label || preset.document_type.replaceAll("_", " ")}
+                              </span>
                               {preset.is_default && <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"><Star size={11} />Default</span>}
                               {preset.id === activePresetId && <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300">Editing</span>}
                             </div>

@@ -343,7 +343,9 @@ export default function TopToolbar({
               aria-label="Choose saved style"
             >
               {stylePresets.length === 0 ? <option value="">No saved styles</option> : stylePresets.map((preset) => (
-                <option key={preset.id} value={preset.id}>{preset.template_name}{preset.is_default ? " (Default)" : ""}</option>
+                <option key={preset.id} value={preset.id}>
+                  {preset.template_name} — {DOCUMENT_TYPE_OPTIONS.find((option) => option.id === preset.document_type)?.label || preset.document_type.replaceAll("_", " ")}{preset.is_default ? " (Default)" : ""}
+                </option>
               ))}
             </select>
           )}

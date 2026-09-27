@@ -12,6 +12,7 @@ export interface DocumentStylePreset {
 
 export interface DocumentStylePresetStore {
   list(companyId: string, documentType: DocumentTypeId): Promise<DocumentStylePreset[]>;
+  listAll(companyId: string): Promise<DocumentStylePreset[]>;
   save(input: {
     companyId: string;
     documentType: DocumentTypeId;
@@ -82,9 +83,13 @@ export function resolveDocumentStylePreset(
 }
 
 export function getFallbackDocumentStylePreset(
-  presets: DocumentStylePreset[]
+  presets: DocumentStylePreset[],
+  documentType?: DocumentTypeId
 ): DocumentStylePreset | null {
-  return presets.find((preset) => preset.is_default) || presets[0] || null;
+  const matchingPresets = documentType
+    ? presets.filter((preset) => preset.document_type === documentType)
+    : presets;
+  return matchingPresets.find((preset) => preset.is_default) || matchingPresets[0] || null;
 }
 
 export function getDocumentTemplateStorageErrorMessage(error: {
@@ -131,6 +136,10 @@ export function createDocumentStylePresetManager(store: DocumentStylePresetStore
   return {
     list(companyId: string | null | undefined, documentType: DocumentTypeId) {
       return store.list(requireCompany(companyId), documentType);
+    },
+
+    listAll(companyId: string | null | undefined) {
+      return store.listAll(requireCompany(companyId));
     },
 
     save(
