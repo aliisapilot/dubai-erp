@@ -73,7 +73,7 @@ export default function StylePresetsModal({
           </form>
         ) : (
           <>
-            <div className="flex-1 overflow-y-auto p-3">
+            <div className="designer-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
               {presets.length === 0 ? (
                 <p className="p-8 text-center text-sm text-slate-400">No saved styles for this document type yet.</p>
               ) : (

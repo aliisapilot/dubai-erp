@@ -82,7 +82,7 @@ export default function RightInspector({
   // If NO element is selected, show Document Page Settings and Central Branding
   if (!selectedElement) {
     return (
-      <aside className="flex h-full w-84 sm:w-88 md:w-96 min-w-[320px] max-w-[420px] shrink-0 select-none flex-col overflow-y-auto overflow-x-hidden border-l border-slate-800 bg-slate-900 text-white">
+      <aside className="designer-scrollbar flex h-full min-h-0 w-84 sm:w-88 md:w-96 min-w-[320px] max-w-[420px] shrink-0 select-none flex-col overflow-x-hidden overflow-y-auto border-l border-slate-800 bg-slate-900 text-white" tabIndex={0} aria-label="Page and branding settings">
         <div className="p-3 border-b border-slate-800 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
           <Sliders size={15} className="text-amber-400" />
           <span>Page &amp; Branding Settings</span>
@@ -266,7 +266,7 @@ export default function RightInspector({
   };
 
   return (
-    <aside className="flex h-full w-84 sm:w-88 md:w-96 min-w-[320px] max-w-[420px] shrink-0 select-none flex-col overflow-y-auto overflow-x-hidden border-l border-slate-800 bg-slate-900 text-white">
+    <aside className="designer-scrollbar flex h-full min-h-0 w-84 sm:w-88 md:w-96 min-w-[320px] max-w-[420px] shrink-0 select-none flex-col overflow-x-hidden overflow-y-auto border-l border-slate-800 bg-slate-900 text-white" tabIndex={0} aria-label="Element settings">
       {/* Header */}
       <div className="p-3 border-b border-slate-800 flex items-center justify-between">
         <div>
@@ -1088,7 +1088,7 @@ export default function RightInspector({
               <label className="text-[10px] font-bold text-slate-400 block mb-1.5">
                 Columns Configuration (Show / Hide &amp; Width)
               </label>
-              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+              <div className="space-y-1.5 pr-1">
                 {elem.tableSettings.columns.map((col, idx) => (
                   <div
                     key={col.key}

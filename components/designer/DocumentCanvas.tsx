@@ -333,6 +333,8 @@ export default function DocumentCanvas({
   return (
     <div
       ref={effectiveContainerRef}
+      tabIndex={0}
+      aria-label="A4 canvas, scroll to pan the page"
       onClick={() => onSelectElement(null)}
       onDragOver={(e) => {
         e.preventDefault();
@@ -345,7 +347,7 @@ export default function DocumentCanvas({
           onAddImage(file);
         }
       }}
-      className="relative flex min-w-0 flex-1 select-none items-start justify-start overflow-auto bg-slate-950 p-6 sm:p-8 md:p-10"
+      className="designer-scrollbar designer-canvas-scroll relative flex min-h-0 min-w-0 flex-1 select-none items-start justify-start overflow-auto overscroll-contain bg-slate-950 p-6 sm:p-8 md:p-10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-500/60"
       style={{
         backgroundImage: "radial-gradient(circle at center, rgba(51,65,85,0.25) 1px, transparent 1px)",
         backgroundSize: "24px 24px",

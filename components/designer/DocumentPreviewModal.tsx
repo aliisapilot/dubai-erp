@@ -290,7 +290,7 @@ export default function DocumentPreviewModal({
       </header>
 
       {/* ── Document Scroll Area ──────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto overflow-x-auto p-8 flex flex-col items-center gap-8 print:p-0 print:m-0 print:overflow-visible print:block print:w-[210mm] print:bg-white">
+      <div className="designer-scrollbar min-h-0 flex-1 overflow-auto overscroll-contain p-8 flex flex-col items-center gap-8 print:p-0 print:m-0 print:overflow-visible print:block print:w-[210mm] print:bg-white">
         {Array.from({ length: computedTotalPages }, (_, index) => {
           const pageNum = index + 1;
           return (

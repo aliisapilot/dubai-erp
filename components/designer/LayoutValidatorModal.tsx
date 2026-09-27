@@ -231,7 +231,7 @@ export default function LayoutValidatorModal({
         </div>
 
         {/* Issues List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+        <div className="designer-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 space-y-2.5">
           {filteredIssues.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-8 text-center">
               <CheckCircle2 size={40} className="text-emerald-400 mb-2 opacity-80" />

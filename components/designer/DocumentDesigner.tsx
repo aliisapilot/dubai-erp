@@ -720,10 +720,10 @@ export default function DocumentDesigner() {
       const horizontalPadding =
         (Number.parseFloat(styles.paddingLeft) || 0) +
         (Number.parseFloat(styles.paddingRight) || 0);
-      const containerW = Math.max(40, container.getBoundingClientRect().width - horizontalPadding - 16);
+      const containerW = Math.max(1, container.clientWidth - horizontalPadding);
       const a4WidthPx = 210 * 3.779527559; // ~793.7px
       const calculatedZoom = Math.max(0.05, Math.min(2.0, containerW / a4WidthPx));
-      setZoom(Math.round(calculatedZoom * 100) / 100);
+      setZoom(Math.floor(calculatedZoom * 1000) / 1000);
     } else {
       setZoom(1.0);
     }
@@ -739,15 +739,14 @@ export default function DocumentDesigner() {
       const verticalPadding =
         (Number.parseFloat(styles.paddingTop) || 0) +
         (Number.parseFloat(styles.paddingBottom) || 0);
-      const bounds = container.getBoundingClientRect();
-      const containerW = Math.max(40, bounds.width - horizontalPadding - 16);
-      const containerH = Math.max(60, bounds.height - verticalPadding - 16);
+      const containerW = Math.max(1, container.clientWidth - horizontalPadding);
+      const containerH = Math.max(1, container.clientHeight - verticalPadding);
       const a4WidthPx = 210 * 3.779527559;
       const a4HeightPx = 297 * 3.779527559; // ~1122.5px
       const zoomW = containerW / a4WidthPx;
       const zoomH = containerH / a4HeightPx;
       const calculatedZoom = Math.max(0.05, Math.min(2.0, Math.min(zoomW, zoomH) * 0.98));
-      setZoom(Math.round(calculatedZoom * 100) / 100);
+      setZoom(Math.floor(calculatedZoom * 1000) / 1000);
     } else {
       setZoom(0.75);
     }
@@ -885,7 +884,7 @@ export default function DocumentDesigner() {
   const selectedElement = layout.elements.find((el) => el.id === selectedElementId) || null;
 
   return (
-    <div className="flex h-[100dvh] w-full min-w-0 flex-col overflow-hidden bg-slate-950 font-sans">
+    <div className="pdf-designer-shell flex h-[100dvh] w-full min-w-0 flex-col overflow-hidden bg-slate-950 font-sans">
       {/* Editor Chrome — hidden entirely during print */}
       <div className="designer-editor-chrome print-hide no-print flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
         {/* Top Toolbar */}

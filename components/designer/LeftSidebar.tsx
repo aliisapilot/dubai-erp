@@ -81,7 +81,7 @@ export default function LeftSidebar({
     .sort((a, b) => b.zIndex - a.zIndex);
 
   return (
-    <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col h-full text-white select-none shrink-0">
+    <aside className="w-64 min-h-0 bg-slate-900 border-r border-slate-800 flex flex-col h-full text-white select-none shrink-0 overflow-hidden">
       {/* Header */}
       <div className="p-3 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
@@ -128,7 +128,7 @@ export default function LeftSidebar({
       </div>
 
       {/* Layers List */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="designer-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 space-y-1" tabIndex={0} aria-label="Document layers list">
         {sortedElements.map((elem) => {
           const isSelected = selectedElementId === elem.id;
 

@@ -24,6 +24,11 @@ const topToolbarSource = await readFile(new URL("../components/designer/TopToolb
 const dynamicRendererSource = await readFile(new URL("../components/documents/DynamicDocumentRenderer.tsx", import.meta.url), "utf8");
 const mobilePortalServiceSource = await readFile(new URL("../lib/mobilePortalService.ts", import.meta.url), "utf8");
 const globalCssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+const canvasSource = await readFile(new URL("../components/designer/DocumentCanvas.tsx", import.meta.url), "utf8");
+const leftSidebarSource = await readFile(new URL("../components/designer/LeftSidebar.tsx", import.meta.url), "utf8");
+const rightInspectorSource = await readFile(new URL("../components/designer/RightInspector.tsx", import.meta.url), "utf8");
+const applyToOthersSource = await readFile(new URL("../components/designer/ApplyToOthersModal.tsx", import.meta.url), "utf8");
+const designerPreviewSource = await readFile(new URL("../components/designer/DocumentPreviewModal.tsx", import.meta.url), "utf8");
 const previewScaleSource = await readFile(new URL("../lib/documentPreview.ts", import.meta.url), "utf8");
 const presetModelSource = await readFile(new URL("../lib/documentStylePresetModel.ts", import.meta.url), "utf8");
 const layoutEngineSource = await readFile(new URL("../lib/documentLayoutEngine.ts", import.meta.url), "utf8");
@@ -223,6 +228,9 @@ test("exposes all saved-style actions beside Auto Fix and preserves long party t
   }
   assert.match(topToolbarSource, /aria-label="Save My Style"/);
   assert.match(topToolbarSource, /overflow-x-auto overscroll-x-contain/);
+  assert.match(topToolbarSource, /designer-scrollbar fixed z-50 w-64 max-h-\[min\(70dvh,320px\)\] overflow-y-auto/);
+  assert.match(topToolbarSource, /moreMenuButtonRef/);
+  assert.match(topToolbarSource, /aria-label="Document designer actions menu"/);
   const customerBlock = dynamicRendererSource.match(/case "customer_info": \{([\s\S]*?)case "supplier_info":/)[1];
   const supplierBlock = dynamicRendererSource.match(/case "supplier_info": \{([\s\S]*?)case "project_info":/)[1];
   const projectBlock = dynamicRendererSource.match(/case "project_info": \{([\s\S]*?)case "doc_meta":/)[1];
@@ -232,6 +240,36 @@ test("exposes all saved-style actions beside Auto Fix and preserves long party t
   const autoFixHandler = designerSource.match(/const handleAutoFix = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[autoFixMode/)[1];
   assert.match(autoFixHandler, /proposedLayout = JSON\.parse\(JSON\.stringify\(layout\)\)/);
   assert.doesNotMatch(autoFixHandler, /createDefaultLayout\(selectedDocType\)/);
+});
+
+test("scopes thin navy scrollbars to the designer and preserves native touch behavior", () => {
+  assert.match(globalCssSource, /\.pdf-designer-shell \.designer-scrollbar\s*\{[\s\S]*?scrollbar-width:\s*thin;[\s\S]*?scrollbar-color:/);
+  assert.match(globalCssSource, /\.pdf-designer-shell \.designer-canvas-scroll\s*\{\s*scrollbar-gutter:\s*stable;/);
+  assert.match(globalCssSource, /\.designer-scrollbar::\-webkit-scrollbar-thumb:hover\s*\{[\s\S]*?background-color:\s*#b08d31;/);
+  assert.match(globalCssSource, /@media \(pointer: coarse\)[\s\S]*?scrollbar-width:\s*auto;[\s\S]*?scrollbar-color:\s*auto;/);
+  assert.match(globalCssSource, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(globalCssSource, /@media \(forced-colors: active\)/);
+  assert.match(globalCssSource, /\.pdf-designer-shell \.designer-scrollbar:focus-visible/);
+  assert.doesNotMatch(globalCssSource, /(^|\n)\s*\*\s*::?-webkit-scrollbar/);
+});
+
+test("keeps canvas, layers, settings and preview independently scrollable without nested list bars", () => {
+  assert.match(canvasSource, /designer-scrollbar[^\"]*overflow-auto/);
+  assert.match(canvasSource, /tabIndex=\{0\}/);
+  assert.match(canvasSource, /aria-label="A4 canvas, scroll to pan the page"/);
+  assert.match(leftSidebarSource, /designer-scrollbar min-h-0 flex-1 overflow-y-auto/);
+  assert.match(rightInspectorSource, /designer-scrollbar[^\"]*overflow-y-auto/);
+  assert.doesNotMatch(rightInspectorSource, /max-h-48 overflow-y-auto/);
+  assert.match(applyToOthersSource, /designer-scrollbar min-h-0 flex-1 overflow-y-auto/);
+  assert.doesNotMatch(applyToOthersSource, /max-h-4[45] overflow-y-auto|max-h-52 overflow-y-auto/);
+  assert.match(designerPreviewSource, /designer-scrollbar min-h-0 flex-1 overflow-auto/);
+  assert.match(globalCssSource, /\.pdf-designer-shell \.designer-scrollbar/);
+});
+
+test("fits the canvas to its actual scrollport dimensions and rounds down safely", () => {
+  assert.match(designerSource, /container\.clientWidth - horizontalPadding/);
+  assert.match(designerSource, /container\.clientHeight - verticalPadding/);
+  assert.match(designerSource, /Math\.floor\(calculatedZoom \* 1000\) \/ 1000/);
 });
 
 test("keeps quotation snapshot names ahead of customer master data without placeholders", () => {

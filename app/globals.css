@@ -64,6 +64,69 @@ body {
   font-family: 'Segoe UI Arabic', 'Amiri', 'Scheherazade New', 'Traditional Arabic', 'Noto Naskh Arabic', Arial, sans-serif;
 }
 
+/* PDF Designer scroll regions only; the rest of the ERP keeps platform defaults. */
+.pdf-designer-shell .designer-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+  overscroll-behavior: contain;
+}
+
+.pdf-designer-shell .designer-canvas-scroll {
+  scrollbar-gutter: stable;
+}
+
+.pdf-designer-shell .designer-scrollbar:focus-visible {
+  outline: 1px solid #b08d31;
+  outline-offset: -1px;
+}
+
+@media (hover: hover) and (pointer: fine) and (min-width: 768px) {
+  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 9999px;
+  }
+
+  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #475569;
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    transition: background-color 140ms ease;
+  }
+
+  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #b08d31;
+  }
+
+  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+@media (pointer: coarse) {
+  .pdf-designer-shell .designer-scrollbar {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar-thumb {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .pdf-designer-shell .designer-scrollbar {
+    scrollbar-color: auto;
+  }
+}
+
 /* Shared document colour mapping. DocumentContainer publishes these variables
    once so every legacy and designer-backed template uses the saved brand kit. */
 .print-document {

@@ -183,7 +183,7 @@ export default function ApplyToOthersModal({
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs">
+        <div className="designer-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 space-y-5 text-xs">
           {/* Mode Switcher (if targetElement selected) */}
           {targetElement && (
             <div className="flex items-center gap-2 p-1 bg-slate-950/80 rounded-lg border border-slate-800">
@@ -238,7 +238,7 @@ export default function ApplyToOthersModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-y-auto p-1 bg-slate-950/40 rounded-lg border border-slate-800/80">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-1 bg-slate-950/40 rounded-lg border border-slate-800/80">
                 {VISUAL_SCOPE_DEFINITIONS.map((scope) => {
                   const isChecked = selectedScopes.includes(scope.key);
                   return (
@@ -309,7 +309,7 @@ export default function ApplyToOthersModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto p-1 bg-slate-950/40 rounded-lg border border-slate-800/80">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-1 bg-slate-950/40 rounded-lg border border-slate-800/80">
               {availableDocs.map((doc) => {
                 const isChecked = selectedDocIds.includes(doc.id);
                 return (

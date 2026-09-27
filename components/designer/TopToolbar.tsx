@@ -128,7 +128,31 @@ export default function TopToolbar({
 }: TopToolbarProps) {
   const imageUploadInputRef = useRef<HTMLInputElement>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [moreMenuPosition, setMoreMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!showMoreMenu) return;
+
+    const updatePosition = () => {
+      const trigger = moreMenuButtonRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const menuHeight = Math.min(280, window.innerHeight - 16);
+      const below = rect.bottom + 8 + menuHeight <= window.innerHeight - 8;
+      const top = below ? rect.bottom + 8 : Math.max(8, rect.top - menuHeight - 8);
+      setMoreMenuPosition({ top, right: Math.max(8, window.innerWidth - rect.right) });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [showMoreMenu]);
 
   // Close overflow menu when clicking outside
   useEffect(() => {
@@ -147,7 +171,7 @@ export default function TopToolbar({
     <header className="shrink-0 border-b border-slate-800 bg-slate-900 text-white select-none z-30">
       {/* Primary Row: Document Selection, Editing & Main Actions */}
       <div
-        className="flex h-14 w-full min-w-0 items-center justify-between gap-1.5 overflow-x-auto overscroll-x-contain px-2.5"
+        className="designer-scrollbar flex h-14 w-full min-w-0 items-center justify-between gap-1.5 overflow-x-auto overscroll-x-contain px-2.5"
         role="toolbar"
         aria-label="PDF Designer primary actions"
         tabIndex={0}
@@ -191,6 +215,7 @@ export default function TopToolbar({
           {/* History Controls: Undo & Redo */}
           <div className="flex shrink-0 items-center gap-0.5 border-l border-slate-800 pl-1.5">
             <button
+              ref={moreMenuButtonRef}
               type="button"
               onClick={onUndo}
               disabled={!canUndo}
@@ -352,7 +377,12 @@ export default function TopToolbar({
             </button>
 
             {showMoreMenu && (
-              <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-2xl z-50 text-xs space-y-1 animate-in fade-in zoom-in-95">
+              <div
+                className="designer-scrollbar fixed z-50 w-64 max-h-[min(70dvh,320px)] overflow-y-auto overscroll-contain rounded-xl border border-slate-700 bg-slate-900 p-2 text-xs space-y-1 shadow-2xl animate-in fade-in zoom-in-95"
+                tabIndex={0}
+                aria-label="Document designer actions menu"
+                style={{ top: moreMenuPosition?.top ?? -1000, right: moreMenuPosition?.right ?? 8 }}
+              >
                 <div className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-800">
                   Document Tools
                 </div>
@@ -474,7 +504,7 @@ export default function TopToolbar({
       </div>
 
       {/* Tool Row: Editing Controls (Align, Grid, Zoom, Page Nav) */}
-      <div className="hidden h-11 items-center justify-between gap-2 overflow-x-auto border-t border-slate-800/80 px-3 md:flex">
+      <div className="designer-scrollbar hidden h-11 items-center justify-between gap-2 overflow-x-auto border-t border-slate-800/80 px-3 md:flex">
         {/* Alignment Controls (Enabled when element is selected) */}
         <div className="flex shrink-0 items-center gap-0.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/80">
           <button
