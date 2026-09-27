@@ -558,11 +558,15 @@ export default function DynamicDocumentRenderer({
             : layout.documentType === "salary_statement"
             ? "Employee"
             : "Buyer";
-        const padMm = elem.padding !== undefined ? elem.padding : 3.2;
+        const configuredPaddingMm = elem.padding !== undefined ? elem.padding : 3.2;
+        const isCompactPartyCard = elem.height <= 28;
+        const padMm = isCompactPartyCard ? Math.min(configuredPaddingMm, 2.2) : configuredPaddingMm;
+        const detailFontSize = isCompactPartyCard ? 9 : 9.5;
         return (
           <div
-            className="w-full h-full flex flex-col justify-start select-text"
+            className="w-full h-full min-h-0 overflow-hidden flex flex-col justify-start select-text"
             style={{
+              boxSizing: "border-box",
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
@@ -572,11 +576,26 @@ export default function DynamicDocumentRenderer({
               ...elementAppearance(elem),
             }}
           >
-            <div className="flex justify-between items-center border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
+            <div
+              className="flex shrink-0 justify-between items-center border-b font-bold uppercase"
+              style={{
+                borderColor: colors.border,
+                fontSize: isCompactPartyCard ? "9px" : "10px",
+                paddingBottom: isCompactPartyCard ? "2px" : "4px",
+                lineHeight: 1.15,
+              }}
+            >
               <span style={{ color: colors.primary }}>{partyHeading}</span>
               <span style={{ color: colors.muted }}>{partyRole}</span>
             </div>
-            <div className="space-y-0.5 mt-1.5 text-[10.5px] leading-tight select-text">
+            <div
+              className="min-h-0 overflow-hidden select-text"
+              style={{
+                marginTop: isCompactPartyCard ? "3px" : "6px",
+                fontSize: isCompactPartyCard ? "9.5px" : "10.5px",
+                lineHeight: isCompactPartyCard ? 1.12 : 1.25,
+              }}
+            >
               <div className="font-bold text-slate-900 break-words leading-tight" style={{ overflowWrap: "anywhere" }}>{data.customer_name}</div>
               {data.customer_trn && (
                 <div>
@@ -585,20 +604,20 @@ export default function DynamicDocumentRenderer({
                 </div>
               )}
               {data.customer_address && (
-                <div className="break-words leading-tight text-[9.5px]" style={{ color: colors.muted, overflowWrap: "anywhere" }}>
+                <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>
                   {data.customer_address}
                 </div>
               )}
               {data.contact_person && (
-                <div className="break-words text-[9.5px]" style={{ color: colors.muted, overflowWrap: "anywhere" }}>
+                <div className="break-words" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>
                   Attn: {data.contact_person}
                 </div>
               )}
               {data.contact_number && (
-                <div className="break-words text-[9.5px]" style={{ color: colors.muted, overflowWrap: "anywhere" }}>Tel/Mob: {data.contact_number}</div>
+                <div className="break-words" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>Tel/Mob: {data.contact_number}</div>
               )}
               {data.contact_email && (
-                <div className="break-words leading-tight text-[9.5px]" style={{ color: colors.muted, overflowWrap: "anywhere" }}>Email: {data.contact_email}</div>
+                <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>Email: {data.contact_email}</div>
               )}
             </div>
           </div>

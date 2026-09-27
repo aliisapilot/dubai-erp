@@ -970,6 +970,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
 
 // ── Persistence Helpers ────────────────────────────────────────────────────────
 const LOCAL_STORAGE_PREFIX = "dubai-erp.doc-layout.";
+export const DEFAULT_DOCUMENT_TEMPLATE_NAME = "Default UAE Corporate Template";
 
 export function getLocalStorageKey(companyId: string | null | undefined, docType: DocumentTypeId): string {
   return `${LOCAL_STORAGE_PREFIX}${companyId || "anonymous"}.${docType}`;
@@ -1331,15 +1332,23 @@ export function applyVisualSettingsToLayout(
 export async function saveDocumentLayout(
   companyId: string | null | undefined,
   docType: DocumentTypeId,
-  layout: DocumentLayout,
-  templateName: string = layout.templateName || "Default UAE Corporate Template"
+  layout: DocumentLayout
 ): Promise<{ success: boolean; error?: string; warning?: string; target: "database" | "local" }> {
+  // The general layout save path owns one canonical row per document type.
+  // Named styles are mutated only through documentStylePresets, never by upsert.
+  const templateName = DEFAULT_DOCUMENT_TEMPLATE_NAME;
+  const persistedLayout = normalizeLayout({
+    ...layout,
+    documentType: docType,
+    templateName,
+  });
+
   // Always update localStorage first so current user session and preview are instant
   if (typeof window !== "undefined") {
     try {
       window.localStorage.setItem(
         getLocalStorageKey(companyId, docType),
-        JSON.stringify(normalizeLayout(layout))
+        JSON.stringify(persistedLayout)
       );
     } catch (e) {
       console.warn("Failed to write layout to localStorage:", e);
@@ -1377,7 +1386,7 @@ export async function saveDocumentLayout(
           company_id: companyId,
           document_type: docType,
           template_name: templateName,
-          layout_json: normalizeLayout(layout),
+          layout_json: persistedLayout,
           is_default: true,
           updated_at: new Date().toISOString(),
         },
@@ -1431,7 +1440,7 @@ export async function resetDocumentLayout(
   docType: DocumentTypeId
 ): Promise<{ layout: DocumentLayout; persistenceError?: string }> {
   const defaultLayout = createDefaultLayout(docType);
-  const result = await saveDocumentLayout(companyId, docType, defaultLayout, defaultLayout.templateName);
+  const result = await saveDocumentLayout(companyId, docType, defaultLayout);
   return { layout: defaultLayout, persistenceError: result.success ? undefined : result.error };
 }
 

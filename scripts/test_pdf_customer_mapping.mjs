@@ -20,6 +20,7 @@ const mobilePdfModalSource = await readFile(
 );
 const printModalSource = await readFile(new URL("../components/documents/PrintModal.tsx", import.meta.url), "utf8");
 const designerSource = await readFile(new URL("../components/designer/DocumentDesigner.tsx", import.meta.url), "utf8");
+const documentDesignerSource = await readFile(new URL("../lib/documentDesigner.ts", import.meta.url), "utf8");
 const topToolbarSource = await readFile(new URL("../components/designer/TopToolbar.tsx", import.meta.url), "utf8");
 const dynamicRendererSource = await readFile(new URL("../components/documents/DynamicDocumentRenderer.tsx", import.meta.url), "utf8");
 const mobilePortalServiceSource = await readFile(new URL("../lib/mobilePortalService.ts", import.meta.url), "utf8");
@@ -34,6 +35,10 @@ const presetModelSource = await readFile(new URL("../lib/documentStylePresetMode
 const layoutEngineSource = await readFile(new URL("../lib/documentLayoutEngine.ts", import.meta.url), "utf8");
 const templateRlsMigrationSource = await readFile(
   new URL("../supabase/migrations/20260930000000_document_template_company_rls.sql", import.meta.url),
+  "utf8"
+);
+const templateRepairMigrationSource = await readFile(
+  new URL("../supabase/migrations/20260930010000_repair_document_templates.sql", import.meta.url),
   "utf8"
 );
 const previewScaleModule = ts.transpileModule(previewScaleSource, {
@@ -51,7 +56,15 @@ const presetModelModule = ts.transpileModule(presetModelSource, {
   },
 }).outputText;
 const presetModelUrl = `data:text/javascript;base64,${Buffer.from(presetModelModule).toString("base64")}`;
-const { createDocumentStylePresetManager } = await import(presetModelUrl);
+const {
+  createDocumentStylePresetManager,
+  getActiveDocumentStyleStorageKey,
+  getDocumentTemplateStorageErrorMessage,
+  getFallbackDocumentStylePreset,
+  readActiveDocumentStylePresetId,
+  rememberActiveDocumentStylePresetId,
+  resolveDocumentStylePreset,
+} = await import(presetModelUrl);
 const layoutEngineModule = ts.transpileModule(layoutEngineSource, {
   compilerOptions: {
     module: ts.ModuleKind.ES2022,
@@ -237,6 +250,10 @@ test("exposes all saved-style actions beside Auto Fix and preserves long party t
   assert.doesNotMatch(customerBlock, /text-\[7(?:px|\.5px)\]/);
   assert.doesNotMatch(supplierBlock + projectBlock, /line-clamp/);
   assert.match(customerBlock, /overflowWrap: "anywhere"/);
+  assert.match(customerBlock, /isCompactPartyCard/);
+  assert.match(customerBlock, /min-h-0 overflow-hidden flex flex-col/);
+  assert.match(customerBlock, /boxSizing: "border-box"/);
+  assert.match(customerBlock, /detailFontSize = isCompactPartyCard \? 9 : 9\.5/);
   const autoFixHandler = designerSource.match(/const handleAutoFix = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[autoFixMode/)[1];
   assert.match(autoFixHandler, /proposedLayout = JSON\.parse\(JSON\.stringify\(layout\)\)/);
   assert.doesNotMatch(autoFixHandler, /createDefaultLayout\(selectedDocType\)/);
@@ -318,7 +335,13 @@ test("saves, loads, applies, renames, duplicates and deletes complete company do
   assert.deepEqual(applied.elements.find((element) => element.id === "line_items").tableSettings.columns, layout.elements.find((element) => element.id === "line_items").tableSettings.columns);
 
   const duplicate = await manager.duplicate("company-a", "quotation", saved, "Bilingual Brand Copy");
-  await manager.update("company-a", "quotation", duplicate.id, "Bilingual Brand Copy", layout);
+  const editedCopyLayout = manager.apply(duplicate, "quotation");
+  editedCopyLayout.branding.primaryColor = "#AABBCC";
+  editedCopyLayout.elements.find((element) => element.id === "custom_stamp").x = 125;
+  await manager.update("company-a", "quotation", duplicate.id, "Bilingual Brand Copy", editedCopyLayout);
+  assert.equal(store.records.find((preset) => preset.id === saved.id).layout_json.branding.primaryColor, "#123456");
+  assert.equal(store.records.find((preset) => preset.id === duplicate.id).layout_json.branding.primaryColor, "#AABBCC");
+  assert.equal(store.records.find((preset) => preset.id === duplicate.id).layout_json.elements.find((element) => element.id === "custom_stamp").x, 125);
   await manager.rename("company-a", "quotation", duplicate.id, "Renamed Copy");
   await manager.delete("company-a", "quotation", saved);
   assert.equal((await manager.list("company-a", "quotation")).length, 1);
@@ -331,6 +354,55 @@ test("saves, loads, applies, renames, duplicates and deletes complete company do
   assert.equal((await manager.list("company-a", "quotation")).length, 1);
   assert.equal((await manager.list("company-b", "quotation")).length, 0);
   assert.throws(() => manager.apply(duplicate, "tax_invoice"), /different document type/);
+});
+
+test("restores active styles independently by company and document type", () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key),
+  };
+  rememberActiveDocumentStylePresetId(storage, "company-a", "quotation", "quote-style");
+  rememberActiveDocumentStylePresetId(storage, "company-a", "tax_invoice", "invoice-style");
+  rememberActiveDocumentStylePresetId(storage, "company-b", "quotation", "other-company-style");
+
+  assert.notEqual(
+    getActiveDocumentStyleStorageKey("company-a", "quotation"),
+    getActiveDocumentStyleStorageKey("company-a", "tax_invoice")
+  );
+  assert.equal(readActiveDocumentStylePresetId(storage, "company-a", "quotation"), "quote-style");
+  assert.equal(readActiveDocumentStylePresetId(storage, "company-a", "tax_invoice"), "invoice-style");
+  assert.equal(readActiveDocumentStylePresetId(storage, "company-b", "quotation"), "other-company-style");
+
+  const presets = [
+    { id: "default", is_default: true },
+    { id: "quote-style", is_default: false },
+  ];
+  assert.equal(resolveDocumentStylePreset(presets, "quote-style").id, "quote-style");
+  assert.equal(resolveDocumentStylePreset(presets, "missing"), null);
+  assert.equal(getFallbackDocumentStylePreset(presets).id, "default");
+
+  rememberActiveDocumentStylePresetId(storage, "company-a", "quotation", null);
+  assert.equal(readActiveDocumentStylePresetId(storage, "company-a", "quotation"), null);
+  assert.equal(readActiveDocumentStylePresetId(storage, "company-a", "tax_invoice"), "invoice-style");
+});
+
+test("hydrates remembered styles without allowing stale document loads to win", () => {
+  assert.match(designerSource, /const documentLoadRequestRef = useRef\(0\)/);
+  assert.match(designerSource, /requestId !== documentLoadRequestRef\.current/);
+  assert.match(designerSource, /readActiveDocumentStylePresetId/);
+  assert.match(designerSource, /hydratedLayout = documentStylePresets\.apply\(activePreset, selectedDocType\)/);
+  assert.match(designerSource, /\}, \[companyId, selectedDocType\]\);/);
+  assert.match(designerSource, /rememberActiveDocumentStylePresetId\(window\.localStorage, companyId, selectedDocType, updatedPreset\.id\)/);
+  assert.match(designerSource, /rememberActiveDocumentStylePresetId\(window\.localStorage, companyId, selectedDocType, preset\.id\)/);
+});
+
+test("keeps canonical layout saves separate from named saved-style records", () => {
+  assert.match(documentDesignerSource, /const templateName = DEFAULT_DOCUMENT_TEMPLATE_NAME/);
+  assert.match(documentDesignerSource, /layout_json: persistedLayout/);
+  assert.doesNotMatch(documentDesignerSource, /templateName: string = layout\.templateName/);
+  assert.match(designerSource, /documentStylePresets\.update\([\s\S]*?preset\.id[\s\S]*?savedLayout/);
 });
 
 test("keeps customer information readable and shifts the table for long saved details", () => {
@@ -377,6 +449,29 @@ test("company template policy scopes access to owners and active company members
   assert.doesNotMatch(templateRlsMigrationSource, /get_auth_user_company_ids/);
   assert.doesNotMatch(templateRlsMigrationSource, /USING\s*\(true\)|WITH CHECK\s*\(true\)/i);
   assert.match(templateRlsMigrationSource, /REVOKE ALL ON TABLE public\.document_templates FROM anon/);
+});
+
+test("explains missing template-table and company RLS errors with safe recovery steps", () => {
+  const missingTable = getDocumentTemplateStorageErrorMessage({
+    code: "PGRST205",
+    message: "Could not find the table 'public.document_templates' in the schema cache",
+  });
+  assert.match(missingTable, /public\.document_templates/);
+  assert.match(missingTable, /supabase\/migrations\/20260930010000_repair_document_templates\.sql/);
+  assert.match(getDocumentTemplateStorageErrorMessage({ code: "42501", message: "permission denied" }), /company membership/);
+  assert.equal(getDocumentTemplateStorageErrorMessage({ code: "XX000", message: "Other database error" }), "Other database error");
+});
+
+test("repair migration creates the expected company-owned schema without deleting layout rows", () => {
+  assert.match(templateRepairMigrationSource, /CREATE TABLE IF NOT EXISTS public\.document_templates/);
+  for (const column of ["id UUID", "company_id UUID", "document_type TEXT", "template_name TEXT", "layout_json JSONB", "is_default BOOLEAN", "created_at TIMESTAMPTZ", "updated_at TIMESTAMPTZ"]) {
+    assert.ok(templateRepairMigrationSource.includes(column));
+  }
+  assert.match(templateRepairMigrationSource, /REFERENCES public\.companies\(id\) ON DELETE CASCADE/);
+  assert.match(templateRepairMigrationSource, /UNIQUE \(company_id, document_type, template_name\)/);
+  assert.match(templateRepairMigrationSource, /USING \(public\.document_template_company_access\(company_id\)\)/);
+  assert.match(templateRepairMigrationSource, /NOTIFY pgrst, 'reload schema'/);
+  assert.doesNotMatch(templateRepairMigrationSource, /DROP TABLE|TRUNCATE|DELETE FROM public\.document_templates/i);
 });
 
 test("isolates the mobile PDF modal as the only print target", () => {

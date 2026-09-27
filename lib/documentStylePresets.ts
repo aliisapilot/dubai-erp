@@ -3,9 +3,14 @@ import {
   createDocumentStylePresetManager,
   DocumentStylePreset,
   DocumentStylePresetStore,
+  getDocumentTemplateStorageErrorMessage,
 } from "@/lib/documentStylePresetModel";
 
 const PRESET_COLUMNS = "id, company_id, document_type, template_name, layout_json, is_default, updated_at";
+
+function throwPresetStorageError(error: { code?: string; message?: string }): never {
+  throw new Error(getDocumentTemplateStorageErrorMessage(error));
+}
 
 const store: DocumentStylePresetStore = {
   async list(companyId, documentType) {
@@ -16,7 +21,7 @@ const store: DocumentStylePresetStore = {
       .eq("document_type", documentType)
       .order("is_default", { ascending: false })
       .order("template_name");
-    if (error) throw new Error(error.message);
+    if (error) throwPresetStorageError(error);
     return (data || []) as DocumentStylePreset[];
   },
 
@@ -35,7 +40,7 @@ const store: DocumentStylePresetStore = {
       )
       .select(PRESET_COLUMNS)
       .single();
-    if (error) throw new Error(error.message);
+    if (error) throwPresetStorageError(error);
     return data as DocumentStylePreset;
   },
 
@@ -52,7 +57,7 @@ const store: DocumentStylePresetStore = {
       .eq("document_type", documentType)
       .select(PRESET_COLUMNS)
       .single();
-    if (error) throw new Error(error.message);
+    if (error) throwPresetStorageError(error);
     return data as DocumentStylePreset;
   },
 
@@ -63,7 +68,7 @@ const store: DocumentStylePresetStore = {
       .eq("id", id)
       .eq("company_id", companyId)
       .eq("document_type", documentType);
-    if (error) throw new Error(error.message);
+    if (error) throwPresetStorageError(error);
   },
 
   async delete(companyId, documentType, id) {
@@ -73,7 +78,7 @@ const store: DocumentStylePresetStore = {
       .eq("id", id)
       .eq("company_id", companyId)
       .eq("document_type", documentType);
-    if (error) throw new Error(error.message);
+    if (error) throwPresetStorageError(error);
   },
 
   async setDefault(companyId, documentType, id) {
@@ -83,7 +88,7 @@ const store: DocumentStylePresetStore = {
       .eq("company_id", companyId)
       .eq("document_type", documentType)
       .eq("is_default", true);
-    if (clearError) throw new Error(clearError.message);
+    if (clearError) throwPresetStorageError(clearError);
 
     const { data, error: setError } = await supabase
       .from("document_templates")
@@ -93,7 +98,7 @@ const store: DocumentStylePresetStore = {
       .eq("document_type", documentType)
       .select("id")
       .single();
-    if (setError) throw new Error(setError.message);
+    if (setError) throwPresetStorageError(setError);
     if (!data) throw new Error("The selected style was not found for this company and document type.");
   },
 };

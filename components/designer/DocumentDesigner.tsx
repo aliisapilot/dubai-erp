@@ -26,7 +26,13 @@ import { processAndOptimizeImage } from "@/lib/documentDesigner";
 import { AlertCircle, CheckCircle2, RotateCcw } from "lucide-react";
 import { computePaginationPlan } from "@/lib/documentLayoutEngine";
 import { documentStylePresets } from "@/lib/documentStylePresets";
-import type { DocumentStylePreset } from "@/lib/documentStylePresetModel";
+import {
+  getFallbackDocumentStylePreset,
+  readActiveDocumentStylePresetId,
+  rememberActiveDocumentStylePresetId,
+  resolveDocumentStylePreset,
+  type DocumentStylePreset,
+} from "@/lib/documentStylePresetModel";
 import type { AutoFixAction } from "./TopToolbar";
 import AutoFixPreviewModal from "./AutoFixPreviewModal";
 import StylePresetsModal from "./StylePresetsModal";
@@ -35,7 +41,7 @@ export default function DocumentDesigner() {
   const [selectedDocType, setSelectedDocType] = useState<DocumentTypeId>("tax_invoice");
   const [layout, setLayout] = useState<DocumentLayout>(() => createDefaultLayout("tax_invoice"));
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
-  const [companyId, setCompanyId] = useState<string | null>(null);
+  const [companyId, setCompanyId] = useState<string | null | undefined>(undefined);
   const [stylePresets, setStylePresets] = useState<DocumentStylePreset[]>([]);
   const [selectedStylePresetId, setSelectedStylePresetId] = useState<string | null>(null);
   const [autoFixMode, setAutoFixMode] = useState<"standard" | "saved">("standard");
@@ -57,6 +63,7 @@ export default function DocumentDesigner() {
   const totalPages = getDocumentPageCount(layout, sampleData.items.length, sampleData.items, sampleData);
   const displayedPageNumber = Math.min(pageNumber, totalPages);
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
+  const documentLoadRequestRef = useRef(0);
 
   // Modals & Feedback
   const [saving, setSaving] = useState(false);
@@ -88,7 +95,11 @@ export default function DocumentDesigner() {
   const [showAutoFixPreview, setShowAutoFixPreview] = useState(false);
   const [showProposalPreview, setShowProposalPreview] = useState(false);
 
-  const refreshStylePresets = useCallback(async (docType: DocumentTypeId, id = companyId) => {
+  const refreshStylePresets = useCallback(async (
+    docType: DocumentTypeId,
+    id: string | null | undefined,
+    preferredPresetId?: string | null
+  ) => {
     if (!id) {
       setStylePresets([]);
       setSelectedStylePresetId(null);
@@ -97,11 +108,12 @@ export default function DocumentDesigner() {
     try {
       const loaded = await documentStylePresets.list(id, docType);
       setStylePresets(loaded);
-      setSelectedStylePresetId((current) =>
-        loaded.some((preset) => preset.id === current)
-          ? current
-          : loaded.find((preset) => preset.is_default)?.id || loaded[0]?.id || null
-      );
+      setSelectedStylePresetId((current) => {
+        const candidateId = preferredPresetId === undefined ? current : preferredPresetId;
+        const selected = resolveDocumentStylePreset(loaded, candidateId)
+          || getFallbackDocumentStylePreset(loaded);
+        return selected?.id || null;
+      });
       return loaded;
     } catch (error) {
       setNotification({
@@ -110,44 +122,103 @@ export default function DocumentDesigner() {
       });
       return [];
     }
-  }, [companyId]);
+  }, []);
 
-  // ── 1. Load Company Profile & Initial Layout ────────────────────────────────
+  // ── 1. Load Company Profile Once ───────────────────────────────────────────
   useEffect(() => {
+    let cancelled = false;
     async function init() {
       const currentCompany = await getCurrentCompany();
+      if (cancelled) return;
       if (currentCompany) {
         setCompany(currentCompany as CompanyDocInfo);
         setCompanyId(currentCompany.id);
+      } else {
+        setCompanyId(null);
       }
-      const loaded = await loadDocumentLayout(currentCompany?.id, "tax_invoice");
-      const snapshot = JSON.parse(JSON.stringify(loaded.layout));
-      setLayout(loaded.layout);
+    }
+    void init();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Hydrate the selected document only after company resolution. A request token
+  // prevents a slower previous document load from overwriting a newer selection.
+  useEffect(() => {
+    if (companyId === undefined) return;
+    const requestId = ++documentLoadRequestRef.current;
+    let cancelled = false;
+
+    async function hydrateDocument() {
+      const layoutPromise = loadDocumentLayout(companyId, selectedDocType);
+      const presetsPromise = companyId
+        ? documentStylePresets.list(companyId, selectedDocType)
+            .then((presets) => ({ presets, error: null as Error | null }))
+            .catch((error: unknown) => ({
+              presets: [] as DocumentStylePreset[],
+              error: error instanceof Error ? error : new Error("Could not load saved styles."),
+            }))
+        : Promise.resolve({ presets: [] as DocumentStylePreset[], error: null as Error | null });
+      const [loaded, presetResult] = await Promise.all([layoutPromise, presetsPromise]);
+      if (cancelled || requestId !== documentLoadRequestRef.current) return;
+
+      const rememberedId = readActiveDocumentStylePresetId(
+        typeof window === "undefined" ? null : window.localStorage,
+        companyId,
+        selectedDocType
+      );
+      const activePreset = resolveDocumentStylePreset(presetResult.presets, rememberedId);
+      if (rememberedId && !activePreset) {
+        rememberActiveDocumentStylePresetId(
+          typeof window === "undefined" ? null : window.localStorage,
+          companyId,
+          selectedDocType,
+          null
+        );
+      }
+
+      let hydratedLayout = loaded.layout;
+      if (activePreset) {
+        try {
+          hydratedLayout = documentStylePresets.apply(activePreset, selectedDocType);
+        } catch (error) {
+          setNotification({
+            message: error instanceof Error ? error.message : "Could not restore the selected saved style.",
+            type: "error",
+          });
+        }
+      }
+
+      const selectedPreset = activePreset || getFallbackDocumentStylePreset(presetResult.presets);
+      const snapshot = JSON.parse(JSON.stringify(hydratedLayout));
+      setStylePresets(presetResult.presets);
+      setSelectedStylePresetId(selectedPreset?.id || null);
+      setAutoFixMode(activePreset ? "saved" : "standard");
+      setLayout(hydratedLayout);
       historyRef.current = [snapshot];
       historyIndexRef.current = 0;
       setHistory([snapshot]);
       setHistoryIndex(0);
-      await refreshStylePresets("tax_invoice", currentCompany?.id);
+      setSelectedElementId(null);
+      setPageNumber(1);
+
+      if (presetResult.error) {
+        setNotification({ message: presetResult.error.message, type: "error" });
+      }
     }
-    init();
-  }, [refreshStylePresets]);
+
+    void hydrateDocument();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, selectedDocType]);
 
   // ── 2. Switch Document Type ────────────────────────────────────────────────
-  const handleSelectDocType = useCallback(
-    async (docType: DocumentTypeId) => {
-      setSelectedDocType(docType);
-      setSelectedElementId(null);
-      const loaded = await loadDocumentLayout(companyId, docType);
-      const snapshot = JSON.parse(JSON.stringify(loaded.layout));
-      setLayout(loaded.layout);
-      historyRef.current = [snapshot];
-      historyIndexRef.current = 0;
-      setHistory([snapshot]);
-      setHistoryIndex(0);
-      await refreshStylePresets(docType);
-    },
-    [companyId, refreshStylePresets]
-  );
+  const handleSelectDocType = useCallback((docType: DocumentTypeId) => {
+    setSelectedDocType(docType);
+    setSelectedElementId(null);
+  }, []);
 
   // ── 3. Undo / Redo Manager ─────────────────────────────────────────────────
   // pushHistory reads from refs (always current), updates both refs and state
@@ -499,12 +570,21 @@ export default function DocumentDesigner() {
       if (autoFixMode === "saved") {
         const preset = stylePresets.find((item) => item.id === selectedStylePresetId);
         if (!preset) throw new Error("Choose a saved style before saving its changes.");
-        const updatedPreset = await documentStylePresets.update(companyId, selectedDocType, preset.id, preset.template_name, {
+        const savedLayout = {
           ...layout,
+          documentType: selectedDocType,
           templateName: preset.template_name,
-        });
+        };
+        const updatedPreset = await documentStylePresets.update(
+          companyId,
+          selectedDocType,
+          preset.id,
+          preset.template_name,
+          savedLayout
+        );
         setSelectedStylePresetId(updatedPreset.id);
-        await refreshStylePresets(selectedDocType);
+        rememberActiveDocumentStylePresetId(window.localStorage, companyId, selectedDocType, updatedPreset.id);
+        await refreshStylePresets(selectedDocType, companyId, updatedPreset.id);
         setNotification({ message: `Saved changes to “${preset.template_name}”.`, type: "success" });
       } else {
         const res = await saveDocumentLayout(companyId, selectedDocType, layout);
@@ -527,14 +607,32 @@ export default function DocumentDesigner() {
   const handleAutoFixAction = useCallback((action: AutoFixAction) => {
     if (action === "standard" || action === "saved") {
       setAutoFixMode(action);
-      if (action === "saved" && !selectedStylePresetId) {
-        setSelectedStylePresetId(stylePresets.find((preset) => preset.is_default)?.id || stylePresets[0]?.id || null);
+      if (action === "standard") {
+        rememberActiveDocumentStylePresetId(window.localStorage, companyId, selectedDocType, null);
+      } else {
+        const selected = resolveDocumentStylePreset(stylePresets, selectedStylePresetId)
+          || getFallbackDocumentStylePreset(stylePresets);
+        setSelectedStylePresetId(selected?.id || null);
+        rememberActiveDocumentStylePresetId(
+          window.localStorage,
+          companyId,
+          selectedDocType,
+          selected?.id || null
+        );
       }
       return;
     }
     if (action === "create") setStyleSaveAsNew(true);
     setStyleModalMode(action === "create" ? "save" : "manage");
-  }, [selectedStylePresetId, stylePresets]);
+  }, [companyId, selectedDocType, selectedStylePresetId, stylePresets]);
+
+  const handleSelectStylePreset = useCallback((presetId: string) => {
+    const preset = resolveDocumentStylePreset(stylePresets, presetId);
+    if (!preset) return;
+    setSelectedStylePresetId(preset.id);
+    setAutoFixMode("saved");
+    rememberActiveDocumentStylePresetId(window.localStorage, companyId, selectedDocType, preset.id);
+  }, [companyId, selectedDocType, stylePresets]);
 
   const handleSaveMyStyle = useCallback(async (name: string) => {
     if (!companyId) {
@@ -546,13 +644,20 @@ export default function DocumentDesigner() {
       const selectedPreset = autoFixMode === "saved" && !styleSaveAsNew
         ? stylePresets.find((preset) => preset.id === selectedStylePresetId)
         : undefined;
+      const savedLayout = {
+        ...layout,
+        documentType: selectedDocType,
+        templateName: name.trim(),
+      };
       const saved = selectedPreset
-        ? await documentStylePresets.update(companyId, selectedDocType, selectedPreset.id, name, layout)
-        : await documentStylePresets.save(companyId, selectedDocType, name, layout);
+        ? await documentStylePresets.update(companyId, selectedDocType, selectedPreset.id, name, savedLayout)
+        : await documentStylePresets.save(companyId, selectedDocType, name, savedLayout);
+      setLayout(savedLayout);
       setSelectedStylePresetId(saved.id);
       setAutoFixMode("saved");
       setStyleSaveAsNew(false);
-      await refreshStylePresets(selectedDocType);
+      rememberActiveDocumentStylePresetId(window.localStorage, companyId, selectedDocType, saved.id);
+      await refreshStylePresets(selectedDocType, companyId, saved.id);
       setStyleModalMode(null);
       setNotification({ message: `Saved style “${saved.template_name}” for ${selectedDocType.replaceAll("_", " ")}.`, type: "success" });
     } catch (error) {
@@ -570,7 +675,7 @@ export default function DocumentDesigner() {
       if (preset.id === selectedStylePresetId) {
         setLayout((current) => ({ ...current, templateName: name.trim() }));
       }
-      await refreshStylePresets(selectedDocType);
+      await refreshStylePresets(selectedDocType, companyId, selectedStylePresetId);
       setNotification({ message: `Renamed style to “${name.trim()}”.`, type: "success" });
     } catch (error) {
       setNotification({ message: error instanceof Error ? error.message : "Could not rename this style.", type: "error" });
@@ -585,7 +690,9 @@ export default function DocumentDesigner() {
     try {
       const copy = await documentStylePresets.duplicate(companyId, selectedDocType, preset, name);
       setSelectedStylePresetId(copy.id);
-      await refreshStylePresets(selectedDocType);
+      setAutoFixMode("saved");
+      rememberActiveDocumentStylePresetId(window.localStorage, companyId, selectedDocType, copy.id);
+      await refreshStylePresets(selectedDocType, companyId, copy.id);
       setNotification({ message: `Duplicated “${preset.template_name}” as “${copy.template_name}”.`, type: "success" });
     } catch (error) {
       setNotification({ message: error instanceof Error ? error.message : "Could not duplicate this style.", type: "error" });
@@ -599,8 +706,13 @@ export default function DocumentDesigner() {
     setStyleModalBusy(true);
     try {
       await documentStylePresets.delete(companyId, selectedDocType, preset);
-      if (preset.id === selectedStylePresetId) setSelectedStylePresetId(null);
-      await refreshStylePresets(selectedDocType);
+      const deletedActivePreset = preset.id === selectedStylePresetId;
+      if (deletedActivePreset) {
+        setSelectedStylePresetId(null);
+        setAutoFixMode("standard");
+        rememberActiveDocumentStylePresetId(window.localStorage, companyId, selectedDocType, null);
+      }
+      await refreshStylePresets(selectedDocType, companyId, deletedActivePreset ? null : selectedStylePresetId);
       setNotification({ message: `Deleted style “${preset.template_name}”.`, type: "success" });
     } catch (error) {
       setNotification({ message: error instanceof Error ? error.message : "Could not delete this style.", type: "error" });
@@ -615,7 +727,9 @@ export default function DocumentDesigner() {
     try {
       await documentStylePresets.setDefault(companyId, selectedDocType, preset.id);
       setSelectedStylePresetId(preset.id);
-      await refreshStylePresets(selectedDocType);
+      setAutoFixMode("saved");
+      rememberActiveDocumentStylePresetId(window.localStorage, companyId, selectedDocType, preset.id);
+      await refreshStylePresets(selectedDocType, companyId, preset.id);
       setNotification({ message: `“${preset.template_name}” is now the default for this document type.`, type: "success" });
     } catch (error) {
       setNotification({ message: error instanceof Error ? error.message : "Could not set the default style.", type: "error" });
@@ -630,13 +744,14 @@ export default function DocumentDesigner() {
       pushHistory(editedLayout);
       setSelectedStylePresetId(preset.id);
       setAutoFixMode("saved");
+      rememberActiveDocumentStylePresetId(window.localStorage, companyId, selectedDocType, preset.id);
       setStyleModalMode(null);
       setSelectedElementId(null);
       setPageNumber(1);
     } catch (error) {
       setNotification({ message: error instanceof Error ? error.message : "Could not load this style.", type: "error" });
     }
-  }, [pushHistory, selectedDocType]);
+  }, [companyId, pushHistory, selectedDocType]);
 
   const handleAutoFix = useCallback(() => {
     let proposedLayout: DocumentLayout;
@@ -682,7 +797,7 @@ export default function DocumentDesigner() {
     let saveWarning: string | undefined;
     if (autoFixProposal.mode === "standard") {
       setSaving(true);
-      const result = await saveDocumentLayout(companyId, selectedDocType, fixedLayout, fixedLayout.templateName);
+      const result = await saveDocumentLayout(companyId, selectedDocType, fixedLayout);
       saveWarning = result.warning;
       setSaving(false);
     }
@@ -702,6 +817,8 @@ export default function DocumentDesigner() {
   const handleConfirmReset = useCallback(async () => {
     const result = await resetDocumentLayout(companyId, selectedDocType);
     pushHistory(result.layout);
+    setAutoFixMode("standard");
+    rememberActiveDocumentStylePresetId(window.localStorage, companyId, selectedDocType, null);
     setShowResetModal(false);
     setNotification({
       message: result.persistenceError
@@ -917,7 +1034,7 @@ export default function DocumentDesigner() {
           onAutoFixAction={handleAutoFixAction}
           stylePresets={stylePresets}
           selectedStylePresetId={selectedStylePresetId}
-          onSelectStylePreset={setSelectedStylePresetId}
+          onSelectStylePreset={handleSelectStylePreset}
           onSaveMyStyle={() => {
             setStyleSaveAsNew(false);
             setStyleModalMode("save");

@@ -125,12 +125,7 @@ export default function ApplyToOthersModal({
         });
 
         // 3. Save independently into target document storage
-        await saveDocumentLayout(
-          companyId,
-          docId,
-          updatedLayout,
-          updatedLayout.templateName || "Default UAE Corporate Template"
-        );
+        await saveDocumentLayout(companyId, docId, updatedLayout);
         count++;
       }
 

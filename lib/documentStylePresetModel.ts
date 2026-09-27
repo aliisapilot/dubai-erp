@@ -30,6 +30,87 @@ export interface DocumentStylePresetStore {
   setDefault(companyId: string, documentType: DocumentTypeId, id: string): Promise<void>;
 }
 
+export interface DocumentStyleSelectionStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+const ACTIVE_STYLE_STORAGE_PREFIX = "dubai-erp.document-style.active.";
+
+export function getActiveDocumentStyleStorageKey(
+  companyId: string,
+  documentType: DocumentTypeId
+): string {
+  return `${ACTIVE_STYLE_STORAGE_PREFIX}${companyId}.${documentType}`;
+}
+
+export function readActiveDocumentStylePresetId(
+  storage: DocumentStyleSelectionStorage | null | undefined,
+  companyId: string | null | undefined,
+  documentType: DocumentTypeId
+): string | null {
+  if (!storage || !companyId) return null;
+  try {
+    return storage.getItem(getActiveDocumentStyleStorageKey(companyId, documentType));
+  } catch {
+    return null;
+  }
+}
+
+export function rememberActiveDocumentStylePresetId(
+  storage: DocumentStyleSelectionStorage | null | undefined,
+  companyId: string | null | undefined,
+  documentType: DocumentTypeId,
+  presetId: string | null
+): void {
+  if (!storage || !companyId) return;
+  try {
+    const key = getActiveDocumentStyleStorageKey(companyId, documentType);
+    if (presetId) storage.setItem(key, presetId);
+    else storage.removeItem(key);
+  } catch {
+    // Browser privacy/quota restrictions must not block editing or database saves.
+  }
+}
+
+export function resolveDocumentStylePreset(
+  presets: DocumentStylePreset[],
+  presetId: string | null | undefined
+): DocumentStylePreset | null {
+  return (presetId ? presets.find((preset) => preset.id === presetId) : undefined) || null;
+}
+
+export function getFallbackDocumentStylePreset(
+  presets: DocumentStylePreset[]
+): DocumentStylePreset | null {
+  return presets.find((preset) => preset.is_default) || presets[0] || null;
+}
+
+export function getDocumentTemplateStorageErrorMessage(error: {
+  code?: string;
+  message?: string;
+}): string {
+  const message = error.message || "The Supabase request failed.";
+  const normalized = message.toLowerCase();
+
+  if (
+    error.code === "PGRST205" ||
+    error.code === "42P01" ||
+    normalized.includes("schema cache") ||
+    normalized.includes("could not find the table") ||
+    normalized.includes("relation \"public.document_templates\" does not exist")
+  ) {
+    return "Saved styles need public.document_templates. Run supabase/migrations/20260930010000_repair_document_templates.sql in Supabase SQL Editor, then refresh the Designer.";
+  }
+
+  if (error.code === "42501" || normalized.includes("permission denied") || normalized.includes("row-level security")) {
+    return "Supabase denied access to this company's saved styles. Confirm your active company membership and apply the document template RLS policy from the repair migration.";
+  }
+
+  return message;
+}
+
 function cloneLayout(layout: DocumentLayout): DocumentLayout {
   return JSON.parse(JSON.stringify(layout)) as DocumentLayout;
 }
