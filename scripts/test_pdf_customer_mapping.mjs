@@ -14,6 +14,12 @@ const compiled = ts.transpileModule(source, {
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`;
 const { withCustomerDocumentDetails } = await import(moduleUrl);
 
+const mobilePdfModalSource = await readFile(
+  new URL("../components/mobile/MobilePdfModal.tsx", import.meta.url),
+  "utf8"
+);
+const globalCssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
 test("flattens the Supabase customer relationship used by mobile PDF previews", () => {
   const result = withCustomerDocumentDetails({
     quotation_number: "QUO-2026-0002",
@@ -69,4 +75,13 @@ test("does not invent placeholder customer information", () => {
   assert.equal(result.customer_name, "");
   assert.equal(result.customer_address, undefined);
   assert.equal(result.contact_number, undefined);
+});
+
+test("isolates the mobile PDF modal as the only print target", () => {
+  assert.match(mobilePdfModalSource, /className="print-modal-container fixed inset-0/);
+  assert.match(
+    globalCssSource,
+    /body:has\(\.print-modal-container\) \*:has\(\.print-modal-container\) > \*:not\(\.print-modal-container\):not\(:has\(\.print-modal-container\)\)/
+  );
+  assert.match(globalCssSource, /\.print-modal-container,[\s\S]*?position: static !important;/);
 });

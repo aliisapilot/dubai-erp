@@ -358,27 +358,64 @@ export default function QuotationsPage() {
     }
   }
 
+  function quotationActions(q: Quotation, showLabels = false) {
+    const status = (q.status || "").toLowerCase();
+    const actionClass = showLabels
+      ? "flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+      : "rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700";
+
+    return (
+      <>
+        <button type="button" onClick={() => openView(q)} title="View" aria-label={`View ${q.quotation_number || "quotation"}`} className={actionClass}>
+          <Eye size={showLabels ? 15 : 14} />{showLabels && <span>View</span>}
+        </button>
+        <button type="button" onClick={() => openPrint(q)} title="Print / PDF Document" aria-label={`Open PDF for ${q.quotation_number || "quotation"}`} className={actionClass}>
+          <Printer size={showLabels ? 15 : 14} />{showLabels && <span>PDF</span>}
+        </button>
+        {(status === "draft" || status === "sent") && (
+          <button type="button" onClick={() => openEdit(q)} title="Edit" aria-label={`Edit ${q.quotation_number || "quotation"}`} className={actionClass}>
+            <Pencil size={showLabels ? 15 : 14} />{showLabels && <span>Edit</span>}
+          </button>
+        )}
+        {status === "accepted" && (
+          <button type="button" onClick={() => convertToProforma(q)} title="Convert to Proforma" aria-label={`Convert ${q.quotation_number || "quotation"} to proforma`} className={`${actionClass} hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700`}>
+            <ArrowRight size={showLabels ? 15 : 14} />{showLabels && <span>Proforma</span>}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => deleteQuotation(q)}
+          title="Delete Quotation"
+          aria-label={`Delete ${q.quotation_number || "quotation"}`}
+          className={`${actionClass} hover:border-red-200 hover:bg-red-50 hover:text-red-600`}
+        >
+          <Trash2 size={showLabels ? 15 : 14} />{showLabels && <span>Delete</span>}
+        </button>
+      </>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="app-screen-content no-print">
         <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-3 py-4 sm:px-6 sm:py-5">
           <div className="flex items-center gap-3">
             <div className="rounded-xl bg-slate-900 p-2.5 text-white"><FileText size={22} /></div>
             <div><h1 className="text-2xl font-bold text-slate-900">Quotations</h1><p className="text-sm text-slate-500">Create and manage sales quotations</p></div>
           </div>
-          <button onClick={openAdd} className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"><Plus size={18} />New Quotation</button>
+          <button onClick={openAdd} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 sm:gap-2 sm:px-4 sm:text-sm"><Plus size={18} /><span className="hidden min-[360px]:inline">New Quotation</span><span className="min-[360px]:hidden">New</span></button>
         </div>
       </header>
-      <div className="mx-auto max-w-7xl px-6 py-8">
+      <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-8">
         {success && <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
         {error && !showForm && <div className="mb-5 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button onClick={() => setError("")}><X size={16} /></button></div>}
-        <div className="mb-6 grid grid-cols-4 gap-4">
+        <div className="mb-4 grid grid-cols-4 gap-2 sm:mb-6 sm:gap-4">
           {[["Total",quotations.length,"slate"],["Draft",quotations.filter(q=>(q.status||"").toLowerCase()==="draft").length,"slate"],["Sent",quotations.filter(q=>(q.status||"").toLowerCase()==="sent").length,"blue"],["Accepted",quotations.filter(q=>(q.status||"").toLowerCase()==="accepted").length,"emerald"]].map(([l,v,c])=>(
-            <div key={String(l)} className="rounded-xl border border-slate-200 bg-white px-4 py-4"><p className="text-xs text-slate-500 font-medium">{l}</p><p className={`mt-1 text-2xl font-bold ${c==="emerald"?"text-emerald-600":c==="blue"?"text-blue-600":"text-slate-700"}`}>{v}</p></div>
+            <div key={String(l)} className="rounded-xl border border-slate-200 bg-white px-2 py-3 sm:px-4 sm:py-4"><p className="truncate text-[10px] font-medium text-slate-500 sm:text-xs">{l}</p><p className={`mt-1 text-xl font-bold sm:text-2xl ${c==="emerald"?"text-emerald-600":c==="blue"?"text-blue-600":"text-slate-700"}`}>{v}</p></div>
           ))}
         </div>
-        <div className="mb-6 flex gap-3">
+        <div className="mb-4 flex gap-2 sm:mb-6 sm:gap-3">
           <div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search quotations…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none" /></div>
           <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none appearance-none">
             <option value="">All Status</option>
@@ -390,7 +427,34 @@ export default function QuotationsPage() {
         {loading ? <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-slate-400" /></div> : filtered.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white py-20 text-center"><FileText size={40} className="mx-auto mb-3 text-slate-300" /><p className="text-sm text-slate-500">No quotations found.</p></div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <>
+          <div className="space-y-3 md:hidden">
+            {filtered.map(q => (
+              <article key={q.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs font-semibold text-blue-700">{q.quotation_number || "—"}</p>
+                    <h2 className="mt-1 break-words text-sm font-bold leading-snug text-slate-900">{custMap[q.customer_id || ""]?.name || "—"}</h2>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(formatStatus(q.status))}`}>{formatStatus(q.status)}</span>
+                </div>
+                {q.project_id && prjMap[q.project_id] && (
+                  <p className="mt-2 break-words rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700">
+                    {prjMap[q.project_id]?.project_number}: {prjMap[q.project_id]?.name}
+                  </p>
+                )}
+                <dl className="mt-3 grid grid-cols-3 gap-2 border-y border-slate-100 py-3 text-xs">
+                  <div><dt className="text-[10px] uppercase tracking-wide text-slate-400">Date</dt><dd className="mt-0.5 font-medium text-slate-700">{fmtDate(q.quotation_date)}</dd></div>
+                  <div><dt className="text-[10px] uppercase tracking-wide text-slate-400">Expiry</dt><dd className="mt-0.5 font-medium text-slate-700">{fmtDate(q.expiry_date)}</dd></div>
+                  <div className="text-right"><dt className="text-[10px] uppercase tracking-wide text-slate-400">Total</dt><dd className="mt-0.5 font-bold text-slate-900">{fmtAED(q.total_amount)}</dd></div>
+                </dl>
+                <div className="mt-3 grid grid-cols-4 gap-2">
+                  {quotationActions(q, true)}
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white md:block">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <th className="px-4 py-3">No.</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Expiry</th><th className="px-4 py-3 text-right">Total (AED)</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Actions</th>
@@ -411,24 +475,13 @@ export default function QuotationsPage() {
                     <td className="px-4 py-3 text-slate-600">{fmtDate(q.expiry_date)}</td>
                     <td className="px-4 py-3 text-right font-bold text-slate-900">{fmtAED(q.total_amount)}</td>
                     <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(formatStatus(q.status))}`}>{formatStatus(q.status)}</span></td>
-                    <td className="px-4 py-3"><div className="flex justify-center gap-1">
-                      <button onClick={() => openView(q)} title="View" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Eye size={14} /></button>
-                      <button onClick={() => openPrint(q)} title="Print / PDF Document" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-900"><Printer size={14} /></button>
-                      {((q.status||"").toLowerCase() === "draft" || (q.status||"").toLowerCase() === "sent") && <button onClick={() => openEdit(q)} title="Edit" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14} /></button>}
-                      {(q.status||"").toLowerCase() === "accepted" && <button onClick={() => convertToProforma(q)} title="Convert to Proforma" className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"><ArrowRight size={14} /></button>}
-                      <button
-                        onClick={() => deleteQuotation(q)}
-                        title="Delete Quotation"
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div></td>
+                    <td className="px-4 py-3"><div className="flex justify-center gap-1">{quotationActions(q)}</div></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 

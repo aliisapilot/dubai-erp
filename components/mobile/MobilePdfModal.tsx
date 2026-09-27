@@ -152,7 +152,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex h-[100dvh] flex-col bg-slate-950 text-white animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label={`Preview ${document.documentNumber}`}>
+    <div className="print-modal-container fixed inset-0 z-50 flex h-[100dvh] flex-col bg-slate-950 text-white animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label={`Preview ${document.documentNumber}`}>
       {/* Top Controls Bar */}
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-2 py-2 pt-[calc(0.5rem+env(safe-area-inset-top))] sm:px-4">
         <div className="flex items-center gap-2 truncate pr-2">
