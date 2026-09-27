@@ -259,6 +259,30 @@ body {
     inset: auto !important;
   }
 
+  /* Mobile preview uses a dark padded canvas and an inline scale transform on
+     screen. Strip both for print so the document owns the full A4 surface. */
+  .mobile-pdf-print-surface,
+  .mobile-pdf-scale-shell,
+  .mobile-pdf-print-content {
+    display: block !important;
+    position: static !important;
+    width: 210mm !important;
+    min-width: 210mm !important;
+    max-width: 210mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    transform: none !important;
+    inset: auto !important;
+  }
+
   /* 5. The True A4 Printable Document Container (.print-document) */
   .print-document,
   .document-sheet,

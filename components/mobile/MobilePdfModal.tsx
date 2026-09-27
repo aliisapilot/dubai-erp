@@ -220,7 +220,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
       </header>
 
       {/* Main Preview Surface with Responsive Scale Container */}
-      <div className="flex flex-1 items-start justify-center overflow-auto bg-slate-900/60 p-2 custom-scrollbar sm:p-4">
+      <div className="mobile-pdf-print-surface flex flex-1 items-start justify-center overflow-auto bg-slate-900/60 p-2 custom-scrollbar sm:p-4">
         {loading ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-400 py-20">
             <Loader2 className="animate-spin text-emerald-400 mb-2" size={26} />
@@ -241,7 +241,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
           </div>
         ) : (
           <div
-            className="relative shrink-0 print:h-auto print:w-auto"
+            className="mobile-pdf-scale-shell relative shrink-0 print:h-auto print:w-auto"
             style={{
               width: 794 * scale,
               height: pageHeight * scale,
@@ -249,7 +249,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
           >
             <div
               ref={pageRef}
-              className="absolute left-0 top-0 origin-top-left rounded-sm bg-white shadow-2xl transition-transform duration-150 print:static print:transform-none print:shadow-none"
+              className="mobile-pdf-print-content absolute left-0 top-0 origin-top-left rounded-sm bg-white shadow-2xl transition-transform duration-150 print:static print:transform-none print:shadow-none"
               style={{ transform: `scale(${scale})`, width: 794 }}
             >
               {renderDocumentTemplate()}

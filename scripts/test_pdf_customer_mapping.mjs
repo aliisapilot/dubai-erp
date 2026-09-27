@@ -79,9 +79,16 @@ test("does not invent placeholder customer information", () => {
 
 test("isolates the mobile PDF modal as the only print target", () => {
   assert.match(mobilePdfModalSource, /className="print-modal-container fixed inset-0/);
+  assert.match(mobilePdfModalSource, /mobile-pdf-print-surface/);
+  assert.match(mobilePdfModalSource, /mobile-pdf-scale-shell/);
+  assert.match(mobilePdfModalSource, /mobile-pdf-print-content/);
   assert.match(
     globalCssSource,
     /body:has\(\.print-modal-container\) \*:has\(\.print-modal-container\) > \*:not\(\.print-modal-container\):not\(:has\(\.print-modal-container\)\)/
   );
   assert.match(globalCssSource, /\.print-modal-container,[\s\S]*?position: static !important;/);
+  assert.match(
+    globalCssSource,
+    /\.mobile-pdf-print-surface,[\s\S]*?width: 210mm !important;[\s\S]*?background: #ffffff !important;[\s\S]*?transform: none !important;/
+  );
 });
