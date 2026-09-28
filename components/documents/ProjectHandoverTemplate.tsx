@@ -1,8 +1,7 @@
 "use client";
+import { usePersistedDocumentDesign, DesignLoadState } from "./usePersistedDocumentDesign";
 
-import { useEffect, useState } from "react";
 import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
-import { DocumentLayout, loadDocumentLayout } from "@/lib/documentDesigner";
 
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
@@ -37,17 +36,9 @@ export default function ProjectHandoverTemplate({
   handover,
   onClose,
 }: HandoverProps) {
-  const [customLayout, setCustomLayout] = useState<DocumentLayout | null>(null);
-
-  useEffect(() => {
-    loadDocumentLayout(company?.id, "project_handover").then((res) => {
-      if (res.source === "local" || res.source === "database") {
-        setCustomLayout(res.layout);
-      } else {
-        setCustomLayout(null);
-      }
-    });
-  }, [company?.id]);
+  const design = usePersistedDocumentDesign(company?.id, 'project_handover');
+  const customLayout = design.layout;
+  if (!design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
 
   const rendererData: MockDocumentData = {
     document_number: handover.handover_number,

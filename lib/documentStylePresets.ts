@@ -1,120 +1,24 @@
-import { supabase } from "@/lib/supabase";
-import {
-  createDocumentStylePresetManager,
-  DocumentStylePreset,
-  DocumentStylePresetStore,
-  getDocumentTemplateStorageErrorMessage,
-} from "@/lib/documentStylePresetModel";
-
-const PRESET_COLUMNS = "id, company_id, document_type, template_name, layout_json, is_default, updated_at";
-
-function throwPresetStorageError(error: { code?: string; message?: string }): never {
-  throw new Error(getDocumentTemplateStorageErrorMessage(error));
-}
-
-const store: DocumentStylePresetStore = {
-  async list(companyId, documentType) {
-    const { data, error } = await supabase
-      .from("document_templates")
-      .select(PRESET_COLUMNS)
-      .eq("company_id", companyId)
-      .eq("document_type", documentType)
-      .order("is_default", { ascending: false })
-      .order("template_name");
-    if (error) throwPresetStorageError(error);
-    return (data || []) as DocumentStylePreset[];
+import { supabase } from './supabase';
+import { documentCloud } from './documentDesigner';
+import { cloudError } from './documentCloud';
+import type { DocumentLayout, DocumentTypeId } from './documentDesigner';
+import type { DocumentStylePreset } from './documentStylePresetModel';
+export type { DocumentStylePreset } from './documentStylePresetModel';
+const columns = 'id,company_id,document_type,template_name,layout_json,is_default,updated_at,version,assets_json';
+export const documentStylePresets = {
+  async listAll(companyId: string) {
+    const { data, error } = await supabase.from('document_templates').select(columns).eq('company_id',companyId).order('template_name');
+    if(error) throw cloudError(error); return (data || []) as DocumentStylePreset[];
   },
-
-  async listAll(companyId) {
-    const { data, error } = await supabase
-      .from("document_templates")
-      .select(PRESET_COLUMNS)
-      .eq("company_id", companyId)
-      .order("document_type")
-      .order("is_default", { ascending: false })
-      .order("template_name");
-    if (error) throwPresetStorageError(error);
-    return (data || []) as DocumentStylePreset[];
+  async list(companyId: string, documentType: DocumentTypeId) { return (await this.listAll(companyId)).filter(p => p.document_type === documentType); },
+  async duplicate(companyId: string, documentType: DocumentTypeId, preset: DocumentStylePreset, name: string) {
+    const result = await documentCloud.save(companyId,documentType,preset.layout_json,{templateId:null,version:0,selectionVersion:0},name,false);
+    return result.template!;
   },
-
-  async save({ companyId, documentType, name, layout }) {
-    const { data, error } = await supabase
-      .from("document_templates")
-      .insert(
-        {
-          company_id: companyId,
-          document_type: documentType,
-          template_name: name,
-          layout_json: layout,
-          is_default: false,
-          updated_at: new Date().toISOString(),
-        },
-      )
-      .select(PRESET_COLUMNS)
-      .single();
-    if (error) throwPresetStorageError(error);
-    return data as DocumentStylePreset;
-  },
-
-  async update({ companyId, documentType, id, name, layout }) {
-    const { data, error } = await supabase
-      .from("document_templates")
-      .update({
-        template_name: name,
-        layout_json: layout,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .eq("company_id", companyId)
-      .eq("document_type", documentType)
-      .select(PRESET_COLUMNS)
-      .single();
-    if (error) throwPresetStorageError(error);
-    return data as DocumentStylePreset;
-  },
-
-  async rename(companyId, documentType, id, name) {
-    const { error } = await supabase
-      .from("document_templates")
-      .update({ template_name: name, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .eq("company_id", companyId)
-      .eq("document_type", documentType);
-    if (error) throwPresetStorageError(error);
-  },
-
-  async delete(companyId, documentType, id) {
-    const { error } = await supabase
-      .from("document_templates")
-      .delete()
-      .eq("id", id)
-      .eq("company_id", companyId)
-      .eq("document_type", documentType);
-    if (error) throwPresetStorageError(error);
-  },
-
-  async setDefault(companyId, documentType, id) {
-    const { error: clearError } = await supabase
-      .from("document_templates")
-      .update({ is_default: false, updated_at: new Date().toISOString() })
-      .eq("company_id", companyId)
-      .eq("document_type", documentType)
-      .eq("is_default", true);
-    if (clearError) throwPresetStorageError(clearError);
-
-    const { data, error: setError } = await supabase
-      .from("document_templates")
-      .update({ is_default: true, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .eq("company_id", companyId)
-      .eq("document_type", documentType)
-      .select("id")
-      .single();
-    if (setError) throwPresetStorageError(setError);
-    if (!data) throw new Error("The selected style was not found for this company and document type.");
-  },
+  rename(companyId: string, preset: DocumentStylePreset, name: string) { return documentCloud.mutate(companyId,preset,'rename',0,name); },
+  delete(companyId: string, _documentType: DocumentTypeId, preset: DocumentStylePreset) { return documentCloud.mutate(companyId,preset,'delete'); },
+  apply(preset: DocumentStylePreset, documentType: DocumentTypeId): DocumentLayout {
+    if(preset.document_type !== documentType || preset.layout_json.documentType !== documentType) throw new Error('Style belongs to another document type.');
+    return { ...JSON.parse(JSON.stringify(preset.layout_json)), templateName:preset.template_name };
+  }
 };
-
-export const documentStylePresets = createDocumentStylePresetManager(store);
-
-export type { DocumentStylePreset } from "@/lib/documentStylePresetModel";

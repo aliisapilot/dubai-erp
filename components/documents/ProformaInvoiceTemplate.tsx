@@ -1,8 +1,7 @@
 "use client";
+import { usePersistedDocumentDesign, DesignLoadState } from "./usePersistedDocumentDesign";
 
-import { useEffect, useState } from "react";
 import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
-import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
 
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
@@ -56,13 +55,9 @@ export default function ProformaInvoiceTemplate({
   proforma,
   onClose,
 }: ProformaProps) {
-  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("proforma_invoice"));
-
-  useEffect(() => {
-    loadDocumentLayout(company?.id, "proforma_invoice").then((res) => {
-      setCustomLayout(res.layout);
-    });
-  }, [company?.id]);
+  const design = usePersistedDocumentDesign(company?.id, 'proforma_invoice');
+  const customLayout = design.layout;
+  if (!design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
 
   const rendererData: MockDocumentData = {
     document_number: proforma.proforma_number,

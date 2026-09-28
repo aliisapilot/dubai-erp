@@ -8,6 +8,8 @@ export interface DocumentStylePreset {
   layout_json: DocumentLayout;
   is_default: boolean;
   updated_at: string;
+  version: number;
+  assets_json?: Record<string, string>;
 }
 
 export interface DocumentStylePresetStore {

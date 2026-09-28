@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { usePersistedDocumentDesign, DesignLoadState } from './usePersistedDocumentDesign';
+import DynamicDocumentRenderer, { getDocumentPageCount, type MockDocumentData } from './DynamicDocumentRenderer';
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
 import { Users, Wrench, ShieldAlert, CheckCircle2 } from "lucide-react";
@@ -64,6 +66,12 @@ export default function WorkMethodStatementTemplate({
   wms,
   onClose,
 }: WMSProps) {
+  const design=usePersistedDocumentDesign(company?.id,'work_method_statement');
+  if(!design.ready)return <DesignLoadState error={design.error} retry={design.retry} />;
+  const cover: MockDocumentData={document_number:wms.wms_number,document_date:wms.date,customer_name:wms.main_contractor || '',
+    project_name:wms.project_name,location:wms.location || '',scope_of_work:wms.scope || wms.title,
+    notes:wms.purpose || '',items:[],subtotal:0,vat_amount:0,total_amount:0};
+  const coverPages=getDocumentPageCount(design.layout,0,[],cover);
   return (
     <DocumentContainer
       docTypeLabel="Method Statement"
@@ -71,8 +79,11 @@ export default function WorkMethodStatementTemplate({
       status="Approved"
       onClose={onClose}
       company={company ?? undefined}
+      noPadding
+      showWatermark={false}
     >
-      <div className="space-y-6">
+      {Array.from({length:coverPages},(_,index)=><DynamicDocumentRenderer key={index} layout={design.layout} company={company} data={cover} pageNumber={index+1} totalPages={coverPages} />)}
+      <div className="print-page space-y-6 bg-white p-[10mm]" style={{breakBefore:'page'}}>
         {/* Letterhead Header */}
         <DocHeader
           company={company}

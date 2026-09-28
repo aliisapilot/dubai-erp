@@ -1,8 +1,7 @@
 "use client";
+import { usePersistedDocumentDesign, DesignLoadState } from "./usePersistedDocumentDesign";
 
-import { useEffect, useState } from "react";
 import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
-import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
 
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
@@ -58,13 +57,9 @@ export default function PurchaseOrderTemplate({
   po,
   onClose,
 }: POProps) {
-  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("purchase_order"));
-
-  useEffect(() => {
-    loadDocumentLayout(company?.id, "purchase_order").then((res) => {
-      setCustomLayout(res.layout);
-    });
-  }, [company?.id]);
+  const design = usePersistedDocumentDesign(company?.id, 'purchase_order');
+  const customLayout = design.layout;
+  if (!design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
 
   const rendererData: MockDocumentData = {
     document_number: po.po_number,

@@ -1,8 +1,7 @@
 "use client";
+import { usePersistedDocumentDesign, DesignLoadState } from "./usePersistedDocumentDesign";
 
-import { useEffect, useState } from "react";
 import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
-import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
 
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
@@ -44,13 +43,9 @@ export default function StatementOfAccountTemplate({
   statement,
   onClose,
 }: StatementProps) {
-  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("customer_statement"));
-
-  useEffect(() => {
-    loadDocumentLayout(company?.id, "customer_statement").then((res) => {
-      setCustomLayout(res.layout);
-    });
-  }, [company?.id]);
+  const design = usePersistedDocumentDesign(company?.id, 'customer_statement');
+  const customLayout = design.layout;
+  if (!design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
 
   const totalCharges = statement.entries.reduce((acc, curr) => acc + (Number(curr.debit) || 0), 0);
   const totalCredits = statement.entries.reduce((acc, curr) => acc + (Number(curr.credit) || 0), 0);

@@ -1,4 +1,5 @@
 "use client";
+import { printCurrentDocument } from "@/lib/print";
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -226,7 +227,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
           {/* Print */}
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() => void printCurrentDocument()}
             className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white"
             aria-label="Print or save as PDF"
             title="Print or save as PDF"

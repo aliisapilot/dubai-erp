@@ -1,6 +1,7 @@
 "use client";
+import { usePersistedDocumentDesign, DesignLoadState } from "./usePersistedDocumentDesign";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
 import DocSignatureArea from "./DocSignatureArea";
@@ -8,7 +9,6 @@ import { numberToWordsEnglish, numberToWordsArabic } from "@/lib/amountInWords";
 import { fmtAED, fmtDate } from "@/lib/helpers";
 import DocumentContainer from "./DocumentContainer";
 import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
-import { DocumentLayout, loadDocumentLayout, createDefaultLayout } from "@/lib/documentDesigner";
 
 export type TaxInvoiceLineItem = {
   id?: string;
@@ -63,13 +63,9 @@ export default function TaxInvoiceTemplate({
 }: TaxInvoiceProps) {
   // Always initialize with default UAE Corporate template so the Tax Invoice preview
   // and PDF Designer share the exact same underlying layout and dimensions.
-  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("tax_invoice"));
-
-  useEffect(() => {
-    loadDocumentLayout(company?.id, "tax_invoice").then((res) => {
-      setCustomLayout(res.layout);
-    });
-  }, [company?.id]);
+  const design = usePersistedDocumentDesign(company?.id, 'tax_invoice');
+  const customLayout = design.layout;
+  if (!design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
 
   const advance = Number(invoice.advance_amount) || 0;
   const netPayable = Math.max(0, invoice.total_amount - advance);

@@ -8,6 +8,13 @@
  */
 
 import { supabase } from "./supabase";
+import { createDocumentCloud, revisionOf, cloudError, type CloudRevision } from './documentCloud';
+import { preserveDesignDraft } from './documentDesignBackup';
+export const documentCloud = createDocumentCloud(supabase);
+export interface LoadedDocumentDesign {
+  layout: DocumentLayout; source: 'database' | 'local' | 'default';
+  revision?: CloudRevision; error?: string; updatedAt?: string;
+}
 
 // ── Document Type Definitions ──────────────────────────────────────────────────
 export type DocumentTypeId =
@@ -1058,77 +1065,39 @@ export function sortAndNormalizeLayerZIndexes(elements: LayoutElement[]): Layout
  * 3. Default UAE corporate layout
  */
 export async function loadDocumentLayout(
-  companyId?: string | null,
-  docType: DocumentTypeId = "tax_invoice"
-): Promise<{ layout: DocumentLayout; source: "database" | "local" | "default" }> {
-  // 1. Try Supabase if companyId exists
+  companyId?: string | null, docType: DocumentTypeId = 'tax_invoice'
+): Promise<LoadedDocumentDesign> {
+  let error: string | undefined;
+  let revision: CloudRevision | undefined;
   if (companyId) {
     try {
-      const { data, error } = await supabase
-        .from("document_templates")
-        .select("layout_json")
-        .eq("company_id", companyId)
-        .eq("document_type", docType)
-        .eq("is_default", true)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!error && data?.layout_json) {
-        return {
-          layout: normalizeLayout(data.layout_json as DocumentLayout),
-          source: "database",
-        };
+      const snapshot = await documentCloud.load(companyId, docType);
+      revision = revisionOf(snapshot);
+      if (snapshot.template) {
+        const layout = normalizeLayout({ ...snapshot.template.layout_json, templateName: snapshot.template.template_name });
+        try { window.localStorage.setItem('dubai-erp.design-cache.' + companyId + '.' + docType, JSON.stringify(layout)); } catch {}
+        return { layout, source: 'database', revision, updatedAt: snapshot.template.updated_at };
       }
-    } catch {
-      // Table may not exist yet or offline; gracefully proceed to localStorage
+    } catch (failure) { error = cloudError(failure).message; }
+  } else { error = 'Sign in to a company account to load or save cloud designs.'; }
+  // Recovery is explicit and never removes, migrates, or overwrites the legacy keys.
+  if (typeof window !== 'undefined') {
+    for (const key of [getLocalStorageKey(companyId, docType), 'dubai-erp.design-cache.' + companyId + '.' + docType]) {
+      try {
+        const raw = window.localStorage.getItem(key);
+        if (raw) { const layout = JSON.parse(raw) as DocumentLayout;
+          if (layout.documentType === docType && Array.isArray(layout.elements)) return { layout: normalizeLayout(layout), source: 'local', error, revision };
+        }
+      } catch {}
     }
   }
-
-  // 2. Try localStorage
-  if (typeof window !== "undefined") {
-    try {
-      const storageKey = getLocalStorageKey(companyId, docType);
-      let stored = window.localStorage.getItem(storageKey);
-      if (!stored) {
-        const legacyKey = `${LOCAL_STORAGE_PREFIX}${docType}`;
-        stored = window.localStorage.getItem(legacyKey);
-        if (stored) {
-          window.localStorage.setItem(storageKey, stored);
-          window.localStorage.removeItem(legacyKey);
-        }
-      }
-      if (stored) {
-        const parsed = JSON.parse(stored) as DocumentLayout;
-        if (parsed?.elements?.length) {
-          return { layout: normalizeLayout(parsed), source: "local" };
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // 3. Return fresh default layout
-  return {
-    layout: normalizeLayout(createDefaultLayout(docType)),
-    source: "default",
-  };
+  return { layout: createDefaultLayout(docType), source: 'default', error, revision };
 }
 
 /**
  * Saves document layout to Supabase with automatic fallback to localStorage.
  */
-function isMissingTableError(errorMsg?: string | null): boolean {
-  if (!errorMsg) return false;
-  const lower = errorMsg.toLowerCase();
-  return (
-    lower.includes("could not find the table") ||
-    lower.includes("schema cache") ||
-    lower.includes("does not exist") ||
-    lower.includes("42p01")
-  );
-}
+
 
 export type VisualScopeKey =
   | "logo"
@@ -1330,106 +1299,18 @@ export function applyVisualSettingsToLayout(
 
 
 export async function saveDocumentLayout(
-  companyId: string | null | undefined,
-  docType: DocumentTypeId,
-  layout: DocumentLayout
-): Promise<{ success: boolean; error?: string; warning?: string; target: "database" | "local" }> {
-  // The general layout save path owns one canonical row per document type.
-  // Named styles are mutated only through documentStylePresets, never by upsert.
-  const templateName = DEFAULT_DOCUMENT_TEMPLATE_NAME;
-  const persistedLayout = normalizeLayout({
-    ...layout,
-    documentType: docType,
-    templateName,
-  });
-
-  // Always update localStorage first so current user session and preview are instant
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.setItem(
-        getLocalStorageKey(companyId, docType),
-        JSON.stringify(persistedLayout)
-      );
-    } catch (e) {
-      console.warn("Failed to write layout to localStorage:", e);
-    }
+  companyId: string | null | undefined, docType: DocumentTypeId, layout: DocumentLayout,
+  revision?: CloudRevision
+): Promise<{ success: boolean; error?: string; warning?: string; target: 'database' | 'local'; revision?: CloudRevision; updatedAt?: string; conflict?: boolean }> {
+  preserveDesignDraft(companyId, docType, layout);
+  try {
+    if (!companyId || !revision) throw new Error('Load the cloud design successfully before saving. Your draft is preserved.');
+    const saved = await documentCloud.save(companyId, docType, layout, revision);
+    return { success: true, target: 'database', revision: revisionOf(saved), updatedAt: saved.template?.updated_at };
+  } catch (failure) {
+    const error = cloudError(failure);
+    return { success: false, target: 'local', error: error.message, conflict: error.code === 'CONFLICT' };
   }
-
-  // If companyId is available, attempt saving to Supabase
-  if (companyId) {
-    try {
-      const { error: clearDefaultError } = await supabase
-        .from("document_templates")
-        .update({ is_default: false, updated_at: new Date().toISOString() })
-        .eq("company_id", companyId)
-        .eq("document_type", docType)
-        .eq("is_default", true)
-        .neq("template_name", templateName);
-
-      if (clearDefaultError) {
-        if (isMissingTableError(clearDefaultError.message)) {
-          return {
-            success: true,
-            target: "local",
-            warning: "Saved locally in browser. Database table 'document_templates' pending migration.",
-          };
-        }
-        return {
-          success: true,
-          target: "local",
-          warning: `Saved locally. Database sync notice: ${clearDefaultError.message}`,
-        };
-      }
-
-      const { error } = await supabase.from("document_templates").upsert(
-        {
-          company_id: companyId,
-          document_type: docType,
-          template_name: templateName,
-          layout_json: persistedLayout,
-          is_default: true,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "company_id,document_type,template_name",
-        }
-      );
-
-      if (!error) {
-        return { success: true, target: "database" };
-      }
-
-      console.warn("Supabase document_templates upsert error:", error.message);
-      if (isMissingTableError(error.message)) {
-        return {
-          success: true,
-          target: "local",
-          warning: "Saved locally in browser. Database table 'document_templates' pending migration.",
-        };
-      }
-      return {
-        success: true,
-        target: "local",
-        warning: `Saved locally. Database notice: ${error.message}`,
-      };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (isMissingTableError(msg)) {
-        return {
-          success: true,
-          target: "local",
-          warning: "Saved locally in browser.",
-        };
-      }
-      return {
-        success: true,
-        target: "local",
-        warning: `Saved locally. Sync notice: ${msg}`,
-      };
-    }
-  }
-
-  return { success: true, target: "local" };
 }
 
 /**
@@ -1437,10 +1318,10 @@ export async function saveDocumentLayout(
  */
 export async function resetDocumentLayout(
   companyId: string | null | undefined,
-  docType: DocumentTypeId
+  docType: DocumentTypeId, revision?: CloudRevision
 ): Promise<{ layout: DocumentLayout; persistenceError?: string }> {
   const defaultLayout = createDefaultLayout(docType);
-  const result = await saveDocumentLayout(companyId, docType, defaultLayout);
+  const result = await saveDocumentLayout(companyId, docType, defaultLayout, revision);
   return { layout: defaultLayout, persistenceError: result.success ? undefined : result.error };
 }
 

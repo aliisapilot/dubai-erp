@@ -358,7 +358,7 @@ export default function DynamicDocumentRenderer({
   function renderElementContent(elem: LayoutElement) {
     switch (elem.type) {
       case "watermark": {
-        const bgImg = brand.assets.watermark || brand.assets.background || brand.assets.logo;
+        const bgImg = elem.imageSrc || brand.assets.watermark || brand.assets.background || brand.assets.logo;
         return (
           <div className="w-full h-full flex items-center justify-center pointer-events-none select-none overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}

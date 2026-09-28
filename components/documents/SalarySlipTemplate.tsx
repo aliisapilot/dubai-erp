@@ -1,8 +1,7 @@
 "use client";
+import { usePersistedDocumentDesign, DesignLoadState } from "./usePersistedDocumentDesign";
 
-import { useEffect, useState } from "react";
 import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
-import { DocumentLayout, createDefaultLayout, loadDocumentLayout } from "@/lib/documentDesigner";
 
 import React from "react";
 import DocHeader, { CompanyDocInfo } from "./DocHeader";
@@ -52,13 +51,9 @@ export default function SalarySlipTemplate({
   slip,
   onClose,
 }: SalarySlipProps) {
-  const [customLayout, setCustomLayout] = useState<DocumentLayout>(() => createDefaultLayout("salary_statement"));
-
-  useEffect(() => {
-    loadDocumentLayout(company?.id, "salary_statement").then((res) => {
-      setCustomLayout(res.layout);
-    });
-  }, [company?.id]);
+  const design = usePersistedDocumentDesign(company?.id, 'salary_statement');
+  const customLayout = design.layout;
+  if (!design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
   const monthNames = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"

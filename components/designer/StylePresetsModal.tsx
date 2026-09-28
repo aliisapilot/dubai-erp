@@ -95,7 +95,7 @@ export default function StylePresetsModal({
                               <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">
                                 {DOCUMENT_TYPE_OPTIONS.find((option) => option.id === preset.document_type)?.label || preset.document_type.replaceAll("_", " ")}
                               </span>
-                              {preset.is_default && <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"><Star size={11} />Default</span>}
+                              {preset.is_default && <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"><Star size={11} />Legacy default</span>}
                               {preset.id === activePresetId && <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300">Editing</span>}
                             </div>
                           )}
@@ -105,7 +105,7 @@ export default function StylePresetsModal({
                           <button type="button" onClick={() => onEdit(preset)} className="flex h-9 items-center gap-1 rounded-md px-2 text-xs font-semibold text-sky-300 hover:bg-sky-500/10" title="Load this style into the canvas"><Pencil size={13} />Edit</button>
                           <button type="button" onClick={() => { setRenameId(preset.id); setRenameValue(preset.template_name); }} className="flex h-9 w-9 items-center justify-center rounded-md text-slate-300 hover:bg-slate-800" title="Rename style" aria-label={`Rename ${preset.template_name}`}><Pencil size={14} /></button>
                           <button type="button" onClick={() => { setDuplicateId(duplicateId === preset.id ? null : preset.id); setDuplicateValue(`${preset.template_name} Copy`); }} className="flex h-9 w-9 items-center justify-center rounded-md text-slate-300 hover:bg-slate-800" title="Duplicate style" aria-label={`Duplicate ${preset.template_name}`}><Copy size={14} /></button>
-                          <button type="button" onClick={() => onSetDefault(preset)} disabled={busy || preset.is_default} className="flex h-9 w-9 items-center justify-center rounded-md text-amber-300 hover:bg-amber-500/10 disabled:opacity-40" title="Set as default for this document type" aria-label={`Set ${preset.template_name} as default`}><Star size={14} /></button>
+                          <button type="button" onClick={() => onSetDefault(preset)} disabled={busy} className="flex h-9 w-9 items-center justify-center rounded-md text-amber-300 hover:bg-amber-500/10 disabled:opacity-40" title="Use this saved design on all devices" aria-label={`Set ${preset.template_name} as cloud design`}><Star size={14} /></button>
                           <button type="button" onClick={() => onDelete(preset)} disabled={busy || preset.is_default} className="flex h-9 w-9 items-center justify-center rounded-md text-rose-300 hover:bg-rose-500/10 disabled:opacity-40" title={preset.is_default ? "Set another default before deleting" : "Delete style"} aria-label={`Delete ${preset.template_name}`}><Trash2 size={14} /></button>
                         </div>
                       </div>

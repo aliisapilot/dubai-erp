@@ -1,4 +1,5 @@
 "use client";
+import { printCurrentDocument } from "@/lib/print";
 
 import React, { ReactNode, useEffect, useRef, useState } from "react";
 import { Maximize, Printer, X, ZoomIn, ZoomOut } from "lucide-react";
@@ -96,7 +97,7 @@ export default function PrintModal({ isOpen, onClose, children }: PrintModalProp
           <button type="button" onClick={() => { setIsFit(false); setScale((value) => Math.min(2, value + 0.1)); }} className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-slate-800" aria-label="Zoom in" title="Zoom in">
             <ZoomIn size={18} />
           </button>
-          <button type="button" onClick={() => window.print()} className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-500" aria-label="Print or save as PDF" title="Print or save as PDF">
+          <button type="button" onClick={() => void printCurrentDocument()} className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-500" aria-label="Print or save as PDF" title="Print or save as PDF">
             <Printer size={16} /><span className="hidden min-[380px]:inline">Print / Save</span>
           </button>
           <button type="button" onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-slate-800" aria-label="Close document preview" title="Close preview">

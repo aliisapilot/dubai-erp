@@ -6,6 +6,9 @@
 export async function printCurrentDocument(): Promise<void> {
   if (typeof window === "undefined") return;
 
+  if (document.querySelector('[data-design-print-blocked]')) {
+    window.alert('Wait for the saved cloud design to load successfully before exporting this PDF.'); return;
+  }
   const isModuleReport =
     !document.querySelector(".print-document, .dynamic-document-page") &&
     Boolean(document.querySelector("[data-print-root]"));

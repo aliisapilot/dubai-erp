@@ -125,7 +125,9 @@ export default function ApplyToOthersModal({
         });
 
         // 3. Save independently into target document storage
-        await saveDocumentLayout(companyId, docId, updatedLayout);
+        if(targetRes.error || !targetRes.revision) throw new Error(targetRes.error || 'Cloud design could not be loaded.');
+        const saved = await saveDocumentLayout(companyId, docId, updatedLayout, targetRes.revision);
+        if(!saved.success) throw new Error(saved.error || 'Cloud save failed.');
         count++;
       }
 
