@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import {
   Sliders,
   RotateCcw,
@@ -28,6 +28,7 @@ import {
   DocumentLayout,
   LayoutElement,
 } from "@/lib/documentDesigner";
+import PageBorderSection from "./PageBorderSection";
 
 interface RightInspectorProps {
   layout: DocumentLayout;
@@ -78,6 +79,165 @@ export default function RightInspector({
   onReplaceImage,
 }: RightInspectorProps) {
   const imageReplaceInputRef = useRef<HTMLInputElement>(null);
+  const [activeTabOverride, setActiveTabOverride] = useState<"element" | "page_borders" | null>(null);
+  const [prevElementId, setPrevElementId] = useState<string | null>(selectedElement?.id || null);
+
+  if (selectedElement?.id !== prevElementId) {
+    setPrevElementId(selectedElement?.id || null);
+    setActiveTabOverride(null);
+  }
+
+  const activeTab = activeTabOverride || (selectedElement ? "element" : "page_borders");
+
+  const renderPageAndBordersContent = () => (
+    <div className="p-4 space-y-5 text-xs">
+      {/* Page Margins */}
+      <div>
+        <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">
+          Page Margins (mm)
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[10px] text-slate-400 block mb-1">Top Margin</label>
+            <input
+              type="number"
+              min={0}
+              max={50}
+              value={layout.page.margins.top}
+              onChange={(e) =>
+                onUpdatePageSettings({
+                  margins: { ...layout.page.margins, top: Number(e.target.value) || 0 },
+                })
+              }
+              className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-slate-400 block mb-1">Bottom Margin</label>
+            <input
+              type="number"
+              min={0}
+              max={50}
+              value={layout.page.margins.bottom}
+              onChange={(e) =>
+                onUpdatePageSettings({
+                  margins: { ...layout.page.margins, bottom: Number(e.target.value) || 0 },
+                })
+              }
+              className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-slate-400 block mb-1">Left Margin</label>
+            <input
+              type="number"
+              min={0}
+              max={50}
+              value={layout.page.margins.left}
+              onChange={(e) =>
+                onUpdatePageSettings({
+                  margins: { ...layout.page.margins, left: Number(e.target.value) || 0 },
+                })
+              }
+              className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-slate-400 block mb-1">Right Margin</label>
+            <input
+              type="number"
+              min={0}
+              max={50}
+              value={layout.page.margins.right}
+              onChange={(e) =>
+                onUpdatePageSettings({
+                  margins: { ...layout.page.margins, right: Number(e.target.value) || 0 },
+                })
+              }
+              className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Page Border & Background Design */}
+      <PageBorderSection
+        layout={layout}
+        onUpdatePageSettings={onUpdatePageSettings}
+      />
+
+      {/* Document Branding Palette */}
+      <div className="pt-3 border-t border-slate-800 space-y-3">
+        <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          Document Brand Theme
+        </div>
+
+        {/* Primary Navy */}
+        <div className="flex items-center justify-between">
+          <span className="text-slate-300">Primary Color (Headers)</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={layout.branding.primaryColor}
+              onChange={(e) => onUpdateLayoutBranding({ primaryColor: e.target.value })}
+              className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
+            />
+            <span className="font-mono text-[10px] text-slate-400">
+              {layout.branding.primaryColor}
+            </span>
+          </div>
+        </div>
+
+        {/* Accent Gold */}
+        <div className="flex items-center justify-between">
+          <span className="text-slate-300">Gold / Accent Color</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={layout.branding.accentColor}
+              onChange={(e) => onUpdateLayoutBranding({ accentColor: e.target.value })}
+              className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
+            />
+            <span className="font-mono text-[10px] text-slate-400">
+              {layout.branding.accentColor}
+            </span>
+          </div>
+        </div>
+
+        {/* Table Header */}
+        <div className="flex items-center justify-between">
+          <span className="text-slate-300">Table Header Color</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={layout.branding.tableHeaderColor}
+              onChange={(e) => onUpdateLayoutBranding({ tableHeaderColor: e.target.value })}
+              className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
+            />
+            <span className="font-mono text-[10px] text-slate-400">
+              {layout.branding.tableHeaderColor}
+            </span>
+          </div>
+        </div>
+
+        {/* Total Highlight */}
+        <div className="flex items-center justify-between">
+          <span className="text-slate-300">Total Highlight Color</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={layout.branding.totalHighlightColor}
+              onChange={(e) => onUpdateLayoutBranding({ totalHighlightColor: e.target.value })}
+              className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
+            />
+            <span className="font-mono text-[10px] text-slate-400">
+              {layout.branding.totalHighlightColor}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   // If NO element is selected, show Document Page Settings and Central Branding
   if (!selectedElement) {
@@ -87,148 +247,7 @@ export default function RightInspector({
           <Sliders size={15} className="text-amber-400" />
           <span>Page &amp; Branding Settings</span>
         </div>
-
-        <div className="p-4 space-y-5 text-xs">
-          {/* Page Margins */}
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">
-              Page Margins (mm)
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Top Margin</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={50}
-                  value={layout.page.margins.top}
-                  onChange={(e) =>
-                    onUpdatePageSettings({
-                      margins: { ...layout.page.margins, top: Number(e.target.value) || 0 },
-                    })
-                  }
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Bottom Margin</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={50}
-                  value={layout.page.margins.bottom}
-                  onChange={(e) =>
-                    onUpdatePageSettings({
-                      margins: { ...layout.page.margins, bottom: Number(e.target.value) || 0 },
-                    })
-                  }
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Left Margin</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={50}
-                  value={layout.page.margins.left}
-                  onChange={(e) =>
-                    onUpdatePageSettings({
-                      margins: { ...layout.page.margins, left: Number(e.target.value) || 0 },
-                    })
-                  }
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Right Margin</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={50}
-                  value={layout.page.margins.right}
-                  onChange={(e) =>
-                    onUpdatePageSettings({
-                      margins: { ...layout.page.margins, right: Number(e.target.value) || 0 },
-                    })
-                  }
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Document Branding Palette */}
-          <div className="pt-3 border-t border-slate-800 space-y-3">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
-              Document Brand Theme
-            </div>
-
-            {/* Primary Navy */}
-            <div className="flex items-center justify-between">
-              <span className="text-slate-300">Primary Color (Headers)</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={layout.branding.primaryColor}
-                  onChange={(e) => onUpdateLayoutBranding({ primaryColor: e.target.value })}
-                  className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
-                />
-                <span className="font-mono text-[10px] text-slate-400">
-                  {layout.branding.primaryColor}
-                </span>
-              </div>
-            </div>
-
-            {/* Accent Gold */}
-            <div className="flex items-center justify-between">
-              <span className="text-slate-300">Gold / Accent Color</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={layout.branding.accentColor}
-                  onChange={(e) => onUpdateLayoutBranding({ accentColor: e.target.value })}
-                  className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
-                />
-                <span className="font-mono text-[10px] text-slate-400">
-                  {layout.branding.accentColor}
-                </span>
-              </div>
-            </div>
-
-            {/* Table Header */}
-            <div className="flex items-center justify-between">
-              <span className="text-slate-300">Table Header Color</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={layout.branding.tableHeaderColor}
-                  onChange={(e) => onUpdateLayoutBranding({ tableHeaderColor: e.target.value })}
-                  className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
-                />
-                <span className="font-mono text-[10px] text-slate-400">
-                  {layout.branding.tableHeaderColor}
-                </span>
-              </div>
-            </div>
-
-            {/* Total Highlight */}
-            <div className="flex items-center justify-between">
-              <span className="text-slate-300">Total Highlight Color</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={layout.branding.totalHighlightColor}
-                  onChange={(e) => onUpdateLayoutBranding({ totalHighlightColor: e.target.value })}
-                  className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
-                />
-                <span className="font-mono text-[10px] text-slate-400">
-                  {layout.branding.totalHighlightColor}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+        {renderPageAndBordersContent()}
       </aside>
     );
   }
@@ -266,17 +285,49 @@ export default function RightInspector({
   };
 
   return (
-    <aside className="designer-scrollbar flex h-full min-h-0 w-84 sm:w-88 md:w-96 min-w-[320px] max-w-[420px] shrink-0 select-none flex-col overflow-x-hidden overflow-y-auto border-l border-slate-800 bg-slate-900 text-white" tabIndex={0} aria-label="Element settings">
-      {/* Header */}
-      <div className="p-3 border-b border-slate-800 flex items-center justify-between">
-        <div>
-          <div className="text-xs font-bold text-slate-100 truncate max-w-[180px]">
-            {elem.label}
-          </div>
-          <div className="text-[10px] text-amber-400 font-mono">
-            Type: {elem.type}
-          </div>
-        </div>
+    <aside className="designer-scrollbar flex h-full min-h-0 w-84 sm:w-88 md:w-96 min-w-[320px] max-w-[420px] shrink-0 select-none flex-col overflow-x-hidden overflow-y-auto border-l border-slate-800 bg-slate-900 text-white" tabIndex={0} aria-label="Element and page settings">
+      {/* Top Inspector Tab Switcher */}
+      <div className="flex border-b border-slate-800 bg-slate-950/80 p-1.5 gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={() => setActiveTabOverride("element")}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-bold transition cursor-pointer ${
+            activeTab === "element"
+              ? "bg-slate-800 text-white shadow-sm border border-slate-700"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <Sliders size={13} className="text-blue-400 shrink-0" />
+          <span className="truncate">{elem.label}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTabOverride("page_borders")}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-bold transition cursor-pointer ${
+            activeTab === "page_borders"
+              ? "bg-amber-500/20 text-amber-300 shadow-sm border border-amber-500/40"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <Sparkles size={13} className="text-amber-400 shrink-0" />
+          <span className="truncate">Page &amp; Borders</span>
+        </button>
+      </div>
+
+      {activeTab === "page_borders" ? (
+        renderPageAndBordersContent()
+      ) : (
+        <>
+          {/* Header */}
+          <div className="p-3 border-b border-slate-800 flex items-center justify-between">
+            <div>
+              <div className="text-xs font-bold text-slate-100 truncate max-w-[180px]">
+                {elem.label}
+              </div>
+              <div className="text-[10px] text-amber-400 font-mono">
+                Type: {elem.type}
+              </div>
+            </div>
 
         {/* Quick Element Actions */}
         <div className="flex items-center gap-1">
@@ -1178,6 +1229,8 @@ export default function RightInspector({
           )}
         </div>
       </div>
+      </>
+      )}
     </aside>
   );
 }

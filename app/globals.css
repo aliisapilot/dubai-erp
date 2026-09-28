@@ -455,6 +455,14 @@ body {
     print-color-adjust: exact !important;
   }
 
+  .page-decorative-borders-container,
+  .page-decorative-borders-container svg,
+  .page-decorative-borders-container svg * {
+    display: block !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   .print-content {
     display: block !important;
     position: relative !important;

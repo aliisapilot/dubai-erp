@@ -235,6 +235,87 @@ export interface LayoutElement {
   minGapMm?: number;
 }
 
+export type DecorativeBorderStyle = "straight" | "diagonal" | "custom";
+export type CustomDecorativeBorderSubtype =
+  | "geometric_ribbon"
+  | "accent_corner"
+  | "double_stripe"
+  | "wave"
+  | "chevron"
+  | "custom_path";
+
+export interface PageDecorativeBorder {
+  enabled: boolean;
+  style: DecorativeBorderStyle;
+  color: string;
+  thickness: number; // in mm
+  position: number;  // offset in mm from edge (0 = flush with edge)
+  angle: number;     // degrees (-45 to +45)
+  opacity: number;   // 0.0 to 1.0 (default 1)
+  customSubtype?: CustomDecorativeBorderSubtype;
+  customSvgPath?: string;
+  secondaryColor?: string;
+}
+
+export interface PageBorderSettings {
+  top: PageDecorativeBorder;
+  bottom: PageDecorativeBorder;
+}
+
+export const DEFAULT_PAGE_BORDERS: PageBorderSettings = {
+  top: {
+    enabled: true,
+    style: "straight",
+    color: "#E0AC23", // Gold
+    thickness: 4,
+    position: 0,
+    angle: 0,
+    opacity: 1,
+    customSubtype: "geometric_ribbon",
+    secondaryColor: "#173C64",
+  },
+  bottom: {
+    enabled: true,
+    style: "straight",
+    color: "#173C64", // Navy Blue
+    thickness: 4,
+    position: 0,
+    angle: 0,
+    opacity: 1,
+    customSubtype: "geometric_ribbon",
+    secondaryColor: "#E0AC23",
+  },
+};
+
+export function normalizePageBorders(borders?: Partial<PageBorderSettings> | null): PageBorderSettings {
+  return {
+    top: {
+      enabled: borders?.top?.enabled ?? DEFAULT_PAGE_BORDERS.top.enabled,
+      style: borders?.top?.style ?? DEFAULT_PAGE_BORDERS.top.style,
+      color: borders?.top?.color || DEFAULT_PAGE_BORDERS.top.color,
+      thickness: Number.isFinite(borders?.top?.thickness) ? borders!.top!.thickness : DEFAULT_PAGE_BORDERS.top.thickness,
+      position: Number.isFinite(borders?.top?.position) ? borders!.top!.position : DEFAULT_PAGE_BORDERS.top.position,
+      angle: Number.isFinite(borders?.top?.angle) ? borders!.top!.angle : DEFAULT_PAGE_BORDERS.top.angle,
+      opacity: Number.isFinite(borders?.top?.opacity) ? borders!.top!.opacity : DEFAULT_PAGE_BORDERS.top.opacity,
+      customSubtype: borders?.top?.customSubtype || DEFAULT_PAGE_BORDERS.top.customSubtype,
+      customSvgPath: borders?.top?.customSvgPath,
+      secondaryColor: borders?.top?.secondaryColor || DEFAULT_PAGE_BORDERS.top.secondaryColor,
+    },
+    bottom: {
+      enabled: borders?.bottom?.enabled ?? DEFAULT_PAGE_BORDERS.bottom.enabled,
+      style: borders?.bottom?.style ?? DEFAULT_PAGE_BORDERS.bottom.style,
+      color: borders?.bottom?.color || DEFAULT_PAGE_BORDERS.bottom.color,
+      thickness: Number.isFinite(borders?.bottom?.thickness) ? borders!.bottom!.thickness : DEFAULT_PAGE_BORDERS.bottom.thickness,
+      position: Number.isFinite(borders?.bottom?.position) ? borders!.bottom!.position : DEFAULT_PAGE_BORDERS.bottom.position,
+      angle: Number.isFinite(borders?.bottom?.angle) ? borders!.bottom!.angle : DEFAULT_PAGE_BORDERS.bottom.angle,
+      opacity: Number.isFinite(borders?.bottom?.opacity) ? borders!.bottom!.opacity : DEFAULT_PAGE_BORDERS.bottom.opacity,
+      customSubtype: borders?.bottom?.customSubtype || DEFAULT_PAGE_BORDERS.bottom.customSubtype,
+      customSvgPath: borders?.bottom?.customSvgPath,
+      secondaryColor: borders?.bottom?.secondaryColor || DEFAULT_PAGE_BORDERS.bottom.secondaryColor,
+    },
+  };
+}
+
 export interface DocumentLayout {
   version: number;
   documentType: DocumentTypeId;
@@ -252,6 +333,7 @@ export interface DocumentLayout {
     };
     background: string;
     watermarkOpacity: number;
+    borders?: PageBorderSettings;
   };
   branding: {
     primaryColor: string;
@@ -969,6 +1051,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       margins: { top: 12, right: 12, bottom: 12, left: 12 },
       background: "#FFFFFF",
       watermarkOpacity: 0.045,
+      borders: JSON.parse(JSON.stringify(DEFAULT_PAGE_BORDERS)),
     },
     branding: documentStyle,
     elements: applyDocumentBusinessProfile(elements, docType),
@@ -1036,7 +1119,14 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
   return {
     ...layout,
     version: CURRENT_LAYOUT_VERSION,
-    page: { ...layout.page, paper: "A4", widthMm: 210, heightMm: 297 },
+    page: {
+      ...layout.page,
+      paper: "A4",
+      widthMm: 210,
+      heightMm: 297,
+      background: layout.page?.background || "#FFFFFF",
+      borders: normalizePageBorders(layout.page?.borders),
+    },
     branding: sourceVersion < 7 ? DOCUMENT_STYLES[layout.documentType] : layout.branding,
     elements,
   };
@@ -1114,7 +1204,8 @@ export type VisualScopeKey =
   | "payment_terms"
   | "company_signature"
   | "company_stamp"
-  | "page_margins";
+  | "page_margins"
+  | "page_borders";
 
 export const VISUAL_SCOPE_DEFINITIONS: { key: VisualScopeKey; label: string; description: string }[] = [
   { key: "logo", label: "Company Logo", description: "Position, dimensions, border, aspect ratio" },
@@ -1125,6 +1216,7 @@ export const VISUAL_SCOPE_DEFINITIONS: { key: VisualScopeKey; label: string; des
   { key: "doc_title", label: "Document Title Styling", description: "Banner background, height, fonts, padding (preserves doc title text)" },
   { key: "typography", label: "Typography & Fonts", description: "Font families across document elements" },
   { key: "branding_colors", label: "Brand Colors Theme", description: "Primary navy, gold accent, borders, table header, highlight" },
+  { key: "page_borders", label: "Page Decorative Borders", description: "Top Gold #E0AC23 & Bottom Navy #173C64 borders, thickness, angle, opacity" },
   { key: "watermark", label: "Background & Watermark", description: "Watermark image, size, position, opacity" },
   { key: "footer", label: "Document Footer", description: "Position, height, typography, borders" },
   { key: "bank_details", label: "Bank Details Card", description: "Card position, background, borders, font size" },
@@ -1246,8 +1338,18 @@ export function applyVisualSettingsToLayout(
     updated.page = {
       ...updated.page,
       margins: { ...sourceLayout.page.margins },
-      background: sourceLayout.page.background,
+      background: sourceLayout.page.background || "#FFFFFF",
       watermarkOpacity: sourceLayout.page.watermarkOpacity,
+      ...(sourceLayout.page?.borders ? { borders: JSON.parse(JSON.stringify(sourceLayout.page.borders)) } : {}),
+    };
+  }
+
+  if (scopes.has("page_borders")) {
+    updated.page = {
+      ...updated.page,
+      borders: sourceLayout.page?.borders
+        ? JSON.parse(JSON.stringify(sourceLayout.page.borders))
+        : undefined,
     };
   }
 

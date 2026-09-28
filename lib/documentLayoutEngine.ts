@@ -995,6 +995,40 @@ export function validateDocumentLayout(
     }
   }
 
+  // 5. Decorative Border Clearance Verification
+  if (layout.page?.borders?.top?.enabled) {
+    const topBorder = layout.page.borders.top;
+    const topLimit = (topBorder.position || 0) + (topBorder.thickness || 4);
+    const logoOrHeader = visibleElements.find((el) => (el.type === "logo" || el.id === "logo") && el.y < topLimit);
+    if (logoOrHeader) {
+      issues.push({
+        id: "top_border_logo_clearance",
+        elementId: logoOrHeader.id,
+        elementLabel: `${logoOrHeader.label} & Top Decorative Border`,
+        severity: "info",
+        category: "bounds",
+        message: `Top decorative border reaches ${topLimit.toFixed(1)}mm near ${logoOrHeader.label} (${logoOrHeader.y.toFixed(1)}mm). Auto-clearance guard safely clamps the rendered border.`,
+        suggestedFix: "Safe auto-clearance is active. You can also adjust border thickness or position in the inspector.",
+      });
+    }
+  }
+
+  if (layout.page?.borders?.bottom?.enabled && footer) {
+    const bottomBorder = layout.page.borders.bottom;
+    const bottomStart = pageHeight - (bottomBorder.position || 0) - (bottomBorder.thickness || 4);
+    if (bottomStart < footer.y + footer.height) {
+      issues.push({
+        id: "bottom_border_footer_clearance",
+        elementId: footer.id,
+        elementLabel: `${footer.label} & Bottom Decorative Border`,
+        severity: "info",
+        category: "bounds",
+        message: `Bottom decorative border extends near footer at ${(footer.y + footer.height).toFixed(1)}mm. Auto-clearance guard safely clamps the rendered border.`,
+        suggestedFix: "Safe auto-clearance is active. You can also adjust border thickness or position in the inspector.",
+      });
+    }
+  }
+
   const hasErrors = issues.some((i) => i.severity === "error");
   const hasWarnings = issues.some((i) => i.severity === "warning");
 

@@ -758,18 +758,38 @@ export default function DocumentDesigner() {
     try {
       const current=await documentCloud.load(companyId,selectedDocType);
       if(JSON.stringify(revisionOf(current))!==JSON.stringify(cloudRevision)) throw cloudError({code:'40001'});
-      const proposedLayout=persistedLayout;
+      // Ensure custom borders and page background are strictly preserved:
+      const savedBorders = current.template?.layout_json?.page?.borders || persistedLayout.page?.borders || layout.page?.borders;
+      const savedBackground = current.template?.layout_json?.page?.background || persistedLayout.page?.background || layout.page?.background;
+      const proposedLayout: DocumentLayout = {
+        ...persistedLayout,
+        page: {
+          ...persistedLayout.page,
+          ...(savedBorders ? { borders: JSON.parse(JSON.stringify(savedBorders)) } : {}),
+          background: savedBackground || "#FFFFFF",
+        },
+      };
       const sample=getSampleDocumentData(selectedDocType);
       const pagination=computePaginationPlan(proposedLayout,sample.items.length,sample.items);
       setAutoFixProposal({layout:proposedLayout,mode:'saved',styleName:current.template!.template_name,totalPages:pagination.totalPages,fitLevel:pagination.fitProfile?.level,warning:pagination.warning});
       setShowAutoFixPreview(true);
     } catch(error) { const failure=cloudError(error); setCloudErrorMessage(failure.message);setCloudConflict(failure.code==='CONFLICT'); }
-  }, [companyId,cloudRevision,dirty,persistedLayout,selectedDocType]);
+  }, [companyId,cloudRevision,dirty,persistedLayout,selectedDocType,layout.page]);
   const handleApplyAutoFix = useCallback(() => {
     if(!autoFixProposal)return;
-    pushHistory(autoFixProposal.layout);setShowAutoFixPreview(false);setAutoFixProposal(null);
-    setNotification({message:'Applied the saved cloud design. PDF pagination uses this same design.',type:'success'});
-  }, [autoFixProposal,pushHistory]);
+    const bordersToKeep = autoFixProposal.layout.page?.borders || persistedLayout?.page?.borders || layout.page.borders;
+    const finalLayout: DocumentLayout = {
+      ...autoFixProposal.layout,
+      page: {
+        ...autoFixProposal.layout.page,
+        ...(bordersToKeep ? { borders: JSON.parse(JSON.stringify(bordersToKeep)) } : {}),
+      },
+    };
+    pushHistory(finalLayout);
+    setShowAutoFixPreview(false);
+    setAutoFixProposal(null);
+    setNotification({message:'Applied Auto Fix while strictly preserving your saved border & background design.',type:'success'});
+  }, [autoFixProposal,persistedLayout?.page?.borders,layout.page.borders,pushHistory]);
   const handleConfirmReset = useCallback(() => {
     preserveDesignDraft(companyId,selectedDocType,layout);
     pushHistory(createDefaultLayout(selectedDocType));setShowResetModal(false);

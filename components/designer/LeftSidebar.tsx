@@ -19,6 +19,7 @@ import {
   CreditCard,
   FileText,
   Search,
+  Sparkles,
 } from "lucide-react";
 import { LayoutElement, ElementType } from "@/lib/documentDesigner";
 
@@ -129,6 +130,26 @@ export default function LeftSidebar({
 
       {/* Layers List */}
       <div className="designer-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 space-y-1" tabIndex={0} aria-label="Document layers list">
+        {/* Page Borders & Background Quick Action */}
+        <button
+          type="button"
+          onClick={() => onSelectElement("")}
+          className={`w-full flex items-center justify-between px-2.5 py-2 mb-1.5 rounded-lg text-xs transition cursor-pointer border ${
+            !selectedElementId
+              ? "bg-amber-500/20 border-amber-500/60 text-amber-200 font-bold shadow-sm"
+              : "bg-slate-800/60 border-slate-700/60 hover:bg-slate-800 text-slate-300"
+          }`}
+          title="Configure Page Border & Background Design"
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles size={14} className="text-amber-400" />
+            <span>Page Borders &amp; Background</span>
+          </div>
+          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold">
+            Gold &amp; Navy
+          </span>
+        </button>
+
         {sortedElements.map((elem) => {
           const isSelected = selectedElementId === elem.id;
 

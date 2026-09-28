@@ -14,6 +14,7 @@ import {
 import { CompanyDocInfo } from "./DocHeader";
 import { numberToWordsArabic, numberToWordsEnglish } from "@/lib/amountInWords";
 import { fmtAED, fmtDate } from "@/lib/helpers";
+import PageDecorativeBorders from "./PageDecorativeBorders";
 
 export interface MockDocumentData {
   document_number: string;
@@ -1387,6 +1388,13 @@ export default function DynamicDocumentRenderer({
         ["--doc-border" as string]: colors.border,
       }}
     >
+      {/* Decorative Page Borders Layer (Vector SVG, Print-accurate) */}
+      <PageDecorativeBorders
+        layout={layout}
+        isDesignerPreview={isDesignerPreview}
+        elements={effectiveGeometry.elements}
+      />
+
       {/* Margin Guidelines (designer visual guides only) */}
       {isDesignerPreview && (
         <div
