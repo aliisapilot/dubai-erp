@@ -13,6 +13,8 @@ import {
   applyVisualSettingsToLayout,
   VISUAL_SCOPE_DEFINITIONS,
   normalizeLayerZIndexes,
+  normalizeLayout,
+  getLocalStorageKey,
   DOCUMENT_TYPE_OPTIONS,
 } from "@/lib/documentDesigner";
 import TopToolbar from "./TopToolbar";
@@ -80,6 +82,8 @@ export default function DocumentDesigner() {
   const displayedPageNumber = Math.min(pageNumber, totalPages);
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
   const documentLoadRequestRef = useRef(0);
+  // Stable ref to the latest handleFitPage so effects can call it without deps.
+  const handleFitPageRef = useRef<(() => void) | null>(null);
 
   // Modals & Feedback
   const [saving, setSaving] = useState(false);
@@ -181,10 +185,40 @@ export default function DocumentDesigner() {
 
   // Hydrate the selected document only after company resolution. A request token
   // prevents a slower previous document load from overwriting a newer selection.
+  // Phase 1: paint the cached layout instantly so the canvas is never blank.
+  // Phase 2: update with the authoritative cloud version once Supabase responds.
   useEffect(() => {
     if (companyId === undefined) return;
     const requestId = ++documentLoadRequestRef.current;
     let cancelled = false;
+
+    // Instant paint from localStorage so the canvas is visible while Supabase loads.
+    if (companyId) {
+      try {
+        const cacheKey = getLocalStorageKey(companyId, selectedDocType);
+        const fallbackKey = 'dubai-erp.design-cache.' + companyId + '.' + selectedDocType;
+        for (const key of [cacheKey, fallbackKey]) {
+          const raw = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+          if (raw) {
+            const cached = JSON.parse(raw) as DocumentLayout;
+            if (cached.documentType === selectedDocType && Array.isArray(cached.elements)) {
+              const fastLayout = normalizeLayout(cached);
+              setLayout(fastLayout);
+              const snap = JSON.parse(JSON.stringify(fastLayout));
+              historyRef.current = [snap];
+              historyIndexRef.current = 0;
+              setHistory([snap]);
+              setHistoryIndex(0);
+              setSelectedElementId(null);
+              setPageNumber(1);
+              // Fit page to show the cached canvas immediately.
+              window.requestAnimationFrame(() => handleFitPageRef.current?.());
+              break;
+            }
+          }
+        }
+      } catch { /* ignore cache errors */ }
+    }
 
     async function hydrateDocument() {
       const layoutPromise = loadDocumentLayout(companyId, selectedDocType);
@@ -221,6 +255,8 @@ export default function DocumentDesigner() {
       setHistoryIndex(0);
       setSelectedElementId(null);
       setPageNumber(1);
+      // Always fit page after cloud layout is committed.
+      window.requestAnimationFrame(() => handleFitPageRef.current?.());
 
       if (presetResult.error) {
         setNotification({ message: presetResult.error.message, type: "error" });
@@ -770,6 +806,8 @@ export default function DocumentDesigner() {
       setZoom(0.75);
     }
   }, []);
+  // Always keep the ref pointing at the latest callback.
+  handleFitPageRef.current = handleFitPage;
 
   // Keep narrow workspaces usable. Actual canvas-size changes are handled by
   // the ResizeObserver below so browser zoom and toolbar wrapping cannot crop A4.
