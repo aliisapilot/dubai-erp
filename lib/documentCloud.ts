@@ -43,10 +43,18 @@ export function revisionOf(snapshot: CloudSnapshot): CloudRevision {
   return { templateId: snapshot.template?.id || null, version: snapshot.template?.version || 0, selectionVersion: snapshot.selection_version };
 }
 export function createDocumentCloud(client: CloudRpcClient) {
-  async function rpc(name: string, args: Record<string, unknown>) {
-    const { data, error } = await client.rpc(name, args);
-    if (error) throw cloudError(error);
-    return data;
+  async function rpc(name: string, args: Record<string, unknown>, timeoutMs = 8000) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<{ data: unknown; error: { code?: string; message: string } | null }>((_, reject) => {
+      timer = setTimeout(() => reject(new DocumentCloudError('Cloud storage request timed out.', 'TIMEOUT')), timeoutMs);
+    });
+    try {
+      const res = await Promise.race([client.rpc(name, args), timeoutPromise]);
+      if (res && 'error' in res && res.error) throw cloudError(res.error);
+      return res && 'data' in res ? res.data : res;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
   return {
     async load(companyId: string, documentType: DocumentTypeId): Promise<CloudSnapshot> {

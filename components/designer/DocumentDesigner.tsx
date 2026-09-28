@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { getCurrentCompany } from "@/lib/helpers";
+import { getCurrentCompany, getCachedCompanySync } from "@/lib/helpers";
 import {
   DocumentLayout,
   DocumentTypeId,
@@ -42,11 +42,33 @@ import { getBrandConfig } from '@/lib/brandConfig';
 import { cloudError, revisionOf, type CloudRevision } from '@/lib/documentCloud';
 import { exportDesignBackup, preserveDesignDraft } from '@/lib/documentDesignBackup';
 
+function getInitialLayout(docType: DocumentTypeId): DocumentLayout {
+  if (typeof window !== "undefined") {
+    try {
+      const targetCompId = getCachedCompanySync()?.id;
+      if (targetCompId) {
+        const cacheKey = getLocalStorageKey(targetCompId, docType);
+        const fallbackKey = 'dubai-erp.design-cache.' + targetCompId + '.' + docType;
+        for (const key of [cacheKey, fallbackKey]) {
+          const raw = window.localStorage.getItem(key);
+          if (raw) {
+            const cached = JSON.parse(raw) as DocumentLayout;
+            if (cached.documentType === docType && Array.isArray(cached.elements)) {
+              return normalizeLayout(cached);
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+  return createDefaultLayout(docType);
+}
+
 export default function DocumentDesigner() {
   const [selectedDocType, setSelectedDocType] = useState<DocumentTypeId>("tax_invoice");
-  const [layout, setLayout] = useState<DocumentLayout>(() => createDefaultLayout("tax_invoice"));
-  const [company, setCompany] = useState<CompanyDocInfo | null>(null);
-  const [companyId, setCompanyId] = useState<string | null | undefined>(undefined);
+  const [layout, setLayout] = useState<DocumentLayout>(() => getInitialLayout("tax_invoice"));
+  const [company, setCompany] = useState<CompanyDocInfo | null>(() => getCachedCompanySync() as CompanyDocInfo | null);
+  const [companyId, setCompanyId] = useState<string | null | undefined>(() => getCachedCompanySync()?.id ?? undefined);
   const [stylePresets, setStylePresets] = useState<DocumentStylePreset[]>([]);
   const [selectedStylePresetId, setSelectedStylePresetId] = useState<string | null>(null);
   const [autoFixMode, setAutoFixMode] = useState<"standard" | "saved">("standard");
@@ -82,8 +104,8 @@ export default function DocumentDesigner() {
   const displayedPageNumber = Math.min(pageNumber, totalPages);
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
   const documentLoadRequestRef = useRef(0);
-  // Stable ref to the latest handleFitPage so effects can call it without deps.
-  const handleFitPageRef = useRef<(() => void) | null>(null);
+  // Stable ref to the latest handleFitWidth so effects can call it without deps.
+  const handleFitWidthRef = useRef<(() => void) | null>(null);
 
   // Modals & Feedback
   const [saving, setSaving] = useState(false);
@@ -203,16 +225,19 @@ export default function DocumentDesigner() {
             const cached = JSON.parse(raw) as DocumentLayout;
             if (cached.documentType === selectedDocType && Array.isArray(cached.elements)) {
               const fastLayout = normalizeLayout(cached);
-              setLayout(fastLayout);
-              const snap = JSON.parse(JSON.stringify(fastLayout));
-              historyRef.current = [snap];
-              historyIndexRef.current = 0;
-              setHistory([snap]);
-              setHistoryIndex(0);
-              setSelectedElementId(null);
-              setPageNumber(1);
-              // Fit page to show the cached canvas immediately.
-              window.requestAnimationFrame(() => handleFitPageRef.current?.());
+              queueMicrotask(() => {
+                if (!cancelled && requestId === documentLoadRequestRef.current) {
+                  setLayout(fastLayout);
+                  const snap = JSON.parse(JSON.stringify(fastLayout));
+                  historyRef.current = [snap];
+                  historyIndexRef.current = 0;
+                  setHistory([snap]);
+                  setHistoryIndex(0);
+                  setSelectedElementId(null);
+                  setPageNumber(1);
+                  window.requestAnimationFrame(() => handleFitWidthRef.current?.());
+                }
+              });
               break;
             }
           }
@@ -221,45 +246,52 @@ export default function DocumentDesigner() {
     }
 
     async function hydrateDocument() {
-      const layoutPromise = loadDocumentLayout(companyId, selectedDocType);
-      const presetsPromise = companyId
-        ? documentStylePresets.listAll(companyId)
-            .then((presets) => ({ presets, error: null as Error | null }))
-            .catch((error: unknown) => ({
-              presets: [] as DocumentStylePreset[],
-              error: error instanceof Error ? error : new Error("Could not load saved styles."),
-            }))
-        : Promise.resolve({ presets: [] as DocumentStylePreset[], error: null as Error | null });
-      const [loaded, presetResult] = await Promise.all([layoutPromise, presetsPromise]);
-      if (cancelled || requestId !== documentLoadRequestRef.current) return;
+      try {
+        const layoutPromise = loadDocumentLayout(companyId, selectedDocType);
+        const presetsPromise = companyId
+          ? documentStylePresets.listAll(companyId)
+              .then((presets) => ({ presets, error: null as Error | null }))
+              .catch((error: unknown) => ({
+                presets: [] as DocumentStylePreset[],
+                error: error instanceof Error ? error : new Error("Could not load saved styles."),
+              }))
+          : Promise.resolve({ presets: [] as DocumentStylePreset[], error: null as Error | null });
+        const [loaded, presetResult] = await Promise.all([layoutPromise, presetsPromise]);
+        if (cancelled || requestId !== documentLoadRequestRef.current) return;
 
-      const hydratedLayout = loaded.layout;
-      const activePreset = resolveDocumentStylePreset(presetResult.presets, loaded.revision?.templateId);
-      const selectedPreset = activePreset;
-      setCloudRevision(loaded.revision);
-      setEditingRevision(loaded.revision);
-      setCloudErrorMessage(loaded.error || presetResult.error?.message || null);
-      setCloudConflict(false);
-      setCloudUpdatedAt(loaded.updatedAt);
-      setPersistedLayout(loaded.source === 'database' ? loaded.layout : null);
-      setBaseline(JSON.stringify(loaded.layout));
-      setHydratedScope(`${companyId}:${selectedDocType}:${reloadCounter}`);
-      const snapshot = JSON.parse(JSON.stringify(hydratedLayout));
-      setStylePresets(presetResult.presets);
-      setSelectedStylePresetId(selectedPreset?.id || null);
-      setAutoFixMode(activePreset ? "saved" : "standard");
-      setLayout(hydratedLayout);
-      historyRef.current = [snapshot];
-      historyIndexRef.current = 0;
-      setHistory([snapshot]);
-      setHistoryIndex(0);
-      setSelectedElementId(null);
-      setPageNumber(1);
-      // Always fit page after cloud layout is committed.
-      window.requestAnimationFrame(() => handleFitPageRef.current?.());
+        const hydratedLayout = loaded.layout;
+        const activePreset = resolveDocumentStylePreset(presetResult.presets, loaded.revision?.templateId);
+        const selectedPreset = activePreset;
+        setCloudRevision(loaded.revision);
+        setEditingRevision(loaded.revision);
+        setCloudErrorMessage(loaded.error || presetResult.error?.message || null);
+        setCloudConflict(false);
+        setCloudUpdatedAt(loaded.updatedAt);
+        setPersistedLayout(loaded.source === 'database' ? loaded.layout : null);
+        setBaseline(JSON.stringify(loaded.layout));
+        setHydratedScope(`${companyId}:${selectedDocType}:${reloadCounter}`);
+        const snapshot = JSON.parse(JSON.stringify(hydratedLayout));
+        setStylePresets(presetResult.presets);
+        setSelectedStylePresetId(selectedPreset?.id || null);
+        setAutoFixMode(activePreset ? "saved" : "standard");
+        setLayout(hydratedLayout);
+        historyRef.current = [snapshot];
+        historyIndexRef.current = 0;
+        setHistory([snapshot]);
+        setHistoryIndex(0);
+        setSelectedElementId(null);
+        setPageNumber(1);
+        // Always fit layout width after cloud layout is committed.
+        window.requestAnimationFrame(() => handleFitWidthRef.current?.());
 
-      if (presetResult.error) {
-        setNotification({ message: presetResult.error.message, type: "error" });
+        if (presetResult.error) {
+          setNotification({ message: presetResult.error.message, type: "error" });
+        }
+      } catch (err) {
+        if (!cancelled && requestId === documentLoadRequestRef.current) {
+          setCloudErrorMessage(err instanceof Error ? err.message : "Failed to load cloud design.");
+          setHydratedScope(`${companyId}:${selectedDocType}:${reloadCounter}`);
+        }
       }
     }
 
@@ -775,10 +807,10 @@ export default function DocumentDesigner() {
       const horizontalPadding =
         (Number.parseFloat(styles.paddingLeft) || 0) +
         (Number.parseFloat(styles.paddingRight) || 0);
-      const containerW = Math.max(1, container.clientWidth - horizontalPadding);
+      const containerW = Math.max(1, container.clientWidth - horizontalPadding - 36);
       const a4WidthPx = 210 * 3.779527559; // ~793.7px
-      const calculatedZoom = Math.max(0.05, Math.min(2.0, containerW / a4WidthPx));
-      setZoom(Math.floor(calculatedZoom * 1000) / 1000);
+      const calculatedZoom = Math.max(0.3, Math.min(2.0, containerW / a4WidthPx));
+      setZoom(Math.floor(calculatedZoom * 100) / 100);
     } else {
       setZoom(1.0);
     }
@@ -806,8 +838,10 @@ export default function DocumentDesigner() {
       setZoom(0.75);
     }
   }, []);
-  // Always keep the ref pointing at the latest callback.
-  handleFitPageRef.current = handleFitPage;
+  // Keep the ref pointing at the latest fit-width callback.
+  useEffect(() => {
+    handleFitWidthRef.current = handleFitWidth;
+  }, [handleFitWidth]);
 
   // Keep narrow workspaces usable. Actual canvas-size changes are handled by
   // the ResizeObserver below so browser zoom and toolbar wrapping cannot crop A4.
@@ -842,12 +876,12 @@ export default function DocumentDesigner() {
       const height = borderBox?.blockSize ?? container.getBoundingClientRect().height;
 
       // Scrollbars can appear while manually zooming. They must not trigger an
-      // automatic Fit Page and overwrite the user's chosen zoom level.
+      // automatic Fit and overwrite the user's chosen zoom level.
       if (Math.abs(width - lastWidth) < 0.5 && Math.abs(height - lastHeight) < 0.5) return;
       lastWidth = width;
       lastHeight = height;
       window.cancelAnimationFrame(animationFrame);
-      animationFrame = window.requestAnimationFrame(handleFitPage);
+      animationFrame = window.requestAnimationFrame(handleFitWidth);
     };
     const observer = new ResizeObserver(refit);
     observer.observe(container, { box: "border-box" });
@@ -857,7 +891,7 @@ export default function DocumentDesigner() {
       observer.disconnect();
       window.cancelAnimationFrame(animationFrame);
     };
-  }, [handleFitPage, leftSidebarOpen, rightInspectorOpen]);
+  }, [handleFitWidth, leftSidebarOpen, rightInspectorOpen]);
 
   // ── 13. Keyboard Shortcuts ─────────────────────────────────────────────────
   useEffect(() => {

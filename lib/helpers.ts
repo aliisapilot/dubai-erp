@@ -69,28 +69,53 @@ export async function getCompanyId(): Promise<string> {
   throw new Error("No company is linked to your account. Please contact your company administrator.");
 }
 
+let inMemoryCompanyCache: CompanyDocDetails | null = null;
+let pendingCompanyPromise: Promise<CompanyDocDetails | null> | null = null;
+
 /**
- * Loads current company details for letterhead headers, documents, and navigation
- * for either company owner or authorized company member.
+ * Synchronously retrieves cached company details from localStorage/memory if available.
  */
-export async function getCurrentCompany(): Promise<CompanyDocDetails | null> {
+export function getCachedCompanySync(): CompanyDocDetails | null {
+  if (inMemoryCompanyCache) return inMemoryCompanyCache;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = window.localStorage.getItem("dubai-erp.company-cache");
+      if (stored) {
+        inMemoryCompanyCache = JSON.parse(stored);
+        return inMemoryCompanyCache;
+      }
+    } catch {}
+  }
+  return null;
+}
+
+async function fetchCompanyFresh(): Promise<CompanyDocDetails | null> {
   try {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData?.user) return null;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData?.session?.user ?? (await supabase.auth.getUser()).data?.user;
+    if (!user) return null;
 
     // 1. Try owner lookup
     const { data: ownerCo } = await supabase
       .from("companies")
       .select("*")
-      .eq("owner_id", userData.user.id)
+      .eq("owner_id", user.id)
       .maybeSingle();
-    if (ownerCo) return ownerCo as CompanyDocDetails;
+    if (ownerCo) {
+      inMemoryCompanyCache = ownerCo as CompanyDocDetails;
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem("dubai-erp.company-cache", JSON.stringify(ownerCo));
+        } catch {}
+      }
+      return ownerCo as CompanyDocDetails;
+    }
 
     // 2. Try member profile lookup
     const { data: prof } = await supabase
       .from("profiles")
       .select("company_id")
-      .eq("id", userData.user.id)
+      .eq("id", user.id)
       .maybeSingle();
     if (prof?.company_id) {
       const { data: memberCo } = await supabase
@@ -98,7 +123,15 @@ export async function getCurrentCompany(): Promise<CompanyDocDetails | null> {
         .select("*")
         .eq("id", prof.company_id)
         .maybeSingle();
-      if (memberCo) return memberCo as CompanyDocDetails;
+      if (memberCo) {
+        inMemoryCompanyCache = memberCo as CompanyDocDetails;
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem("dubai-erp.company-cache", JSON.stringify(memberCo));
+          } catch {}
+        }
+        return memberCo as CompanyDocDetails;
+      }
     }
 
     return null;
@@ -106,6 +139,29 @@ export async function getCurrentCompany(): Promise<CompanyDocDetails | null> {
     console.error("Error retrieving current company:", err);
     return null;
   }
+}
+
+/**
+ * Loads current company details for letterhead headers, documents, and navigation
+ * for either company owner or authorized company member.
+ * Returns cached details instantly if available, refreshing in the background.
+ */
+export async function getCurrentCompany(): Promise<CompanyDocDetails | null> {
+  const syncCached = getCachedCompanySync();
+  if (syncCached) {
+    if (!pendingCompanyPromise) {
+      pendingCompanyPromise = fetchCompanyFresh().finally(() => {
+        pendingCompanyPromise = null;
+      });
+    }
+    return syncCached;
+  }
+
+  if (pendingCompanyPromise) return pendingCompanyPromise;
+  pendingCompanyPromise = fetchCompanyFresh().finally(() => {
+    pendingCompanyPromise = null;
+  });
+  return pendingCompanyPromise;
 }
 
 /** Generate next sequential document number via DB function */

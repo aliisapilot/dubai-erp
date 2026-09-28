@@ -44,6 +44,7 @@ next-env.d.ts
 *.dump
 *.sql.gz
 *.backup
+supabase/.temp/
 *.bak
 backups/
 dump/
