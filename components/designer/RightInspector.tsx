@@ -80,10 +80,11 @@ export default function RightInspector({
 }: RightInspectorProps) {
   const imageReplaceInputRef = useRef<HTMLInputElement>(null);
   const [activeTabOverride, setActiveTabOverride] = useState<"element" | "page_borders" | null>(null);
-  const [prevElementId, setPrevElementId] = useState<string | null>(selectedElement?.id || null);
+  const currentElementId = selectedElement ? selectedElement.id : null;
+  const [prevElementId, setPrevElementId] = useState<string | null>(currentElementId);
 
-  if (selectedElement?.id !== prevElementId) {
-    setPrevElementId(selectedElement?.id || null);
+  if (currentElementId !== prevElementId) {
+    setPrevElementId(currentElementId);
     setActiveTabOverride(null);
   }
 

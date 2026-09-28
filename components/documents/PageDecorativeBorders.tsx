@@ -19,32 +19,35 @@ interface PageDecorativeBordersProps {
  * collide with or overlap the company logo, header details, document content, or footer.
  */
 export function calculateBorderClearances(
-  layout: DocumentLayout,
+  layout?: DocumentLayout,
   elements?: LayoutElement[]
 ) {
-  const visibleElements = (elements || layout.elements || []).filter(
-    (el) => el.visible && el.type !== "watermark"
+  const visibleElements = (elements || layout?.elements || []).filter(
+    (el) => el && el.visible && el.type !== "watermark"
   );
 
   // Top content threshold (logo, company name, address, title)
-  const topElements = visibleElements.filter((el) => el.y < 90);
+  const topElements = visibleElements.filter((el) => Number.isFinite(el.y) && el.y < 90);
   const minContentY =
     topElements.length > 0
       ? Math.min(...topElements.map((el) => el.y))
-      : layout.page?.margins?.top ?? 12;
+      : layout?.page?.margins?.top ?? 12;
 
   // Safe buffer above top content (at least 1.5mm)
   const safeTopLimitMm = Math.max(3, minContentY - 1.5);
 
+  const pageHeight = layout?.page?.heightMm ?? 297;
   // Bottom content threshold (footer, signature, stamps, totals, bank details)
-  const bottomElements = visibleElements.filter((el) => el.y + el.height > 180);
+  const bottomElements = visibleElements.filter(
+    (el) => Number.isFinite(el.y) && Number.isFinite(el.height) && el.y + el.height > 180
+  );
   const maxContentY =
     bottomElements.length > 0
       ? Math.max(...bottomElements.map((el) => el.y + el.height))
-      : (layout.page?.heightMm ?? 297) - (layout.page?.margins?.bottom ?? 12);
+      : pageHeight - (layout?.page?.margins?.bottom ?? 12);
 
   // Safe buffer below bottom content (at least 1.5mm)
-  const safeBottomLimitMm = Math.min((layout.page?.heightMm ?? 297) - 3, maxContentY + 1.5);
+  const safeBottomLimitMm = Math.min(pageHeight - 3, maxContentY + 1.5);
 
   return {
     minContentY,
