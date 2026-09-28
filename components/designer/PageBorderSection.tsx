@@ -461,10 +461,10 @@ function BorderControlCard({
             </div>
           </div>
 
-          {/* Angle (degrees) */}
+          {/* Rotation Angle (degrees) */}
           <div>
             <div className="flex items-center justify-between text-[10px] mb-1">
-              <span className="text-slate-400 font-semibold">Angle (degrees)</span>
+              <span className="text-slate-400 font-semibold">Rotation Angle (degrees)</span>
               <span className="font-mono font-bold text-slate-300">
                 {border.angle || 0}°
               </span>

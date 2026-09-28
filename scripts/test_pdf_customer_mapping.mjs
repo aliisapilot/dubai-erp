@@ -19,6 +19,9 @@ const mobilePdfModalSource = await readFile(
   "utf8"
 );
 const printModalSource = await readFile(new URL("../components/documents/PrintModal.tsx", import.meta.url), "utf8");
+const documentContainerSource = await readFile(new URL("../components/documents/DocumentContainer.tsx", import.meta.url), "utf8");
+const pageDecorativeBordersSource = await readFile(new URL("../components/documents/PageDecorativeBorders.tsx", import.meta.url), "utf8");
+const pageBorderSectionSource = await readFile(new URL("../components/designer/PageBorderSection.tsx", import.meta.url), "utf8");
 const designerSource = await readFile(new URL("../components/designer/DocumentDesigner.tsx", import.meta.url), "utf8");
 const topToolbarSource = await readFile(new URL("../components/designer/TopToolbar.tsx", import.meta.url), "utf8");
 const dynamicRendererSource = await readFile(new URL("../components/documents/DynamicDocumentRenderer.tsx", import.meta.url), "utf8");
@@ -499,3 +502,44 @@ test("keeps A4 export sizing independent from on-screen preview scaling", () => 
   assert.match(globalCssSource, /\.print-preview-scale-shell,[\s\S]*?width: 210mm !important;/);
   assert.match(globalCssSource, /\.print-preview-scale-content[\s\S]*?transform: none !important;/);
 });
+
+test("renders top gold and bottom navy decorative borders across dynamic and standard documents", () => {
+  assert.match(documentContainerSource, /<PageDecorativeBorders/);
+  assert.match(dynamicRendererSource, /<PageDecorativeBorders/);
+  assert.match(pageDecorativeBordersSource, /#E0AC23/);
+  assert.match(pageDecorativeBordersSource, /#173C64/);
+  assert.match(pageDecorativeBordersSource, /preserveAspectRatio="none"/);
+  assert.match(pageDecorativeBordersSource, /WebkitPrintColorAdjust: "exact"/);
+  assert.match(pageBorderSectionSource, /Page Border (&amp;|&) Background Design/);
+});
+
+test("guarantees decorative border clearances and preserves borders during Auto Fix", () => {
+  assert.match(pageDecorativeBordersSource, /calculateBorderClearances/);
+  assert.match(pageDecorativeBordersSource, /safeTopLimitMm/);
+  assert.match(pageDecorativeBordersSource, /safeBottomLimitMm/);
+  assert.match(pageDecorativeBordersSource, /effectiveTopThickness/);
+  assert.match(pageDecorativeBordersSource, /effectiveBottomThickness/);
+  assert.match(designerSource, /bordersToKeep/);
+  assert.match(designerSource, /Applied Auto Fix while strictly preserving your saved border & background design/);
+  assert.match(globalCssSource, /\.page-decorative-borders-container\s*\{[\s\S]*?print-color-adjust:\s*exact\s*!important;/);
+  assert.match(globalCssSource, /\.page-decorative-borders-container svg\s*\{[\s\S]*?print-color-adjust:\s*exact\s*!important;/);
+  assert.doesNotMatch(globalCssSource, /\.page-decorative-borders-container\s+svg\s+\*\s*\{[\s\S]*?display:\s*block/);
+});
+
+test("PDF Designer provides complete controls for border colors, thickness, angles, and styles", () => {
+  assert.match(pageBorderSectionSource, /Top Decorative Border/);
+  assert.match(pageBorderSectionSource, /Bottom Decorative Border/);
+  assert.match(pageBorderSectionSource, /Border Style/);
+  assert.match(pageBorderSectionSource, /straight/);
+  assert.match(pageBorderSectionSource, /diagonal/);
+  assert.match(pageBorderSectionSource, /custom/);
+  assert.match(pageBorderSectionSource, /geometric_ribbon/);
+  assert.match(pageBorderSectionSource, /accent_corner/);
+  assert.match(pageBorderSectionSource, /double_stripe/);
+  assert.match(pageBorderSectionSource, /wave/);
+  assert.match(pageBorderSectionSource, /Thickness \(mm\)/);
+  assert.match(pageBorderSectionSource, /Rotation Angle/);
+  assert.match(pageBorderSectionSource, /Auto-Clearance Guard Active/);
+});
+
+

@@ -5,11 +5,13 @@ import {
   DocumentLayout,
   LayoutElement,
   PageDecorativeBorder,
+  PageBorderSettings,
   normalizePageBorders,
 } from "@/lib/documentDesigner";
 
 interface PageDecorativeBordersProps {
-  layout: DocumentLayout;
+  layout?: DocumentLayout;
+  borders?: PageBorderSettings;
   isDesignerPreview?: boolean;
   elements?: LayoutElement[];
 }
@@ -27,10 +29,22 @@ export function calculateBorderClearances(
   );
 
   // Top content threshold (logo, company name, address, title)
-  const topElements = visibleElements.filter((el) => Number.isFinite(el.y) && el.y < 90);
+  const topElements = visibleElements.filter((el) => {
+    const y = Number.isFinite((el as unknown as { effectiveY?: number }).effectiveY)
+      ? (el as unknown as { effectiveY?: number }).effectiveY!
+      : el.y;
+    return Number.isFinite(y) && y < 90;
+  });
   const minContentY =
     topElements.length > 0
-      ? Math.min(...topElements.map((el) => el.y))
+      ? Math.min(
+          ...topElements.map((el) => {
+            const y = Number.isFinite((el as unknown as { effectiveY?: number }).effectiveY)
+              ? (el as unknown as { effectiveY?: number }).effectiveY!
+              : el.y;
+            return y;
+          })
+        )
       : layout?.page?.margins?.top ?? 12;
 
   // Safe buffer above top content (at least 1.5mm)
@@ -38,12 +52,28 @@ export function calculateBorderClearances(
 
   const pageHeight = layout?.page?.heightMm ?? 297;
   // Bottom content threshold (footer, signature, stamps, totals, bank details)
-  const bottomElements = visibleElements.filter(
-    (el) => Number.isFinite(el.y) && Number.isFinite(el.height) && el.y + el.height > 180
-  );
+  const bottomElements = visibleElements.filter((el) => {
+    const y = Number.isFinite((el as unknown as { effectiveY?: number }).effectiveY)
+      ? (el as unknown as { effectiveY?: number }).effectiveY!
+      : el.y;
+    const h = Number.isFinite((el as unknown as { effectiveHeight?: number }).effectiveHeight)
+      ? (el as unknown as { effectiveHeight?: number }).effectiveHeight!
+      : el.height;
+    return Number.isFinite(y) && Number.isFinite(h) && y + h > 180;
+  });
   const maxContentY =
     bottomElements.length > 0
-      ? Math.max(...bottomElements.map((el) => el.y + el.height))
+      ? Math.max(
+          ...bottomElements.map((el) => {
+            const y = Number.isFinite((el as unknown as { effectiveY?: number }).effectiveY)
+              ? (el as unknown as { effectiveY?: number }).effectiveY!
+              : el.y;
+            const h = Number.isFinite((el as unknown as { effectiveHeight?: number }).effectiveHeight)
+              ? (el as unknown as { effectiveHeight?: number }).effectiveHeight!
+              : el.height;
+            return y + h;
+          })
+        )
       : pageHeight - (layout?.page?.margins?.bottom ?? 12);
 
   // Safe buffer below bottom content (at least 1.5mm)
@@ -59,17 +89,18 @@ export function calculateBorderClearances(
 
 export default function PageDecorativeBorders({
   layout,
+  borders: directBorders,
   elements,
 }: PageDecorativeBordersProps) {
-  const borders = normalizePageBorders(layout.page?.borders);
+  const borders = normalizePageBorders(directBorders || layout?.page?.borders);
   const { top, bottom } = borders;
 
   if (!top.enabled && !bottom.enabled) {
     return null;
   }
 
-  const pageWidth = layout.page?.widthMm || 210;
-  const pageHeight = layout.page?.heightMm || 297;
+  const pageWidth = layout?.page?.widthMm || 210;
+  const pageHeight = layout?.page?.heightMm || 297;
 
   const { safeTopLimitMm, safeBottomLimitMm } = calculateBorderClearances(layout, elements);
 
@@ -90,7 +121,7 @@ export default function PageDecorativeBorders({
 
   return (
     <div
-      className="page-decorative-borders-container absolute inset-0 pointer-events-none select-none z-[2] overflow-hidden"
+      className="page-decorative-borders-container absolute inset-0 pointer-events-none select-none z-[5] overflow-hidden"
       style={{
         width: `${pageWidth}mm`,
         height: `${pageHeight}mm`,
@@ -100,8 +131,9 @@ export default function PageDecorativeBorders({
       aria-hidden="true"
     >
       <svg
-        className="w-full h-full"
+        className="page-decorative-borders-svg w-full h-full block"
         viewBox={`0 0 ${pageWidth} ${pageHeight}`}
+        preserveAspectRatio="none"
         style={{
           width: `${pageWidth}mm`,
           height: `${pageHeight}mm`,
@@ -170,6 +202,23 @@ function TopBorderRenderer({
   const angle = border.angle || 0;
   const secondary = border.secondaryColor || (color === "#E0AC23" ? "#173C64" : "#E0AC23");
 
+  const fillStyle: React.CSSProperties = {
+    fill: color,
+    WebkitPrintColorAdjust: "exact",
+    printColorAdjust: "exact",
+  };
+  const secondaryFillStyle: React.CSSProperties = {
+    fill: secondary,
+    WebkitPrintColorAdjust: "exact",
+    printColorAdjust: "exact",
+  };
+  const lineStyle: React.CSSProperties = {
+    stroke: secondary,
+    strokeWidth: 0.6,
+    WebkitPrintColorAdjust: "exact",
+    printColorAdjust: "exact",
+  };
+
   switch (border.style) {
     case "straight": {
       if (angle === 0) {
@@ -182,6 +231,7 @@ function TopBorderRenderer({
               width={pageWidth}
               height={thickness}
               fill={color}
+              style={fillStyle}
             />
             {/* Subtle luxury accent hairline at bottom edge */}
             {thickness > 2 && (
@@ -193,6 +243,7 @@ function TopBorderRenderer({
                 stroke={secondary}
                 strokeWidth={0.6}
                 opacity={0.8}
+                style={lineStyle}
               />
             )}
           </g>
@@ -209,6 +260,7 @@ function TopBorderRenderer({
             width={pageWidth + 60}
             height={thickness}
             fill={color}
+            style={fillStyle}
           />
           {thickness > 2 && (
             <line
@@ -219,6 +271,7 @@ function TopBorderRenderer({
               stroke={secondary}
               strokeWidth={0.6}
               opacity={0.8}
+              style={lineStyle}
             />
           )}
         </g>
@@ -238,12 +291,14 @@ function TopBorderRenderer({
           <polygon
             points={`0,0 ${pageWidth},0 ${pageWidth},${rightY} 0,${leftY}`}
             fill={color}
+            style={fillStyle}
           />
           {/* Accent secondary slash */}
           <polygon
             points={`0,${leftY} ${pageWidth},${rightY} ${pageWidth},${Math.min(maxAllowedBottomY, rightY + 1.2)} 0,${Math.min(maxAllowedBottomY, leftY + 1.2)}`}
             fill={secondary}
             opacity={0.9}
+            style={secondaryFillStyle}
           />
         </g>
       );
@@ -261,19 +316,23 @@ function TopBorderRenderer({
             <polygon
               points={`0,0 ${cornerW},0 ${cornerW - 12},${thickness} 0,${thickness}`}
               fill={color}
+              style={fillStyle}
             />
             <polygon
               points={`0,0 ${thickness},0 ${thickness},${cornerW - 12} 0,${cornerW}`}
               fill={color}
+              style={fillStyle}
             />
             {/* Top Right Bracket */}
             <polygon
               points={`${pageWidth},0 ${pageWidth - cornerW},0 ${pageWidth - cornerW + 12},${thickness} ${pageWidth},${thickness}`}
               fill={color}
+              style={fillStyle}
             />
             <polygon
               points={`${pageWidth},0 ${pageWidth - thickness},0 ${pageWidth - thickness},${cornerW - 12} ${pageWidth},${cornerW}`}
               fill={color}
+              style={fillStyle}
             />
             {/* Center connecting hairline */}
             <line
@@ -285,6 +344,7 @@ function TopBorderRenderer({
               strokeWidth={0.8}
               strokeDasharray="4 2"
               opacity={0.7}
+              style={{ ...lineStyle, strokeWidth: 0.8 }}
             />
           </g>
         );
@@ -297,8 +357,8 @@ function TopBorderRenderer({
         const secondH = Math.max(0.5, thickness * 0.25);
         return (
           <g opacity={opacity} transform={angle ? `rotate(${angle} ${pageWidth / 2} ${positionY + thickness / 2})` : undefined}>
-            <rect x={0} y={positionY} width={pageWidth} height={primaryH} fill={color} />
-            <rect x={0} y={positionY + primaryH + gap} width={pageWidth} height={secondH} fill={secondary} />
+            <rect x={0} y={positionY} width={pageWidth} height={primaryH} fill={color} style={fillStyle} />
+            <rect x={0} y={positionY + primaryH + gap} width={pageWidth} height={secondH} fill={secondary} style={secondaryFillStyle} />
           </g>
         );
       }
@@ -314,6 +374,7 @@ function TopBorderRenderer({
             <path
               d={`M 0,0 L ${pageWidth},0 L ${pageWidth},${positionY + waveH - amp} C ${cp2X},${positionY + waveH + amp} ${cp1X},${positionY + waveH - amp} 0,${positionY + waveH} Z`}
               fill={color}
+              style={fillStyle}
             />
             <path
               d={`M 0,${positionY + waveH} C ${cp1X},${positionY + waveH - amp} ${cp2X},${positionY + waveH + amp} ${pageWidth},${positionY + waveH - amp}`}
@@ -321,6 +382,7 @@ function TopBorderRenderer({
               stroke={secondary}
               strokeWidth={0.8}
               opacity={0.85}
+              style={{ stroke: secondary, strokeWidth: 0.8, WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}
             />
           </g>
         );
@@ -329,7 +391,7 @@ function TopBorderRenderer({
       if (subtype === "custom_path" && border.customSvgPath) {
         return (
           <g opacity={opacity} transform={`translate(0, ${positionY}) scale(${pageWidth / 210})`}>
-            <path d={border.customSvgPath} fill={color} />
+            <path d={border.customSvgPath} fill={color} style={fillStyle} />
           </g>
         );
       }
@@ -342,12 +404,14 @@ function TopBorderRenderer({
           <polygon
             points={`0,0 ${splitX + 15},0 ${splitX - 10},${positionY + thickness} 0,${positionY + thickness}`}
             fill={color}
+            style={fillStyle}
           />
           {/* Secondary contrast diamond facet */}
           <polygon
             points={`${splitX + 15},0 ${pageWidth},0 ${pageWidth},${positionY + thickness * 0.75} ${splitX - 10},${positionY + thickness}`}
             fill={secondary}
             opacity={0.95}
+            style={secondaryFillStyle}
           />
           {/* Thin metallic accent line along base */}
           <line
@@ -357,6 +421,7 @@ function TopBorderRenderer({
             y2={positionY + thickness * 0.75}
             stroke={color}
             strokeWidth={0.7}
+            style={{ stroke: color, strokeWidth: 0.7, WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}
           />
         </g>
       );
@@ -371,6 +436,7 @@ function TopBorderRenderer({
           height={thickness}
           fill={color}
           opacity={opacity}
+          style={fillStyle}
         />
       );
   }
@@ -400,6 +466,23 @@ function BottomBorderRenderer({
   const startY = Math.max(minAllowedTopY, pageHeight - positionFromBottom - thickness);
   const actualHeight = Math.min(thickness, pageHeight - startY);
 
+  const fillStyle: React.CSSProperties = {
+    fill: color,
+    WebkitPrintColorAdjust: "exact",
+    printColorAdjust: "exact",
+  };
+  const secondaryFillStyle: React.CSSProperties = {
+    fill: secondary,
+    WebkitPrintColorAdjust: "exact",
+    printColorAdjust: "exact",
+  };
+  const lineStyle: React.CSSProperties = {
+    stroke: secondary,
+    strokeWidth: 0.6,
+    WebkitPrintColorAdjust: "exact",
+    printColorAdjust: "exact",
+  };
+
   switch (border.style) {
     case "straight": {
       if (angle === 0) {
@@ -412,6 +495,7 @@ function BottomBorderRenderer({
               width={pageWidth}
               height={actualHeight}
               fill={color}
+              style={fillStyle}
             />
             {/* Contrasting top accent rule */}
             {actualHeight > 2 && (
@@ -423,6 +507,7 @@ function BottomBorderRenderer({
                 stroke={secondary}
                 strokeWidth={0.6}
                 opacity={0.8}
+                style={lineStyle}
               />
             )}
           </g>
@@ -439,6 +524,7 @@ function BottomBorderRenderer({
             width={pageWidth + 60}
             height={actualHeight}
             fill={color}
+            style={fillStyle}
           />
           {actualHeight > 2 && (
             <line
@@ -449,6 +535,7 @@ function BottomBorderRenderer({
               stroke={secondary}
               strokeWidth={0.6}
               opacity={0.8}
+              style={lineStyle}
             />
           )}
         </g>
@@ -468,11 +555,13 @@ function BottomBorderRenderer({
             points={`0,${Math.max(minAllowedTopY, leftY - 1.2)} ${pageWidth},${Math.max(minAllowedTopY, rightY - 1.2)} ${pageWidth},${rightY} 0,${leftY}`}
             fill={secondary}
             opacity={0.9}
+            style={secondaryFillStyle}
           />
           {/* Main bottom angled banner */}
           <polygon
             points={`0,${leftY} ${pageWidth},${rightY} ${pageWidth},${pageHeight} 0,${pageHeight}`}
             fill={color}
+            style={fillStyle}
           />
         </g>
       );
@@ -489,19 +578,23 @@ function BottomBorderRenderer({
             <polygon
               points={`0,${pageHeight} ${cornerW},${pageHeight} ${cornerW - 12},${pageHeight - actualHeight} 0,${pageHeight - actualHeight}`}
               fill={color}
+              style={fillStyle}
             />
             <polygon
               points={`0,${pageHeight} ${actualHeight},${pageHeight} ${actualHeight},${pageHeight - cornerW + 12} 0,${pageHeight - cornerW}`}
               fill={color}
+              style={fillStyle}
             />
             {/* Bottom Right Bracket */}
             <polygon
               points={`${pageWidth},${pageHeight} ${pageWidth - cornerW},${pageHeight} ${pageWidth - cornerW + 12},${pageHeight - actualHeight} ${pageWidth},${pageHeight - actualHeight}`}
               fill={color}
+              style={fillStyle}
             />
             <polygon
               points={`${pageWidth},${pageHeight} ${pageWidth - actualHeight},${pageHeight} ${pageWidth - actualHeight},${pageHeight - cornerW + 12} ${pageWidth},${pageHeight - cornerW}`}
               fill={color}
+              style={fillStyle}
             />
             {/* Center connecting hairline */}
             <line
@@ -513,6 +606,7 @@ function BottomBorderRenderer({
               strokeWidth={0.8}
               strokeDasharray="4 2"
               opacity={0.7}
+              style={{ ...lineStyle, strokeWidth: 0.8 }}
             />
           </g>
         );
@@ -524,8 +618,8 @@ function BottomBorderRenderer({
         const secondH = Math.max(0.5, actualHeight * 0.25);
         return (
           <g opacity={opacity} transform={angle ? `rotate(${angle} ${pageWidth / 2} ${startY + actualHeight / 2})` : undefined}>
-            <rect x={0} y={startY} width={pageWidth} height={secondH} fill={secondary} />
-            <rect x={0} y={startY + secondH + gap} width={pageWidth} height={primaryH} fill={color} />
+            <rect x={0} y={startY} width={pageWidth} height={secondH} fill={secondary} style={secondaryFillStyle} />
+            <rect x={0} y={startY + secondH + gap} width={pageWidth} height={primaryH} fill={color} style={fillStyle} />
           </g>
         );
       }
@@ -540,6 +634,7 @@ function BottomBorderRenderer({
             <path
               d={`M 0,${pageHeight} L ${pageWidth},${pageHeight} L ${pageWidth},${startY + amp} C ${cp2X},${startY - amp} ${cp1X},${startY + amp} 0,${startY} Z`}
               fill={color}
+              style={fillStyle}
             />
             <path
               d={`M 0,${startY} C ${cp1X},${startY + amp} ${cp2X},${startY - amp} ${pageWidth},${startY + amp}`}
@@ -547,6 +642,7 @@ function BottomBorderRenderer({
               stroke={secondary}
               strokeWidth={0.8}
               opacity={0.85}
+              style={{ stroke: secondary, strokeWidth: 0.8, WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}
             />
           </g>
         );
@@ -555,7 +651,7 @@ function BottomBorderRenderer({
       if (subtype === "custom_path" && border.customSvgPath) {
         return (
           <g opacity={opacity} transform={`translate(0, ${startY}) scale(${pageWidth / 210})`}>
-            <path d={border.customSvgPath} fill={color} />
+            <path d={border.customSvgPath} fill={color} style={fillStyle} />
           </g>
         );
       }
@@ -569,11 +665,13 @@ function BottomBorderRenderer({
             points={`0,${startY + actualHeight * 0.25} ${splitX + 12},${startY} ${splitX - 12},${pageHeight} 0,${pageHeight}`}
             fill={secondary}
             opacity={0.95}
+            style={secondaryFillStyle}
           />
           {/* Main primary ribbon section */}
           <polygon
             points={`${splitX + 12},${startY} ${pageWidth},${startY} ${pageWidth},${pageHeight} ${splitX - 12},${pageHeight}`}
             fill={color}
+            style={fillStyle}
           />
           {/* Thin accent rule along top edge */}
           <line
@@ -583,6 +681,7 @@ function BottomBorderRenderer({
             y2={startY}
             stroke={secondary}
             strokeWidth={0.7}
+            style={{ stroke: secondary, strokeWidth: 0.7, WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}
           />
         </g>
       );
@@ -597,6 +696,7 @@ function BottomBorderRenderer({
           height={actualHeight}
           fill={color}
           opacity={opacity}
+          style={fillStyle}
         />
       );
   }

@@ -455,10 +455,33 @@ body {
     print-color-adjust: exact !important;
   }
 
-  .page-decorative-borders-container,
-  .page-decorative-borders-container svg,
-  .page-decorative-borders-container svg * {
+  .page-decorative-borders-container {
     display: block !important;
+    position: absolute !important;
+    inset: 0 !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    max-height: 297mm !important;
+    z-index: 5 !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .page-decorative-borders-container svg {
+    display: block !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .page-decorative-borders-container svg rect,
+  .page-decorative-borders-container svg path,
+  .page-decorative-borders-container svg polygon,
+  .page-decorative-borders-container svg line {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }

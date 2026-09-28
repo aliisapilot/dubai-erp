@@ -4,6 +4,8 @@ import React, { ReactNode } from "react";
 import { Printer } from "lucide-react";
 import { getBrandConfig, BrandColors, CompanyBrandInput } from "@/lib/brandConfig";
 import { printCurrentDocument } from "@/lib/print";
+import PageDecorativeBorders from "./PageDecorativeBorders";
+import { DEFAULT_PAGE_BORDERS, PageBorderSettings, DocumentLayout } from "@/lib/documentDesigner";
 
 interface DocumentContainerProps {
   children: ReactNode;
@@ -24,6 +26,10 @@ interface DocumentContainerProps {
   totalPages?: number;
   /** Optional warning message when content legitimately requires multiple pages */
   warning?: string;
+  /** Optional decorative border settings */
+  borders?: PageBorderSettings;
+  /** Optional full document layout */
+  layout?: DocumentLayout;
 }
 
 export default function DocumentContainer({
@@ -41,6 +47,8 @@ export default function DocumentContainer({
   noPadding = false,
   totalPages,
   warning,
+  borders,
+  layout,
 }: DocumentContainerProps) {
   const handlePrint = async () => {
     if (onPrint) {
@@ -128,11 +136,16 @@ export default function DocumentContainer({
       ) : (
         /* True A4 Document Sheet: exactly 210mm × 297mm. */
         <div
-          className={`print-page print-document document-sheet relative mx-auto box-border min-h-[297mm] w-[210mm] border border-slate-200 bg-white p-[10mm] shadow-xl print:m-0 print:min-h-[297mm] print:w-[210mm] print:border-none print:p-[8mm] print:shadow-none ${className}`}
+          className={`print-page print-document document-sheet relative mx-auto box-border min-h-[297mm] w-[210mm] border border-slate-200 bg-white p-[10mm] shadow-xl print:m-0 print:min-h-[297mm] print:w-[210mm] print:border-none print:p-[8mm] print:shadow-none overflow-hidden ${className}`}
           style={{
             ...brandVars,
           }}
         >
+          {/* Decorative Page Borders Layer (Vector SVG, Print-accurate) */}
+          <PageDecorativeBorders
+            borders={borders || layout?.page?.borders || DEFAULT_PAGE_BORDERS}
+            isDesignerPreview={false}
+          />
           {showWatermark && (
             <div
               className="print-background-container absolute inset-0 z-0 h-full w-full select-none overflow-hidden pointer-events-none"
