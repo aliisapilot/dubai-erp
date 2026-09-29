@@ -215,7 +215,6 @@ export default function TopToolbar({
           {/* History Controls: Undo & Redo */}
           <div className="flex shrink-0 items-center gap-0.5 border-l border-slate-800 pl-1.5">
             <button
-              ref={moreMenuButtonRef}
               type="button"
               onClick={onUndo}
               disabled={!canUndo}
@@ -363,6 +362,7 @@ export default function TopToolbar({
           {/* Tools & Overflow Menu (More Actions) */}
           <div className="relative" ref={moreMenuRef}>
             <button
+              ref={moreMenuButtonRef}
               type="button"
               onClick={() => setShowMoreMenu(!showMoreMenu)}
               className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-semibold transition ${

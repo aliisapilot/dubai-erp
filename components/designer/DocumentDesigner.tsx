@@ -38,6 +38,7 @@ import {
 import type { AutoFixAction } from "./TopToolbar";
 import AutoFixPreviewModal from "./AutoFixPreviewModal";
 import StylePresetsModal from "./StylePresetsModal";
+import PrintTestSheetModal from "./PrintTestSheetModal";
 import { getBrandConfig } from '@/lib/brandConfig';
 import { cloudError, revisionOf, type CloudRevision } from '@/lib/documentCloud';
 import { exportDesignBackup, preserveDesignDraft } from '@/lib/documentDesignBackup';
@@ -122,6 +123,7 @@ export default function DocumentDesigner() {
   }, []);
 
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showTestSheetModal, setShowTestSheetModal] = useState(false);
   const [showValidatorModal, setShowValidatorModal] = useState(false);
   const [styleModalMode, setStyleModalMode] = useState<"save" | "manage" | null>(null);
   const [styleSaveAsNew, setStyleSaveAsNew] = useState(false);
@@ -1110,7 +1112,7 @@ export default function DocumentDesigner() {
                 onDuplicateElement={handleDuplicateElement}
                 onReplaceImage={handleReplaceImage}
                 onPreviewActualSize={() => setShowPreviewModal(true)}
-                onOpenTestSheet={() => window.open("/print-test-sheet", "_blank")}
+                onOpenTestSheet={() => setShowTestSheetModal(true)}
               />
             </div>
           )}
@@ -1277,6 +1279,18 @@ export default function DocumentDesigner() {
         onDelete={handleDeleteStyle}
         onSetDefault={handleSetDefaultStyle}
         onEdit={handleEditStyle}
+      />
+
+      <PrintTestSheetModal
+        isOpen={showTestSheetModal}
+        onClose={() => setShowTestSheetModal(false)}
+        onNotify={(msg, type) => {
+          setNotification({
+            message: msg,
+            type: type === "warning" ? "error" : type,
+          });
+          setTimeout(() => setNotification(null), 4000);
+        }}
       />
     </div>
   );
