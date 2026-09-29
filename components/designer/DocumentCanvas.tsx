@@ -420,6 +420,12 @@ export default function DocumentCanvas({
                     onDoubleClick={(e) => {
                       e.stopPropagation();
                       latestOnSelectElement.current(elem.id);
+                      setTimeout(() => {
+                        const ta = document.getElementById("element-content-editor-textarea") as HTMLTextAreaElement | null;
+                        if (ta) {
+                          ta.focus();
+                        }
+                      }, 50);
                     }}
                     className={`absolute pointer-events-auto transition-shadow ${
                       isSelected

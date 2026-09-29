@@ -360,14 +360,71 @@ export default function DynamicDocumentRenderer({
     opacity: elem.opacity ?? 1,
   });
 
-  const replaceCompanyTokens = (value: string) =>
-    value
-      .replaceAll("{{company.name}}", brand.name || "")
-      .replaceAll("{{company.legal_name}}", brand.legal_name || brand.name || "")
-      .replaceAll("{{company.trn}}", brand.trn || "")
-      .replaceAll("{{company.phone}}", brand.phone || "")
-      .replaceAll("{{company.email}}", brand.email || "")
-      .replaceAll("{{company.address}}", brand.address || "");
+  const replaceDocumentTokens = (value: string): string => {
+    if (!value) return "";
+    let str = value;
+    const tokens: Record<string, string | number | undefined> = {
+      company_name: brand.legal_name || brand.name || "",
+      "company.name": brand.name || "",
+      "company.legal_name": brand.legal_name || brand.name || "",
+      company_short: brand.name || "",
+      company_name_ar: brand.arabic_name || "",
+      "company.arabic_name": brand.arabic_name || "",
+      trn: brand.trn || "",
+      company_trn: brand.trn || "",
+      "company.trn": brand.trn || "",
+      address: brand.address || "",
+      company_address: brand.address || "",
+      "company.address": brand.address || "",
+      phone: brand.phone || "",
+      company_phone: brand.phone || "",
+      "company.phone": brand.phone || "",
+      email: brand.email || "",
+      company_email: brand.email || "",
+      "company.email": brand.email || "",
+      website: brand.website || "",
+      company_website: brand.website || "",
+      "company.website": brand.website || "",
+      bank_name: brand.bank_name || "",
+      iban: brand.iban || "",
+      swift: brand.swift_bic || "",
+      bank_account: brand.bank_account_name || brand.legal_name || "",
+
+      doc_number: data.document_number || "",
+      document_number: data.document_number || "",
+      doc_date: fmtDate(data.document_date) || "",
+      document_date: fmtDate(data.document_date) || "",
+      due_date: data.due_date ? fmtDate(data.due_date) : "",
+      supply_date: data.supply_date ? fmtDate(data.supply_date) : fmtDate(data.document_date) || "",
+      payment_terms: data.payment_terms || "",
+      project_name: data.project_name || "",
+      project_number: data.project_number || "",
+      site_location: data.location || "",
+      notes: data.notes || "",
+
+      customer_name: data.customer_name || "",
+      customer_trn: data.customer_trn || "",
+      customer_address: data.customer_address || "",
+      contact_person: data.contact_person || "",
+      contact_number: data.contact_number || "",
+      contact_email: data.contact_email || "",
+
+      supplier_name: data.supplier_name || data.customer_name || "",
+      supplier_trn: data.customer_trn || "",
+      supplier_address: data.customer_address || "",
+
+      total_amount: data.total_amount ? String(data.total_amount) : "0.00",
+      amount_in_words: numberToWordsEnglish(data.total_amount),
+    };
+
+    for (const [k, v] of Object.entries(tokens)) {
+      const val = v !== undefined && v !== null ? String(v) : "";
+      str = str.replaceAll(`{{${k}}}`, val).replaceAll(`{${k}}`, val);
+    }
+    return str;
+  };
+
+  const replaceCompanyTokens = replaceDocumentTokens;
 
   // Render individual element content based on its type
   function renderElementContent(elem: LayoutElement) {
@@ -613,38 +670,51 @@ export default function DynamicDocumentRenderer({
               <span style={{ color: colors.primary }}>{partyHeading}</span>
               <span style={{ color: colors.muted }}>{partyRole}</span>
             </div>
-            <div
-              className="min-h-0 overflow-hidden select-text"
-              style={{
-                marginTop: isUltraCompact ? "2px" : isCompactPartyCard ? "3px" : "6px",
-                fontSize: `${effectiveFontSize}px`,
-                lineHeight: isUltraCompact ? 1.1 : isCompactPartyCard ? 1.15 : 1.25,
-              }}
-            >
-              <div className="font-bold text-slate-900 break-words leading-tight" style={{ overflowWrap: "anywhere" }}>{data.customer_name}</div>
-              {data.customer_trn && (
-                <div>
-                  <span style={{ color: colors.muted }}>TRN: </span>
-                  <span className="font-mono font-bold text-slate-900">{data.customer_trn}</span>
-                </div>
-              )}
-              {data.customer_address && (
-                <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>
-                  {data.customer_address}
-                </div>
-              )}
-              {data.contact_person && (
-                <div className="break-words" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>
-                  Attn: {data.contact_person}
-                </div>
-              )}
-              {data.contact_number && (
-                <div className="break-words" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>Tel/Mob: {data.contact_number}</div>
-              )}
-              {data.contact_email && (
-                <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>Email: {data.contact_email}</div>
-              )}
-            </div>
+            {elem.customText ? (
+              <div
+                className="min-h-0 overflow-auto whitespace-pre-line select-text"
+                style={{
+                  marginTop: isUltraCompact ? "2px" : isCompactPartyCard ? "3px" : "6px",
+                  fontSize: `${effectiveFontSize}px`,
+                  lineHeight: isUltraCompact ? 1.1 : isCompactPartyCard ? 1.15 : 1.25,
+                }}
+              >
+                {replaceDocumentTokens(elem.customText)}
+              </div>
+            ) : (
+              <div
+                className="min-h-0 overflow-hidden select-text"
+                style={{
+                  marginTop: isUltraCompact ? "2px" : isCompactPartyCard ? "3px" : "6px",
+                  fontSize: `${effectiveFontSize}px`,
+                  lineHeight: isUltraCompact ? 1.1 : isCompactPartyCard ? 1.15 : 1.25,
+                }}
+              >
+                <div className="font-bold text-slate-900 break-words leading-tight" style={{ overflowWrap: "anywhere" }}>{data.customer_name}</div>
+                {data.customer_trn && (
+                  <div>
+                    <span style={{ color: colors.muted }}>TRN: </span>
+                    <span className="font-mono font-bold text-slate-900">{data.customer_trn}</span>
+                  </div>
+                )}
+                {data.customer_address && (
+                  <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>
+                    {data.customer_address}
+                  </div>
+                )}
+                {data.contact_person && (
+                  <div className="break-words" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>
+                    Attn: {data.contact_person}
+                  </div>
+                )}
+                {data.contact_number && (
+                  <div className="break-words" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>Tel/Mob: {data.contact_number}</div>
+                )}
+                {data.contact_email && (
+                  <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>Email: {data.contact_email}</div>
+                )}
+              </div>
+            )}
           </div>
         );
       }
@@ -668,19 +738,25 @@ export default function DynamicDocumentRenderer({
               <span style={{ color: colors.primary }}>Supplier / Vendor Details (بيانات المورد):</span>
               <span style={{ color: colors.muted }}>Vendor</span>
             </div>
-            <div className="space-y-0.5 mt-1.5 text-[10.5px] leading-tight select-text">
-              <div className="font-bold text-slate-900 break-words leading-tight">{data.supplier_name || data.customer_name || "Supplier Name"}</div>
-              {data.contact_person && (
-                <div className="break-words text-[10px]" style={{ color: colors.muted }}>
-                  Attn: {data.contact_person} {data.contact_number ? `(${data.contact_number})` : ""}
-                </div>
-              )}
-              {data.customer_address && (
-                <div className="break-words text-[10px]" style={{ color: colors.muted, overflowWrap: "anywhere" }}>
-                  {data.customer_address}
-                </div>
-              )}
-            </div>
+            {elem.customText ? (
+              <div className="space-y-0.5 mt-1.5 whitespace-pre-line leading-tight select-text" style={{ fontSize: `${elem.fontSize || 10.5}px` }}>
+                {replaceDocumentTokens(elem.customText)}
+              </div>
+            ) : (
+              <div className="space-y-0.5 mt-1.5 text-[10.5px] leading-tight select-text">
+                <div className="font-bold text-slate-900 break-words leading-tight">{data.supplier_name || data.customer_name || "Supplier Name"}</div>
+                {data.contact_person && (
+                  <div className="break-words text-[10px]" style={{ color: colors.muted }}>
+                    Attn: {data.contact_person} {data.contact_number ? `(${data.contact_number})` : ""}
+                  </div>
+                )}
+                {data.customer_address && (
+                  <div className="break-words text-[10px]" style={{ color: colors.muted, overflowWrap: "anywhere" }}>
+                    {data.customer_address}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         );
       }
@@ -704,19 +780,25 @@ export default function DynamicDocumentRenderer({
               <span style={{ color: colors.primary }}>Project Details (بيانات المشروع):</span>
               <span className="font-mono font-bold" style={{ color: colors.accent }}>{data.project_number || "PRJ"}</span>
             </div>
-            <div className="space-y-0.5 mt-1.5 text-[10.5px] leading-tight select-text">
-              <div className="font-bold text-slate-900 break-words leading-tight">{data.project_name || "Project Name"}</div>
-              {data.location && (
-                <div className="text-[10px]" style={{ color: colors.muted }}>
-                  Location: <span className="font-semibold text-slate-800">{data.location}</span>
-                </div>
-              )}
-              {data.scope_of_work && (
-                <div className="text-[10px] break-words" style={{ color: colors.muted, overflowWrap: "anywhere" }}>
-                  Scope: {data.scope_of_work}
-                </div>
-              )}
-            </div>
+            {elem.customText ? (
+              <div className="space-y-0.5 mt-1.5 whitespace-pre-line leading-tight select-text" style={{ fontSize: `${elem.fontSize || 10.5}px` }}>
+                {replaceDocumentTokens(elem.customText)}
+              </div>
+            ) : (
+              <div className="space-y-0.5 mt-1.5 text-[10.5px] leading-tight select-text">
+                <div className="font-bold text-slate-900 break-words leading-tight">{data.project_name || "Project Name"}</div>
+                {data.location && (
+                  <div className="text-[10px]" style={{ color: colors.muted }}>
+                    Location: <span className="font-semibold text-slate-800">{data.location}</span>
+                  </div>
+                )}
+                {data.scope_of_work && (
+                  <div className="text-[10px] break-words" style={{ color: colors.muted, overflowWrap: "anywhere" }}>
+                    Scope: {data.scope_of_work}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         );
       }
@@ -743,51 +825,59 @@ export default function DynamicDocumentRenderer({
               ...elementAppearance(elem),
             }}
           >
-            <div
-              className="flex justify-between items-center border-b font-bold uppercase"
-              style={{
-                borderColor: colors.border,
-                fontSize: isUltraCompact ? "8.5px" : "10px",
-                paddingBottom: isUltraCompact ? "1px" : "4px",
-                lineHeight: 1.15,
-              }}
-            >
-              <span style={{ color: colors.primary }}>Document Reference (البيانات):</span>
-              <span className="font-mono font-bold" style={{ color: colors.accent }}>{data.document_number}</span>
-            </div>
-            <div
-              className={`grid grid-cols-2 ${isUltraCompact ? "gap-x-1.5 gap-y-0.5 mt-1" : "gap-x-2 gap-y-1 mt-1.5"} leading-tight select-text`}
-              style={{ fontSize: `${metaFontSize}px` }}
-            >
-              <div>
-                <span style={{ color: colors.muted }}>Date: </span>
-                <span className="font-semibold text-slate-900">{fmtDate(data.document_date)}</span>
+            {elem.customText ? (
+              <div className="w-full h-full min-h-0 overflow-auto whitespace-pre-line leading-relaxed select-text" style={{ fontSize: `${metaFontSize}px` }}>
+                {replaceDocumentTokens(elem.customText)}
               </div>
-              {showSupplyDate && (
-                <div>
-                  <span style={{ color: colors.muted }}>{layout.documentType === "delivery_note" ? "Delivery" : "Supply"}: </span>
-                  <span className="font-semibold text-slate-900">{fmtDate(data.supply_date || data.document_date)}</span>
+            ) : (
+              <>
+                <div
+                  className="flex justify-between items-center border-b font-bold uppercase"
+                  style={{
+                    borderColor: colors.border,
+                    fontSize: isUltraCompact ? "8.5px" : "10px",
+                    paddingBottom: isUltraCompact ? "1px" : "4px",
+                    lineHeight: 1.15,
+                  }}
+                >
+                  <span style={{ color: colors.primary }}>Document Reference (البيانات):</span>
+                  <span className="font-mono font-bold" style={{ color: colors.accent }}>{data.document_number}</span>
                 </div>
-              )}
-              {showDueDate && data.due_date && (
-                <div>
-                  <span style={{ color: colors.muted }}>Due: </span>
-                  <span className="font-semibold text-slate-900">{fmtDate(data.due_date)}</span>
+                <div
+                  className={`grid grid-cols-2 ${isUltraCompact ? "gap-x-1.5 gap-y-0.5 mt-1" : "gap-x-2 gap-y-1 mt-1.5"} leading-tight select-text`}
+                  style={{ fontSize: `${metaFontSize}px` }}
+                >
+                  <div>
+                    <span style={{ color: colors.muted }}>Date: </span>
+                    <span className="font-semibold text-slate-900">{fmtDate(data.document_date)}</span>
+                  </div>
+                  {showSupplyDate && (
+                    <div>
+                      <span style={{ color: colors.muted }}>{layout.documentType === "delivery_note" ? "Delivery" : "Supply"}: </span>
+                      <span className="font-semibold text-slate-900">{fmtDate(data.supply_date || data.document_date)}</span>
+                    </div>
+                  )}
+                  {showDueDate && data.due_date && (
+                    <div>
+                      <span style={{ color: colors.muted }}>Due: </span>
+                      <span className="font-semibold text-slate-900">{fmtDate(data.due_date)}</span>
+                    </div>
+                  )}
+                  {showTerms && data.payment_terms && (
+                    <div>
+                      <span style={{ color: colors.muted }}>Terms: </span>
+                      <span className="font-semibold text-slate-900">{data.payment_terms}</span>
+                    </div>
+                  )}
+                  {data.project_name && (
+                    <div className="col-span-2 pt-0.5 border-t border-slate-200 break-words" style={{ overflowWrap: "anywhere" }}>
+                      <span style={{ color: colors.muted }}>Project: </span>
+                      <span className="font-semibold text-slate-900">{data.project_name}</span>
+                    </div>
+                  )}
                 </div>
-              )}
-              {showTerms && data.payment_terms && (
-                <div>
-                  <span style={{ color: colors.muted }}>Terms: </span>
-                  <span className="font-semibold text-slate-900">{data.payment_terms}</span>
-                </div>
-              )}
-              {data.project_name && (
-                <div className="col-span-2 pt-0.5 border-t border-slate-200 break-words" style={{ overflowWrap: "anywhere" }}>
-                  <span style={{ color: colors.muted }}>Project: </span>
-                  <span className="font-semibold text-slate-900">{data.project_name}</span>
-                </div>
-              )}
-            </div>
+              </>
+            )}
           </div>
         );
       }
@@ -960,23 +1050,31 @@ export default function DynamicDocumentRenderer({
               ...elementAppearance(elem),
             }}
           >
-            <div className="font-semibold text-slate-800 text-[10px]">
-              Amount in Words (المبلغ بالحروف):
-            </div>
-            <div className={`italic text-slate-700 font-medium ${isDenseWords ? "text-[9.5px]" : "text-[11px]"} leading-tight`}>
-              {numberToWordsEnglish(data.total_amount)}
-            </div>
-            <div
-              className={`text-right font-arabic font-semibold ${isDenseWords ? "text-[9.5px]" : "text-[11px]"} pt-0.5 border-t leading-tight select-text`}
-              dir="rtl"
-              style={{
-                borderColor: colors.border,
-                color: colors.accent,
-                fontFamily: "'Segoe UI Arabic', 'Amiri', 'Noto Naskh Arabic', sans-serif",
-              }}
-            >
-              {numberToWordsArabic(data.total_amount)}
-            </div>
+            {elem.customText ? (
+              <div className="w-full h-full min-h-0 overflow-auto whitespace-pre-line leading-relaxed select-text" style={{ fontSize: `${wordsFontSize}px` }}>
+                {replaceDocumentTokens(elem.customText)}
+              </div>
+            ) : (
+              <>
+                <div className="font-semibold text-slate-800 text-[10px]">
+                  Amount in Words (المبلغ بالحروف):
+                </div>
+                <div className={`italic text-slate-700 font-medium ${isDenseWords ? "text-[9.5px]" : "text-[11px]"} leading-tight`}>
+                  {numberToWordsEnglish(data.total_amount)}
+                </div>
+                <div
+                  className={`text-right font-arabic font-semibold ${isDenseWords ? "text-[9.5px]" : "text-[11px]"} pt-0.5 border-t leading-tight select-text`}
+                  dir="rtl"
+                  style={{
+                    borderColor: colors.border,
+                    color: colors.accent,
+                    fontFamily: "'Segoe UI Arabic', 'Amiri', 'Noto Naskh Arabic', sans-serif",
+                  }}
+                >
+                  {numberToWordsArabic(data.total_amount)}
+                </div>
+              </>
+            )}
           </div>
         );
       }
@@ -1138,13 +1236,21 @@ export default function DynamicDocumentRenderer({
               color: elem.color || colors.text || "#334155",
             }}
           >
-            <div className="font-bold text-slate-800 text-[9.5px] mb-0.5" style={{ color: colors.primary }}>
-              Bank Transfer Information (بيانات التحويل):
-            </div>
-            <div>Bank: <span className="font-semibold">{brand.bank_name}</span></div>
-            <div>Account: <span className="font-semibold">{brand.bank_account_name || brand.legal_name}</span></div>
-            <div>IBAN: <span className="font-mono font-bold text-slate-900">{brand.iban}</span></div>
-            <div>SWIFT: <span className="font-mono">{brand.swift_bic}</span></div>
+            {elem.customText ? (
+              <div className="whitespace-pre-line leading-snug select-text" style={{ fontSize: `${bankFontSize}px` }}>
+                {replaceDocumentTokens(elem.customText)}
+              </div>
+            ) : (
+              <>
+                <div className="font-bold text-slate-800 text-[9.5px] mb-0.5" style={{ color: colors.primary }}>
+                  Bank Transfer Information (بيانات التحويل):
+                </div>
+                <div>Bank: <span className="font-semibold">{brand.bank_name}</span></div>
+                <div>Account: <span className="font-semibold">{brand.bank_account_name || brand.legal_name}</span></div>
+                <div>IBAN: <span className="font-mono font-bold text-slate-900">{brand.iban}</span></div>
+                <div>SWIFT: <span className="font-mono">{brand.swift_bic}</span></div>
+              </>
+            )}
           </div>
         );
       }
@@ -1176,9 +1282,17 @@ export default function DynamicDocumentRenderer({
               ...elementAppearance(elem),
             }}
           >
-            <div className="font-bold text-slate-800 mb-0.5">{sectionHeading}</div>
-            <div>{data.notes || "No additional remarks."}</div>
-            {data.payment_terms && <div className="mt-0.5 italic">{data.payment_terms}</div>}
+            {elem.customText ? (
+              <div className="whitespace-pre-line leading-snug select-text" style={{ fontSize: `${termsFontSize}px` }}>
+                {replaceDocumentTokens(elem.customText)}
+              </div>
+            ) : (
+              <>
+                <div className="font-bold text-slate-800 mb-0.5">{sectionHeading}</div>
+                <div>{data.notes || "No additional remarks."}</div>
+                {data.payment_terms && <div className="mt-0.5 italic">{data.payment_terms}</div>}
+              </>
+            )}
           </div>
         );
       }
@@ -1305,8 +1419,14 @@ export default function DynamicDocumentRenderer({
               ...elementAppearance(elem),
             }}
           >
-            <span className="font-semibold mr-1">TRN:</span>
-            <span className="font-mono font-bold">{brand.trn}</span>
+            {elem.customText ? (
+              <span>{replaceDocumentTokens(elem.customText)}</span>
+            ) : (
+              <>
+                <span className="font-semibold mr-1">TRN:</span>
+                <span className="font-mono font-bold">{brand.trn}</span>
+              </>
+            )}
           </div>
         );
       }

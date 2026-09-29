@@ -56,6 +56,8 @@ interface ElementContentConfig {
   tokens?: { token: string; label: string }[];
   /** Textarea rows */
   rows?: number;
+  /** Default template string that can be loaded into the textarea */
+  defaultTemplate?: string;
 }
 
 const ELEMENT_CONTENT_CONFIG: Partial<Record<ElementType, ElementContentConfig>> = {
@@ -68,6 +70,7 @@ const ELEMENT_CONTENT_CONFIG: Partial<Record<ElementType, ElementContentConfig>>
       { token: "{company_name}", label: "Company Legal Name" },
       { token: "{company_short}", label: "Short Name" },
     ],
+    defaultTemplate: "{company_name}",
     rows: 2,
   },
   company_name_ar: {
@@ -79,6 +82,7 @@ const ELEMENT_CONTENT_CONFIG: Partial<Record<ElementType, ElementContentConfig>>
     tokens: [
       { token: "{company_name_ar}", label: "Arabic Company Name" },
     ],
+    defaultTemplate: "{company_name_ar}",
     rows: 2,
   },
   company_address: {
@@ -88,18 +92,23 @@ const ELEMENT_CONTENT_CONFIG: Partial<Record<ElementType, ElementContentConfig>>
     isDynamic: true,
     tokens: [
       { token: "{address}", label: "Full Address" },
-      { token: "{trn}", label: "Tax Registration Number" },
-      { token: "{phone}", label: "Phone Number" },
-      { token: "{email}", label: "Email Address" },
+      { token: "{trn}", label: "TRN" },
+      { token: "{phone}", label: "Phone" },
+      { token: "{email}", label: "Email" },
       { token: "{website}", label: "Website" },
     ],
+    defaultTemplate: "{address}\nTRN: {trn} | Tel: {phone} | Email: {email}",
     rows: 3,
   },
   company_trn: {
     label: "Company TRN",
     description: "Shows Tax Registration Number from Company Settings.",
-    placeholder: "Auto-populated from company TRN",
+    placeholder: "e.g. TRN: {trn}",
     isDynamic: true,
+    tokens: [
+      { token: "{trn}", label: "TRN Number" },
+    ],
+    defaultTemplate: "TRN: {trn}",
     rows: 1,
   },
   doc_title: {
@@ -107,42 +116,79 @@ const ELEMENT_CONTENT_CONFIG: Partial<Record<ElementType, ElementContentConfig>>
     description: "The main title banner (e.g. TAX INVOICE, QUOTATION).",
     placeholder: "e.g. TAX INVOICE, PROFORMA INVOICE",
     isDynamic: false,
+    defaultTemplate: "TAX INVOICE",
     rows: 1,
   },
   doc_meta: {
     label: "Document Reference Info",
-    description: "Shows document number, dates and status from the record.",
-    placeholder: "Auto-populated from document data",
+    description: "Shows document number, dates and status. Type below to customize or override.",
+    placeholder: "Type custom reference text or use tokens: {doc_number}, {doc_date}, {due_date}...",
     isDynamic: true,
-    rows: 2,
+    tokens: [
+      { token: "{doc_number}", label: "Doc #" },
+      { token: "{doc_date}", label: "Date" },
+      { token: "{due_date}", label: "Due Date" },
+      { token: "{supply_date}", label: "Supply Date" },
+      { token: "{payment_terms}", label: "Terms" },
+      { token: "{project_name}", label: "Project" },
+    ],
+    defaultTemplate: "Document Reference: {doc_number}\nDate: {doc_date}\nDue Date: {due_date}\nPayment Terms: {payment_terms}",
+    rows: 4,
   },
   customer_info: {
     label: "Customer / Client Details",
-    description: "Shows customer name, TRN, address and contact from the record.",
-    placeholder: "Auto-populated from customer/client data",
+    description: "Shows customer name, TRN, address and contact. Type below to customize or override.",
+    placeholder: "Type custom customer info or use tokens: {customer_name}, {customer_trn}...",
     isDynamic: true,
-    rows: 3,
+    tokens: [
+      { token: "{customer_name}", label: "Customer Name" },
+      { token: "{customer_trn}", label: "TRN" },
+      { token: "{customer_address}", label: "Address" },
+      { token: "{contact_person}", label: "Contact" },
+      { token: "{contact_number}", label: "Phone" },
+      { token: "{contact_email}", label: "Email" },
+    ],
+    defaultTemplate: "{customer_name}\nTRN: {customer_trn}\n{customer_address}\nAttn: {contact_person}\nTel: {contact_number}",
+    rows: 4,
   },
   supplier_info: {
     label: "Supplier Details",
-    description: "Shows supplier name and contact from the record.",
-    placeholder: "Auto-populated from supplier data",
+    description: "Shows supplier name, address and contact. Type below to customize or override.",
+    placeholder: "Type custom supplier info or use tokens: {supplier_name}, {supplier_trn}...",
     isDynamic: true,
-    rows: 2,
+    tokens: [
+      { token: "{supplier_name}", label: "Supplier Name" },
+      { token: "{supplier_trn}", label: "TRN" },
+      { token: "{supplier_address}", label: "Address" },
+      { token: "{contact_person}", label: "Contact" },
+    ],
+    defaultTemplate: "{supplier_name}\nTRN: {supplier_trn}\n{supplier_address}\nAttn: {contact_person}",
+    rows: 4,
   },
   project_info: {
     label: "Project Information",
-    description: "Shows project name, number and location from the record.",
-    placeholder: "Auto-populated from project data",
+    description: "Shows project name, site, and manager. Type below to customize or override.",
+    placeholder: "Type custom project info or use tokens: {project_name}, {site_location}...",
     isDynamic: true,
-    rows: 2,
+    tokens: [
+      { token: "{project_name}", label: "Project Name" },
+      { token: "{project_number}", label: "Project #" },
+      { token: "{site_location}", label: "Location" },
+    ],
+    defaultTemplate: "{project_name}\nProject #: {project_number}\nLocation: {site_location}",
+    rows: 3,
   },
   amount_in_words: {
     label: "Amount in Words",
-    description: "Shows total amount in English and Arabic words. Calculated automatically.",
-    placeholder: "Auto-calculated from document total",
+    description: "Shows total amount in English and Arabic words. Type below to customize or override.",
+    placeholder: "Type custom amount in words or use token: {amount_in_words}",
     isDynamic: true,
-    rows: 2,
+    tokens: [
+      { token: "{amount_in_words}", label: "Calculated Words" },
+      { token: "{total_amount}", label: "Total Amount" },
+    ],
+    defaultTemplate: "Amount in Words:\n{amount_in_words}",
+    rows: 3,
   },
   payment_terms: {
     label: "Terms & Remarks",
@@ -153,6 +199,7 @@ const ELEMENT_CONTENT_CONFIG: Partial<Record<ElementType, ElementContentConfig>>
       { token: "{payment_terms}", label: "Payment Terms" },
       { token: "{notes}", label: "Document Notes" },
     ],
+    defaultTemplate: "Terms & Remarks:\n{payment_terms}",
     rows: 4,
   },
   bank_details: {
@@ -166,6 +213,7 @@ const ELEMENT_CONTENT_CONFIG: Partial<Record<ElementType, ElementContentConfig>>
       { token: "{swift}", label: "SWIFT/BIC Code" },
       { token: "{bank_account}", label: "Account Name" },
     ],
+    defaultTemplate: "Bank Transfer Information:\nBank: {bank_name}\nAccount: {bank_account}\nIBAN: {iban}\nSWIFT: {swift}",
     rows: 4,
   },
   company_signature: {
@@ -173,6 +221,7 @@ const ELEMENT_CONTENT_CONFIG: Partial<Record<ElementType, ElementContentConfig>>
     description: "The text label above/below the signature image.",
     placeholder: "e.g. COMPANY AUTHORIZED SIGNATURE",
     isDynamic: false,
+    defaultTemplate: "COMPANY AUTHORIZED SIGNATURE",
     rows: 1,
   },
   footer: {
@@ -186,6 +235,7 @@ const ELEMENT_CONTENT_CONFIG: Partial<Record<ElementType, ElementContentConfig>>
       { token: "{email}", label: "Email" },
       { token: "{website}", label: "Website" },
     ],
+    defaultTemplate: "{company_name} | Tel: {phone} | Email: {email} | Web: {website}",
     rows: 2,
   },
   custom_text: {
@@ -193,6 +243,7 @@ const ELEMENT_CONTENT_CONFIG: Partial<Record<ElementType, ElementContentConfig>>
     description: "Free-form text block. You control the content entirely.",
     placeholder: "Type your custom text here...",
     isDynamic: false,
+    defaultTemplate: "Custom Text Content",
     rows: 4,
   },
   watermark: {
@@ -458,9 +509,13 @@ export default function RightInspector({
   const isImageElement = ["logo", "watermark", "company_stamp", "company_signature", "building_image", "custom_image"].includes(elem.type);
   const contentConfig = ELEMENT_CONTENT_CONFIG[elem.type as ElementType] || null;
   // Elements that support typography controls in the "Text & Typography" section
-  const isTextElement = ["company_name_en", "company_name_ar", "company_address", "doc_title", "custom_text", "footer", "payment_terms", "company_trn", "company_signature", "amount_in_words", "bank_details"].includes(elem.type) || elem.customText !== undefined;
+  const isTextElement = [
+    "company_name_en", "company_name_ar", "company_address", "doc_title", "doc_meta",
+    "customer_info", "supplier_info", "project_info", "custom_text", "footer",
+    "payment_terms", "company_trn", "company_signature", "amount_in_words", "bank_details"
+  ].includes(elem.type) || elem.customText !== undefined;
   // Elements where customText overrides content (editable in the Universal Text Editor)
-  const isContentEditable = contentConfig !== null && !["totals", "line_items", "doc_meta", "customer_info", "supplier_info", "project_info", "amount_in_words", "bank_details", "company_trn"].includes(elem.type);
+  const isContentEditable = contentConfig !== null && !["totals", "line_items"].includes(elem.type);
   const isDataOnlyElement = contentConfig !== null && !isContentEditable;
   const aspectRatio = elem.imageAspectRatio || elem.width / Math.max(1, elem.height);
 
@@ -645,6 +700,7 @@ export default function RightInspector({
                 <>
                   <div className="relative">
                     <textarea
+                      id="element-content-editor-textarea"
                       rows={contentConfig.rows || 3}
                       value={elem.customText || ""}
                       onChange={(e) => onUpdateElement(elem.id, { customText: e.target.value || undefined })}
@@ -674,9 +730,22 @@ export default function RightInspector({
                       <span className="font-medium">Custom override active — default data is hidden.</span>
                     </div>
                   ) : contentConfig.isDynamic ? (
-                    <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-500/8 px-2 py-1 rounded border border-emerald-500/20">
-                      <Database size={10} className="shrink-0" />
-                      <span>Using live data from your records. Type above to override.</span>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-500/8 px-2 py-1 rounded border border-emerald-500/20">
+                        <Database size={10} className="shrink-0" />
+                        <span>Using live data from your records. Type above to override.</span>
+                      </div>
+                      {contentConfig.defaultTemplate && (
+                        <button
+                          type="button"
+                          onClick={() => onUpdateElement(elem.id, { customText: contentConfig.defaultTemplate })}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-medium bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/25 hover:border-indigo-400/50 transition w-full justify-center"
+                          title="Load the standard template format with dynamic tokens into the editor to customize it"
+                        >
+                          <FileText size={11} className="shrink-0" />
+                          <span>Pre-fill Standard Format to Edit</span>
+                        </button>
+                      )}
                     </div>
                   ) : null}
 
