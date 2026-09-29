@@ -542,4 +542,14 @@ test("PDF Designer provides complete controls for border colors, thickness, angl
   assert.match(pageBorderSectionSource, /Auto-Clearance Guard Active/);
 });
 
+test("hardens decorative borders for printed output with universal CSS border stripes and z-30", () => {
+  assert.match(pageDecorativeBordersSource, /print-border-stripe-top/);
+  assert.match(pageDecorativeBordersSource, /print-border-stripe-bottom/);
+  assert.match(pageDecorativeBordersSource, /z-\[30\]/);
+  assert.match(pageDecorativeBordersSource, /borderTop:/);
+  assert.match(pageDecorativeBordersSource, /borderBottom:/);
+  assert.match(globalCssSource, /\.page-decorative-borders-container\s*\{[\s\S]*?z-index:\s*30\s*!important;/);
+});
+
+
 

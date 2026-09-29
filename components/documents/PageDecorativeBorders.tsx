@@ -121,7 +121,7 @@ export default function PageDecorativeBorders({
 
   return (
     <div
-      className="page-decorative-borders-container absolute inset-0 pointer-events-none select-none z-[5] overflow-hidden"
+      className="page-decorative-borders-container absolute inset-0 pointer-events-none select-none z-[30] overflow-hidden"
       style={{
         width: `${pageWidth}mm`,
         height: `${pageHeight}mm`,
@@ -130,10 +130,48 @@ export default function PageDecorativeBorders({
       }}
       aria-hidden="true"
     >
+      {/* 1. Universal CSS Border Strokes (Guaranteed to print under ALL browser settings and paper destinations) */}
+      {top.enabled && top.style === "straight" && (top.angle || 0) === 0 && (
+        <div
+          className="print-border-stripe-top"
+          style={{
+            position: "absolute",
+            top: `${clampedTopPos}mm`,
+            left: 0,
+            width: `${pageWidth}mm`,
+            height: 0,
+            borderTop: `${effectiveTopThickness}mm solid ${top.color || "#E0AC23"}`,
+            opacity: top.opacity ?? 1,
+            WebkitPrintColorAdjust: "exact",
+            printColorAdjust: "exact",
+          }}
+        />
+      )}
+      {bottom.enabled && bottom.style === "straight" && (bottom.angle || 0) === 0 && (
+        <div
+          className="print-border-stripe-bottom"
+          style={{
+            position: "absolute",
+            bottom: `${clampedBottomPos}mm`,
+            left: 0,
+            width: `${pageWidth}mm`,
+            height: 0,
+            borderBottom: `${effectiveBottomThickness}mm solid ${bottom.color || "#173C64"}`,
+            opacity: bottom.opacity ?? 1,
+            WebkitPrintColorAdjust: "exact",
+            printColorAdjust: "exact",
+          }}
+        />
+      )}
+
+      {/* 2. Full Vector SVG Layer */}
       <svg
         className="page-decorative-borders-svg w-full h-full block"
+        width={`${pageWidth}mm`}
+        height={`${pageHeight}mm`}
         viewBox={`0 0 ${pageWidth} ${pageHeight}`}
         preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
         style={{
           width: `${pageWidth}mm`,
           height: `${pageHeight}mm`,
@@ -204,11 +242,15 @@ function TopBorderRenderer({
 
   const fillStyle: React.CSSProperties = {
     fill: color,
+    stroke: color,
+    strokeWidth: "0.5px",
     WebkitPrintColorAdjust: "exact",
     printColorAdjust: "exact",
   };
   const secondaryFillStyle: React.CSSProperties = {
     fill: secondary,
+    stroke: secondary,
+    strokeWidth: "0.5px",
     WebkitPrintColorAdjust: "exact",
     printColorAdjust: "exact",
   };
@@ -231,6 +273,8 @@ function TopBorderRenderer({
               width={pageWidth}
               height={thickness}
               fill={color}
+              stroke={color}
+              strokeWidth={0.5}
               style={fillStyle}
             />
             {/* Subtle luxury accent hairline at bottom edge */}
@@ -468,11 +512,15 @@ function BottomBorderRenderer({
 
   const fillStyle: React.CSSProperties = {
     fill: color,
+    stroke: color,
+    strokeWidth: "0.5px",
     WebkitPrintColorAdjust: "exact",
     printColorAdjust: "exact",
   };
   const secondaryFillStyle: React.CSSProperties = {
     fill: secondary,
+    stroke: secondary,
+    strokeWidth: "0.5px",
     WebkitPrintColorAdjust: "exact",
     printColorAdjust: "exact",
   };
@@ -495,6 +543,8 @@ function BottomBorderRenderer({
               width={pageWidth}
               height={actualHeight}
               fill={color}
+              stroke={color}
+              strokeWidth={0.5}
               style={fillStyle}
             />
             {/* Contrasting top accent rule */}

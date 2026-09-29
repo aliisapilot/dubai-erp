@@ -463,7 +463,7 @@ body {
     height: 297mm !important;
     min-height: 297mm !important;
     max-height: 297mm !important;
-    z-index: 5 !important;
+    z-index: 30 !important;
     pointer-events: none !important;
     overflow: hidden !important;
     -webkit-print-color-adjust: exact !important;
