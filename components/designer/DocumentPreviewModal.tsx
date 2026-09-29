@@ -308,7 +308,7 @@ export default function DocumentPreviewModal({
 
               {/* A4 Sheet Container */}
               <div
-                className="print:transform-none"
+                className="designer-preview-sheet-container print:!transform-none print:!m-0 print:!mb-0"
                 style={{
                   transform: scale !== 1 ? `scale(${scale})` : undefined,
                   transformOrigin: "top center",

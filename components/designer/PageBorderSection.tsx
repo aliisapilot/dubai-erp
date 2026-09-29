@@ -459,6 +459,33 @@ function BorderControlCard({
                 className="w-14 bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-[10px] text-white"
               />
             </div>
+            {/* Quick Position Presets */}
+            <div className="flex items-center gap-1.5 pt-1.5">
+              <button
+                type="button"
+                onClick={() => onUpdate({ position: 0 })}
+                className={`text-[9px] px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                  (border.position || 0) === 0
+                    ? "bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold"
+                    : "bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200"
+                }`}
+                title="Full-bleed edge-to-edge for digital PDF export"
+              >
+                Full-Bleed (0 mm)
+              </button>
+              <button
+                type="button"
+                onClick={() => onUpdate({ position: 3.5 })}
+                className={`text-[9px] px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                  (border.position || 0) === 3.5
+                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold"
+                    : "bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200"
+                }`}
+                title="Printer safe margin for physical office desktop printers (prevents roller clipping)"
+              >
+                Printer-Safe (3.5 mm)
+              </button>
+            </div>
           </div>
 
           {/* Rotation Angle (degrees) */}

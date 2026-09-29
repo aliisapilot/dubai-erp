@@ -352,7 +352,8 @@ body {
   .mobile-pdf-print-content,
   .print-preview-surface,
   .print-preview-scale-shell,
-  .print-preview-scale-content {
+  .print-preview-scale-content,
+  .designer-preview-sheet-container {
     display: block !important;
     position: static !important;
     width: 210mm !important;

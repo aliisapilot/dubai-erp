@@ -546,8 +546,11 @@ test("hardens decorative borders for printed output with universal CSS border st
   assert.match(pageDecorativeBordersSource, /print-border-stripe-top/);
   assert.match(pageDecorativeBordersSource, /print-border-stripe-bottom/);
   assert.match(pageDecorativeBordersSource, /z-\[30\]/);
+  assert.match(pageDecorativeBordersSource, /boxSizing:\s*"border-box"/);
   assert.match(pageDecorativeBordersSource, /borderTop:/);
   assert.match(pageDecorativeBordersSource, /borderBottom:/);
+  assert.match(pageBorderSectionSource, /Printer-Safe \(3\.5 mm\)/);
+  assert.match(pageBorderSectionSource, /Full-Bleed \(0 mm\)/);
   assert.match(globalCssSource, /\.page-decorative-borders-container\s*\{[\s\S]*?z-index:\s*30\s*!important;/);
 });
 

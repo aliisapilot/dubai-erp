@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { documentCloud } from './documentDesigner';
+import { documentCloud, normalizeLayout } from './documentDesigner';
 import { cloudError } from './documentCloud';
 import type { DocumentLayout, DocumentTypeId } from './documentDesigner';
 import type { DocumentStylePreset } from './documentStylePresetModel';
@@ -19,6 +19,6 @@ export const documentStylePresets = {
   delete(companyId: string, _documentType: DocumentTypeId, preset: DocumentStylePreset) { return documentCloud.mutate(companyId,preset,'delete'); },
   apply(preset: DocumentStylePreset, documentType: DocumentTypeId): DocumentLayout {
     if(preset.document_type !== documentType || preset.layout_json.documentType !== documentType) throw new Error('Style belongs to another document type.');
-    return { ...JSON.parse(JSON.stringify(preset.layout_json)), templateName:preset.template_name };
+    return normalizeLayout({ ...JSON.parse(JSON.stringify(preset.layout_json)), templateName:preset.template_name });
   }
 };

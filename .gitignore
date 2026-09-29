@@ -50,3 +50,4 @@ supabase/.temp/
 *.bak
 backups/
 dump/
+test-output/

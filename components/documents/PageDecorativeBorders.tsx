@@ -130,7 +130,7 @@ export default function PageDecorativeBorders({
       }}
       aria-hidden="true"
     >
-      {/* 1. Universal CSS Border Strokes (Guaranteed to print under ALL browser settings and paper destinations) */}
+      {/* 1. Universal CSS Border Stripes (Guaranteed to render under ALL browser settings and paper destinations) */}
       {top.enabled && top.style === "straight" && (top.angle || 0) === 0 && (
         <div
           className="print-border-stripe-top"
@@ -139,8 +139,10 @@ export default function PageDecorativeBorders({
             top: `${clampedTopPos}mm`,
             left: 0,
             width: `${pageWidth}mm`,
-            height: 0,
-            borderTop: `${effectiveTopThickness}mm solid ${top.color || "#E0AC23"}`,
+            height: `${effectiveTopThickness}mm`,
+            boxSizing: "border-box",
+            backgroundColor: top.color || "#E0AC23",
+            borderBottom: `${effectiveTopThickness}mm solid ${top.color || "#E0AC23"}`,
             opacity: top.opacity ?? 1,
             WebkitPrintColorAdjust: "exact",
             printColorAdjust: "exact",
@@ -155,8 +157,10 @@ export default function PageDecorativeBorders({
             bottom: `${clampedBottomPos}mm`,
             left: 0,
             width: `${pageWidth}mm`,
-            height: 0,
-            borderBottom: `${effectiveBottomThickness}mm solid ${bottom.color || "#173C64"}`,
+            height: `${effectiveBottomThickness}mm`,
+            boxSizing: "border-box",
+            backgroundColor: bottom.color || "#173C64",
+            borderTop: `${effectiveBottomThickness}mm solid ${bottom.color || "#173C64"}`,
             opacity: bottom.opacity ?? 1,
             WebkitPrintColorAdjust: "exact",
             printColorAdjust: "exact",
