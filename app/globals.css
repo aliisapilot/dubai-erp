@@ -494,6 +494,40 @@ body {
     width: 100% !important;
   }
 
+  /* Landscape orientation support for documents */
+  .dynamic-document-page[data-orientation="landscape"] {
+    width: 297mm !important;
+    min-width: 297mm !important;
+    max-width: 297mm !important;
+    height: 210mm !important;
+    min-height: 210mm !important;
+    max-height: 210mm !important;
+  }
+
+  /* High-Contrast Print-Safe Borders on Physical Paper & Laser Printers */
+  .dynamic-document-page[data-print-contrast="high"] [data-element-id] > div,
+  .dynamic-document-page[data-print-contrast="maximum"] [data-element-id] > div {
+    border-color: #64748b !important;
+  }
+  .dynamic-document-page[data-print-contrast="maximum"] [data-element-id] > div {
+    border-color: #1e293b !important;
+  }
+  .dynamic-document-page[data-print-contrast="high"] table,
+  .dynamic-document-page[data-print-contrast="high"] table th,
+  .dynamic-document-page[data-print-contrast="high"] table td,
+  .dynamic-document-page[data-print-contrast="maximum"] table,
+  .dynamic-document-page[data-print-contrast="maximum"] table th,
+  .dynamic-document-page[data-print-contrast="maximum"] table td {
+    border-color: #94a3b8 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Grayscale / Monochrome Laser Printer Optimization */
+  .dynamic-document-page[data-print-mode="grayscale"] {
+    filter: grayscale(100%) contrast(108%) !important;
+  }
+
   /* Ensure internal containers inside the document sheet do not clip content */
   .document-sheet div[class*="overflow"],
   .print-document div[class*="overflow"] {

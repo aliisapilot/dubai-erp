@@ -10,6 +10,7 @@ import {
   DocumentTypeId,
   LayoutElement,
   TableColumnConfig,
+  normalizePrintSettings,
 } from "@/lib/documentDesigner";
 import { CompanyDocInfo } from "./DocHeader";
 import { numberToWordsArabic, numberToWordsEnglish } from "@/lib/amountInWords";
@@ -278,14 +279,27 @@ export default function DynamicDocumentRenderer({
   const brand = getBrandConfig(company);
   const [logoFailed, setLogoFailed] = useState(false);
 
+  const printSettings = normalizePrintSettings(layout.page?.printSettings);
+  const isGrayscale = printSettings.colorMode === "grayscale";
+  const isPrinterFriendly = printSettings.printerFriendlyMode;
+  const isHighContrast = printSettings.borderContrast === "high" || printSettings.borderContrast === "maximum";
+
+  const rawBorderColor =
+    printSettings.borderContrast === "maximum"
+      ? "#1E293B"
+      : isHighContrast
+      ? "#64748B"
+      : (layout.branding?.borderColor || brand.colors.border);
+
   const colors = {
-    primary: layout.branding?.primaryColor || brand.colors.primary,
-    accent: layout.branding?.accentColor || brand.colors.accent,
-    text: layout.branding?.textColor || brand.colors.text,
-    muted: layout.branding?.mutedColor || brand.colors.muted,
-    border: layout.branding?.borderColor || brand.colors.border,
-    tableHeader: layout.branding?.tableHeaderColor || brand.colors.tableHeader,
-    totalHighlight: layout.branding?.totalHighlightColor || brand.colors.totalHighlight,
+    primary: isGrayscale ? "#0F172A" : (layout.branding?.primaryColor || brand.colors.primary),
+    accent: isGrayscale ? "#334155" : (layout.branding?.accentColor || brand.colors.accent),
+    text: isGrayscale ? "#0F172A" : (layout.branding?.textColor || brand.colors.text),
+    muted: isGrayscale ? "#475569" : (layout.branding?.mutedColor || brand.colors.muted),
+    border: isGrayscale ? "#475569" : rawBorderColor,
+    tableHeader: isPrinterFriendly ? "#FFFFFF" : isGrayscale ? "#0F172A" : (layout.branding?.tableHeaderColor || brand.colors.tableHeader),
+    tableHeaderTextColor: isPrinterFriendly ? "#0F172A" : "#FFFFFF",
+    totalHighlight: isGrayscale ? "#F1F5F9" : (layout.branding?.totalHighlightColor || brand.colors.totalHighlight),
   };
 
   const advance = Number(data.advance_amount) || 0;
@@ -509,13 +523,21 @@ export default function DynamicDocumentRenderer({
       }
 
       case "doc_title": {
+        const titleBg = isPrinterFriendly ? "#FFFFFF" : (elem.backgroundColor || colors.primary);
+        const titleColor = isPrinterFriendly ? colors.primary : (elem.color || "#FFFFFF");
+        const titleBorder = isPrinterFriendly
+          ? `2px solid ${colors.primary}`
+          : elem.borderWidth
+          ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}`
+          : undefined;
+
         return (
           <div
             className="w-full h-full flex items-center justify-between px-3 select-text"
             style={{
-              backgroundColor: elem.backgroundColor || colors.primary,
-              color: elem.color || "#FFFFFF",
-              border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
+              backgroundColor: titleBg,
+              color: titleColor,
+              border: titleBorder,
               borderRadius: `${elem.borderRadius || 4}px`,
               opacity: elem.opacity ?? 1,
               padding: elem.padding !== undefined ? `${elem.padding}mm` : undefined,
@@ -810,10 +832,12 @@ export default function DynamicDocumentRenderer({
               <thead>
                 <tr
                   style={{
-                    backgroundColor: tSettings.headerBg,
-                    color: tSettings.headerTextColor,
+                    backgroundColor: isPrinterFriendly ? "#FFFFFF" : tSettings.headerBg,
+                    color: isPrinterFriendly ? colors.primary : tSettings.headerTextColor,
                     fontSize: `${tSettings.headerFontSize}px`,
                     height: `${Math.max(5.0, tSettings.rowHeight)}mm`,
+                    borderTop: isPrinterFriendly ? `2px solid ${colors.primary}` : undefined,
+                    borderBottom: isPrinterFriendly ? `2px solid ${colors.primary}` : undefined,
                   }}
                 >
                   {activeCols.map((col) => (
@@ -824,7 +848,9 @@ export default function DynamicDocumentRenderer({
                         ...customPaddingStyle,
                         width: `${col.widthPct}%`,
                         textAlign: col.align,
-                        borderRight: `${tSettings.borderThickness}px solid rgba(255,255,255,0.15)`,
+                        borderRight: isPrinterFriendly
+                          ? `1px solid ${colors.border}`
+                          : `${tSettings.borderThickness}px solid rgba(255,255,255,0.15)`,
                         lineHeight: 1.15,
                       }}
                     >
@@ -837,7 +863,7 @@ export default function DynamicDocumentRenderer({
                 className="bg-white divide-y"
                 style={{
                   color: tSettings.bodyTextColor,
-                  borderColor: tSettings.borderColor,
+                  borderColor: isHighContrast ? "#94A3B8" : tSettings.borderColor,
                 }}
               >
                 {pageItems.length === 0 ? (
@@ -1405,9 +1431,12 @@ export default function DynamicDocumentRenderer({
     }
   }
 
-  // A4 dimensions: 210mm x 297mm
+  // A4 dimensions: 210mm x 297mm (or 297mm x 210mm in landscape)
   return (
     <div
+      data-orientation={layout.page.orientation || "portrait"}
+      data-print-mode={printSettings.colorMode}
+      data-print-contrast={printSettings.borderContrast}
       className={`dynamic-document-page print-a4-sheet relative box-border select-none overflow-hidden bg-white shadow-2xl transition-all ${
         isDesignerPreview ? "cursor-default" : ""
       }`}

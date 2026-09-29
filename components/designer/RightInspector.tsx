@@ -29,7 +29,7 @@ import {
   LayoutElement,
 } from "@/lib/documentDesigner";
 import PageBorderSection from "./PageBorderSection";
-import SmartFitSection from "./SmartFitSection";
+import PrintingSettingsSection from "./PrintingSettingsSection";
 
 interface RightInspectorProps {
   layout: DocumentLayout;
@@ -44,6 +44,7 @@ interface RightInspectorProps {
   onDuplicateElement?: (elem: LayoutElement) => void;
   onReplaceImage?: (elem: LayoutElement, file: File) => void;
   onPreviewActualSize?: () => void;
+  onOpenTestSheet?: () => void;
 }
 
 const QUICK_SWATCHES = [
@@ -80,6 +81,7 @@ export default function RightInspector({
   onDuplicateElement,
   onReplaceImage,
   onPreviewActualSize,
+  onOpenTestSheet,
 }: RightInspectorProps) {
   const imageReplaceInputRef = useRef<HTMLInputElement>(null);
   const [activeTabOverride, setActiveTabOverride] = useState<"element" | "page_borders" | null>(null);
@@ -164,11 +166,12 @@ export default function RightInspector({
         </div>
       </div>
 
-      {/* Smart One-Page Fit Engine (A4) */}
-      <SmartFitSection
+      {/* Printing & Physical Output Settings (A4) */}
+      <PrintingSettingsSection
         layout={layout}
         onUpdatePageSettings={onUpdatePageSettings}
         onPreviewActualSize={onPreviewActualSize}
+        onOpenTestSheet={onOpenTestSheet}
       />
 
       {/* Page Border & Background Design */}

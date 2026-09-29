@@ -155,15 +155,15 @@ export function calculateItemRowHeight(
   if (!description) return baseRowHeight;
   const lines = description.split("\n");
   const effectiveFontSize = fontSize || 10;
-  // A standard A4 description column is 75mm - 90mm wide.
-  // With proportional fonts at compact/dense sizes (7.2px - 8.5px), more characters fit per line.
-  const charsPerLine = Math.max(55, Math.floor(55 * (10 / effectiveFontSize) * 1.12));
+  // A standard A4 description column is 75mm - 88mm wide.
+  // At 8pt font, ~46 characters fit per line before wrapping in Arial/Sans-serif.
+  const charsPerLine = Math.max(38, Math.floor(46 * (8.5 / effectiveFontSize)));
   let totalVisualLines = 0;
   for (const line of lines) {
     totalVisualLines += Math.max(1, Math.ceil(line.length / charsPerLine));
   }
   const extraLines = Math.max(0, totalVisualLines - 1);
-  const extraLineMm = Math.max(1.8, Math.min(3.2, (effectiveFontSize * 1.15) / 3.7795 * 0.72));
+  const extraLineMm = Math.max(2.0, Math.min(3.5, (effectiveFontSize * 1.25) / 3.7795));
   return baseRowHeight + (extraLines * extraLineMm);
 }
 

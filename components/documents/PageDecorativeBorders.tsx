@@ -7,6 +7,7 @@ import {
   PageDecorativeBorder,
   PageBorderSettings,
   normalizePageBorders,
+  normalizePrintSettings,
 } from "@/lib/documentDesigner";
 
 interface PageDecorativeBordersProps {
@@ -93,6 +94,7 @@ export default function PageDecorativeBorders({
   elements,
 }: PageDecorativeBordersProps) {
   const borders = normalizePageBorders(directBorders || layout?.page?.borders);
+  const printSettings = normalizePrintSettings(layout?.page?.printSettings);
   const { top, bottom } = borders;
 
   if (!top.enabled && !bottom.enabled) {
@@ -104,20 +106,34 @@ export default function PageDecorativeBorders({
 
   const { safeTopLimitMm, safeBottomLimitMm } = calculateBorderClearances(layout, elements);
 
+  const isPrintSafe =
+    layout?.page?.smartFit?.printSafeBorders !== false &&
+    printSettings.printerSafeMargins !== false;
+  const isGrayscale = printSettings.colorMode === "grayscale";
+
   // Clamp top border so its lowest edge NEVER penetrates safeTopLimitMm
-  const rawTopPos = Math.max(0, top.position || 0);
-  const clampedTopPos = Math.min(rawTopPos, Math.max(0, safeTopLimitMm - 1));
+  // Insetting to 3.5mm ensures physical printer rollers do not clip it off
+  const minTopSafeOffset = isPrintSafe ? 3.5 : 0;
+  const rawTopPos = Math.max(minTopSafeOffset, top.position || 0);
+  const clampedTopPos = Math.min(rawTopPos, Math.max(minTopSafeOffset, safeTopLimitMm - 1));
   const maxAllowedTopThickness = Math.max(0.5, safeTopLimitMm - clampedTopPos);
   const effectiveTopThickness = Math.min(Math.max(0.5, top.thickness || 4), maxAllowedTopThickness);
 
   // Clamp bottom border so its highest edge NEVER penetrates safeBottomLimitMm
-  const rawBottomPos = Math.max(0, bottom.position || 0);
-  const clampedBottomPos = Math.min(rawBottomPos, Math.max(0, pageHeight - safeBottomLimitMm - 1));
+  // Insetting to 4.0mm ensures physical paper prints the navy bottom border completely
+  const minBottomSafeOffset = isPrintSafe ? 4.0 : 0;
+  const rawBottomPos = Math.max(minBottomSafeOffset, bottom.position || 0);
+  const clampedBottomPos = Math.min(rawBottomPos, Math.max(minBottomSafeOffset, pageHeight - safeBottomLimitMm - 1));
   const maxAllowedBottomThickness = Math.max(0.5, pageHeight - clampedBottomPos - safeBottomLimitMm);
   const effectiveBottomThickness = Math.min(
     Math.max(0.5, bottom.thickness || 4),
     maxAllowedBottomThickness
   );
+
+  const effectiveTopColor = isGrayscale ? "#334155" : (top.color || "#E0AC23");
+  const effectiveBottomColor = isGrayscale ? "#0F172A" : (bottom.color || "#173C64");
+  const effectiveTopSecondary = isGrayscale ? "#475569" : (top.secondaryColor || (effectiveTopColor === "#E0AC23" ? "#173C64" : "#E0AC23"));
+  const effectiveBottomSecondary = isGrayscale ? "#475569" : (bottom.secondaryColor || (effectiveBottomColor === "#173C64" ? "#E0AC23" : "#173C64"));
 
   return (
     <div
@@ -141,8 +157,8 @@ export default function PageDecorativeBorders({
             width: `${pageWidth}mm`,
             height: `${effectiveTopThickness}mm`,
             boxSizing: "border-box",
-            backgroundColor: top.color || "#E0AC23",
-            borderBottom: `${effectiveTopThickness}mm solid ${top.color || "#E0AC23"}`,
+            backgroundColor: effectiveTopColor,
+            borderBottom: `${effectiveTopThickness}mm solid ${effectiveTopColor}`,
             opacity: top.opacity ?? 1,
             WebkitPrintColorAdjust: "exact",
             printColorAdjust: "exact",
@@ -159,8 +175,8 @@ export default function PageDecorativeBorders({
             width: `${pageWidth}mm`,
             height: `${effectiveBottomThickness}mm`,
             boxSizing: "border-box",
-            backgroundColor: bottom.color || "#173C64",
-            borderTop: `${effectiveBottomThickness}mm solid ${bottom.color || "#173C64"}`,
+            backgroundColor: effectiveBottomColor,
+            borderTop: `${effectiveBottomThickness}mm solid ${effectiveBottomColor}`,
             opacity: bottom.opacity ?? 1,
             WebkitPrintColorAdjust: "exact",
             printColorAdjust: "exact",
@@ -206,6 +222,8 @@ export default function PageDecorativeBorders({
             positionY={clampedTopPos}
             thickness={effectiveTopThickness}
             maxAllowedBottomY={safeTopLimitMm}
+            overrideColor={effectiveTopColor}
+            overrideSecondary={effectiveTopSecondary}
           />
         )}
 
@@ -218,6 +236,8 @@ export default function PageDecorativeBorders({
             positionFromBottom={clampedBottomPos}
             thickness={effectiveBottomThickness}
             minAllowedTopY={safeBottomLimitMm}
+            overrideColor={effectiveBottomColor}
+            overrideSecondary={effectiveBottomSecondary}
           />
         )}
       </svg>
@@ -232,17 +252,21 @@ function TopBorderRenderer({
   positionY,
   thickness,
   maxAllowedBottomY,
+  overrideColor,
+  overrideSecondary,
 }: {
   border: PageDecorativeBorder;
   pageWidth: number;
   positionY: number;
   thickness: number;
   maxAllowedBottomY: number;
+  overrideColor?: string;
+  overrideSecondary?: string;
 }) {
-  const color = border.color || "#E0AC23";
+  const color = overrideColor || border.color || "#E0AC23";
   const opacity = border.opacity ?? 1;
   const angle = border.angle || 0;
-  const secondary = border.secondaryColor || (color === "#E0AC23" ? "#173C64" : "#E0AC23");
+  const secondary = overrideSecondary || border.secondaryColor || (color === "#E0AC23" ? "#173C64" : "#E0AC23");
 
   const fillStyle: React.CSSProperties = {
     fill: color,
@@ -498,6 +522,8 @@ function BottomBorderRenderer({
   positionFromBottom,
   thickness,
   minAllowedTopY,
+  overrideColor,
+  overrideSecondary,
 }: {
   border: PageDecorativeBorder;
   pageWidth: number;
@@ -505,11 +531,13 @@ function BottomBorderRenderer({
   positionFromBottom: number;
   thickness: number;
   minAllowedTopY: number;
+  overrideColor?: string;
+  overrideSecondary?: string;
 }) {
-  const color = border.color || "#173C64";
+  const color = overrideColor || border.color || "#173C64";
   const opacity = border.opacity ?? 1;
   const angle = border.angle || 0;
-  const secondary = border.secondaryColor || (color === "#173C64" ? "#E0AC23" : "#173C64");
+  const secondary = overrideSecondary || border.secondaryColor || (color === "#173C64" ? "#E0AC23" : "#173C64");
 
   const startY = Math.max(minAllowedTopY, pageHeight - positionFromBottom - thickness);
   const actualHeight = Math.min(thickness, pageHeight - startY);

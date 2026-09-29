@@ -1110,6 +1110,7 @@ export default function DocumentDesigner() {
                 onDuplicateElement={handleDuplicateElement}
                 onReplaceImage={handleReplaceImage}
                 onPreviewActualSize={() => setShowPreviewModal(true)}
+                onOpenTestSheet={() => window.open("/print-test-sheet", "_blank")}
               />
             </div>
           )}

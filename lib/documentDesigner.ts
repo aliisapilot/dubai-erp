@@ -357,6 +357,39 @@ export function normalizeSmartFit(smartFit?: Partial<SmartFitSettings> | null): 
   };
 }
 
+export type PrintColorMode = "color" | "grayscale";
+export type BorderContrastMode = "standard" | "high" | "maximum";
+export type MarginPreset = "office_safe" | "standard" | "minimal" | "custom";
+
+export interface PrintSettings {
+  colorMode: PrintColorMode;
+  borderContrast: BorderContrastMode;
+  printerSafeMargins: boolean;
+  printerFriendlyMode: boolean;
+  marginPreset: MarginPreset;
+}
+
+export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
+  colorMode: "color",
+  borderContrast: "high",
+  printerSafeMargins: true,
+  printerFriendlyMode: false,
+  marginPreset: "standard",
+};
+
+export function normalizePrintSettings(settings?: Partial<PrintSettings> | null): PrintSettings {
+  return {
+    colorMode: settings?.colorMode === "grayscale" ? "grayscale" : "color",
+    borderContrast:
+      settings?.borderContrast === "maximum" || settings?.borderContrast === "standard"
+        ? settings.borderContrast
+        : "high",
+    printerSafeMargins: settings?.printerSafeMargins ?? DEFAULT_PRINT_SETTINGS.printerSafeMargins,
+    printerFriendlyMode: settings?.printerFriendlyMode ?? DEFAULT_PRINT_SETTINGS.printerFriendlyMode,
+    marginPreset: settings?.marginPreset || DEFAULT_PRINT_SETTINGS.marginPreset,
+  };
+}
+
 export interface DocumentLayout {
   version: number;
   documentType: DocumentTypeId;
@@ -376,6 +409,7 @@ export interface DocumentLayout {
     watermarkOpacity: number;
     borders?: PageBorderSettings;
     smartFit?: SmartFitSettings;
+    printSettings?: PrintSettings;
   };
   branding: {
     primaryColor: string;
@@ -1095,6 +1129,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       watermarkOpacity: 0.045,
       borders: JSON.parse(JSON.stringify(DEFAULT_PAGE_BORDERS)),
       smartFit: JSON.parse(JSON.stringify(DEFAULT_SMART_FIT_SETTINGS)),
+      printSettings: JSON.parse(JSON.stringify(DEFAULT_PRINT_SETTINGS)),
     },
     branding: documentStyle,
     elements: applyDocumentBusinessProfile(elements, docType),
@@ -1170,6 +1205,7 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
       background: layout.page?.background || "#FFFFFF",
       borders: normalizePageBorders(layout.page?.borders),
       smartFit: normalizeSmartFit(layout.page?.smartFit),
+      printSettings: normalizePrintSettings(layout.page?.printSettings),
     },
     branding: sourceVersion < 7 ? DOCUMENT_STYLES[layout.documentType] : layout.branding,
     elements,
