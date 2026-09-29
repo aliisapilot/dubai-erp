@@ -560,9 +560,11 @@ export default function DynamicDocumentRenderer({
             ? "Employee"
             : "Buyer";
         const configuredPaddingMm = elem.padding !== undefined ? elem.padding : 3.2;
+        const isUltraCompact = elem.height <= 22;
         const isCompactPartyCard = elem.height <= 28;
-        const padMm = isCompactPartyCard ? Math.min(configuredPaddingMm, 2.2) : configuredPaddingMm;
+        const padMm = isUltraCompact ? Math.min(configuredPaddingMm, 1.8) : isCompactPartyCard ? Math.min(configuredPaddingMm, 2.2) : configuredPaddingMm;
         const detailFontSize = isCompactPartyCard ? 9 : 9.5;
+        const effectiveFontSize = isUltraCompact ? 8.5 : detailFontSize;
         return (
           <div
             className="w-full h-full min-h-0 overflow-hidden flex flex-col justify-start select-text"
@@ -572,7 +574,7 @@ export default function DynamicDocumentRenderer({
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
               padding: `${padMm}mm`,
-              fontSize: `${elem.fontSize || 10.5}px`,
+              fontSize: `${effectiveFontSize}px`,
               color: colors.text,
               ...elementAppearance(elem),
             }}
@@ -581,8 +583,8 @@ export default function DynamicDocumentRenderer({
               className="flex shrink-0 justify-between items-center border-b font-bold uppercase"
               style={{
                 borderColor: colors.border,
-                fontSize: isCompactPartyCard ? "9px" : "10px",
-                paddingBottom: isCompactPartyCard ? "2px" : "4px",
+                fontSize: isUltraCompact ? "8.5px" : isCompactPartyCard ? "9px" : "10px",
+                paddingBottom: isUltraCompact ? "1.5px" : isCompactPartyCard ? "2px" : "4px",
                 lineHeight: 1.15,
               }}
             >
@@ -592,9 +594,9 @@ export default function DynamicDocumentRenderer({
             <div
               className="min-h-0 overflow-hidden select-text"
               style={{
-                marginTop: isCompactPartyCard ? "3px" : "6px",
-                fontSize: isCompactPartyCard ? "9.5px" : "10.5px",
-                lineHeight: isCompactPartyCard ? 1.12 : 1.25,
+                marginTop: isUltraCompact ? "2px" : isCompactPartyCard ? "3px" : "6px",
+                fontSize: `${effectiveFontSize}px`,
+                lineHeight: isUltraCompact ? 1.1 : isCompactPartyCard ? 1.15 : 1.25,
               }}
             >
               <div className="font-bold text-slate-900 break-words leading-tight" style={{ overflowWrap: "anywhere" }}>{data.customer_name}</div>
@@ -701,7 +703,11 @@ export default function DynamicDocumentRenderer({
         const showSupplyDate = ["tax_invoice", "delivery_note", "purchase_order", "supplier_bill"].includes(layout.documentType);
         const showDueDate = ["tax_invoice", "quotation", "proforma_invoice", "supplier_bill"].includes(layout.documentType);
         const showTerms = ["tax_invoice", "quotation", "proforma_invoice", "purchase_order", "supplier_bill"].includes(layout.documentType);
-        const padMm = elem.padding !== undefined ? elem.padding : 3.2;
+        const configuredPaddingMm = elem.padding !== undefined ? elem.padding : 3.2;
+        const isUltraCompact = elem.height <= 22;
+        const isCompactMetaCard = elem.height <= 28;
+        const padMm = isUltraCompact ? Math.min(configuredPaddingMm, 1.8) : isCompactMetaCard ? Math.min(configuredPaddingMm, 2.2) : configuredPaddingMm;
+        const metaFontSize = isUltraCompact ? 8.5 : isCompactMetaCard ? 9.2 : (elem.fontSize || 10.5);
         return (
           <div
             className="w-full h-full flex flex-col justify-start select-text"
@@ -710,16 +716,27 @@ export default function DynamicDocumentRenderer({
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
               padding: `${padMm}mm`,
-              fontSize: `${elem.fontSize || 10.5}px`,
+              fontSize: `${metaFontSize}px`,
               color: colors.text,
               ...elementAppearance(elem),
             }}
           >
-            <div className="flex justify-between items-center border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
+            <div
+              className="flex justify-between items-center border-b font-bold uppercase"
+              style={{
+                borderColor: colors.border,
+                fontSize: isUltraCompact ? "8.5px" : "10px",
+                paddingBottom: isUltraCompact ? "1px" : "4px",
+                lineHeight: 1.15,
+              }}
+            >
               <span style={{ color: colors.primary }}>Document Reference (البيانات):</span>
               <span className="font-mono font-bold" style={{ color: colors.accent }}>{data.document_number}</span>
             </div>
-            <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-1.5 text-[10px] leading-tight select-text">
+            <div
+              className={`grid grid-cols-2 ${isUltraCompact ? "gap-x-1.5 gap-y-0.5 mt-1" : "gap-x-2 gap-y-1 mt-1.5"} leading-tight select-text`}
+              style={{ fontSize: `${metaFontSize}px` }}
+            >
               <div>
                 <span style={{ color: colors.muted }}>Date: </span>
                 <span className="font-semibold text-slate-900">{fmtDate(data.document_date)}</span>
@@ -775,8 +792,10 @@ export default function DynamicDocumentRenderer({
         };
 
         const activeCols = tSettings.columns.filter((c) => c.visible);
+        const dynamicCellPadding = effectiveGeometry.fitProfile?.cellPadding;
         const isCompact = (tSettings.rowHeight || 8.5) < 7.5;
-        const cellPadding = isCompact ? "py-0.5 px-1.5" : "py-1 px-2";
+        const cellPadding = dynamicCellPadding ? "" : isCompact ? "py-0.5 px-1.5" : "py-1 px-2";
+        const customPaddingStyle = dynamicCellPadding ? { padding: dynamicCellPadding } : {};
 
         return (
           <div
@@ -794,7 +813,7 @@ export default function DynamicDocumentRenderer({
                     backgroundColor: tSettings.headerBg,
                     color: tSettings.headerTextColor,
                     fontSize: `${tSettings.headerFontSize}px`,
-                    height: `${Math.max(5.5, tSettings.rowHeight)}mm`,
+                    height: `${Math.max(5.0, tSettings.rowHeight)}mm`,
                   }}
                 >
                   {activeCols.map((col) => (
@@ -802,9 +821,11 @@ export default function DynamicDocumentRenderer({
                       key={col.key}
                       className={`${cellPadding} font-semibold`}
                       style={{
+                        ...customPaddingStyle,
                         width: `${col.widthPct}%`,
                         textAlign: col.align,
                         borderRight: `${tSettings.borderThickness}px solid rgba(255,255,255,0.15)`,
+                        lineHeight: 1.15,
                       }}
                     >
                       {col.label}
@@ -855,9 +876,11 @@ export default function DynamicDocumentRenderer({
                             key={col.key}
                             className={`${cellPadding} break-words`}
                             style={{
+                              ...customPaddingStyle,
                               textAlign: col.align,
                               fontFamily: isMonetary ? "monospace" : "inherit",
                               fontWeight: col.key === "line_total" ? 700 : 400,
+                              lineHeight: 1.15,
                             }}
                           >
                             {val}
@@ -896,25 +919,29 @@ export default function DynamicDocumentRenderer({
           );
         }
 
+        const isDenseWords = elem.height <= 20;
+        const wordsPadding = isDenseWords ? "p-1.5" : "p-2.5";
+        const wordsFontSize = isDenseWords ? 9.0 : (elem.fontSize || 10);
+
         return (
           <div
-            className="w-full h-full p-2.5 flex flex-col justify-start gap-1 select-text"
+            className={`w-full h-full ${wordsPadding} flex flex-col justify-start ${isDenseWords ? "gap-0.5" : "gap-1"} select-text`}
             style={{
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
-              fontSize: `${elem.fontSize || 10}px`,
+              fontSize: `${wordsFontSize}px`,
               ...elementAppearance(elem),
             }}
           >
             <div className="font-semibold text-slate-800 text-[10px]">
               Amount in Words (المبلغ بالحروف):
             </div>
-            <div className="italic text-slate-700 font-medium text-[11px] leading-tight">
+            <div className={`italic text-slate-700 font-medium ${isDenseWords ? "text-[9.5px]" : "text-[11px]"} leading-tight`}>
               {numberToWordsEnglish(data.total_amount)}
             </div>
             <div
-              className="text-right font-arabic font-semibold text-[11px] pt-1 border-t leading-tight select-text"
+              className={`text-right font-arabic font-semibold ${isDenseWords ? "text-[9.5px]" : "text-[11px]"} pt-0.5 border-t leading-tight select-text`}
               dir="rtl"
               style={{
                 borderColor: colors.border,
@@ -1023,28 +1050,34 @@ export default function DynamicDocumentRenderer({
           );
         }
 
+        const isDenseTotals = elem.height <= 36;
+        const rowPy = isDenseTotals ? (elem.height <= 30 ? "py-0.5" : "py-1") : "py-1";
+        const rowPx = isDenseTotals ? "px-2" : "px-2.5";
+        const totalsFontSize = isDenseTotals ? (elem.height <= 30 ? 9.5 : 10) : (elem.fontSize || 11);
+
         return (
           <div
-            className="w-full h-full overflow-hidden text-xs rounded select-text flex flex-col justify-start"
+            className="w-full h-full overflow-hidden rounded select-text flex flex-col justify-start"
             style={{
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
-              fontSize: `${elem.fontSize || 11}px`,
+              fontSize: `${totalsFontSize}px`,
+              lineHeight: 1.15,
               ...elementAppearance(elem),
             }}
           >
-            <div className="flex justify-between py-1 px-2.5 bg-slate-50 border-b" style={{ borderColor: colors.border }}>
+            <div className={`flex justify-between ${rowPy} ${rowPx} bg-slate-50 border-b`} style={{ borderColor: colors.border }}>
               <span style={{ color: colors.muted }}>Subtotal:</span>
               <span className="font-mono font-semibold">{fmtAED(data.subtotal)}</span>
             </div>
             {usesVat && (
-              <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
+              <div className={`flex justify-between ${rowPy} ${rowPx} border-b`} style={{ borderColor: colors.border }}>
                 <span style={{ color: colors.muted }}>VAT Total (5%):</span>
                 <span className="font-mono font-semibold" style={{ color: colors.accent }}>{fmtAED(data.vat_amount)}</span>
               </div>
             )}
             <div
-              className="flex justify-between py-1.5 px-2.5 font-bold text-slate-900 border-b"
+              className={`flex justify-between ${rowPy} ${rowPx} font-bold text-slate-900 border-b`}
               style={{
                 backgroundColor: colors.totalHighlight,
                 borderColor: colors.border,
@@ -1054,7 +1087,7 @@ export default function DynamicDocumentRenderer({
               <span className="font-mono" style={{ color: colors.primary }}>{fmtAED(data.total_amount)}</span>
             </div>
             {advance > 0 && (
-              <div className="flex justify-between py-1 px-2.5 bg-slate-50 text-[10px]">
+              <div className={`flex justify-between ${rowPy} ${rowPx} bg-slate-50 text-[9.5px]`}>
                 <span style={{ color: colors.muted }}>Balance Due:</span>
                 <span className="font-mono font-bold text-slate-900">{fmtAED(balanceDue)}</span>
               </div>
@@ -1064,19 +1097,22 @@ export default function DynamicDocumentRenderer({
       }
 
       case "bank_details": {
+        const isDenseBank = elem.height <= 20;
+        const bankPadding = isDenseBank ? "p-1.5" : "p-2";
+        const bankFontSize = isDenseBank ? 8.8 : (elem.fontSize || 10);
         return (
           <div
-            className="w-full h-full p-2 flex flex-col justify-center text-[10px] leading-tight select-text"
+            className={`w-full h-full ${bankPadding} flex flex-col justify-center leading-tight select-text`}
             style={{
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
-              fontSize: `${elem.fontSize || 10}px`,
+              fontSize: `${bankFontSize}px`,
               ...elementAppearance(elem),
               color: elem.color || colors.text || "#334155",
             }}
           >
-            <div className="font-bold text-slate-800 text-[10px] mb-0.5" style={{ color: colors.primary }}>
+            <div className="font-bold text-slate-800 text-[9.5px] mb-0.5" style={{ color: colors.primary }}>
               Bank Transfer Information (بيانات التحويل):
             </div>
             <div>Bank: <span className="font-semibold">{brand.bank_name}</span></div>
@@ -1088,6 +1124,9 @@ export default function DynamicDocumentRenderer({
       }
 
       case "payment_terms": {
+        const isDenseTerms = elem.height <= 22;
+        const termsPadding = isDenseTerms ? "p-1" : "p-1.5";
+        const termsFontSize = isDenseTerms ? 8.8 : (elem.fontSize || 10);
         const sectionHeading =
           layout.documentType === "delivery_note"
             ? "Delivery Notes & Condition:"
@@ -1104,9 +1143,9 @@ export default function DynamicDocumentRenderer({
             : "Terms & Remarks:";
         return (
           <div
-            className="w-full h-full text-[10px] leading-relaxed select-text p-1"
+            className={`w-full h-full leading-snug select-text ${termsPadding}`}
             style={{
-              fontSize: `${elem.fontSize || 10}px`,
+              fontSize: `${termsFontSize}px`,
               color: elem.color || colors.muted,
               ...elementAppearance(elem),
             }}

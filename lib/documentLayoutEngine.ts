@@ -8,7 +8,21 @@
  * ==============================================================================
  */
 
-import { DocumentLayout, LayoutElement } from "./documentDesigner";
+import type {
+  DocumentLayout,
+  LayoutElement,
+  SmartFitSettings,
+} from "./documentDesigner";
+
+const FALLBACK_SMART_FIT: SmartFitSettings = {
+  enabled: true,
+  mode: "balanced",
+  minFontSize: 7.5,
+  minRowHeight: 4.8,
+  automaticSpacing: true,
+  printSafeBorders: true,
+  preventOverflow: true,
+};
 
 export interface EffectiveLayoutElement extends LayoutElement {
   effectiveX: number;
@@ -20,7 +34,7 @@ export interface EffectiveLayoutElement extends LayoutElement {
   effectiveVisible?: boolean;
 }
 
-export type FitLevel = "standard" | "comfortable" | "compact" | "dense" | "multi_page";
+export type FitLevel = "standard" | "comfortable" | "compact" | "dense" | "ultra_dense" | "multi_page";
 
 export interface FitProfile {
   fits: boolean;
@@ -36,8 +50,11 @@ export interface FitProfile {
   followerSpan: number;
   totalContentBottom: number;
   footerY: number;
+  cellPadding?: string;
+  headerCompactionRatio?: number;
   partyInfoHeight?: number;
   warning?: string;
+  smartFitApplied?: boolean;
 }
 
 export interface PaginationPlan {
@@ -132,17 +149,22 @@ function estimatePartyInfoHeight(layout: DocumentLayout, text?: DocumentFitText)
  */
 export function calculateItemRowHeight(
   baseRowHeight: number,
-  description?: string
+  description?: string,
+  fontSize?: number
 ): number {
   if (!description) return baseRowHeight;
   const lines = description.split("\n");
+  const effectiveFontSize = fontSize || 10;
+  // A standard A4 description column is 75mm - 90mm wide.
+  // With proportional fonts at compact/dense sizes (7.2px - 8.5px), more characters fit per line.
+  const charsPerLine = Math.max(55, Math.floor(55 * (10 / effectiveFontSize) * 1.12));
   let totalVisualLines = 0;
   for (const line of lines) {
-    totalVisualLines += Math.max(1, Math.ceil(line.length / 55));
+    totalVisualLines += Math.max(1, Math.ceil(line.length / charsPerLine));
   }
   const extraLines = Math.max(0, totalVisualLines - 1);
-  // Each extra wrapped line adds ~3.2mm in rendered print height
-  return baseRowHeight + (extraLines * 3.2);
+  const extraLineMm = Math.max(1.8, Math.min(3.2, (effectiveFontSize * 1.15) / 3.7795 * 0.72));
+  return baseRowHeight + (extraLines * extraLineMm);
 }
 
 /**
@@ -153,26 +175,28 @@ export function calculateTableRenderedHeight(
   itemCount: number,
   itemsData?: ItemDescriptionLike[],
   rowHeightOverride?: number,
-  headerHeightOverride?: number
+  headerHeightOverride?: number,
+  fontSizeOverride?: number
 ): number {
   if (!tableElement) return 0;
   const baseRowHeight = rowHeightOverride || Math.max(4, tableElement.tableSettings?.rowHeight || 8.5);
   const headerFontSize = tableElement.tableSettings?.headerFontSize || 10;
-  const headerHeight = headerHeightOverride || Math.max(6, Math.max(baseRowHeight, headerFontSize * 0.35 + 4));
+  const headerHeight = headerHeightOverride || Math.max(5, Math.max(baseRowHeight, headerFontSize * 0.35 + 3.5));
+  const effectiveFontSize = fontSizeOverride || tableElement.tableSettings?.fontSize || 10;
   const effectiveCount = Math.max(1, itemCount);
 
   let itemsHeight = 0;
   if (itemsData && itemsData.length > 0) {
     const slice = itemsData.slice(0, effectiveCount);
     for (const it of slice) {
-      itemsHeight += calculateItemRowHeight(baseRowHeight, it.description);
+      itemsHeight += calculateItemRowHeight(baseRowHeight, it.description, effectiveFontSize);
     }
   } else {
     itemsHeight = effectiveCount * baseRowHeight;
   }
 
-  // Add 1.5mm for outer table borders and cell padding
-  return headerHeight + itemsHeight + 1.5;
+  // Add 1.2mm for outer table borders and cell padding
+  return headerHeight + itemsHeight + 1.2;
 }
 
 /**
@@ -261,9 +285,19 @@ export function computeIntelligentFitProfile(
 ): FitProfile {
   const table = layout.elements.find((el) => el.type === "line_items" && el.visible);
   const footer = layout.elements.find((el) => el.type === "footer" && el.visible);
-  const footerY = footer ? footer.y : layout.page.heightMm - layout.page.margins.bottom - 16;
-  const safetyBottom = footerY - 2.5;
+  const footerBaselineY = layout.page.heightMm - (layout.page?.margins?.bottom || 8);
+  const footerHeight = footer ? footer.height : 14;
+  const footerY = footer
+    ? Math.max(footer.y, footerBaselineY - footerHeight)
+    : footerBaselineY - 14;
+  const safetyBottom = footerY - 2.0;
   const partyInfoHeight = estimatePartyInfoHeight(layout, documentText);
+
+  const smartFit: SmartFitSettings = layout.page?.smartFit || FALLBACK_SMART_FIT;
+  const isSmartFitEnabled = smartFit.enabled !== false;
+  const configuredMinFont = Number.isFinite(smartFit.minFontSize) ? smartFit.minFontSize : 7.5;
+  const configuredMinRow = Number.isFinite(smartFit.minRowHeight) ? smartFit.minRowHeight : 4.8;
+  const mode = smartFit.mode || "balanced";
 
   if (!table || totalItems <= 0) {
     return {
@@ -281,6 +315,9 @@ export function computeIntelligentFitProfile(
       totalContentBottom: table?.y || 95,
       footerY,
       partyInfoHeight,
+      cellPadding: "5px 8px",
+      headerCompactionRatio: 1.0,
+      smartFitApplied: false,
     };
   }
 
@@ -288,26 +325,32 @@ export function computeIntelligentFitProfile(
   const elementsAbove = layout.elements.filter(
     (el) => el.visible && el.type !== "watermark" && el.y + el.height <= table.y + 2
   );
+  const minHeaderY = elementsAbove.length > 0 ? Math.min(...elementsAbove.map((el) => el.y)) : 10;
   const party = layout.elements.find((el) => el.visible && ["customer_info", "supplier_info", "project_info"].includes(el.type));
   const maxAboveBottom = elementsAbove.length > 0
     ? Math.max(...elementsAbove.map((el) => el.y + (el.id === party?.id && partyInfoHeight ? partyInfoHeight : el.height)))
     : 60;
+  const originalHeaderSpan = Math.max(20, (table?.y || 95) - minHeaderY);
 
   const followers = layout.elements.filter(
     (el) => el.visible && isFollowerElement(el, table)
   );
 
-  // Progressive intelligent compaction tiers designed to keep A4 documents on one page
-  const tiers: Array<{
-    level: "standard" | "comfortable" | "compact" | "dense";
+  type TierDefinition = {
+    level: "standard" | "comfortable" | "compact" | "dense" | "ultra_dense";
     rowHeight: number;
     headerHeight: number;
     fontSize: number;
     headerFontSize: number;
     followerScale: number;
     gap: number;
+    headerCompactionRatio: number;
+    cellPadding: string;
+    cardHeight: number;
     allowSlideTableUp: boolean;
-  }> = [
+  };
+
+  const allTiers: TierDefinition[] = [
     {
       level: "standard",
       rowHeight: Math.max(8.5, table.tableSettings?.rowHeight || 9.0),
@@ -316,66 +359,101 @@ export function computeIntelligentFitProfile(
       headerFontSize: table.tableSettings?.headerFontSize || 10.5,
       followerScale: 1.0,
       gap: 3.0,
+      headerCompactionRatio: 1.0,
+      cellPadding: "5px 8px",
+      cardHeight: Math.max(partyInfoHeight || 0, 27),
       allowSlideTableUp: false,
     },
     {
       level: "comfortable",
-      rowHeight: 8.0,
-      headerHeight: 7.2,
-      fontSize: 9.5,
-      headerFontSize: 9.5,
-      followerScale: 0.92,
-      gap: 2.5,
+      rowHeight: Math.max(configuredMinRow, 7.8),
+      headerHeight: 7.0,
+      fontSize: Math.max(configuredMinFont, 9.5),
+      headerFontSize: Math.max(configuredMinFont, 9.5),
+      followerScale: 0.90,
+      gap: 2.4,
+      headerCompactionRatio: 0.92,
+      cellPadding: "4px 6px",
+      cardHeight: Math.max(partyInfoHeight || 0, 25),
       allowSlideTableUp: true,
     },
     {
       level: "compact",
-      rowHeight: 7.0,
-      headerHeight: 6.5,
-      fontSize: 9.5,
-      headerFontSize: 9.5,
-      followerScale: 0.84,
+      rowHeight: Math.max(configuredMinRow, 6.8),
+      headerHeight: 6.2,
+      fontSize: Math.max(configuredMinFont, 8.8),
+      headerFontSize: Math.max(configuredMinFont, 9.0),
+      followerScale: 0.80,
       gap: 2.0,
+      headerCompactionRatio: 0.82,
+      cellPadding: "3px 5px",
+      cardHeight: Math.max(partyInfoHeight || 0, 23.5),
       allowSlideTableUp: true,
     },
     {
       level: "dense",
-      rowHeight: 6.0,
-      headerHeight: 6.0,
-      fontSize: 9.5,
-      headerFontSize: 9.5,
-      followerScale: 0.76,
-      gap: 1.5,
+      rowHeight: Math.max(configuredMinRow, 5.5),
+      headerHeight: 5.6,
+      fontSize: Math.max(configuredMinFont, 8.0),
+      headerFontSize: Math.max(configuredMinFont, 8.2),
+      followerScale: 0.70,
+      gap: 1.6,
+      headerCompactionRatio: 0.72,
+      cellPadding: "2.5px 4.5px",
+      cardHeight: Math.max(partyInfoHeight || 0, 21.5),
+      allowSlideTableUp: true,
+    },
+    {
+      level: "ultra_dense",
+      rowHeight: Math.max(configuredMinRow, 4.6),
+      headerHeight: 5.0,
+      fontSize: Math.max(configuredMinFont, 7.2),
+      headerFontSize: Math.max(configuredMinFont, 7.6),
+      followerScale: 0.62,
+      gap: 1.2,
+      headerCompactionRatio: 0.65,
+      cellPadding: "1.5px 3.5px",
+      cardHeight: Math.max(partyInfoHeight || 0, 19.5),
       allowSlideTableUp: true,
     },
   ];
 
+  let tiers: TierDefinition[];
+  if (!isSmartFitEnabled) {
+    tiers = [allTiers[0]];
+  } else if (mode === "readability") {
+    // Readability prioritizes standard / comfortable / compact, preserving generous spacing
+    tiers = allTiers.slice(0, 3).map((t) => ({
+      ...t,
+      rowHeight: Math.max(t.rowHeight, Math.max(configuredMinRow, 6.2)),
+      fontSize: Math.max(t.fontSize, Math.max(configuredMinFont, 8.5)),
+    }));
+  } else if (mode === "compact") {
+    // Compact mode tries compact, dense, ultra_dense
+    tiers = allTiers.slice(2);
+  } else {
+    // Balanced mode tries all tiers in progressive order
+    tiers = allTiers;
+  }
+
   for (const tier of tiers) {
-    // If compaction is enabled, tighten excessive gap between header/customer cards and table
     let effectiveAbove = maxAboveBottom;
-    if (tier.allowSlideTableUp) {
-      const party = layout.elements.find((el) => el.visible && ["customer_info", "supplier_info", "project_info"].includes(el.type));
-      const meta = layout.elements.find((el) => el.visible && el.type === "doc_meta");
-      if (party && meta && Math.abs(party.y - meta.y) <= 8) {
-        const topY = Math.min(party.y, meta.y);
-        const cardH = Math.max(partyInfoHeight || 0, tier.level === "dense" ? 23 : tier.level === "compact" ? 25 : 27);
-        effectiveAbove = Math.min(maxAboveBottom, topY + cardH);
-      }
+    if (tier.allowSlideTableUp && smartFit.automaticSpacing !== false) {
+      const compactedSpan = originalHeaderSpan * tier.headerCompactionRatio;
+      effectiveAbove = minHeaderY + compactedSpan;
     }
 
-    const tableY = Math.max(
-      table.y,
-      tier.allowSlideTableUp
-        ? Math.min(effectiveAbove + 4.5, Math.max(effectiveAbove + 2.5, table.y))
-        : maxAboveBottom + 2.5
-    );
+    const tableY = tier.allowSlideTableUp && smartFit.automaticSpacing !== false
+      ? Math.min(table.y, effectiveAbove + tier.gap)
+      : Math.max(table.y, maxAboveBottom + tier.gap);
 
     const tableHeight = calculateTableRenderedHeight(
       table,
       totalItems,
       itemsData,
       tier.rowHeight,
-      tier.headerHeight
+      tier.headerHeight,
+      tier.fontSize
     );
     const followerSpan = calculateFollowerVerticalSpan(followers, tier.followerScale, tier.gap);
     const totalContentBottom = tableY + tableHeight + (followerSpan > 0 ? tier.gap + followerSpan : 0);
@@ -395,16 +473,19 @@ export function computeIntelligentFitProfile(
         followerSpan,
         totalContentBottom,
         footerY,
+        cellPadding: tier.cellPadding,
+        headerCompactionRatio: tier.headerCompactionRatio,
         partyInfoHeight,
+        smartFitApplied: tier.level !== "standard",
       };
     }
   }
 
-  // When content legitimately exceeds single A4 capacity even under dense tier
+  // When content legitimately exceeds single A4 capacity even under ultra_dense tier
   return {
     fits: false,
     level: "multi_page",
-    rowHeight: 7.5,
+    rowHeight: Math.max(configuredMinRow, 7.5),
     headerHeight: 7.0,
     fontSize: 9.5,
     headerFontSize: 9.5,
@@ -415,7 +496,10 @@ export function computeIntelligentFitProfile(
     followerSpan: calculateFollowerVerticalSpan(followers, 0.88, 2.5),
     totalContentBottom: 310,
     footerY,
+    cellPadding: "3px 5px",
+    headerCompactionRatio: 1.0,
     partyInfoHeight,
+    smartFitApplied: false,
     warning: `Document exceeds single-page A4 capacity (${totalItems} items). Formatted cleanly for multi-page printing without data loss.`,
   };
 }
@@ -467,8 +551,12 @@ export function computePaginationPlan(
 
   // Multi-page distribution
   const footer = layout.elements.find((el) => el.type === "footer" && el.visible);
-  const footerTop = footer ? footer.y : layout.page.heightMm - layout.page.margins.bottom - 16;
-  const safetyMarginAboveFooter = 3.5;
+  const footerBaselineY = layout.page.heightMm - (layout.page?.margins?.bottom || 8);
+  const footerHeight = footer ? footer.height : 14;
+  const footerTop = footer
+    ? Math.max(footer.y, footerBaselineY - footerHeight)
+    : footerBaselineY - 14;
+  const safetyMarginAboveFooter = 2.0;
   const maxContentY = footerTop - safetyMarginAboveFooter;
 
   const rowHeight = fit.rowHeight;
@@ -585,7 +673,7 @@ export function computeEffectiveLayout(
   const effectiveHeaderHeight = fitProfile.headerHeight;
 
   const actualTableHeight = table
-    ? calculateTableRenderedHeight(table, pageItemsCount, itemsData, effectiveRowHeight, effectiveHeaderHeight)
+    ? calculateTableRenderedHeight(table, pageItemsCount, itemsData, effectiveRowHeight, effectiveHeaderHeight, fitProfile.fontSize)
     : 0;
 
   const tableDesignedHeight = table ? table.height : 0;
@@ -629,6 +717,21 @@ export function computeEffectiveLayout(
     positionColumn(colRight);
   }
 
+  // Check if header compaction is active (table shifted upwards to fit single A4 page)
+  const originalTableY = table ? table.y : 95;
+  const tableShift = table && isSinglePage ? originalTableY - effectiveTableY : 0;
+
+  // Elements above table (ignoring watermark)
+  const elementsAbove = layout.elements.filter(
+    (el) => el.visible && el.type !== "watermark" && el.y + el.height <= originalTableY + 2
+  );
+  const minHeaderY = elementsAbove.length > 0 ? Math.min(...elementsAbove.map((el) => el.y)) : 10;
+  const originalHeaderSpan = Math.max(20, originalTableY - minHeaderY);
+  const targetHeaderSpan = Math.max(15, effectiveTableY - fitProfile.gap - minHeaderY);
+  const headerScale = tableShift > 0 && originalHeaderSpan > 0
+    ? Math.min(1.0, targetHeaderSpan / originalHeaderSpan)
+    : 1.0;
+
   // Identify side-by-side party card (customer_info, supplier_info, project_info) and doc_meta card
   const partyElement = layout.elements.find(
     (el) => el.visible && ["customer_info", "supplier_info", "project_info"].includes(el.type)
@@ -639,23 +742,30 @@ export function computeEffectiveLayout(
   let partyMetaEqualHeight: number | null = null;
 
   if (partyElement && metaElement && Math.abs(partyElement.y - metaElement.y) <= 8) {
-    // 1. Align both boxes horizontally
-    partyMetaAlignedY = Math.min(partyElement.y, metaElement.y);
-
-    // 2. Maintain equal visual heights
+    // 1. Raw alignment
+    const rawPartyY = Math.min(partyElement.y, metaElement.y);
     let rawHeight = Math.max(partyElement.height, metaElement.height, fitProfile.partyInfoHeight || 0);
 
-    // 3. Compact cleanly if compact or dense fitProfile is active
+    // 2. Compact cleanly if compact or dense fitProfile is active
     if (isSinglePage && fitProfile.level !== "standard") {
-      if (fitProfile.level === "dense") {
-        rawHeight = Math.max(22, Math.min(rawHeight, 23.5));
+      if (fitProfile.level === "ultra_dense") {
+        rawHeight = Math.max(19.5, Math.min(rawHeight, 21.0));
+      } else if (fitProfile.level === "dense") {
+        rawHeight = Math.max(21.0, Math.min(rawHeight, 22.5));
       } else if (fitProfile.level === "compact") {
-        rawHeight = Math.max(23.5, Math.min(rawHeight, 25.5));
+        rawHeight = Math.max(22.5, Math.min(rawHeight, 24.5));
       } else if (fitProfile.level === "comfortable") {
-        rawHeight = Math.max(25, Math.min(rawHeight, 27.5));
+        rawHeight = Math.max(24.5, Math.min(rawHeight, 26.5));
       }
     }
-    partyMetaEqualHeight = rawHeight;
+
+    if (tableShift > 0) {
+      partyMetaAlignedY = minHeaderY + (rawPartyY - minHeaderY) * headerScale;
+      partyMetaEqualHeight = Math.max(18, Math.round(rawHeight * headerScale * 10) / 10);
+    } else {
+      partyMetaAlignedY = rawPartyY;
+      partyMetaEqualHeight = rawHeight;
+    }
   }
 
   const elements: EffectiveLayoutElement[] = layout.elements.map((el) => {
@@ -759,14 +869,22 @@ export function computeEffectiveLayout(
 
     // 6. Fixed header/info elements above the table
     const isPartyInfo = ["customer_info", "supplier_info", "project_info"].includes(el.type);
+    let effectiveY = el.y;
+    let effectiveHeight = isPartyInfo ? Math.max(el.height, fitProfile.partyInfoHeight || 0) : el.height;
+
+    if (tableShift > 0 && el.y + el.height <= originalTableY + 2) {
+      effectiveY = minHeaderY + (el.y - minHeaderY) * headerScale;
+      effectiveHeight = Math.max(3.5, Math.round(el.height * headerScale * 10) / 10);
+    }
+
     return {
       ...el,
       effectiveX: el.x,
-      effectiveY: el.y,
+      effectiveY,
       effectiveWidth: el.width,
-      effectiveHeight: isPartyInfo ? Math.max(el.height, fitProfile.partyInfoHeight || 0) : el.height,
+      effectiveHeight,
       isFollower: false,
-      shiftY: 0,
+      shiftY: effectiveY - el.y,
       effectiveVisible: el.visible && pageMatches,
     };
   });

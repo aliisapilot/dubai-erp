@@ -1109,6 +1109,7 @@ export default function DocumentDesigner() {
                 onApplyElementToOthers={(elem) => handleOpenApplyModal(elem)}
                 onDuplicateElement={handleDuplicateElement}
                 onReplaceImage={handleReplaceImage}
+                onPreviewActualSize={() => setShowPreviewModal(true)}
               />
             </div>
           )}

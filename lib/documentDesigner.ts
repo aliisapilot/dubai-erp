@@ -316,6 +316,47 @@ export function normalizePageBorders(borders?: Partial<PageBorderSettings> | nul
   };
 }
 
+export type SmartFitMode = "compact" | "balanced" | "readability";
+
+export interface SmartFitSettings {
+  enabled: boolean;
+  mode: SmartFitMode;
+  minFontSize: number;
+  minRowHeight: number;
+  automaticSpacing: boolean;
+  printSafeBorders: boolean;
+  preventOverflow: boolean;
+}
+
+export const DEFAULT_SMART_FIT_SETTINGS: SmartFitSettings = {
+  enabled: true,
+  mode: "balanced",
+  minFontSize: 7.5,
+  minRowHeight: 4.8,
+  automaticSpacing: true,
+  printSafeBorders: true,
+  preventOverflow: true,
+};
+
+export function normalizeSmartFit(smartFit?: Partial<SmartFitSettings> | null): SmartFitSettings {
+  return {
+    enabled: smartFit?.enabled ?? DEFAULT_SMART_FIT_SETTINGS.enabled,
+    mode:
+      smartFit?.mode === "compact" || smartFit?.mode === "readability" || smartFit?.mode === "balanced"
+        ? smartFit.mode
+        : DEFAULT_SMART_FIT_SETTINGS.mode,
+    minFontSize: Number.isFinite(smartFit?.minFontSize)
+      ? Math.max(6.5, Math.min(12, smartFit!.minFontSize!))
+      : DEFAULT_SMART_FIT_SETTINGS.minFontSize,
+    minRowHeight: Number.isFinite(smartFit?.minRowHeight)
+      ? Math.max(4.0, Math.min(12, smartFit!.minRowHeight!))
+      : DEFAULT_SMART_FIT_SETTINGS.minRowHeight,
+    automaticSpacing: smartFit?.automaticSpacing ?? DEFAULT_SMART_FIT_SETTINGS.automaticSpacing,
+    printSafeBorders: smartFit?.printSafeBorders ?? DEFAULT_SMART_FIT_SETTINGS.printSafeBorders,
+    preventOverflow: smartFit?.preventOverflow ?? DEFAULT_SMART_FIT_SETTINGS.preventOverflow,
+  };
+}
+
 export interface DocumentLayout {
   version: number;
   documentType: DocumentTypeId;
@@ -334,6 +375,7 @@ export interface DocumentLayout {
     background: string;
     watermarkOpacity: number;
     borders?: PageBorderSettings;
+    smartFit?: SmartFitSettings;
   };
   branding: {
     primaryColor: string;
@@ -1052,6 +1094,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       background: "#FFFFFF",
       watermarkOpacity: 0.045,
       borders: JSON.parse(JSON.stringify(DEFAULT_PAGE_BORDERS)),
+      smartFit: JSON.parse(JSON.stringify(DEFAULT_SMART_FIT_SETTINGS)),
     },
     branding: documentStyle,
     elements: applyDocumentBusinessProfile(elements, docType),
@@ -1126,6 +1169,7 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
       heightMm: 297,
       background: layout.page?.background || "#FFFFFF",
       borders: normalizePageBorders(layout.page?.borders),
+      smartFit: normalizeSmartFit(layout.page?.smartFit),
     },
     branding: sourceVersion < 7 ? DOCUMENT_STYLES[layout.documentType] : layout.branding,
     elements,
