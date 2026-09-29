@@ -56,7 +56,7 @@ export default function AutoFixPreviewModal({
                 : `Dynamic spacing profile: ${fitLevel || "standard"}. The chosen style stays intact while table rows and followers adapt to content.`}
             </p>
           </div>
-          <p className="text-xs leading-5 text-slate-400">This estimate uses the designer sample. Real documents are fitted using their actual customer, item and note content when rendered. Text is not reduced below the readable compact threshold, and overflow continues onto additional A4 pages.</p>
+          <p className="text-xs leading-5 text-slate-400">This enables Auto Fit and automatic spacing using your saved style and minimum text size. The estimate uses sample data; longer documents continue onto additional A4 pages. Apply, then save to cloud to use these settings on every device.</p>
           {overflows && <p className="rounded-lg bg-slate-950 px-3 py-2 text-xs leading-5 text-slate-400">Safe options: keep the full content across pages, reduce unused whitespace or margins in the inspector, or adjust table row spacing. Hiding required fields is not recommended.</p>}
         </div>
 

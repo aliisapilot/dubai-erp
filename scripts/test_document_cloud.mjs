@@ -32,6 +32,12 @@ assert.deepEqual((await db.query('SELECT rows FROM erp_private.design_migration_
 await db.exec(migration);
 assert.equal((await db.query('SELECT count(*)::int AS n FROM erp_private.design_migration_backups')).rows[0].n,1);
 console.log('PASS migration preserves every legacy field, snapshots before changes, and is repeatable');
+await db.exec(fs.readFileSync('supabase/migrations/20261002000000_fix_write_design_name_conflict.sql','utf8'));
+const correction=fs.readFileSync('supabase/migrations/20261003000000_preserve_design_on_name_collision.sql','utf8');
+await db.exec(correction);
+await db.exec(correction);
+assert.deepEqual((await db.query('SELECT to_jsonb(t) AS row FROM document_templates t')).rows[0].row,after);
+console.log('PASS complete migration sequence and repeatable correction preserve existing designs');
 let queue=Promise.resolve();
 function rpcClient(user) {return {rpc(name,args){
  const task=queue.then(async()=>{await db.exec('BEGIN');try{
@@ -51,6 +57,13 @@ await assert.rejects(()=>pc.save(company,'quotation',{...layout,templateName:'st
 assert.deepEqual((await laptop.load(company,'quotation')).template.layout_json,updated);
 console.log('PASS independent sessions, fresh reload, full JSON/assets roundtrip, stale update rejected without overwriting');
 const revision=revisionOf(saved);
+const originalSnapshot=await pc.load(company,'quotation');
+for(const activate of [true,false]) {
+  await assert.rejects(()=>pc.save(company,'quotation',{...updated,elements:[]},
+    {templateId:null,version:0,selectionVersion:revision.selectionVersion},'  LAPTOP STYLE  ',activate),e=>e.code==='NAME_EXISTS');
+  assert.deepEqual(await pc.load(company,'quotation'),originalSnapshot);
+}
+console.log('PASS same-name creation cannot overwrite a saved design or advance its version/selection');
 const copy=await laptop.save(company,'quotation',{...updated,templateName:'Alternate'}, {templateId:null,version:0,selectionVersion:revision.selectionVersion},'Alternate',false);
 assert.equal((await pc.load(company,'quotation')).template.id,legacy);
 const selected=await laptop.mutate(company,copy.template,'select',revision.selectionVersion);

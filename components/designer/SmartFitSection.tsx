@@ -69,7 +69,7 @@ export default function SmartFitSection({
               </span>
             </h3>
             <p className="text-[10px] text-slate-400">
-              Dynamically tightens whitespace, rows &amp; follower cards to keep documents on 1 A4 page
+              Fits one A4 page when readable, then continues onto additional pages
             </p>
           </div>
         </div>
@@ -93,7 +93,7 @@ export default function SmartFitSection({
           </span>
           <span className="text-[10px] text-slate-400">
             {smartFit.enabled
-              ? "Active — Dynamically compacts up to 30 items onto 1 A4 page"
+              ? "Active — Respects your minimum text size and row height"
               : "Disabled — Standard fixed row heights and static pagination"}
           </span>
         </div>
@@ -142,14 +142,14 @@ export default function SmartFitSection({
             </div>
           </div>
 
-          {/* ── Minimum Font Size (pt) ──────────────────────────────────── */}
+          {/* ── Minimum Font Size (CSS pixels, matching saved layouts) ───── */}
           <div>
             <div className="flex items-center justify-between text-[10px] mb-1">
               <label htmlFor={minFontId} className="text-slate-300 font-semibold cursor-pointer">
                 Minimum Font Size
               </label>
               <span className="font-mono font-bold text-amber-300">
-                {smartFit.minFontSize.toFixed(1)} pt
+                {smartFit.minFontSize.toFixed(1)} px
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -157,7 +157,7 @@ export default function SmartFitSection({
                 id={minFontId}
                 type="range"
                 min={6.5}
-                max={9.5}
+                max={12}
                 step={0.5}
                 value={smartFit.minFontSize}
                 onChange={(e) => updateSmartFit({ minFontSize: Number(e.target.value) || 7.5 })}
@@ -166,7 +166,7 @@ export default function SmartFitSection({
               <input
                 type="number"
                 min={6.5}
-                max={9.5}
+                max={12}
                 step={0.5}
                 value={smartFit.minFontSize}
                 onChange={(e) => updateSmartFit({ minFontSize: Number(e.target.value) || 7.5 })}

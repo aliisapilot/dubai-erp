@@ -17,6 +17,7 @@ export function cloudError(error: unknown): DocumentCloudError {
   if (error instanceof DocumentCloudError) return error;
   const detail = error as { code?: string; message?: string };
   if (detail?.code === '40001') return new DocumentCloudError('Another session changed this style or the selected design. Your draft is preserved. Export it, then reload the cloud version before saving again.', 'CONFLICT');
+  if (detail?.code === '23505') return new DocumentCloudError('A style with this name already exists. Choose a different name for a new style, or load the existing style before updating it.', 'NAME_EXISTS');
   if (['PGRST202', 'PGRST205', '42P01', '42703'].includes(detail?.code || '')) return new DocumentCloudError('Cloud design storage needs its approved migration. Your design has not been saved to Supabase.', 'MIGRATION_REQUIRED');
   return new DocumentCloudError(detail?.message || 'Could not reach cloud storage. Your design has not been saved to Supabase.', detail?.code);
 }

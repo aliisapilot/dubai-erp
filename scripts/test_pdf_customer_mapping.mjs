@@ -520,7 +520,7 @@ test("guarantees decorative border clearances and preserves borders during Auto 
   assert.match(pageDecorativeBordersSource, /effectiveTopThickness/);
   assert.match(pageDecorativeBordersSource, /effectiveBottomThickness/);
   assert.match(designerSource, /bordersToKeep/);
-  assert.match(designerSource, /Applied Auto Fix while strictly preserving your saved border & background design/);
+  assert.match(designerSource, /prepareSavedAutoFit/);
   assert.match(globalCssSource, /\.page-decorative-borders-container\s*\{[\s\S]*?print-color-adjust:\s*exact\s*!important;/);
   assert.match(globalCssSource, /\.page-decorative-borders-container svg\s*\{[\s\S]*?print-color-adjust:\s*exact\s*!important;/);
   assert.doesNotMatch(globalCssSource, /\.page-decorative-borders-container\s+svg\s+\*\s*\{[\s\S]*?display:\s*block/);

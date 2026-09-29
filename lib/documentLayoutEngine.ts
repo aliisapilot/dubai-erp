@@ -24,6 +24,23 @@ const FALLBACK_SMART_FIT: SmartFitSettings = {
   preventOverflow: true,
 };
 
+/** Enable content fitting without replacing any saved element, asset or page decoration. */
+export function prepareSavedAutoFit(layout: DocumentLayout): DocumentLayout {
+  return {
+    ...layout,
+    page: {
+      ...layout.page,
+      smartFit: {
+        ...FALLBACK_SMART_FIT,
+        ...layout.page.smartFit,
+        enabled: true,
+        automaticSpacing: true,
+        preventOverflow: true,
+      },
+    },
+  };
+}
+
 export interface EffectiveLayoutElement extends LayoutElement {
   effectiveX: number;
   effectiveY: number;
@@ -436,7 +453,13 @@ export function computeIntelligentFitProfile(
     tiers = allTiers;
   }
 
-  for (const tier of tiers) {
+  for (const candidate of tiers) {
+    const tier = isSmartFitEnabled ? {
+      ...candidate,
+      rowHeight: Math.max(candidate.rowHeight, configuredMinRow),
+      fontSize: Math.max(candidate.fontSize, configuredMinFont),
+      headerFontSize: Math.max(candidate.headerFontSize, configuredMinFont),
+    } : candidate;
     let effectiveAbove = maxAboveBottom;
     if (tier.allowSlideTableUp && smartFit.automaticSpacing !== false) {
       const compactedSpan = originalHeaderSpan * tier.headerCompactionRatio;
@@ -487,12 +510,12 @@ export function computeIntelligentFitProfile(
     level: "multi_page",
     rowHeight: Math.max(configuredMinRow, 7.5),
     headerHeight: 7.0,
-    fontSize: 9.5,
-    headerFontSize: 9.5,
+    fontSize: Math.max(configuredMinFont, 9.5),
+    headerFontSize: Math.max(configuredMinFont, 9.5),
     followerScale: 0.88,
     gap: 2.5,
     tableY: Math.max(table.y, maxAboveBottom + 2.5),
-    tableHeight: calculateTableRenderedHeight(table, totalItems, itemsData, 7.5, 7.0),
+    tableHeight: calculateTableRenderedHeight(table, totalItems, itemsData, Math.max(configuredMinRow, 7.5), 7.0, Math.max(configuredMinFont, 9.5)),
     followerSpan: calculateFollowerVerticalSpan(followers, 0.88, 2.5),
     totalContentBottom: 310,
     footerY,
@@ -575,7 +598,7 @@ export function computePaginationPlan(
   );
   const regularPageCapacity = Math.max(rowHeight * 3, spaceForTableWithoutFollowers - headerHeight);
   const rowHeights = Array.from({ length: totalItems }, (_, index) =>
-    calculateItemRowHeight(rowHeight, itemsData?.[index]?.description)
+    calculateItemRowHeight(rowHeight, itemsData?.[index]?.description, fit.fontSize)
   );
 
   const pageItemRanges: PaginationPlan["pageItemRanges"] = [];
@@ -659,10 +682,10 @@ export function computeEffectiveLayout(
         ...computedProfile,
         fits: false,
         level: "multi_page",
-        rowHeight: 7.5,
+        rowHeight: Math.max(layout.page.smartFit?.minRowHeight || 0, 7.5),
         headerHeight: 7,
-        fontSize: 9.5,
-        headerFontSize: 9.5,
+        fontSize: Math.max(layout.page.smartFit?.minFontSize || 0, 9.5),
+        headerFontSize: Math.max(layout.page.smartFit?.minFontSize || 0, 9.5),
         followerScale: 0.88,
         gap: 2.5,
       }

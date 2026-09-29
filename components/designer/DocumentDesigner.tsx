@@ -28,7 +28,7 @@ import LayoutValidatorModal from "./LayoutValidatorModal";
 import { getDocumentPageCount, getSampleDocumentData } from "../documents/DynamicDocumentRenderer";
 import { processAndOptimizeImage } from "@/lib/documentDesigner";
 import { AlertCircle, CheckCircle2, RotateCcw } from "lucide-react";
-import { computePaginationPlan } from "@/lib/documentLayoutEngine";
+import { computePaginationPlan, prepareSavedAutoFit } from "@/lib/documentLayoutEngine";
 import { documentStylePresets } from "@/lib/documentStylePresets";
 import {
   getFallbackDocumentStylePreset,
@@ -763,14 +763,14 @@ export default function DocumentDesigner() {
       // Ensure custom borders and page background are strictly preserved:
       const savedBorders = current.template?.layout_json?.page?.borders || persistedLayout.page?.borders || layout.page?.borders;
       const savedBackground = current.template?.layout_json?.page?.background || persistedLayout.page?.background || layout.page?.background;
-      const proposedLayout: DocumentLayout = {
+      const proposedLayout: DocumentLayout = prepareSavedAutoFit({
         ...persistedLayout,
         page: {
           ...persistedLayout.page,
           ...(savedBorders ? { borders: JSON.parse(JSON.stringify(savedBorders)) } : {}),
           background: savedBackground || "#FFFFFF",
         },
-      };
+      });
       const sample=getSampleDocumentData(selectedDocType);
       const pagination=computePaginationPlan(proposedLayout,sample.items.length,sample.items);
       setAutoFixProposal({layout:proposedLayout,mode:'saved',styleName:current.template!.template_name,totalPages:pagination.totalPages,fitLevel:pagination.fitProfile?.level,warning:pagination.warning});
@@ -790,7 +790,7 @@ export default function DocumentDesigner() {
     pushHistory(finalLayout);
     setShowAutoFixPreview(false);
     setAutoFixProposal(null);
-    setNotification({message:'Applied Auto Fix while strictly preserving your saved border & background design.',type:'success'});
+    setNotification({message:'Auto Fit enabled with your saved style and readability settings. Save to cloud to use it on all devices.',type:'success'});
   }, [autoFixProposal,persistedLayout?.page?.borders,layout.page.borders,pushHistory]);
   const handleConfirmReset = useCallback(() => {
     preserveDesignDraft(companyId,selectedDocType,layout);
