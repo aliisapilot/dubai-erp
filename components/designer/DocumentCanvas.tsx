@@ -417,6 +417,10 @@ export default function DocumentCanvas({
                     key={elem.id}
                     onMouseDown={(e) => handleElementMouseDown(e, elem)}
                     onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      latestOnSelectElement.current(elem.id);
+                    }}
                     className={`absolute pointer-events-auto transition-shadow ${
                       isSelected
                         ? elem.locked

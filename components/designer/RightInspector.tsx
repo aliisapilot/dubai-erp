@@ -23,13 +23,200 @@ import {
   Image as ImageIcon,
   Sparkles,
   Upload,
+  Type,
+  PencilLine,
+  Database,
+  FileText,
+  Info,
+  AlertTriangle,
 } from "lucide-react";
 import {
   DocumentLayout,
   LayoutElement,
+  ElementType,
 } from "@/lib/documentDesigner";
 import PageBorderSection from "./PageBorderSection";
 import PrintingSettingsSection from "./PrintingSettingsSection";
+
+// ── Universal Text Editor: Element Content Configuration ──────────────────────
+// Describes what text each element type renders, whether it's dynamic, and
+// what template tokens the user can insert.
+interface ElementContentConfig {
+  /** Human-readable label for the edit section */
+  label: string;
+  /** Short description of the default data source */
+  description: string;
+  /** Placeholder text for the textarea when empty */
+  placeholder: string;
+  /** If true, the element pulls data from the database by default */
+  isDynamic: boolean;
+  /** RTL text direction (Arabic elements) */
+  isRtl?: boolean;
+  /** Available template tokens that can be inserted */
+  tokens?: { token: string; label: string }[];
+  /** Textarea rows */
+  rows?: number;
+}
+
+const ELEMENT_CONTENT_CONFIG: Partial<Record<ElementType, ElementContentConfig>> = {
+  company_name_en: {
+    label: "Company Name (English)",
+    description: "Shows your company's legal name from Company Settings.",
+    placeholder: "Leave blank to use company name from settings",
+    isDynamic: true,
+    tokens: [
+      { token: "{company_name}", label: "Company Legal Name" },
+      { token: "{company_short}", label: "Short Name" },
+    ],
+    rows: 2,
+  },
+  company_name_ar: {
+    label: "Company Name (Arabic)",
+    description: "Shows your company's Arabic name from Company Settings.",
+    placeholder: "اتركه فارغًا لاستخدام اسم الشركة من الإعدادات",
+    isDynamic: true,
+    isRtl: true,
+    tokens: [
+      { token: "{company_name_ar}", label: "Arabic Company Name" },
+    ],
+    rows: 2,
+  },
+  company_address: {
+    label: "Company Address & Contact",
+    description: "Shows address, TRN, phone and email from Company Settings.",
+    placeholder: "Leave blank to use address from settings. Use tokens: {address}, {trn}, {phone}, {email}",
+    isDynamic: true,
+    tokens: [
+      { token: "{address}", label: "Full Address" },
+      { token: "{trn}", label: "Tax Registration Number" },
+      { token: "{phone}", label: "Phone Number" },
+      { token: "{email}", label: "Email Address" },
+      { token: "{website}", label: "Website" },
+    ],
+    rows: 3,
+  },
+  company_trn: {
+    label: "Company TRN",
+    description: "Shows Tax Registration Number from Company Settings.",
+    placeholder: "Auto-populated from company TRN",
+    isDynamic: true,
+    rows: 1,
+  },
+  doc_title: {
+    label: "Document Title",
+    description: "The main title banner (e.g. TAX INVOICE, QUOTATION).",
+    placeholder: "e.g. TAX INVOICE, PROFORMA INVOICE",
+    isDynamic: false,
+    rows: 1,
+  },
+  doc_meta: {
+    label: "Document Reference Info",
+    description: "Shows document number, dates and status from the record.",
+    placeholder: "Auto-populated from document data",
+    isDynamic: true,
+    rows: 2,
+  },
+  customer_info: {
+    label: "Customer / Client Details",
+    description: "Shows customer name, TRN, address and contact from the record.",
+    placeholder: "Auto-populated from customer/client data",
+    isDynamic: true,
+    rows: 3,
+  },
+  supplier_info: {
+    label: "Supplier Details",
+    description: "Shows supplier name and contact from the record.",
+    placeholder: "Auto-populated from supplier data",
+    isDynamic: true,
+    rows: 2,
+  },
+  project_info: {
+    label: "Project Information",
+    description: "Shows project name, number and location from the record.",
+    placeholder: "Auto-populated from project data",
+    isDynamic: true,
+    rows: 2,
+  },
+  amount_in_words: {
+    label: "Amount in Words",
+    description: "Shows total amount in English and Arabic words. Calculated automatically.",
+    placeholder: "Auto-calculated from document total",
+    isDynamic: true,
+    rows: 2,
+  },
+  payment_terms: {
+    label: "Terms & Remarks",
+    description: "Shows payment terms and notes from the document record.",
+    placeholder: "Leave blank to use document notes. Or type custom terms text.",
+    isDynamic: true,
+    tokens: [
+      { token: "{payment_terms}", label: "Payment Terms" },
+      { token: "{notes}", label: "Document Notes" },
+    ],
+    rows: 4,
+  },
+  bank_details: {
+    label: "Bank Transfer Details",
+    description: "Shows bank name, IBAN, SWIFT from Company Settings.",
+    placeholder: "Auto-populated from company bank details",
+    isDynamic: true,
+    tokens: [
+      { token: "{bank_name}", label: "Bank Name" },
+      { token: "{iban}", label: "IBAN Number" },
+      { token: "{swift}", label: "SWIFT/BIC Code" },
+      { token: "{bank_account}", label: "Account Name" },
+    ],
+    rows: 4,
+  },
+  company_signature: {
+    label: "Signature Label",
+    description: "The text label above/below the signature image.",
+    placeholder: "e.g. COMPANY AUTHORIZED SIGNATURE",
+    isDynamic: false,
+    rows: 1,
+  },
+  footer: {
+    label: "Footer Text",
+    description: "Shows company contact info at the page bottom.",
+    placeholder: "Leave blank for default footer. Use tokens: {company_name}, {phone}, {email}, {website}",
+    isDynamic: true,
+    tokens: [
+      { token: "{company_name}", label: "Company Name" },
+      { token: "{phone}", label: "Phone" },
+      { token: "{email}", label: "Email" },
+      { token: "{website}", label: "Website" },
+    ],
+    rows: 2,
+  },
+  custom_text: {
+    label: "Custom Text Content",
+    description: "Free-form text block. You control the content entirely.",
+    placeholder: "Type your custom text here...",
+    isDynamic: false,
+    rows: 4,
+  },
+  watermark: {
+    label: "Watermark Text",
+    description: "Overlay text displayed diagonally across the document.",
+    placeholder: "e.g. DRAFT, ORIGINAL, COPY, CONFIDENTIAL",
+    isDynamic: false,
+    rows: 1,
+  },
+  totals: {
+    label: "Totals Section",
+    description: "Shows subtotal, VAT and grand total. Calculated automatically from line items.",
+    placeholder: "Auto-calculated from document items",
+    isDynamic: true,
+    rows: 1,
+  },
+  line_items: {
+    label: "Line Items Table",
+    description: "Populated from document items. Use Table Settings below to configure columns.",
+    placeholder: "Auto-populated from document line items",
+    isDynamic: true,
+    rows: 1,
+  },
+};
 
 interface RightInspectorProps {
   layout: DocumentLayout;
@@ -269,7 +456,12 @@ export default function RightInspector({
   // Selected Element Inspector
   const elem = selectedElement;
   const isImageElement = ["logo", "watermark", "company_stamp", "company_signature", "building_image", "custom_image"].includes(elem.type);
-  const isTextElement = ["company_name_en", "company_name_ar", "company_address", "doc_title", "custom_text", "footer", "payment_terms"].includes(elem.type) || elem.customText !== undefined;
+  const contentConfig = ELEMENT_CONTENT_CONFIG[elem.type as ElementType] || null;
+  // Elements that support typography controls in the "Text & Typography" section
+  const isTextElement = ["company_name_en", "company_name_ar", "company_address", "doc_title", "custom_text", "footer", "payment_terms", "company_trn", "company_signature", "amount_in_words", "bank_details"].includes(elem.type) || elem.customText !== undefined;
+  // Elements where customText overrides content (editable in the Universal Text Editor)
+  const isContentEditable = contentConfig !== null && !["totals", "line_items", "doc_meta", "customer_info", "supplier_info", "project_info", "amount_in_words", "bank_details", "company_trn"].includes(elem.type);
+  const isDataOnlyElement = contentConfig !== null && !isContentEditable;
   const aspectRatio = elem.imageAspectRatio || elem.width / Math.max(1, elem.height);
 
   const updateWidth = (rawWidth: number) => {
@@ -410,6 +602,123 @@ export default function RightInspector({
       )}
 
       <div className="p-4 space-y-5 text-xs">
+        {/* ══════════════════════════════════════════════════════════════════════
+            UNIVERSAL TEXT EDITOR — Edit Content Section (appears at TOP)
+            Shows for ALL elements that have text content (editable or dynamic).
+            ══════════════════════════════════════════════════════════════════════ */}
+        {contentConfig && (
+          <div className="rounded-xl border border-indigo-500/30 bg-gradient-to-b from-indigo-950/40 to-slate-900/60 overflow-hidden">
+            {/* Section Header */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-indigo-500/20 bg-indigo-950/30">
+              <PencilLine size={14} className="text-indigo-400 shrink-0" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-300">
+                Edit Content
+              </span>
+              {contentConfig.isDynamic && (
+                <span className="ml-auto flex items-center gap-1 text-[9px] font-medium text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                  <Database size={9} className="shrink-0" />
+                  <span>Dynamic</span>
+                </span>
+              )}
+              {!contentConfig.isDynamic && (
+                <span className="ml-auto flex items-center gap-1 text-[9px] font-medium text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
+                  <FileText size={9} className="shrink-0" />
+                  <span>Static</span>
+                </span>
+              )}
+            </div>
+
+            <div className="p-3 space-y-2.5">
+              {/* Element Label & Description */}
+              <div>
+                <div className="text-[11px] font-semibold text-slate-200">
+                  {contentConfig.label}
+                </div>
+                <div className="text-[10px] text-slate-400 leading-snug mt-0.5 flex items-start gap-1">
+                  <Info size={10} className="text-slate-500 shrink-0 mt-0.5" />
+                  <span>{contentConfig.description}</span>
+                </div>
+              </div>
+
+              {/* Text Editor Area — only for content-editable elements */}
+              {isContentEditable && (
+                <>
+                  <div className="relative">
+                    <textarea
+                      rows={contentConfig.rows || 3}
+                      value={elem.customText || ""}
+                      onChange={(e) => onUpdateElement(elem.id, { customText: e.target.value || undefined })}
+                      placeholder={contentConfig.placeholder}
+                      dir={contentConfig.isRtl ? "rtl" : "ltr"}
+                      className={`w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/30 transition placeholder:text-slate-500 resize-y min-h-[32px] ${
+                        contentConfig.isRtl ? "text-right font-arabic" : ""
+                      }`}
+                    />
+                    {elem.customText && (
+                      <button
+                        type="button"
+                        onClick={() => onUpdateElement(elem.id, { customText: undefined })}
+                        className="absolute top-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/25 transition"
+                        title="Clear custom text and revert to default data source"
+                      >
+                        <RotateCcw size={9} />
+                        <span>Reset</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Status: Custom override vs Default */}
+                  {elem.customText ? (
+                    <div className="flex items-center gap-1.5 text-[10px] text-amber-400 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
+                      <AlertTriangle size={10} className="shrink-0" />
+                      <span className="font-medium">Custom override active — default data is hidden.</span>
+                    </div>
+                  ) : contentConfig.isDynamic ? (
+                    <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-500/8 px-2 py-1 rounded border border-emerald-500/20">
+                      <Database size={10} className="shrink-0" />
+                      <span>Using live data from your records. Type above to override.</span>
+                    </div>
+                  ) : null}
+
+                  {/* Template Token Inserter */}
+                  {contentConfig.tokens && contentConfig.tokens.length > 0 && (
+                    <div>
+                      <div className="text-[10px] text-slate-400 mb-1 flex items-center gap-1">
+                        <Type size={10} className="shrink-0" />
+                        <span>Insert dynamic field:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {contentConfig.tokens.map((t) => (
+                          <button
+                            key={t.token}
+                            type="button"
+                            onClick={() => {
+                              const current = elem.customText || "";
+                              onUpdateElement(elem.id, { customText: current + t.token });
+                            }}
+                            className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-slate-800 border border-slate-700 text-indigo-300 hover:bg-indigo-500/15 hover:border-indigo-500/40 hover:text-indigo-200 transition"
+                            title={`Insert ${t.label} token: ${t.token}`}
+                          >
+                            {t.token}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Data-only elements: show info but no editable textarea */}
+              {isDataOnlyElement && (
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 bg-slate-800/60 px-2 py-1.5 rounded border border-slate-700">
+                  <Database size={10} className="text-emerald-400 shrink-0" />
+                  <span>This section is populated automatically from your document records. Customize its appearance using the styling controls below.</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Quick action: Apply This Element to Other Documents */}
         {onApplyElementToOthers && (
           <div className="mb-4">
