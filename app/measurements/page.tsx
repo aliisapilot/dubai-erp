@@ -884,7 +884,7 @@ export default function MeasurementsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Summary Breakdown Cards */}
           <div className="lg:col-span-2 space-y-4">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/90 p-5 shadow-lg">
+            <div className="rounded-xl border border-slate-800 bg-slate-900 p-5 shadow-lg">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
                 <div className="flex items-center gap-2">
                   <Calculator size={18} className="text-emerald-400" />
@@ -898,7 +898,7 @@ export default function MeasurementsPage() {
               {/* Area-by-Area List */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
                 {summary.areaSummary.map((a, i) => (
-                  <div key={i} className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                  <div key={i} className="rounded-lg border border-slate-800 bg-slate-950 p-3">
                     <p className="text-[11px] font-semibold text-slate-400 truncate">{a.area_name}</p>
                     <p className="text-xs text-slate-500">{a.quantity} pcs</p>
                     <p className="font-bold font-mono text-emerald-400 text-sm mt-1">
@@ -910,7 +910,7 @@ export default function MeasurementsPage() {
 
               <div className="border-t border-slate-800 pt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {/* Total Pieces */}
-                <div className="rounded-lg bg-slate-950/80 border border-slate-800 p-3.5">
+                <div className="rounded-lg bg-slate-950 border border-slate-800 p-3.5">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
                     TOTAL PIECES
                   </span>
@@ -920,7 +920,7 @@ export default function MeasurementsPage() {
                 </div>
 
                 {/* Total Linear Metres */}
-                <div className="rounded-lg bg-emerald-950/30 border border-emerald-500/30 p-3.5">
+                <div className="rounded-lg bg-emerald-950/60 border border-emerald-500/30 p-3.5">
                   <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
                     TOTAL LINEAR METRES
                   </span>
@@ -938,8 +938,8 @@ export default function MeasurementsPage() {
                 <div
                   className={`rounded-lg p-3.5 border ${
                     summary.totalAreaM2 > 0
-                      ? "bg-blue-950/30 border-blue-500/30"
-                      : "bg-slate-950/40 border-slate-800 opacity-60"
+                      ? "bg-blue-950/50 border-blue-500/30"
+                      : "bg-slate-950 border-slate-800 opacity-60"
                   }`}
                 >
                   <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block">

@@ -15,6 +15,7 @@ import {
   FileCheck, Bell, Ruler
 } from "lucide-react";
 import { getCurrentCompany } from "@/lib/helpers";
+import ImmersiveLogo from "@/components/ImmersiveLogo";
 
 type CompanyInfo = {
   name: string;
@@ -175,25 +176,17 @@ export default function Sidebar() {
       {/* Brand Header with enlarged logo (48-56px desktop, 44-48px tablet, 40-44px mobile) */}
       <div className="min-h-[4.75rem] border-b border-slate-800 px-4 py-3 flex items-center justify-between bg-slate-900 shrink-0">
         <Link href="/" className="flex items-center gap-3 group min-w-0 flex-1">
-          {/* Logo container matching 48-56px desktop requirement */}
-          <div className="h-12 w-12 sm:h-13 sm:w-13 md:h-14 md:w-14 shrink-0 rounded-xl border border-slate-700/80 bg-slate-800/90 p-1 flex items-center justify-center overflow-hidden shadow-sm transition-transform group-hover:scale-105">
-            {company?.logo_url ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={company.logo_url}
-                alt={company.name || "Company Logo"}
-                className="max-h-full max-w-full object-contain"
-              />
-            ) : (
-              <div className="w-full h-full rounded-lg bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-sm md:text-base flex items-center justify-center">
-                {company?.name ? company.name.substring(0, 2).toUpperCase() : "DXB"}
-              </div>
-            )}
-          </div>
+          {/* Immersive Logo with no borders */}
+          <ImmersiveLogo
+            src={company?.logo_url}
+            alt={company?.name || "Company Logo"}
+            fallbackText={company?.name ? company.name.substring(0, 2).toUpperCase() : "DXB"}
+            className="h-12 w-12 sm:h-13 sm:w-13 md:h-14 md:w-14 shrink-0 transition-transform group-hover:scale-105"
+          />
 
           <div className="flex flex-col min-w-0 flex-1 justify-center">
             <span
-              className="font-bold text-white tracking-tight text-sm md:text-base leading-snug truncate"
+              className="font-bold text-white tracking-tight text-xs sm:text-sm md:text-sm leading-snug line-clamp-2"
               title={company?.name || "Dubai ERP"}
             >
               {company?.name || "Dubai ERP"}

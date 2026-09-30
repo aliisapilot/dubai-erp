@@ -40,7 +40,7 @@ export default function ERPLayout({ children }: { children: ReactNode }) {
         {!isDesigner && <Navbar />}
         <main
           data-print-root
-          className="flex-1 min-w-0 flex flex-col m-0 p-0 overflow-y-auto overflow-x-hidden bg-slate-50 text-slate-900 print:overflow-visible"
+          className="flex-1 min-w-0 flex flex-col m-0 p-0 overflow-y-auto overflow-x-hidden bg-slate-900 text-slate-100 print:overflow-visible"
         >
           {children}
         </main>

@@ -10,6 +10,7 @@ import {
   TrendingUp, Loader2, ArrowRight, Briefcase, Clock
 } from "lucide-react";
 import { fmtAED, getCurrentCompany, CompanyDocDetails } from "@/lib/helpers";
+import ImmersiveLogo from "@/components/ImmersiveLogo";
 
 type DashboardStats = {
   customers: number;
@@ -229,21 +230,13 @@ export default function DashboardPage() {
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="flex items-start sm:items-center gap-4 sm:gap-6 min-w-0">
-              {/* Company Logo or Monogram (prominent desktop 80-96px, tablet 72-80px, mobile 64px) */}
-              {company?.logo_url ? (
-                <div className="relative h-16 w-16 sm:h-20 sm:w-20 md:h-24 md:w-24 shrink-0 rounded-2xl border border-emerald-500/25 bg-slate-900/95 p-2.5 shadow-xl ring-1 ring-white/10 flex items-center justify-center backdrop-blur-md">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={company.logo_url}
-                    alt={company.name || "Company Logo"}
-                    className="max-h-full max-w-full object-contain drop-shadow"
-                  />
-                </div>
-              ) : (
-                <div className="flex h-16 w-16 sm:h-20 sm:w-20 md:h-24 md:w-24 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 text-white font-black text-2xl sm:text-3xl md:text-4xl shadow-xl shadow-emerald-950/50 ring-1 ring-white/10">
-                  {companyName ? companyName.substring(0, 2).toUpperCase() : "DXB"}
-                </div>
-              )}
+              {/* Immersive Company Logo - prominent, zero borders */}
+              <ImmersiveLogo
+                src={company?.logo_url}
+                alt={company?.name || "Company Logo"}
+                fallbackText={companyName ? companyName.substring(0, 2).toUpperCase() : "DXB"}
+                className="h-20 w-20 sm:h-24 sm:w-24 md:h-28 md:w-28 shrink-0 drop-shadow-xl"
+              />
 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
