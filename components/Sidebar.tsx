@@ -12,7 +12,7 @@ import {
   LogOut, X, Wallet, Briefcase, TrendingUp, Calendar,
   Paperclip, ShieldAlert, ShieldCheck, FileCode2,
   CreditCard, ArrowDownRight, ArrowUpRight, RefreshCw, History,
-  FileCheck, Bell
+  FileCheck, Bell, Ruler
 } from "lucide-react";
 import { getCurrentCompany } from "@/lib/helpers";
 
@@ -76,7 +76,8 @@ export default function Sidebar() {
     pathname.startsWith("/proforma") ||
     pathname.startsWith("/tax-invoices") ||
     pathname.startsWith("/delivery-notes") ||
-    pathname.startsWith("/receipt-vouchers")
+    pathname.startsWith("/receipt-vouchers") ||
+    pathname.startsWith("/measurements")
   );
 
   const [purchasingOpen, setPurchasingOpen] = useState(
@@ -92,7 +93,8 @@ export default function Sidebar() {
   );
 
   const [projectsOpen, setProjectsOpen] = useState(
-    pathname.startsWith("/projects")
+    pathname.startsWith("/projects") ||
+    pathname.startsWith("/measurements")
   );
 
   const [hrOpen, setHrOpen] = useState(
@@ -220,6 +222,7 @@ export default function Sidebar() {
             <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
               <SubLink href="/customers" icon={<Users size={14} />} label="Customers" />
               <SubLink href="/quotations" icon={<FileText size={14} />} label="Quotations" />
+              <SubLink href="/measurements" icon={<Ruler size={14} />} label="Measurement Takeoff" />
               <SubLink href="/proforma-invoices" icon={<FileSpreadsheet size={14} />} label="Proforma Invoices" />
               <SubLink href="/tax-invoices" icon={<FileCheck2 size={14} />} label="Tax Invoices" />
               <SubLink href="/delivery-notes" icon={<ClipboardList size={14} />} label="Delivery Notes" />
@@ -293,6 +296,7 @@ export default function Sidebar() {
           {projectsOpen && (
             <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
               <SubLink href="/projects" icon={<Briefcase size={14} />} label="Projects" exact />
+              <SubLink href="/measurements" icon={<Ruler size={14} />} label="Estimation &amp; Takeoff" />
               <SubLink href="/projects/costing" icon={<TrendingUp size={14} />} label="Project Costing" />
               <SubLink href="/projects/milestones" icon={<Calendar size={14} />} label="Payment Milestones" />
               <SubLink href="/projects/attachments" icon={<Paperclip size={14} />} label="Attachments" />

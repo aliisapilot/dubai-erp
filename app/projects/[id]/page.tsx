@@ -18,6 +18,7 @@ import {
   Trash2,
   Printer,
   Loader2,
+  Ruler,
 } from "lucide-react";
 import { fmtAED, statusClass, todayISO, getCurrentCompany, generateDocNumber } from "@/lib/helpers";
 import WorkMethodStatementTemplate, { WMSData, RiskAssessmentRow, QAQCChecklistItem } from "@/components/documents/WorkMethodStatementTemplate";
@@ -669,6 +670,13 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           >
             <Briefcase size={15} /> Commercial Docs ({linkedDocs.length})
           </button>
+          <Link
+            href={`/measurements`}
+            className="py-3 border-b-2 border-transparent text-emerald-700 hover:text-emerald-900 transition flex items-center gap-1.5 font-medium"
+            title="Open Measurement & Takeoff Sheets"
+          >
+            <Ruler size={15} className="text-emerald-600" /> Takeoff &amp; Estimation
+          </Link>
         </div>
       </header>
 

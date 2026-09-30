@@ -10,7 +10,8 @@
     "lint": "eslint",
     "test:pdf": "node scripts/test_pdf_customer_mapping.mjs",
     "test:design-cloud": "node scripts/test_document_cloud.mjs",
-    "test:auto-fit": "node scripts/test_saved_auto_fit.mjs"
+    "test:auto-fit": "node scripts/test_saved_auto_fit.mjs",
+    "test:measurement": "node scripts/test_measurement_estimation_suite.mjs"
   },
   "dependencies": {
     "@supabase/server": "^1.8.0",
