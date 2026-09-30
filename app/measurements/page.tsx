@@ -533,9 +533,10 @@ export default function MeasurementsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-8">
-      {/* Top Banner & Header */}
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+    <div className="min-h-full w-full bg-slate-900 text-slate-100 p-3 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-[1440px] w-full">
+        {/* Top Banner & Header */}
+        <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
           <div className="flex items-center gap-2">
             <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-xs font-semibold text-emerald-400 border border-emerald-500/30">
@@ -1030,507 +1031,528 @@ export default function MeasurementsPage() {
       {/* MODAL: ADD / EDIT MEASUREMENT ROW (WITH LIVE CALCULATOR PREVIEW) */}
       {/* ========================================================================= */}
       {showRowModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
-          <div className="relative w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl overflow-hidden my-8">
+        <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/80 backdrop-blur-md p-3 sm:p-6 flex items-start justify-center">
+          <div className="relative w-full max-w-5xl xl:max-w-6xl rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl overflow-hidden my-3 sm:my-6">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950 px-6 py-4 shrink-0">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <Ruler className="text-emerald-400" size={18} />
                   {editingRowIndex !== null ? "Edit Measurement Row" : "Add Measurement Row"}
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Configure dimensions, calculation type, and live preview.
+                  Configure dimensions, calculation type, and live preview with instant takeoff calculations.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowRowModal(false)}
                 className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+                aria-label="Close"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveRowForm} className="p-6 space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Area Name */}
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Area / Item Reference <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={rowForm.area_name}
-                    onChange={(e) => setRowForm({ ...rowForm, area_name: e.target.value })}
-                    placeholder="e.g. Area 1, Parking Bay A"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
-
-                {/* Description */}
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Description</label>
-                  <input
-                    type="text"
-                    value={rowForm.description}
-                    onChange={(e) => setRowForm({ ...rowForm, description: e.target.value })}
-                    placeholder="e.g. PVC Parking Shade Fabric & Centre Joint"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Calculation Type & Dimension Unit */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-xl border border-slate-800 bg-slate-950/70 p-4">
-                {/* Calculation Type Selector */}
-                <div className="md:col-span-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
-                      <span>Calculation Type</span>
-                      <button
-                        type="button"
-                        onClick={() => setShowHelpModal(true)}
-                        className="text-amber-400 hover:text-amber-300"
-                        title="Click to view beginner guide"
-                      >
-                        <HelpCircle size={14} />
-                      </button>
-                    </label>
-                    <span className="text-[11px] font-bold text-emerald-400 font-mono">
-                      Unit: {CALC_TYPE_DEFINITIONS.find((c) => c.value === rowForm.calc_type)?.resultUnit}
-                    </span>
-                  </div>
-
-                  <select
-                    value={rowForm.calc_type}
-                    onChange={(e) =>
-                      setRowForm({
-                        ...rowForm,
-                        calc_type: e.target.value as CalculationType,
-                      })
-                    }
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-white focus:border-emerald-500 focus:outline-none"
-                  >
-                    {CALC_TYPE_DEFINITIONS.map((def) => (
-                      <option key={def.value} value={def.value}>
-                        {def.label} — {def.shortDesc}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[10px] text-slate-400 mt-1 italic">
-                    {CALC_TYPE_DEFINITIONS.find((c) => c.value === rowForm.calc_type)?.helpText}
-                  </p>
-                </div>
-
-                {/* Dimension Unit (mm, cm, m) */}
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Dimension Unit</label>
-                  <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1">
-                    {(["mm", "cm", "m"] as DimensionUnit[]).map((u) => (
-                      <button
-                        key={u}
-                        type="button"
-                        onClick={() => setRowForm({ ...rowForm, dim_unit: u })}
-                        className={`rounded py-1.5 text-xs font-semibold uppercase transition-colors ${
-                          rowForm.dim_unit === u
-                            ? "bg-emerald-600 text-white shadow"
-                            : "text-slate-400 hover:text-white"
-                        }`}
-                      >
-                        {u}
-                      </button>
-                    ))}
-                  </div>
-                  <span className="text-[10px] text-slate-500 mt-1 block">
-                    {rowForm.dim_unit === "mm"
-                      ? "1000 mm = 1 m"
-                      : rowForm.dim_unit === "cm"
-                      ? "100 cm = 1 m"
-                      : "Direct Metres"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Dimension Inputs (Length, Width, Quantity) */}
-              {rowForm.calc_type !== "quantity_only" && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {/* Length */}
+            <form onSubmit={handleSaveRowForm} className="p-4 sm:p-6 lg:p-7">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                {/* Left Column (Inputs): 7 cols on desktop */}
+                <div className="lg:col-span-7 space-y-4">
+                  {/* Area Name & Description */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs font-medium text-slate-300">
-                          Length ({rowForm.dim_unit})
-                        </label>
-                        <span className="text-[10px] font-mono text-emerald-400 font-semibold">
-                          = {normalizeToMetres(rowForm.length_entered, rowForm.dim_unit).toFixed(3)} m
-                        </span>
-                      </div>
-                      <NumericInput
-                        preset="measurement"
-                        value={rowForm.length_entered}
-                        onChange={(val) => setRowForm({ ...rowForm, length_entered: val })}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
-                      />
-                    </div>
-
-                    {/* Width (if not linear) */}
-                    {rowForm.calc_type !== "linear" && (
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="text-xs font-medium text-slate-300">
-                            {rowForm.is_variable_width ? "Width 1" : "Width"} ({rowForm.dim_unit})
-                          </label>
-                          <span className="text-[10px] font-mono text-emerald-400 font-semibold">
-                            = {normalizeToMetres(rowForm.width_entered, rowForm.dim_unit).toFixed(3)} m
-                          </span>
-                        </div>
-                        <NumericInput
-                          preset="measurement"
-                          value={rowForm.width_entered}
-                          onChange={(val) => setRowForm({ ...rowForm, width_entered: val })}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
-                        />
-                      </div>
-                    )}
-
-                    {/* Quantity */}
-                    <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">Quantity (pcs)</label>
-                      <NumericInput
-                        preset="integer"
-                        value={rowForm.quantity}
-                        onChange={(val) => setRowForm({ ...rowForm, quantity: val })}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Variable Width Option */}
-                  {rowForm.calc_type !== "linear" && (
-                    <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(rowForm.is_variable_width)}
-                          onChange={(e) =>
-                            setRowForm({
-                              ...rowForm,
-                              is_variable_width: e.target.checked,
-                              width2_entered: e.target.checked ? rowForm.width_entered : undefined,
-                            })
-                          }
-                          className="rounded border-slate-700 text-emerald-500 focus:ring-0"
-                        />
-                        <span className="text-xs font-medium text-slate-300">
-                          Different width at other end (Trapezoidal / Tapered shape)
-                        </span>
+                      <label className="block text-xs font-medium text-slate-300 mb-1">
+                        Area / Item Reference <span className="text-red-400">*</span>
                       </label>
+                      <input
+                        type="text"
+                        required
+                        value={rowForm.area_name}
+                        onChange={(e) => setRowForm({ ...rowForm, area_name: e.target.value })}
+                        placeholder="e.g. Area 1, Parking Bay A"
+                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
 
-                      {rowForm.is_variable_width && (
-                        <div className="mt-3 grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1">Description</label>
+                      <input
+                        type="text"
+                        value={rowForm.description}
+                        onChange={(e) => setRowForm({ ...rowForm, description: e.target.value })}
+                        placeholder="e.g. PVC Parking Shade Fabric & Centre Joint"
+                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Calculation Type & Dimension Unit */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3.5">
+                    {/* Calculation Type Selector */}
+                    <div className="md:col-span-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                          <span>Calculation Type</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowHelpModal(true)}
+                            className="text-amber-400 hover:text-amber-300"
+                            title="Click to view formula guide"
+                          >
+                            <HelpCircle size={14} />
+                          </button>
+                        </label>
+                        <span className="text-[11px] font-bold text-emerald-400 font-mono">
+                          Unit: {CALC_TYPE_DEFINITIONS.find((c) => c.value === rowForm.calc_type)?.resultUnit}
+                        </span>
+                      </div>
+
+                      <select
+                        value={rowForm.calc_type}
+                        onChange={(e) =>
+                          setRowForm({
+                            ...rowForm,
+                            calc_type: e.target.value as CalculationType,
+                          })
+                        }
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-white focus:border-emerald-500 focus:outline-none"
+                      >
+                        {CALC_TYPE_DEFINITIONS.map((def) => (
+                          <option key={def.value} value={def.value}>
+                            {def.label} — {def.shortDesc}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-slate-400 mt-1 italic">
+                        {CALC_TYPE_DEFINITIONS.find((c) => c.value === rowForm.calc_type)?.helpText}
+                      </p>
+                    </div>
+
+                    {/* Dimension Unit (mm, cm, m) */}
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1">Dimension Unit</label>
+                      <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1">
+                        {(["mm", "cm", "m"] as DimensionUnit[]).map((u) => (
+                          <button
+                            key={u}
+                            type="button"
+                            onClick={() => setRowForm({ ...rowForm, dim_unit: u })}
+                            className={`rounded py-1.5 text-xs font-semibold uppercase transition-colors ${
+                              rowForm.dim_unit === u
+                                ? "bg-emerald-600 text-white shadow"
+                                : "text-slate-400 hover:text-white"
+                            }`}
+                          >
+                            {u}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        {rowForm.dim_unit === "mm"
+                          ? "1000 mm = 1 m"
+                          : rowForm.dim_unit === "cm"
+                          ? "100 cm = 1 m"
+                          : "Direct Metres"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Dimension Inputs (Length, Width, Quantity) */}
+                  {rowForm.calc_type !== "quantity_only" && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {/* Length */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-xs font-medium text-slate-300">
+                              Length ({rowForm.dim_unit})
+                            </label>
+                            <span className="text-[10px] font-mono text-emerald-400 font-semibold">
+                              = {normalizeToMetres(rowForm.length_entered, rowForm.dim_unit).toFixed(3)} m
+                            </span>
+                          </div>
+                          <NumericInput
+                            preset="measurement"
+                            value={rowForm.length_entered}
+                            onChange={(val) => setRowForm({ ...rowForm, length_entered: val })}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                          />
+                        </div>
+
+                        {/* Width (if not linear) */}
+                        {rowForm.calc_type !== "linear" && (
                           <div>
                             <div className="flex items-center justify-between mb-1">
                               <label className="text-xs font-medium text-slate-300">
-                                Width 2 ({rowForm.dim_unit})
+                                {rowForm.is_variable_width ? "Width 1" : "Width"} ({rowForm.dim_unit})
                               </label>
                               <span className="text-[10px] font-mono text-emerald-400 font-semibold">
-                                = {normalizeToMetres(rowForm.width2_entered, rowForm.dim_unit).toFixed(3)} m
+                                = {normalizeToMetres(rowForm.width_entered, rowForm.dim_unit).toFixed(3)} m
                               </span>
                             </div>
                             <NumericInput
                               preset="measurement"
-                              value={rowForm.width2_entered ?? 0}
-                              onChange={(val) => setRowForm({ ...rowForm, width2_entered: val })}
+                              value={rowForm.width_entered}
+                              onChange={(val) => setRowForm({ ...rowForm, width_entered: val })}
                               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
                             />
                           </div>
+                        )}
 
-                          <div className="flex flex-col justify-center">
-                            <span className="text-[11px] text-amber-300 font-medium">
-                              Trapezoidal Average Width:
+                        {/* Quantity */}
+                        <div>
+                          <label className="block text-xs font-medium text-slate-300 mb-1">Quantity (pcs)</label>
+                          <NumericInput
+                            preset="integer"
+                            value={rowForm.quantity}
+                            onChange={(val) => setRowForm({ ...rowForm, quantity: val })}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Variable Width Option */}
+                      {rowForm.calc_type !== "linear" && (
+                        <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                          <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(rowForm.is_variable_width)}
+                              onChange={(e) =>
+                                setRowForm({
+                                  ...rowForm,
+                                  is_variable_width: e.target.checked,
+                                  width2_entered: e.target.checked ? rowForm.width_entered : undefined,
+                                })
+                              }
+                              className="rounded border-slate-700 text-emerald-500 focus:ring-0"
+                            />
+                            <span className="text-xs font-medium text-slate-300">
+                              Different width at other end (Trapezoidal / Tapered shape)
                             </span>
-                            <span className="font-mono text-xs text-white font-bold">
-                              {((normalizeToMetres(rowForm.width_entered, rowForm.dim_unit) +
-                                normalizeToMetres(rowForm.width2_entered, rowForm.dim_unit)) /
-                                2).toFixed(3)}{" "}
-                              m
-                            </span>
-                          </div>
+                          </label>
+
+                          {rowForm.is_variable_width && (
+                            <div className="mt-3 grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="text-xs font-medium text-slate-300">
+                                    Width 2 ({rowForm.dim_unit})
+                                  </label>
+                                  <span className="text-[10px] font-mono text-emerald-400 font-semibold">
+                                    = {normalizeToMetres(rowForm.width2_entered, rowForm.dim_unit).toFixed(3)} m
+                                  </span>
+                                </div>
+                                <NumericInput
+                                  preset="measurement"
+                                  value={rowForm.width2_entered ?? 0}
+                                  onChange={(val) => setRowForm({ ...rowForm, width2_entered: val })}
+                                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                                />
+                              </div>
+
+                              <div className="flex flex-col justify-center">
+                                <span className="text-[11px] text-amber-300 font-medium">
+                                  Trapezoidal Average Width:
+                                </span>
+                                <span className="font-mono text-xs text-white font-bold">
+                                  {((normalizeToMetres(rowForm.width_entered, rowForm.dim_unit) +
+                                    normalizeToMetres(rowForm.width2_entered, rowForm.dim_unit)) /
+                                    2).toFixed(3)}{" "}
+                                  m
+                                </span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
                   )}
-                </div>
-              )}
 
-              {/* Dedicated Configurable PVC Edge + Centre Joint Options */}
-              {rowForm.calc_type === "pvc_edge_joint" && (
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
-                      PVC Joint Run Configuration
-                    </span>
-                    <span className="text-[11px] font-mono text-emerald-300 font-semibold">
-                      Formula: ({rowForm.pvc_length_edges}L + {rowForm.pvc_centre_joints}CJ + {rowForm.pvc_width_edges}W) = (
-                      {Number(rowForm.pvc_length_edges) + Number(rowForm.pvc_centre_joints)}L + {rowForm.pvc_width_edges}W)
-                    </span>
-                  </div>
+                  {/* Dedicated Configurable PVC Edge + Centre Joint Options */}
+                  {rowForm.calc_type === "pvc_edge_joint" && (
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3.5 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                          PVC Joint Run Configuration
+                        </span>
+                        <span className="text-[10px] font-mono text-emerald-300 font-semibold">
+                          Formula: ({rowForm.pvc_length_edges}L + {rowForm.pvc_centre_joints}CJ + {rowForm.pvc_width_edges}W) = (
+                          {Number(rowForm.pvc_length_edges) + Number(rowForm.pvc_centre_joints)}L + {rowForm.pvc_width_edges}W)
+                        </span>
+                      </div>
 
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                        Number of Length Edges
-                      </label>
-                      <NumericInput
-                        preset="integer"
-                        value={rowForm.pvc_length_edges}
-                        onChange={(val) => setRowForm({ ...rowForm, pvc_length_edges: val })}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-white font-mono"
-                      />
-                      <span className="text-[9px] text-slate-500">Standard: 2 (Left &amp; Right)</span>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                            Length Edges
+                          </label>
+                          <NumericInput
+                            preset="integer"
+                            value={rowForm.pvc_length_edges}
+                            onChange={(val) => setRowForm({ ...rowForm, pvc_length_edges: val })}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-white font-mono"
+                          />
+                          <span className="text-[9px] text-slate-500">Standard: 2 (Left &amp; Right)</span>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                            Width Edges
+                          </label>
+                          <NumericInput
+                            preset="integer"
+                            value={rowForm.pvc_width_edges}
+                            onChange={(val) => setRowForm({ ...rowForm, pvc_width_edges: val })}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-white font-mono"
+                          />
+                          <span className="text-[9px] text-slate-500">Standard: 2 (Top &amp; Bottom)</span>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                            Centre Joints
+                          </label>
+                          <NumericInput
+                            preset="integer"
+                            value={rowForm.pvc_centre_joints}
+                            onChange={(val) => setRowForm({ ...rowForm, pvc_centre_joints: val })}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-white font-mono"
+                          />
+                          <span className="text-[9px] text-slate-500">Standard: 1 (Middle weld)</span>
+                        </div>
+                      </div>
                     </div>
+                  )}
 
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                        Number of Width Edges
-                      </label>
-                      <NumericInput
-                        preset="integer"
-                        value={rowForm.pvc_width_edges}
-                        onChange={(val) => setRowForm({ ...rowForm, pvc_width_edges: val })}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-white font-mono"
-                      />
-                      <span className="text-[9px] text-slate-500">Standard: 2 (Top &amp; Bottom)</span>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                        Number of Centre Joints
-                      </label>
-                      <NumericInput
-                        preset="integer"
-                        value={rowForm.pvc_centre_joints}
-                        onChange={(val) => setRowForm({ ...rowForm, pvc_centre_joints: val })}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-white font-mono"
-                      />
-                      <span className="text-[9px] text-slate-500">Standard: 1 (Middle weld)</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Custom Safe Formula Component Builder */}
-              {rowForm.calc_type === "custom" && (
-                <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
-                      Safe Formula Components (Zero eval)
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const existing = rowForm.custom_components || [];
-                        setRowForm({
-                          ...rowForm,
-                          custom_components: [
-                            ...existing,
-                            {
-                              id: String(Date.now()),
-                              name: `Component ${existing.length + 1}`,
-                              dimensionBasis: "length",
-                              multiplier: 1,
-                            },
-                          ],
-                        });
-                      }}
-                      className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
-                    >
-                      <Plus size={13} /> Add Component
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {(rowForm.custom_components || []).map((comp, cIdx) => (
-                      <div key={comp.id || cIdx} className="flex items-center gap-2 bg-slate-900 p-2 rounded-lg border border-slate-800">
-                        <input
-                          type="text"
-                          value={comp.name}
-                          onChange={(e) => {
-                            const comps = [...(rowForm.custom_components || [])];
-                            comps[cIdx].name = e.target.value;
-                            setRowForm({ ...rowForm, custom_components: comps });
-                          }}
-                          placeholder="Component Name"
-                          className="w-32 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white"
-                        />
-                        <span className="text-slate-400 text-xs">Multiplier:</span>
-                        <NumericInput
-                          preset="integer"
-                          value={comp.multiplier}
-                          onChange={(val) => {
-                            const comps = [...(rowForm.custom_components || [])];
-                            comps[cIdx].multiplier = val;
-                            setRowForm({ ...rowForm, custom_components: comps });
-                          }}
-                          className="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white font-mono"
-                        />
-                        <span className="text-slate-400 text-xs">× Basis:</span>
-                        <select
-                          value={comp.dimensionBasis}
-                          onChange={(e) => {
-                            const comps = [...(rowForm.custom_components || [])];
-                            comps[cIdx].dimensionBasis = e.target.value as "length" | "width" | "custom_dim";
-                            setRowForm({ ...rowForm, custom_components: comps });
-                          }}
-                          className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white"
-                        >
-                          <option value="length">Length ({normalizeToMetres(rowForm.length_entered, rowForm.dim_unit).toFixed(3)}m)</option>
-                          <option value="width">Width ({normalizeToMetres(rowForm.width_entered, rowForm.dim_unit).toFixed(3)}m)</option>
-                        </select>
+                  {/* Custom Safe Formula Component Builder */}
+                  {rowForm.calc_type === "custom" && (
+                    <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-3.5 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                          Safe Formula Components
+                        </span>
                         <button
                           type="button"
                           onClick={() => {
-                            const comps = (rowForm.custom_components || []).filter((_, i) => i !== cIdx);
-                            setRowForm({ ...rowForm, custom_components: comps });
+                            const existing = rowForm.custom_components || [];
+                            setRowForm({
+                              ...rowForm,
+                              custom_components: [
+                                ...existing,
+                                {
+                                  id: String(Date.now()),
+                                  name: `Component ${existing.length + 1}`,
+                                  dimensionBasis: "length",
+                                  multiplier: 1,
+                                },
+                              ],
+                            });
                           }}
-                          className="text-red-400 hover:text-red-300 p-1"
+                          className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
                         >
-                          <Trash2 size={13} />
+                          <Plus size={13} /> Add Component
                         </button>
                       </div>
-                    ))}
+
+                      <div className="space-y-2">
+                        {(rowForm.custom_components || []).map((comp, cIdx) => (
+                          <div key={comp.id || cIdx} className="flex items-center gap-2 bg-slate-900 p-2 rounded-lg border border-slate-800">
+                            <input
+                              type="text"
+                              value={comp.name}
+                              onChange={(e) => {
+                                const comps = [...(rowForm.custom_components || [])];
+                                comps[cIdx].name = e.target.value;
+                                setRowForm({ ...rowForm, custom_components: comps });
+                              }}
+                              placeholder="Component Name"
+                              className="w-32 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white"
+                            />
+                            <span className="text-slate-400 text-xs">Multiplier:</span>
+                            <NumericInput
+                              preset="integer"
+                              value={comp.multiplier}
+                              onChange={(val) => {
+                                const comps = [...(rowForm.custom_components || [])];
+                                comps[cIdx].multiplier = val;
+                                setRowForm({ ...rowForm, custom_components: comps });
+                              }}
+                              className="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white font-mono"
+                            />
+                            <span className="text-slate-400 text-xs">× Basis:</span>
+                            <select
+                              value={comp.dimensionBasis}
+                              onChange={(e) => {
+                                const comps = [...(rowForm.custom_components || [])];
+                                comps[cIdx].dimensionBasis = e.target.value as "length" | "width" | "custom_dim";
+                                setRowForm({ ...rowForm, custom_components: comps });
+                              }}
+                              className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white"
+                            >
+                              <option value="length">Length ({normalizeToMetres(rowForm.length_entered, rowForm.dim_unit).toFixed(3)}m)</option>
+                              <option value="width">Width ({normalizeToMetres(rowForm.width_entered, rowForm.dim_unit).toFixed(3)}m)</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const comps = (rowForm.custom_components || []).filter((_, i) => i !== cIdx);
+                                setRowForm({ ...rowForm, custom_components: comps });
+                              }}
+                              className="text-red-400 hover:text-red-300 p-1"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quantity Only field */}
+                  {rowForm.calc_type === "quantity_only" && (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1">Item Count (pcs)</label>
+                      <NumericInput
+                        preset="integer"
+                        value={rowForm.quantity}
+                        onChange={(val) => setRowForm({ ...rowForm, quantity: val })}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white font-mono"
+                      />
+                    </div>
+                  )}
+
+                  {/* Costing Rate */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-800 pt-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1">
+                        Rate ({liveFormPreview.rate_unit_label})
+                      </label>
+                      <NumericInput
+                        preset="currency"
+                        value={rowForm.rate}
+                        onChange={(val) => setRowForm({ ...rowForm, rate: val })}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">AED unit rate for costing takeoff</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1">Estimated Item Cost</label>
+                      <div className="rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-3 py-2 text-xs font-bold font-mono text-emerald-400 flex items-center justify-between">
+                        <span>Cost:</span>
+                        <span className="text-sm font-black">{fmtAED(liveFormPreview.total_cost)}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1">Total Result × Rate</p>
+                    </div>
                   </div>
                 </div>
-              )}
 
-              {/* Quantity Only field */}
-              {rowForm.calc_type === "quantity_only" && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Item Count (pcs)</label>
-                  <NumericInput
-                    preset="integer"
-                    value={rowForm.quantity}
-                    onChange={(val) => setRowForm({ ...rowForm, quantity: val })}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white font-mono"
-                  />
-                </div>
-              )}
+                {/* Right Column (Live Preview & Actions): 5 cols on desktop */}
+                <div className="lg:col-span-5 space-y-4">
+                  {/* LIVE CALCULATOR PREVIEW CARD (Requirement 14) */}
+                  <div className="rounded-xl border border-emerald-500/40 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/40 p-4 sm:p-5 shadow-xl">
+                    <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2.5 mb-3.5">
+                      <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Calculator size={15} /> LIVE CALCULATION PREVIEW
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {CALC_TYPE_DEFINITIONS.find((c) => c.value === liveFormPreview.calc_type)?.label}
+                      </span>
+                    </div>
 
-              {/* Costing Rate */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-800 pt-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Rate ({liveFormPreview.rate_unit_label})
-                  </label>
-                  <NumericInput
-                    preset="currency"
-                    value={rowForm.rate}
-                    onChange={(val) => setRowForm({ ...rowForm, rate: val })}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">AED unit rate for costing takeoff</p>
-                </div>
+                    {/* Dimension inputs overview */}
+                    <div className="grid grid-cols-3 gap-2 text-xs mb-4 pb-3 border-b border-slate-800/80">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block uppercase font-medium">Length</span>
+                        <span className="font-mono font-bold text-white text-xs sm:text-sm">
+                          {liveFormPreview.length_m.toFixed(3)} m
+                        </span>
+                      </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Estimated Item Cost</label>
-                  <div className="rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-3 py-2 text-xs font-bold font-mono text-emerald-400 flex items-center justify-between">
-                    <span>Cost:</span>
-                    <span className="text-sm font-black">{fmtAED(liveFormPreview.total_cost)}</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-1">Total Result × Rate</p>
-                </div>
-              </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block uppercase font-medium">Width</span>
+                        <span className="font-mono font-bold text-white text-xs sm:text-sm">
+                          {liveFormPreview.is_variable_width && liveFormPreview.average_width_m !== undefined
+                            ? `avg ${liveFormPreview.average_width_m.toFixed(3)} m`
+                            : `${liveFormPreview.width_m.toFixed(3)} m`}
+                        </span>
+                      </div>
 
-              {/* LIVE CALCULATOR PREVIEW CARD (Requirement 14) */}
-              <div className="rounded-xl border border-emerald-500/40 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/40 p-4 sm:p-5 shadow-xl">
-                <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2.5 mb-3.5">
-                  <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <Calculator size={15} /> LIVE CALCULATION PREVIEW
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    {CALC_TYPE_DEFINITIONS.find((c) => c.value === liveFormPreview.calc_type)?.label}
-                  </span>
-                </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block uppercase font-medium">Quantity</span>
+                        <span className="font-mono font-bold text-white text-xs sm:text-sm">
+                          {liveFormPreview.quantity} pcs
+                        </span>
+                      </div>
+                    </div>
 
-                {/* Dimension inputs overview */}
-                <div className="grid grid-cols-3 gap-3 text-xs mb-4 pb-3 border-b border-slate-800/80">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Length</span>
-                    <span className="font-mono font-bold text-white text-xs sm:text-sm">
-                      {liveFormPreview.length_m.toFixed(3)} m
-                    </span>
-                  </div>
+                    {/* THE 3 STANDOUT KEY METRICS (Requirement 14) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-2.5">
+                      {/* Metric 1: PER PIECE */}
+                      <div className="rounded-lg border border-slate-700/80 bg-slate-950/80 p-3">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          PER PIECE
+                        </span>
+                        <span className="font-black font-mono text-emerald-400 text-base sm:text-lg mt-0.5 block truncate">
+                          {formatResultWithUnit(liveFormPreview.per_piece_result, liveFormPreview.result_unit)}
+                        </span>
+                      </div>
 
-                  <div>
-                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Width</span>
-                    <span className="font-mono font-bold text-white text-xs sm:text-sm">
-                      {liveFormPreview.is_variable_width && liveFormPreview.average_width_m !== undefined
-                        ? `avg ${liveFormPreview.average_width_m.toFixed(3)} m`
-                        : `${liveFormPreview.width_m.toFixed(3)} m`}
-                    </span>
-                  </div>
+                      {/* Metric 2: TOTAL RESULT */}
+                      <div className="rounded-lg border border-emerald-500/50 bg-emerald-950/50 p-3 shadow-inner">
+                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
+                          TOTAL RESULT
+                        </span>
+                        <span className="font-black font-mono text-white text-lg sm:text-xl mt-0.5 block truncate">
+                          {formatResultWithUnit(liveFormPreview.calculated_total, liveFormPreview.result_unit)}
+                        </span>
+                      </div>
 
-                  <div>
-                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Quantity</span>
-                    <span className="font-mono font-bold text-white text-xs sm:text-sm">
-                      {liveFormPreview.quantity} pcs
-                    </span>
-                  </div>
-                </div>
-
-                {/* THE 3 STANDOUT KEY METRICS (Requirement 14) */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* Metric 1: PER PIECE */}
-                  <div className="rounded-lg border border-slate-700/80 bg-slate-950/80 p-3">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      PER PIECE
-                    </span>
-                    <span className="font-black font-mono text-emerald-400 text-base sm:text-lg mt-0.5 block truncate">
-                      {formatResultWithUnit(liveFormPreview.per_piece_result, liveFormPreview.result_unit)}
-                    </span>
+                      {/* Metric 3: ESTIMATED COST */}
+                      <div className="rounded-lg border border-teal-500/50 bg-teal-950/40 p-3">
+                        <span className="text-[10px] font-bold text-teal-400 uppercase tracking-wider block">
+                          ESTIMATED COST
+                        </span>
+                        <span className="font-black font-mono text-emerald-300 text-base sm:text-lg mt-0.5 block truncate">
+                          {fmtAED(liveFormPreview.total_cost)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Metric 2: TOTAL RESULT */}
-                  <div className="rounded-lg border border-emerald-500/50 bg-emerald-950/50 p-3 shadow-inner">
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
-                      TOTAL RESULT
+                  {/* Active Formula Explanation */}
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 text-xs">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      Active Formula
                     </span>
-                    <span className="font-black font-mono text-white text-lg sm:text-xl mt-0.5 block truncate">
-                      {formatResultWithUnit(liveFormPreview.calculated_total, liveFormPreview.result_unit)}
-                    </span>
+                    <p className="font-mono text-emerald-400 text-xs font-semibold">
+                      {liveFormPreview.formula_display}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Converts automatically: 1000 mm = 1 m | 100 cm = 1 m
+                    </p>
                   </div>
 
-                  {/* Metric 3: ESTIMATED COST */}
-                  <div className="rounded-lg border border-teal-500/50 bg-teal-950/40 p-3">
-                    <span className="text-[10px] font-bold text-teal-400 uppercase tracking-wider block">
-                      ESTIMATED COST
-                    </span>
-                    <span className="font-black font-mono text-emerald-300 text-base sm:text-lg mt-0.5 block truncate">
-                      {fmtAED(liveFormPreview.total_cost)}
-                    </span>
+                  {/* Form Actions */}
+                  <div className="flex items-center justify-end gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowRowModal(false)}
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-5 py-2 text-xs font-bold text-white transition-colors shadow flex items-center gap-1.5"
+                    >
+                      <Save size={14} />
+                      <span>{editingRowIndex !== null ? "Update Measurement" : "Add to Sheet"}</span>
+                    </button>
                   </div>
                 </div>
-              </div>
-
-              {/* Form Actions */}
-              <div className="flex items-center justify-end gap-3 border-t border-slate-800 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowRowModal(false)}
-                  className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-5 py-2 text-xs font-bold text-white transition-colors shadow flex items-center gap-1.5"
-                >
-                  <Save size={14} />
-                  <span>{editingRowIndex !== null ? "Update Measurement" : "Add to Sheet"}</span>
-                </button>
               </div>
             </form>
           </div>
@@ -1541,8 +1563,8 @@ export default function MeasurementsPage() {
       {/* MODAL: BEGINNER-FRIENDLY HELP GUIDE (Requirement 19) */}
       {/* ========================================================================= */}
       {showHelpModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
-          <div className="relative w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl overflow-hidden my-8">
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 sm:pt-14 pb-8 p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
+          <div className="relative w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl overflow-hidden my-4 sm:my-8">
             <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950 px-6 py-4">
               <div className="flex items-center gap-2">
                 <HelpCircle className="text-amber-400" size={20} />
@@ -1607,8 +1629,8 @@ export default function MeasurementsPage() {
       {/* MODAL: TRANSFER TO QUOTATION (Requirement 17) */}
       {/* ========================================================================= */}
       {showQuotationModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="relative w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 sm:pt-14 pb-8 p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
+          <div className="relative w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl p-6 space-y-4 my-4 sm:my-8">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="font-bold text-white text-base flex items-center gap-2">
                 <FileText className="text-emerald-400" size={18} />
@@ -1712,6 +1734,7 @@ export default function MeasurementsPage() {
           <MeasurementSheetTemplate company={company} data={printDocData} />
         </PrintModal>
       )}
+      </div>
     </div>
   );
 }

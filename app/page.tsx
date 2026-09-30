@@ -223,30 +223,30 @@ export default function DashboardPage() {
       {/* Executive Hero Banner */}
       <header className="relative overflow-hidden border-b border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white shadow-md">
         {/* Subtle radial backdrop lighting and subtle micro pattern */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_50%_-10%,rgba(16,185,129,0.14),rgba(255,255,255,0))]" />
-        <div className="absolute inset-0 opacity-[0.025] bg-[linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] bg-[size:32px_32px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_20%_-10%,rgba(16,185,129,0.18),rgba(15,23,42,0))]" />
+        <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] bg-[size:32px_32px]" />
 
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-7 sm:py-9">
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex items-start sm:items-center gap-4 sm:gap-5 min-w-0">
-              {/* Company Logo or Monogram */}
+            <div className="flex items-start sm:items-center gap-4 sm:gap-6 min-w-0">
+              {/* Company Logo or Monogram (prominent desktop 80-96px, tablet 72-80px, mobile 64px) */}
               {company?.logo_url ? (
-                <div className="relative h-16 w-16 sm:h-20 sm:w-20 shrink-0 rounded-2xl border border-slate-700/80 bg-slate-900/90 p-2 shadow-inner flex items-center justify-center backdrop-blur-xs">
+                <div className="relative h-16 w-16 sm:h-20 sm:w-20 md:h-24 md:w-24 shrink-0 rounded-2xl border border-emerald-500/25 bg-slate-900/95 p-2.5 shadow-xl ring-1 ring-white/10 flex items-center justify-center backdrop-blur-md">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={company.logo_url}
                     alt={company.name || "Company Logo"}
-                    className="max-h-full max-w-full object-contain"
+                    className="max-h-full max-w-full object-contain drop-shadow"
                   />
                 </div>
               ) : (
-                <div className="flex h-16 w-16 sm:h-20 sm:w-20 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-600 to-teal-800 text-white font-black text-xl sm:text-2xl shadow-lg shadow-emerald-950/40">
+                <div className="flex h-16 w-16 sm:h-20 sm:w-20 md:h-24 md:w-24 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 text-white font-black text-2xl sm:text-3xl md:text-4xl shadow-xl shadow-emerald-950/50 ring-1 ring-white/10">
                   {companyName ? companyName.substring(0, 2).toUpperCase() : "DXB"}
                 </div>
               )}
 
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/25 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     Live ERP Feed
@@ -263,15 +263,17 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                {/* Company Name: responsive Desktop 32-40px, Tablet 28-34px, Mobile 24-30px */}
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight break-words max-w-3xl leading-tight">
+                {/* Substantially Larger Company Name */}
+                <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white tracking-tight break-words max-w-4xl leading-tight drop-shadow-sm">
                   {companyName}
                 </h1>
-                <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-200">
-                  Business Management Dashboard
+                <p className="mt-1.5 text-xs sm:text-sm font-semibold text-emerald-400/90 flex items-center gap-2">
+                  <span>Business Management Dashboard</span>
+                  <span className="text-slate-500 hidden sm:inline">•</span>
+                  <span className="text-slate-300 font-normal hidden sm:inline">Executive Control & Commercial Takeoffs</span>
                 </p>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Quick overview of your business operations, cash flow, and live commercial metrics
+                <p className="text-xs text-slate-400 mt-1 max-w-2xl">
+                  Comprehensive overview of your UAE business operations, cash flow, receivables, and live commercial metrics.
                 </p>
               </div>
             </div>

@@ -32,10 +32,26 @@ body,
   --doc-table-header: #0F172A;
   --doc-total-highlight: #F8F6ED;
 
+  /* ERP App Shell Layout Dimensions */
+  --app-header-height: 3.5rem; /* 56px standard top header */
+  --app-sidebar-width: 17rem;  /* 272px standard desktop sidebar */
+
   /* Local, offline-safe font stacks. PDF rendering must never depend on a
      build-time request to an external font service. */
   --font-app-sans: Arial, Helvetica, "Segoe UI", sans-serif;
   --font-app-mono: "Cascadia Mono", "Courier New", monospace;
+}
+
+/* Ensure scroll-into-view targets and anchors never hide behind sticky/fixed header */
+html,
+body,
+main,
+[data-print-root] {
+  scroll-padding-top: var(--app-header-height);
+}
+
+h1, h2, h3, h4, section, [id] {
+  scroll-margin-top: calc(var(--app-header-height) + 1rem);
 }
 
 @theme inline {
@@ -66,26 +82,35 @@ body {
 
 /* ==========================================================================
    UNIVERSAL SLEEK ERP SCROLLBARS (DARK & LIGHT THEMES)
-   Thin, modern, subtle in dark mode with rounded thumb and clean hover
+   Applied globally via standalone pseudo-elements and explicit element targets
    ========================================================================== */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #475569 transparent;
+  scrollbar-color: #475569 #0f172a;
 }
 
+html,
+body,
+main,
+[data-print-root] {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 #0f172a;
+}
+
+/* Chrome, Edge, Safari (Chromium/WebKit) - Standalone Global */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #0f172a;
 }
 
 ::-webkit-scrollbar-thumb {
   background-color: #475569;
   border-radius: 9999px;
-  border: 1px solid transparent;
+  border: 1px solid #0f172a;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -93,7 +118,69 @@ body {
 }
 
 ::-webkit-scrollbar-corner {
+  background: #0f172a;
+}
+
+/* Chrome, Edge, Safari - Explicit Main & Document Container Rules */
+main::-webkit-scrollbar,
+body::-webkit-scrollbar,
+html::-webkit-scrollbar,
+div::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+main::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
+html::-webkit-scrollbar-track,
+div::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+main::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+html::-webkit-scrollbar-thumb,
+div::-webkit-scrollbar-thumb {
+  background-color: #475569;
+  border-radius: 9999px;
+  border: 1px solid #0f172a;
+}
+
+main::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover,
+html::-webkit-scrollbar-thumb:hover,
+div::-webkit-scrollbar-thumb:hover {
+  background-color: #64748b;
+}
+
+/* Extremely subtle sidebar scrollbar: visible on hover, never distracting */
+.sidebar-scrollbar,
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.15) transparent;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb,
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.15);
+  border-radius: 9999px;
+  transition: background-color 0.2s ease;
+}
+
+.sidebar-scrollbar:hover::-webkit-scrollbar-thumb,
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.35);
 }
 
 /* ==========================================================================

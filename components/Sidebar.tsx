@@ -16,7 +16,12 @@ import {
 } from "lucide-react";
 import { getCurrentCompany } from "@/lib/helpers";
 
-type CompanyInfo = { name: string; trn: string | null; city: string | null };
+type CompanyInfo = {
+  name: string;
+  trn: string | null;
+  city: string | null;
+  logo_url?: string | null;
+};
 
 type NavLinkProps = {
   href: string;
@@ -128,9 +133,10 @@ export default function Sidebar() {
         const companyData = await getCurrentCompany();
         if (isMounted && companyData) {
           setCompany({
-            name: companyData.name || "Your Company",
+            name: companyData.name || "Dubai ERP",
             trn: companyData.trn || null,
-            city: companyData.city || "Dubai"
+            city: companyData.city || "Dubai",
+            logo_url: companyData.logo_url || null,
           });
         }
       } catch (err) {
@@ -166,36 +172,54 @@ export default function Sidebar() {
 
   const navContent = (
     <div className="flex h-full flex-col bg-slate-900 text-slate-300">
-      {/* Brand Header */}
-      <div className="h-14 border-b border-slate-800 px-4 flex items-center justify-between bg-slate-900 shrink-0">
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-xs shadow-sm transition-transform group-hover:scale-105">
-            DXB
+      {/* Brand Header with enlarged logo (48-56px desktop, 44-48px tablet, 40-44px mobile) */}
+      <div className="min-h-[4.75rem] border-b border-slate-800 px-4 py-3 flex items-center justify-between bg-slate-900 shrink-0">
+        <Link href="/" className="flex items-center gap-3 group min-w-0 flex-1">
+          {/* Logo container matching 48-56px desktop requirement */}
+          <div className="h-12 w-12 sm:h-13 sm:w-13 md:h-14 md:w-14 shrink-0 rounded-xl border border-slate-700/80 bg-slate-800/90 p-1 flex items-center justify-center overflow-hidden shadow-sm transition-transform group-hover:scale-105">
+            {company?.logo_url ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={company.logo_url}
+                alt={company.name || "Company Logo"}
+                className="max-h-full max-w-full object-contain"
+              />
+            ) : (
+              <div className="w-full h-full rounded-lg bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-sm md:text-base flex items-center justify-center">
+                {company?.name ? company.name.substring(0, 2).toUpperCase() : "DXB"}
+              </div>
+            )}
           </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold text-white tracking-tight text-sm">Dubai ERP</span>
+
+          <div className="flex flex-col min-w-0 flex-1 justify-center">
+            <span
+              className="font-bold text-white tracking-tight text-sm md:text-base leading-snug truncate"
+              title={company?.name || "Dubai ERP"}
+            >
+              {company?.name || "Dubai ERP"}
+            </span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] text-slate-400 font-medium truncate">
+                Business Suite
+              </span>
               <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-400 border border-emerald-500/30 leading-none">
                 5% VAT
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 truncate max-w-[130px] leading-tight">
-              {company?.name || "Enterprise"}
-            </p>
           </div>
         </Link>
         <button
           type="button"
           onClick={() => setMobileOpen(false)}
-          className="md:hidden rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          className="md:hidden rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors ml-2 shrink-0"
           aria-label="Close Navigation"
         >
           <X size={18} />
         </button>
       </div>
 
-      {/* Nav List */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1.5 text-sm custom-scrollbar">
+      {/* Nav List with subtle sidebar scrollbar */}
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1.5 text-sm sidebar-scrollbar">
         {company?.trn && (
           <div className="mb-2 flex items-center justify-between rounded-lg bg-slate-800/60 px-2.5 py-1 text-[11px] text-slate-400 border border-slate-800">
             <span className="truncate">TRN: {company.trn}</span>
@@ -420,7 +444,7 @@ export default function Sidebar() {
   return (
     <>
       {/* Desktop Navigation */}
-      <aside className="no-print print-hide hidden md:flex h-screen w-64 flex-col shrink-0 border-r border-slate-800 sticky top-0 z-30 m-0 p-0">
+      <aside className="no-print print-hide hidden md:flex h-screen w-72 flex-col shrink-0 border-r border-slate-800 sticky top-0 z-30 m-0 p-0">
         {navContent}
       </aside>
 

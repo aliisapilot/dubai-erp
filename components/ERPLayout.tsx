@@ -9,16 +9,21 @@ export default function ERPLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    // Prevent mouse-wheel scrolling from inadvertently incrementing/decrementing number fields
-    const handleWheel = () => {
+    // Prevent mouse-wheel scrolling from inadvertently incrementing/decrementing number fields.
+    // Intercept in capture phase so the number input never mutates its value, and the page continues scrolling smoothly.
+    const handleWheel = (e: WheelEvent) => {
       const activeEl = document.activeElement;
       if (activeEl instanceof HTMLInputElement && activeEl.type === "number") {
         activeEl.blur();
       }
+      const target = e.target as HTMLElement | null;
+      if (target && target.tagName === "INPUT" && (target as HTMLInputElement).type === "number") {
+        (target as HTMLInputElement).blur();
+      }
     };
 
-    window.addEventListener("wheel", handleWheel, { passive: true });
-    return () => window.removeEventListener("wheel", handleWheel);
+    window.addEventListener("wheel", handleWheel, { capture: true, passive: true });
+    return () => window.removeEventListener("wheel", handleWheel, { capture: true });
   }, []);
 
   // On login or mobile portal pages, render children directly without ERP desktop sidebar/header
