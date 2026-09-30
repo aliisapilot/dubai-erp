@@ -430,6 +430,35 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     word-break: normal;
   }
 
+  /* Table layout protection in print documents: Prevent table columns from collapsing
+     character-by-character while allowing natural word wrapping. */
+  .print-document table,
+  .dynamic-document-page table {
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+  .print-document table th,
+  .print-document table td,
+  .dynamic-document-page table th,
+  .dynamic-document-page table td {
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  /* Strict single-page document enforcement */
+  .single-page-doc,
+  .document-sheet.single-page-doc,
+  .print-document.single-page-doc {
+    max-height: 297mm !important;
+    height: 297mm !important;
+    overflow: hidden !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
   /* 2. Universal Non-Print Application Chrome & UI Elimination */
   nav,
   aside,

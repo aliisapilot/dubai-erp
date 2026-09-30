@@ -81,32 +81,43 @@ export default function MeasurementSheetTemplate({
 
         {/* Measurements Table */}
         <div className="mb-2 overflow-hidden rounded border border-slate-200">
-          <table className="w-full border-collapse text-left text-[10px]">
+          <table className="w-full table-fixed border-collapse text-left text-[9.5px]">
+            <colgroup>
+              <col style={{ width: "4%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "23%" }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "6%" }} />
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "6%" }} />
+              <col style={{ width: "7%" }} />
+            </colgroup>
             <thead>
-              <tr className="bg-slate-900 text-white font-semibold text-[9px] uppercase tracking-wider">
-                <th className="py-1.5 px-2 text-center w-7">#</th>
-                <th className="py-1.5 px-2.5">Area / Ref</th>
-                <th className="py-1.5 px-2.5">Description</th>
-                <th className="py-1.5 px-2 text-center">Dimensions</th>
-                <th className="py-1.5 px-2 text-center">Qty</th>
-                <th className="py-1.5 px-2.5">Calculation Type & Formula</th>
-                <th className="py-1.5 px-2.5 text-right">Result & Unit</th>
-                <th className="py-1.5 px-2 text-right">Rate</th>
-                <th className="py-1.5 px-2.5 text-right">Amount</th>
+              <tr className="bg-slate-900 text-white font-semibold text-[8.5px] uppercase tracking-wider">
+                <th className="py-1.5 px-1 text-center">#</th>
+                <th className="py-1.5 px-2">Area / Ref</th>
+                <th className="py-1.5 px-2">Description</th>
+                <th className="py-1.5 px-1 text-center">Dimensions</th>
+                <th className="py-1.5 px-1 text-center">Qty</th>
+                <th className="py-1.5 px-2">Calculation Type & Formula</th>
+                <th className="py-1.5 px-2 text-right">Result & Unit</th>
+                <th className="py-1.5 px-1 text-right">Rate</th>
+                <th className="py-1.5 px-2 text-right">Amount</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {data.items.map((item, idx) => (
                 <tr key={item.id || idx} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
-                  <td className="py-1 px-2 text-center font-mono text-slate-400 text-[9px]">{idx + 1}</td>
-                  <td className="py-1 px-2.5 font-bold text-slate-900 whitespace-nowrap text-[10px]">
+                  <td className="py-1 px-1 text-center font-mono text-slate-400 text-[8.5px] align-top">{idx + 1}</td>
+                  <td className="py-1 px-2 font-bold text-slate-900 text-[9px] truncate align-top">
                     {item.area_name || `Area ${idx + 1}`}
                   </td>
-                  <td className="py-1 px-2.5 text-slate-700 text-[9.5px]">
-                    <div className="font-medium">{item.description || "Measurement item"}</div>
-                    {item.notes && <div className="text-[8.5px] text-slate-400 italic">{item.notes}</div>}
+                  <td className="py-1 px-2 text-slate-700 text-[9px] break-words align-top">
+                    <div className="font-semibold text-slate-900 leading-snug">{item.description || "Measurement item"}</div>
+                    {item.notes && <div className="text-[8px] text-slate-400 italic leading-snug mt-0.5">{item.notes}</div>}
                   </td>
-                  <td className="py-1 px-2 text-center text-slate-600 whitespace-nowrap font-mono text-[9px]">
+                  <td className="py-1 px-1 text-center text-slate-600 font-mono text-[8px] leading-snug align-top">
                     {item.calc_type === "quantity_only" ? (
                       "—"
                     ) : (
@@ -122,11 +133,11 @@ export default function MeasurementSheetTemplate({
                       </div>
                     )}
                   </td>
-                  <td className="py-1 px-2 text-center font-bold text-slate-900 text-[10px]">
+                  <td className="py-1 px-1 text-center font-bold text-slate-900 text-[9px] whitespace-nowrap align-top">
                     {item.quantity} pcs
                   </td>
-                  <td className="py-1 px-2.5 text-slate-600">
-                    <div className="font-semibold text-slate-800 text-[9.5px]">
+                  <td className="py-1 px-2 text-slate-600 align-top">
+                    <div className="font-semibold text-slate-800 text-[9px] leading-snug">
                       {item.calc_type === "pvc_edge_joint"
                         ? "PVC Edge + Centre Joint"
                         : item.calc_type === "linear"
@@ -139,17 +150,17 @@ export default function MeasurementSheetTemplate({
                         ? "Item Count"
                         : "Custom Formula"}
                     </div>
-                    <div className="text-[8.5px] font-mono text-slate-500 truncate max-w-[190px]" title={item.formula_display}>
+                    <div className="text-[8px] font-mono text-slate-500 truncate" title={item.formula_display}>
                       {item.formula_display}
                     </div>
                   </td>
-                  <td className="py-1 px-2.5 text-right font-bold font-mono text-emerald-800 whitespace-nowrap text-[10px]">
+                  <td className="py-1 px-2 text-right font-bold font-mono text-emerald-800 whitespace-nowrap text-[9.5px] align-top">
                     {formatResultWithUnit(item.calculated_total, item.result_unit)}
                   </td>
-                  <td className="py-1 px-2 text-right text-slate-600 font-mono text-[9px] whitespace-nowrap">
+                  <td className="py-1 px-1 text-right text-slate-600 font-mono text-[8.5px] whitespace-nowrap align-top">
                     {item.rate > 0 ? `${fmtAED(item.rate)} / ${item.result_unit}` : "—"}
                   </td>
-                  <td className="py-1 px-2.5 text-right font-bold text-slate-900 font-mono whitespace-nowrap text-[10px]">
+                  <td className="py-1 px-2 text-right font-bold text-slate-900 font-mono whitespace-nowrap text-[9.5px] align-top">
                     {item.total_cost > 0 ? fmtAED(item.total_cost) : "—"}
                   </td>
                 </tr>

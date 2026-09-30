@@ -136,7 +136,7 @@ export default function DocumentContainer({
       ) : (
         /* True A4 Document Sheet: exactly 210mm × 297mm. */
         <div
-          className={`print-page print-document document-sheet relative mx-auto box-border min-h-[297mm] w-[210mm] border border-slate-200 bg-white p-[10mm] shadow-xl print:m-0 print:min-h-[297mm] print:w-[210mm] print:border-none print:p-[8mm] print:shadow-none overflow-hidden ${className}`}
+          className={`print-page print-document document-sheet ${totalPages === 1 ? "single-page-doc" : ""} relative mx-auto box-border min-h-[297mm] w-[210mm] border border-slate-200 bg-white p-[10mm] shadow-xl print:m-0 print:min-h-[297mm] print:w-[210mm] print:border-none print:p-[8mm] print:shadow-none overflow-hidden ${className}`}
           style={{
             ...brandVars,
           }}
