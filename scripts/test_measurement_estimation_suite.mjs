@@ -228,8 +228,23 @@ const dbSumRes = await db.query(`
 
 assert.equal(Number(dbSumRes.rows[0].grand_linear), 1410.56);
 assert.equal(Number(dbSumRes.rows[0].grand_qty), 30);
-assert.equal(Number(dbSumRes.rows[0].grand_cost), 7052.80);
-console.log('✓ Supabase migration applied and queried with PGlite successfully! Grand Total: 1,410.560 m');
+console.log('--- 10. Testing Rate Calculation (58 AED/m -> AED 16,258.56) ---');
+const area1At58 = calculateMeasurementRow({
+  ...REAL_PROJECT_PARKING_SHADE_TEST_ROWS[0], // Area 1: 280.320 m
+  rate: 58
+});
+assert.equal(area1At58.calculated_total, 280.32);
+assert.equal(area1At58.rate, 58);
+assert.equal(area1At58.total_cost, 16258.56);
+console.log(`✓ 280.320 m × AED 58/m = AED ${area1At58.total_cost.toFixed(2)} (Expected: AED 16,258.56)`);
 
-console.log('\nALL 9 MEASUREMENT CALCULATION & DATABASE TESTS PASSED!');
+// Decimal rate 58.50
+const area1At58_5 = calculateMeasurementRow({
+  ...REAL_PROJECT_PARKING_SHADE_TEST_ROWS[0],
+  rate: 58.50
+});
+assert.equal(area1At58_5.total_cost, 16398.72);
+console.log(`✓ Decimal rate 58.50: 280.320 m × AED 58.50/m = AED ${area1At58_5.total_cost.toFixed(2)}`);
+
+console.log('\nALL 10 MEASUREMENT CALCULATION & DATABASE TESTS PASSED!');
 

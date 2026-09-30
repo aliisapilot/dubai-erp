@@ -68,7 +68,7 @@ const DEFAULT_NEW_ROW: MeasurementRowInput = {
   pvc_length_edges: 2,
   pvc_width_edges: 2,
   pvc_centre_joints: 1,
-  rate: 5.0,
+  rate: 0,
   notes: "",
   custom_components: [
     { id: "1", name: "Length Runs", dimensionBasis: "length", multiplier: 2 },
