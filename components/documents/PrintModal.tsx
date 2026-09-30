@@ -1,7 +1,8 @@
 "use client";
 import { printCurrentDocument } from "@/lib/print";
 
-import React, { ReactNode, useEffect, useRef, useState } from "react";
+import React, { ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { Maximize, Printer, X, ZoomIn, ZoomOut } from "lucide-react";
 import { getDocumentPreviewScale } from "@/lib/documentPreview";
 
@@ -11,7 +12,10 @@ interface PrintModalProps {
   children: ReactNode;
 }
 
+const emptySubscribe = () => () => {};
+
 export default function PrintModal({ isOpen, onClose, children }: PrintModalProps) {
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const previewRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 794, height: 1123 });
@@ -78,7 +82,7 @@ export default function PrintModal({ isOpen, onClose, children }: PrintModalProp
 
   if (!isOpen) return null;
 
-  return (
+  const modalElement = (
     <div
       className="print-modal-container fixed inset-0 z-50 flex h-[100dvh] flex-col overflow-hidden bg-black/70 backdrop-blur-sm pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] print:static print:block print:h-auto print:w-[210mm] print:max-w-none print:overflow-visible print:bg-transparent print:p-0 print:shadow-none"
       role="dialog"
@@ -114,4 +118,10 @@ export default function PrintModal({ isOpen, onClose, children }: PrintModalProp
       </div>
     </div>
   );
+
+  if (mounted && typeof document !== "undefined") {
+    return createPortal(modalElement, document.body);
+  }
+
+  return modalElement;
 }

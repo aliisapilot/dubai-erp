@@ -545,7 +545,7 @@ export default function MeasurementsPage() {
   };
 
   return (
-    <div className="min-h-full w-full bg-slate-900 text-slate-100 p-3 sm:p-6 lg:p-8">
+    <div className={`min-h-full w-full bg-slate-900 text-slate-100 p-3 sm:p-6 lg:p-8 ${showPrintModal ? "no-print" : ""}`}>
       <div className="mx-auto max-w-[1440px] w-full">
         {/* Top Banner & Header */}
         <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">

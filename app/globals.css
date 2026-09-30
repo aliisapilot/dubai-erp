@@ -462,9 +462,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   /* 3. Hide Screen UI Outside Print Modal Container */
-  /* Keep only the branch containing the active mobile PDF modal. Without this,
-     the fixed full-screen preview can be repeated by Chromium on a second
-     printed sheet and background document UI can also enter the print flow. */
+  /* Keep only the print-modal-container when modal is open */
+  body:has(.print-modal-container) > *:not(.print-modal-container),
   body:has(.print-modal-container) *:has(.print-modal-container) > *:not(.print-modal-container):not(:has(.print-modal-container)),
   body:has(.print-modal-container) main > *:not(.print-modal-container):not(:has(.print-document)):not(:has(.print-modal-container)):not(:has(.dynamic-document-page)),
   body:has(.print-modal-container) aside,
