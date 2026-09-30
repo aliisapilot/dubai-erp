@@ -714,55 +714,56 @@ export default function MeasurementsPage() {
               <table className="w-full text-left text-xs text-slate-300">
                 <thead>
                   <tr className="border-b border-slate-800 bg-slate-950/80 text-[11px] uppercase tracking-wider text-slate-400 font-medium">
-                    <th className="py-3 px-3 text-center w-10">#</th>
-                    <th className="py-3 px-4">Area / Ref</th>
-                    <th className="py-3 px-4">Description</th>
-                    <th className="py-3 px-4 text-center">Dimensions</th>
-                    <th className="py-3 px-3 text-center">Qty</th>
-                    <th className="py-3 px-4">Calculation Type &amp; Formula</th>
-                    <th className="py-3 px-4 text-right">Result &amp; Unit</th>
-                    <th className="py-3 px-4 text-right">Rate</th>
-                    <th className="py-3 px-4 text-right">Cost (AED)</th>
-                    <th className="py-3 px-4 text-center w-28">Actions</th>
+                    <th className="py-2.5 px-2 text-center w-8">#</th>
+                    <th className="py-2.5 px-2.5">Area / Ref</th>
+                    <th className="py-2.5 px-2.5">Description</th>
+                    <th className="py-2.5 px-2 text-center">Dimensions</th>
+                    <th className="py-2.5 px-2 text-center w-14">Qty</th>
+                    <th className="py-2.5 px-2.5">Method &amp; Formula</th>
+                    <th className="py-2.5 px-2.5 text-right">Result &amp; Unit</th>
+                    <th className="py-2.5 px-2 text-right">Rate</th>
+                    <th className="py-2.5 px-2.5 text-right">Cost (AED)</th>
+                    <th className="py-2.5 px-2 text-center w-24 sticky right-0 bg-slate-950 shadow-sm z-10">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/80">
                   {calculatedRows.map((row, idx) => {
                     const isExpanded = Boolean(expandedExplanations[idx]);
+                    const typeDef = CALC_TYPE_DEFINITIONS.find((c) => c.value === row.calc_type);
                     return (
                       <React.Fragment key={row.id || idx}>
                         <tr className="hover:bg-slate-800/40 transition-colors group">
-                          <td className="py-3 px-3 text-center font-mono text-slate-500 text-[11px]">
+                          <td className="py-2.5 px-2 text-center font-mono text-slate-500 text-[11px]">
                             {idx + 1}
                           </td>
-                          <td className="py-3 px-4 font-bold text-white whitespace-nowrap">
+                          <td className="py-2.5 px-2.5 font-bold text-white whitespace-nowrap">
                             {row.area_name || `Area ${idx + 1}`}
                           </td>
-                          <td className="py-3 px-4 text-slate-300 max-w-xs truncate">
-                            {row.description || "—"}
+                          <td className="py-2.5 px-2.5 text-slate-300 max-w-[160px] truncate" title={row.description}>
+                            <div className="truncate font-medium">{row.description || "—"}</div>
                             {row.notes && (
-                              <div className="text-[10px] text-slate-500 truncate">{row.notes}</div>
+                              <div className="text-[10px] text-slate-500 truncate" title={row.notes}>{row.notes}</div>
                             )}
                           </td>
-                          <td className="py-3 px-4 text-center font-mono text-xs whitespace-nowrap text-slate-300">
+                          <td className="py-2.5 px-2 text-center font-mono text-[11px] whitespace-nowrap text-slate-300">
                             {row.calc_type === "quantity_only" ? (
                               <span className="text-slate-500">—</span>
                             ) : (
                               <div>
                                 <div>
                                   L: <span className="font-semibold text-white">{row.length_entered} {row.dim_unit}</span>{" "}
-                                  <span className="text-slate-500 text-[10px]">({row.length_m.toFixed(3)}m)</span>
+                                  <span className="text-slate-500 text-[9px]">({row.length_m.toFixed(3)}m)</span>
                                 </div>
                                 {row.calc_type !== "linear" && (
                                   <div>
                                     {row.is_variable_width && row.width2_m !== undefined ? (
-                                      <span className="text-amber-400 text-[11px]">
-                                        W: avg {row.average_width_m?.toFixed(3)}m (taper)
+                                      <span className="text-amber-400 text-[10px]">
+                                        W: avg {row.average_width_m?.toFixed(3)}m
                                       </span>
                                     ) : (
                                       <span>
                                         W: <span className="font-semibold text-white">{row.width_entered} {row.dim_unit}</span>{" "}
-                                        <span className="text-slate-500 text-[10px]">({row.width_m.toFixed(3)}m)</span>
+                                        <span className="text-slate-500 text-[9px]">({row.width_m.toFixed(3)}m)</span>
                                       </span>
                                     )}
                                   </div>
@@ -770,36 +771,38 @@ export default function MeasurementsPage() {
                               </div>
                             )}
                           </td>
-                          <td className="py-3 px-3 text-center font-semibold font-mono text-white">
-                            {row.quantity} <span className="text-slate-500 text-[11px]">pcs</span>
+                          <td className="py-2.5 px-2 text-center font-semibold font-mono text-white whitespace-nowrap">
+                            {row.quantity} <span className="text-slate-500 text-[10px]">pcs</span>
                           </td>
-                          <td className="py-3 px-4">
-                            <div className="font-semibold text-slate-200">
-                              {CALC_TYPE_DEFINITIONS.find((c) => c.value === row.calc_type)?.label || row.calc_type}
+                          <td className="py-2.5 px-2.5 max-w-[180px]">
+                            <div className="font-semibold text-slate-200 truncate text-[11px]">
+                              {typeDef?.label.replace(/ \([^\)]+\)/, "") || row.calc_type}
                             </div>
-                            <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate max-w-xs" title={row.formula_display}>
-                              {row.formula_display}
+                            <div className="text-[10px] font-mono text-emerald-400/90 truncate" title={row.formula_display}>
+                              {row.calc_type === "pvc_edge_joint"
+                                ? `(${Number(row.pvc_length_edges) + Number(row.pvc_centre_joints)}L + ${row.pvc_width_edges}W) × Qty`
+                                : row.formula_display}
                             </div>
                           </td>
-                          <td className="py-3 px-4 text-right whitespace-nowrap">
-                            <span className="rounded bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 font-mono font-bold text-emerald-400 text-sm">
+                          <td className="py-2.5 px-2.5 text-right whitespace-nowrap">
+                            <span className="rounded bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 font-mono font-bold text-emerald-400 text-xs">
                               {formatResultWithUnit(row.calculated_total, row.result_unit)}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-right font-mono text-xs whitespace-nowrap text-slate-400">
+                          <td className="py-2.5 px-2 text-right font-mono text-[11px] whitespace-nowrap text-slate-400">
                             {row.rate > 0 ? (
                               <span>
                                 AED {row.rate.toFixed(2)}
-                                <span className="text-[10px] text-slate-500"> / {row.result_unit}</span>
+                                <span className="text-[9px] text-slate-500">/{row.result_unit}</span>
                               </span>
                             ) : (
                               "—"
                             )}
                           </td>
-                          <td className="py-3 px-4 text-right font-mono font-semibold text-slate-200 whitespace-nowrap">
+                          <td className="py-2.5 px-2.5 text-right font-mono font-semibold text-slate-200 whitespace-nowrap text-xs">
                             {row.total_cost > 0 ? fmtAED(row.total_cost) : "—"}
                           </td>
-                          <td className="py-3 px-4 text-center">
+                          <td className="py-2.5 px-2 text-center sticky right-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-sm">
                             <div className="flex items-center justify-center gap-1">
                               <button
                                 type="button"
