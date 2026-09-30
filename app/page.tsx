@@ -187,22 +187,30 @@ export default function DashboardPage() {
   const card = (icon: React.ReactNode, label: string, value: string | number, sub: string, href: string, alert = false) => (
     <Link
       href={href}
-      className={`group flex flex-col rounded-xl border bg-white p-4 sm:p-5 shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 ${
-        alert ? "border-amber-300 bg-amber-50/30" : "border-slate-200 hover:border-slate-300"
+      className={`group flex flex-col rounded-xl border p-4 sm:p-5 shadow-lg transition-all duration-200 hover:-translate-y-0.5 ${
+        alert
+          ? "border-amber-500/40 bg-amber-950/20 hover:border-amber-500/60"
+          : "border-slate-800 bg-slate-900/90 hover:border-slate-700 hover:bg-slate-800/80"
       }`}
     >
       <div className="flex items-center justify-between mb-3">
-        <div className={`rounded-lg p-2.5 transition-colors ${alert ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700 group-hover:bg-emerald-50 group-hover:text-emerald-700"}`}>
+        <div
+          className={`rounded-lg p-2.5 transition-colors ${
+            alert
+              ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+              : "bg-slate-800 text-slate-300 border border-slate-700/60 group-hover:bg-emerald-500/20 group-hover:text-emerald-400 group-hover:border-emerald-500/30"
+          }`}
+        >
           {icon}
         </div>
         {alert && (
-          <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-600 bg-amber-100/70 px-2 py-0.5 rounded-full">
+          <span className="flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-full">
             <AlertTriangle size={12} /> Reorder
           </span>
         )}
       </div>
-      <p className="text-2xl font-black text-slate-900 tabular-nums tracking-tight">{value}</p>
-      <p className="mt-1 text-xs font-bold uppercase tracking-wider text-slate-700">{label}</p>
+      <p className="text-2xl font-black text-white tabular-nums tracking-tight font-mono">{value}</p>
+      <p className="mt-1 text-xs font-bold uppercase tracking-wider text-slate-300">{label}</p>
       <p className="text-[11px] text-slate-400 mt-0.5">{sub}</p>
     </Link>
   );
@@ -211,35 +219,35 @@ export default function DashboardPage() {
     <Link
       key={label}
       href={href}
-      className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-xs sm:text-sm font-semibold text-slate-700 hover:border-slate-800 hover:bg-slate-900 hover:text-white transition-all duration-150 group shadow-2xs"
+      className="flex items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-900/90 px-3.5 py-3 text-xs sm:text-sm font-semibold text-slate-300 hover:border-emerald-500/40 hover:bg-slate-800 hover:text-white transition-all duration-150 group shadow-sm"
     >
       <span className="text-slate-400 group-hover:text-emerald-400 shrink-0">{icon}</span>
       <span className="truncate">{label}</span>
-      <ArrowRight size={14} className="ml-auto opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all shrink-0" />
+      <ArrowRight size={14} className="ml-auto opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all shrink-0 text-emerald-400" />
     </Link>
   );
 
   return (
-    <div className="min-h-full bg-slate-50">
+    <div className="min-h-full bg-slate-900 text-slate-100">
       {/* Executive Hero Banner */}
       <header className="relative overflow-hidden border-b border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white shadow-md">
         {/* Subtle radial backdrop lighting and subtle micro pattern */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_20%_-10%,rgba(16,185,129,0.18),rgba(15,23,42,0))]" />
         <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] bg-[size:32px_32px]" />
 
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex items-start sm:items-center gap-4 sm:gap-6 min-w-0">
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-5 sm:py-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+            <div className="flex items-start sm:items-center gap-4 sm:gap-5 min-w-0">
               {/* Immersive Company Logo - prominent, zero borders */}
               <ImmersiveLogo
                 src={company?.logo_url}
                 alt={company?.name || "Company Logo"}
                 fallbackText={companyName ? companyName.substring(0, 2).toUpperCase() : "DXB"}
-                className="h-20 w-20 sm:h-24 sm:w-24 md:h-28 md:w-28 shrink-0 drop-shadow-xl"
+                className="h-16 w-16 sm:h-20 sm:w-20 md:h-22 md:w-22 shrink-0 drop-shadow-xl"
               />
 
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2 mb-2">
+                <div className="flex flex-wrap items-center gap-2 mb-1.5">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/25 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     Live ERP Feed
@@ -256,28 +264,24 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                {/* Substantially Larger Company Name */}
-                <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white tracking-tight break-words max-w-4xl leading-tight drop-shadow-sm">
+                <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black text-white tracking-tight break-words max-w-4xl leading-tight drop-shadow-sm">
                   {companyName}
                 </h1>
-                <p className="mt-1.5 text-xs sm:text-sm font-semibold text-emerald-400/90 flex items-center gap-2">
-                  <span>Business Management Dashboard</span>
+                <p className="mt-1 text-xs sm:text-sm font-semibold text-emerald-400/90 flex items-center gap-2">
+                  <span>Executive Management Dashboard</span>
                   <span className="text-slate-500 hidden sm:inline">•</span>
-                  <span className="text-slate-300 font-normal hidden sm:inline">Executive Control & Commercial Takeoffs</span>
-                </p>
-                <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-                  Comprehensive overview of your UAE business operations, cash flow, receivables, and live commercial metrics.
+                  <span className="text-slate-300 font-normal hidden sm:inline">Commercial Takeoffs & Enterprise Control</span>
                 </p>
               </div>
             </div>
 
             {/* Currency & System Status Badge */}
-            <div className="flex items-center gap-3 self-start md:self-auto shrink-0 bg-slate-900/80 backdrop-blur-xs border border-slate-800 rounded-2xl p-3 sm:px-4 sm:py-3 shadow-sm">
+            <div className="flex items-center gap-3 self-start md:self-auto shrink-0 bg-slate-900/80 backdrop-blur-xs border border-slate-800 rounded-2xl p-3 sm:px-4 sm:py-2.5 shadow-sm">
               <div className="text-right hidden sm:block">
                 <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Operating Currency</p>
                 <p className="text-xs font-semibold text-white">United Arab Emirates Dirham</p>
               </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold font-mono text-xs">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold font-mono text-xs">
                 AED
               </div>
             </div>
@@ -285,77 +289,77 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-32 gap-4">
-            <Loader2 size={36} className="animate-spin text-slate-400" />
-            <p className="text-slate-400 font-medium">Fetching real-time company statistics...</p>
+          <div className="flex flex-col items-center justify-center py-28 gap-4">
+            <Loader2 size={36} className="animate-spin text-emerald-400" />
+            <p className="text-slate-400 font-medium text-sm">Fetching real-time company statistics...</p>
           </div>
         ) : (
           <div className="space-y-8">
-            {/* Quick Actions Bar */}
-            <div>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Quick Actions</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                {quickAction("Add Customer", <Users size={16} />, "/customers")}
-                {quickAction("Add Supplier", <Truck size={16} />, "/suppliers")}
-                {quickAction("Add Product", <Package size={16} />, "/products")}
-                {quickAction("New Quotation", <FileText size={16} />, "/quotations")}
-                {quickAction("New Proforma", <FileSpreadsheet size={16} />, "/proforma-invoices")}
-                {quickAction("New Tax Invoice", <FileCheck2 size={16} />, "/tax-invoices")}
-                {quickAction("New Purchase Order", <ShoppingBag size={16} />, "/purchase-orders")}
-                {quickAction("New Payment", <Wallet size={16} />, "/payments")}
-                {quickAction("New Project", <Briefcase size={16} />, "/projects")}
-                {quickAction("Add Employee", <Users2 size={16} />, "/employees")}
-              </div>
-            </div>
-
             {/* Financial Overview Cards */}
             <div>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Financial Balances</h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                  <Wallet size={14} className="text-emerald-400" />
+                  <span>Financial Balances</span>
+                </h2>
+                <span className="text-[11px] text-slate-500 font-mono">Live UAE Dirham (AED)</span>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-5 shadow-sm">
+                <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/40 p-5 shadow-lg relative overflow-hidden">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wider">Customer Receipts</p>
-                    <TrendingUp size={18} className="text-emerald-600" />
+                    <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Customer Receipts</p>
+                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <TrendingUp size={16} />
+                    </div>
                   </div>
-                  <p className="text-2xl font-black text-emerald-800 font-mono">{fmtAED(stats.customerPaymentsTotal)}</p>
-                  <p className="text-xs text-emerald-600 mt-1">Total collected from clients</p>
+                  <p className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">{fmtAED(stats.customerPaymentsTotal)}</p>
+                  <p className="text-xs text-emerald-400/80 mt-1">Total collected from clients</p>
                 </div>
 
-                <div className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-5 shadow-sm">
+                <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/40 p-5 shadow-lg relative overflow-hidden">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold text-amber-800 uppercase tracking-wider">Outstanding Client Dues</p>
-                    <Clock size={18} className="text-amber-600" />
+                    <p className="text-xs font-bold text-amber-400 uppercase tracking-wider">Outstanding Client Dues</p>
+                    <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      <Clock size={16} />
+                    </div>
                   </div>
-                  <p className="text-2xl font-black text-amber-800 font-mono">{fmtAED(stats.outstandingCustomerBalance)}</p>
-                  <p className="text-xs text-amber-600 mt-1">Pending customer collections</p>
+                  <p className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">{fmtAED(stats.outstandingCustomerBalance)}</p>
+                  <p className="text-xs text-amber-400/80 mt-1">Pending customer collections</p>
                 </div>
 
-                <div className="rounded-xl border border-rose-200 bg-gradient-to-br from-rose-50 to-pink-50 p-5 shadow-sm">
+                <div className="rounded-xl border border-rose-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-rose-950/40 p-5 shadow-lg relative overflow-hidden">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold text-rose-800 uppercase tracking-wider">Vendor Dues (AP)</p>
-                    <Wallet size={18} className="text-rose-600" />
+                    <p className="text-xs font-bold text-rose-400 uppercase tracking-wider">Vendor Dues (AP)</p>
+                    <div className="p-2 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                      <Wallet size={16} />
+                    </div>
                   </div>
-                  <p className="text-2xl font-black text-rose-800 font-mono">{fmtAED(stats.outstandingSupplierBalance)}</p>
-                  <p className="text-xs text-rose-600 mt-1">Unpaid supplier bills</p>
+                  <p className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">{fmtAED(stats.outstandingSupplierBalance)}</p>
+                  <p className="text-xs text-rose-400/80 mt-1">Unpaid supplier bills</p>
                 </div>
 
-                <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 p-5 shadow-sm">
+                <div className="rounded-xl border border-slate-700/60 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800/40 p-5 shadow-lg relative overflow-hidden">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Finalized Payroll</p>
-                    <BarChart3 size={18} className="text-slate-600" />
+                    <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Finalized Payroll</p>
+                    <div className="p-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
+                      <BarChart3 size={16} />
+                    </div>
                   </div>
-                  <p className="text-2xl font-black text-slate-900 font-mono">{fmtAED(stats.currentPayroll)}</p>
-                  <p className="text-xs text-slate-500 mt-1">Active monthly salary commitments</p>
+                  <p className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">{fmtAED(stats.currentPayroll)}</p>
+                  <p className="text-xs text-slate-400 mt-1">Active monthly salary commitments</p>
                 </div>
               </div>
             </div>
 
-            {/* Core Counts */}
+            {/* Core Operations Counts */}
             <div>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Enterprise Operations</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+                <Briefcase size={14} className="text-emerald-400" />
+                <span>Enterprise Operations</span>
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
                 {card(<Users size={18} />, "Customers", stats.activeCustomers, `${stats.customers} total`, "/customers")}
                 {card(<Truck size={18} />, "Suppliers", stats.activeSuppliers, `${stats.suppliers} total`, "/suppliers")}
                 {card(<Package size={18} />, "Products", stats.products, `${stats.lowStock} low stock`, "/inventory", stats.lowStock > 0)}
@@ -365,20 +369,41 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {/* Quick Actions Bar */}
+            <div>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Quick Navigation & Actions</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
+                {quickAction("Add Customer", <Users size={15} />, "/customers")}
+                {quickAction("Add Supplier", <Truck size={15} />, "/suppliers")}
+                {quickAction("Add Product", <Package size={15} />, "/products")}
+                {quickAction("New Quotation", <FileText size={15} />, "/quotations")}
+                {quickAction("New Proforma", <FileSpreadsheet size={15} />, "/proforma-invoices")}
+                {quickAction("New Tax Invoice", <FileCheck2 size={15} />, "/tax-invoices")}
+                {quickAction("New Purchase Order", <ShoppingBag size={15} />, "/purchase-orders")}
+                {quickAction("New Payment", <Wallet size={15} />, "/payments")}
+                {quickAction("New Project", <Briefcase size={15} />, "/projects")}
+                {quickAction("Add Employee", <Users2 size={15} />, "/employees")}
+              </div>
+            </div>
+
             {/* Recent Activity Table */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+            <div className="bg-slate-900/90 rounded-xl border border-slate-800 shadow-xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
                 <div>
-                  <h3 className="font-semibold text-slate-900 text-sm">Recent Commercial Activity</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Latest tax invoices and commercial transactions</p>
+                  <h3 className="font-bold text-white text-sm">Recent Commercial Activity</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Latest tax invoices and commercial transactions</p>
                 </div>
-                <Link href="/tax-invoices" className="text-xs font-semibold text-emerald-600 hover:text-emerald-700">
-                  View All &rarr;
+                <Link
+                  href="/tax-invoices"
+                  className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
+                >
+                  <span>View All</span>
+                  <ArrowRight size={13} />
                 </Link>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-600">
-                  <thead className="bg-slate-50 text-[11px] uppercase font-semibold text-slate-700 border-b border-slate-200">
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead className="bg-slate-950/80 text-[11px] uppercase font-semibold text-slate-400 border-b border-slate-800">
                     <tr>
                       <th className="px-4 py-3">Type</th>
                       <th className="px-4 py-3">Reference #</th>
@@ -388,25 +413,35 @@ export default function DashboardPage() {
                       <th className="px-4 py-3 text-center">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-800/60">
                     {recentActivity.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                        <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
                           No recent transactions found. Create your first quotation or invoice.
                         </td>
                       </tr>
                     ) : (
                       recentActivity.map((tx) => (
-                        <tr key={tx.id} className="hover:bg-slate-50/50">
-                          <td className="px-4 py-2.5 font-medium text-slate-900">{tx.type}</td>
-                          <td className="px-4 py-2.5 font-mono text-emerald-600 font-semibold">{tx.ref}</td>
-                          <td className="px-4 py-2.5 font-medium text-slate-800">{tx.party}</td>
-                          <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-900">
+                        <tr key={tx.id} className="hover:bg-slate-800/40 transition-colors">
+                          <td className="px-4 py-3 font-medium text-white">{tx.type}</td>
+                          <td className="px-4 py-3 font-mono text-emerald-400 font-bold hover:underline">
+                            <Link href="/tax-invoices">{tx.ref}</Link>
+                          </td>
+                          <td className="px-4 py-3 font-medium text-slate-300">{tx.party}</td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-white">
                             {tx.amount.toLocaleString("en-AE", { minimumFractionDigits: 2 })}
                           </td>
-                          <td className="px-4 py-2.5 font-mono text-slate-500">{tx.date}</td>
-                          <td className="px-4 py-2.5 text-center">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                          <td className="px-4 py-3 font-mono text-slate-400">{tx.date}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span
+                              className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                                tx.status === "paid" || tx.status === "approved"
+                                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                                  : tx.status === "sent"
+                                  ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                                  : "bg-slate-800 text-slate-300 border-slate-700"
+                              }`}
+                            >
                               {tx.status}
                             </span>
                           </td>
