@@ -64,6 +64,80 @@ body {
   font-family: 'Segoe UI Arabic', 'Amiri', 'Scheherazade New', 'Traditional Arabic', 'Noto Naskh Arabic', Arial, sans-serif;
 }
 
+/* ==========================================================================
+   UNIVERSAL SLEEK ERP SCROLLBARS (DARK & LIGHT THEMES)
+   Thin, modern, subtle in dark mode with rounded thumb and clean hover
+   ========================================================================== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #475569;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #64748b;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ==========================================================================
+   REMOVE NUMBER INPUT SPINNER ARROWS GLOBALLY
+   Hides browser up/down arrows while allowing standard numeric typing
+   ========================================================================== */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* ==========================================================================
+   GLOBAL FORM & INPUT POLISH
+   ========================================================================== */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+input[type="tel"],
+input[type="date"],
+input[type="search"],
+select,
+textarea {
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.65);
+  cursor: pointer;
+}
+
+/* Clean ERP horizontal table overflow wrapper */
+.erp-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* PDF Designer scroll regions only; the rest of the ERP keeps platform defaults. */
 .pdf-designer-shell .designer-scrollbar {
   scrollbar-width: thin;

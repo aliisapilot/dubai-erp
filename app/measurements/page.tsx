@@ -1419,7 +1419,7 @@ export default function MeasurementsPage() {
               )}
 
               {/* Costing Rate */}
-              <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-800 pt-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">
                     Rate ({liveFormPreview.rate_unit_label})
@@ -1430,36 +1430,42 @@ export default function MeasurementsPage() {
                     onChange={(val) => setRowForm({ ...rowForm, rate: val })}
                     className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
                   />
+                  <p className="text-[10px] text-slate-400 mt-1">AED unit rate for costing takeoff</p>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Estimated Cost</label>
-                  <div className="rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-xs font-bold font-mono text-emerald-400">
-                    {fmtAED(liveFormPreview.total_cost)}
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Estimated Item Cost</label>
+                  <div className="rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-3 py-2 text-xs font-bold font-mono text-emerald-400 flex items-center justify-between">
+                    <span>Cost:</span>
+                    <span className="text-sm font-black">{fmtAED(liveFormPreview.total_cost)}</span>
                   </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Total Result × Rate</p>
                 </div>
               </div>
 
               {/* LIVE CALCULATOR PREVIEW CARD (Requirement 14) */}
-              <div className="rounded-xl border border-emerald-500/40 bg-gradient-to-br from-slate-950 to-emerald-950/40 p-4 shadow-inner">
-                <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2 mb-3">
+              <div className="rounded-xl border border-emerald-500/40 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/40 p-4 sm:p-5 shadow-xl">
+                <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2.5 mb-3.5">
                   <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <Calculator size={14} /> LIVE CALCULATION PREVIEW
+                    <Calculator size={15} /> LIVE CALCULATION PREVIEW
                   </span>
-                  <span className="text-[10px] text-slate-400">Calculates instantaneously</span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {CALC_TYPE_DEFINITIONS.find((c) => c.value === liveFormPreview.calc_type)?.label}
+                  </span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                {/* Dimension inputs overview */}
+                <div className="grid grid-cols-3 gap-3 text-xs mb-4 pb-3 border-b border-slate-800/80">
                   <div>
-                    <span className="text-[10px] text-slate-400 block">Length:</span>
-                    <span className="font-mono font-bold text-white">
+                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Length</span>
+                    <span className="font-mono font-bold text-white text-xs sm:text-sm">
                       {liveFormPreview.length_m.toFixed(3)} m
                     </span>
                   </div>
 
                   <div>
-                    <span className="text-[10px] text-slate-400 block">Width:</span>
-                    <span className="font-mono font-bold text-white">
+                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Width</span>
+                    <span className="font-mono font-bold text-white text-xs sm:text-sm">
                       {liveFormPreview.is_variable_width && liveFormPreview.average_width_m !== undefined
                         ? `avg ${liveFormPreview.average_width_m.toFixed(3)} m`
                         : `${liveFormPreview.width_m.toFixed(3)} m`}
@@ -1467,32 +1473,42 @@ export default function MeasurementsPage() {
                   </div>
 
                   <div>
-                    <span className="text-[10px] text-slate-400 block">Quantity:</span>
-                    <span className="font-mono font-bold text-white">{liveFormPreview.quantity} pcs</span>
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Per Piece:</span>
-                    <span className="font-mono font-bold text-emerald-300">
-                      {formatResultWithUnit(liveFormPreview.per_piece_result, liveFormPreview.result_unit)}
+                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Quantity</span>
+                    <span className="font-mono font-bold text-white text-xs sm:text-sm">
+                      {liveFormPreview.quantity} pcs
                     </span>
                   </div>
                 </div>
 
-                <div className="mt-3 pt-3 border-t border-emerald-500/20 flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Method</span>
-                    <span className="text-xs font-semibold text-white">
-                      {CALC_TYPE_DEFINITIONS.find((c) => c.value === liveFormPreview.calc_type)?.label}
+                {/* THE 3 STANDOUT KEY METRICS (Requirement 14) */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Metric 1: PER PIECE */}
+                  <div className="rounded-lg border border-slate-700/80 bg-slate-950/80 p-3">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      PER PIECE
+                    </span>
+                    <span className="font-black font-mono text-emerald-400 text-base sm:text-lg mt-0.5 block truncate">
+                      {formatResultWithUnit(liveFormPreview.per_piece_result, liveFormPreview.result_unit)}
                     </span>
                   </div>
 
-                  <div className="text-right">
-                    <span className="text-[10px] text-emerald-400 uppercase font-bold tracking-wider block">
+                  {/* Metric 2: TOTAL RESULT */}
+                  <div className="rounded-lg border border-emerald-500/50 bg-emerald-950/50 p-3 shadow-inner">
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
                       TOTAL RESULT
                     </span>
-                    <span className="font-black font-mono text-emerald-300 text-lg">
+                    <span className="font-black font-mono text-white text-lg sm:text-xl mt-0.5 block truncate">
                       {formatResultWithUnit(liveFormPreview.calculated_total, liveFormPreview.result_unit)}
+                    </span>
+                  </div>
+
+                  {/* Metric 3: ESTIMATED COST */}
+                  <div className="rounded-lg border border-teal-500/50 bg-teal-950/40 p-3">
+                    <span className="text-[10px] font-bold text-teal-400 uppercase tracking-wider block">
+                      ESTIMATED COST
+                    </span>
+                    <span className="font-black font-mono text-emerald-300 text-base sm:text-lg mt-0.5 block truncate">
+                      {fmtAED(liveFormPreview.total_cost)}
                     </span>
                   </div>
                 </div>

@@ -1,12 +1,25 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
 
 export default function ERPLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+
+  useEffect(() => {
+    // Prevent mouse-wheel scrolling from inadvertently incrementing/decrementing number fields
+    const handleWheel = () => {
+      const activeEl = document.activeElement;
+      if (activeEl instanceof HTMLInputElement && activeEl.type === "number") {
+        activeEl.blur();
+      }
+    };
+
+    window.addEventListener("wheel", handleWheel, { passive: true });
+    return () => window.removeEventListener("wheel", handleWheel);
+  }, []);
 
   // On login or mobile portal pages, render children directly without ERP desktop sidebar/header
   if (pathname === "/login" || pathname.startsWith("/mobile")) {
@@ -16,13 +29,16 @@ export default function ERPLayout({ children }: { children: ReactNode }) {
   const isDesigner = pathname === "/settings/designer";
 
   return (
-    <div className="flex min-h-screen w-full m-0 p-0 bg-slate-900 text-slate-100 print:block print:min-h-0 print:bg-white print:p-0 print:m-0 print:w-[210mm]">
+    <div className="flex h-screen w-full m-0 p-0 bg-slate-900 text-slate-100 overflow-hidden print:block print:h-auto print:min-h-0 print:bg-white print:p-0 print:m-0 print:w-[210mm]">
       <Sidebar />
-      <div className="flex-1 min-w-0 flex flex-col m-0 p-0 overflow-x-hidden print:block print:w-[210mm] print:overflow-visible print:m-0 print:p-0">
+      <div className="flex-1 min-w-0 flex flex-col h-full m-0 p-0 overflow-hidden print:block print:w-[210mm] print:overflow-visible print:m-0 print:p-0">
         {!isDesigner && <Navbar />}
-        <div data-print-root className="flex-1 min-w-0 flex flex-col m-0 p-0 overflow-y-auto bg-slate-50 text-slate-900">
+        <main
+          data-print-root
+          className="flex-1 min-w-0 flex flex-col m-0 p-0 overflow-y-auto overflow-x-hidden bg-slate-50 text-slate-900 print:overflow-visible"
+        >
           {children}
-        </div>
+        </main>
       </div>
     </div>
   );
