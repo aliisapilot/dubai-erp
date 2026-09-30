@@ -1038,6 +1038,18 @@ export default function DocumentDesigner() {
           totalPages={totalPages}
           onPageChange={setPageNumber}
           saving={saving || loadingCloud || styleModalBusy}
+          cloudStatus={
+            saving || loadingCloud
+              ? "saving"
+              : cloudConflict
+              ? "conflict"
+              : cloudErrorMessage
+              ? "failed"
+              : dirty || !persistedLayout
+              ? "unsaved"
+              : "saved"
+          }
+          cloudVersion={cloudRevision?.version}
           onSave={handleSave}
           onAutoFix={handleAutoFix}
           autoFixMode={autoFixMode}

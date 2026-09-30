@@ -5,6 +5,7 @@ import { CompanyStamp, AuthorizedSignature } from "./StampAndSignature";
 
 type DocSignatureAreaProps = {
   mode?: "delivery" | "standard" | "salary" | "handover";
+  compact?: boolean;
   preparedBy?: string | null;
   approvedBy?: string | null;
   receiverName?: string | null;
@@ -26,6 +27,7 @@ type DocSignatureAreaProps = {
 
 export default function DocSignatureArea({
   mode = "standard",
+  compact = false,
   preparedBy,
   approvedBy,
   receiverName,
@@ -200,18 +202,18 @@ export default function DocSignatureArea({
 
   return (
     <div
-      className="mt-4 print:mt-2.5 grid grid-cols-2 gap-4 print:gap-3 border-t-2 pt-3 print:pt-2 text-xs avoid-break"
+      className={`${compact ? "mt-2 print:mt-1.5 gap-2.5 print:gap-2 pt-2 print:pt-1" : "mt-4 print:mt-2.5 gap-4 print:gap-3 pt-3 print:pt-2"} grid grid-cols-2 border-t-2 text-xs avoid-break`}
       style={{ borderTopColor: "#C9A227" }}
     >
       {/* ── LEFT: Company Authorized Signature & Stamp ─────────────────────── */}
       <div
-        className="rounded border p-3.5 bg-slate-50/50 flex flex-col justify-between"
+        className={`rounded border ${compact ? "p-2" : "p-3.5"} bg-slate-50/50 flex flex-col justify-between`}
         style={{ borderColor: "var(--doc-border, #E2E8F0)" }}
       >
         <div>
           {/* Section Heading */}
           <div
-            className="font-bold uppercase tracking-wider text-[11px] mb-2 pb-1 border-b"
+            className={`font-bold uppercase tracking-wider ${compact ? "text-[9.5px] mb-1 pb-0.5" : "text-[11px] mb-2 pb-1"} border-b`}
             style={{ color: "var(--doc-primary, #0F172A)", borderBottomColor: "var(--doc-accent, #C9A227)" }}
           >
             {leftHeading}
@@ -219,14 +221,14 @@ export default function DocSignatureArea({
 
           {/* Company name display */}
           {companyName && (
-            <div className="text-[10px] font-semibold mb-2" style={{ color: "var(--doc-text, #1E293B)" }}>
+            <div className={`${compact ? "text-[9px] mb-1" : "text-[10px] mb-2"} font-semibold`} style={{ color: "var(--doc-text, #1E293B)" }}>
               {companyName}
             </div>
           )}
 
-          {/* Signature + Stamp row: horizontally aligned, slightly smaller, cleanly contained without overlapping */}
+          {/* Signature + Stamp row */}
           <div
-            className="flex items-center justify-between min-h-[58px] px-1 mb-3 pb-2 border-b border-dashed"
+            className={`flex items-center justify-between ${compact ? "min-h-[38px] px-0.5 mb-1 pb-1" : "min-h-[58px] px-1 mb-3 pb-2"} border-b border-dashed`}
             style={{ borderColor: "var(--doc-border, #E2E8F0)" }}
           >
             {/* Real company signature image (slightly smaller: 110x42), blank/line if not uploaded */}
@@ -236,24 +238,24 @@ export default function DocSignatureArea({
                   src={signatureSrc}
                   alt="Authorized Company Signature"
                   showLabel={false}
-                  width={110}
-                  height={42}
+                  width={compact ? 85 : 110}
+                  height={compact ? 30 : 42}
                 />
               ) : (
-                <div className="h-10 w-28 border-b border-dashed" style={{ borderColor: "var(--doc-border, #CBD5E1)" }} />
+                <div className={`${compact ? "h-6 w-24" : "h-10 w-28"} border-b border-dashed`} style={{ borderColor: "var(--doc-border, #CBD5E1)" }} />
               )}
             </div>
 
-            {/* Real company stamp image (slightly smaller: 56px), blank if not uploaded */}
+            {/* Real company stamp image or placeholder */}
             <div className="flex-shrink-0 flex items-center justify-end pl-2">
               {stampSrc ? (
-                <CompanyStamp src={stampSrc} size={56} alt="Official Company Stamp" />
+                <CompanyStamp src={stampSrc} size={compact ? 44 : 56} alt="Official Company Stamp" />
               ) : (
                 <div
-                  className="w-28 h-14 border border-dashed rounded flex items-center justify-center text-center p-1"
+                  className={`border border-dashed rounded flex items-center justify-center text-center p-1 ${compact ? "w-22 h-10" : "w-28 h-14"}`}
                   style={{ borderColor: "var(--doc-border, #CBD5E1)", backgroundColor: "var(--doc-total-highlight, #F8FAFC)" }}
                 >
-                  <span className="text-[8.5px] leading-tight font-medium" style={{ color: "var(--doc-muted, #64748B)" }}>
+                  <span className={`${compact ? "text-[7.5px]" : "text-[8.5px]"} leading-tight font-medium`} style={{ color: "var(--doc-muted, #64748B)" }}>
                     Company Stamp / Seal<br />(Official)
                   </span>
                 </div>
@@ -262,8 +264,8 @@ export default function DocSignatureArea({
           </div>
         </div>
 
-        {/* Signatory Details with ample whitespace */}
-        <div className="space-y-1.5 text-[10px] mt-1" style={{ color: "var(--doc-text, #1E293B)" }}>
+        {/* Signatory Details */}
+        <div className={`${compact ? "space-y-0.5 text-[8.5px] mt-0.5" : "space-y-1.5 text-[10px] mt-1"}`} style={{ color: "var(--doc-text, #1E293B)" }}>
           <div>
             <span className="font-medium" style={{ color: "var(--doc-muted, #64748B)" }}>Authorized Signatory: </span>
             <span className="font-semibold">{signatoryName || preparedBy || "__________________________"}</span>
@@ -281,13 +283,13 @@ export default function DocSignatureArea({
 
       {/* ── RIGHT: Client Acknowledgement ──────────────────────────────────── */}
       <div
-        className="rounded border p-3.5 bg-white flex flex-col justify-between"
+        className={`rounded border ${compact ? "p-2" : "p-3.5"} bg-white flex flex-col justify-between`}
         style={{ borderColor: "var(--doc-border, #E2E8F0)" }}
       >
         <div>
           {/* Section Heading */}
           <div
-            className="font-bold uppercase tracking-wider text-[11px] mb-2 pb-1 border-b"
+            className={`font-bold uppercase tracking-wider ${compact ? "text-[9.5px] mb-1 pb-0.5" : "text-[11px] mb-2 pb-1"} border-b`}
             style={{ color: "var(--doc-primary, #0F172A)", borderBottomColor: "var(--doc-accent, #C9A227)" }}
           >
             {rightHeading}
@@ -295,27 +297,27 @@ export default function DocSignatureArea({
 
           {/* Client name display */}
           {clientName && (
-            <div className="text-[10px] font-semibold mb-2" style={{ color: "var(--doc-text, #1E293B)" }}>
+            <div className={`${compact ? "text-[9px] mb-1" : "text-[10px] mb-2"} font-semibold`} style={{ color: "var(--doc-text, #1E293B)" }}>
               {clientName}
             </div>
           )}
 
-          {/* Client signature line + optional client stamp area (NO company stamp here) */}
+          {/* Client signature line + optional client stamp area */}
           <div
-            className="flex items-center justify-between min-h-[58px] px-1 mb-3 pb-2 border-b border-dashed"
+            className={`flex items-center justify-between ${compact ? "min-h-[38px] px-0.5 mb-1 pb-1" : "min-h-[58px] px-1 mb-3 pb-2"} border-b border-dashed`}
             style={{ borderColor: "var(--doc-border, #E2E8F0)" }}
           >
             {/* Blank client signature line */}
             <div className="flex-1 flex flex-col justify-end pr-2">
-              <div className="h-10 w-28 border-b border-dashed" style={{ borderColor: "var(--doc-border, #CBD5E1)" }} />
+              <div className={`${compact ? "h-6 w-24" : "h-10 w-28"} border-b border-dashed`} style={{ borderColor: "var(--doc-border, #CBD5E1)" }} />
             </div>
 
             {/* Optional Client Stamp Area: clearly labeled */}
             <div
-              className="flex-shrink-0 w-32 h-14 border border-dashed rounded flex items-center justify-center text-center p-1"
+              className={`flex-shrink-0 ${compact ? "w-24 h-10" : "w-32 h-14"} border border-dashed rounded flex items-center justify-center text-center p-1`}
               style={{ borderColor: "var(--doc-border, #CBD5E1)", backgroundColor: "var(--doc-total-highlight, #F8FAFC)" }}
             >
-              <span className="text-[8.5px] leading-tight font-medium" style={{ color: "var(--doc-muted, #64748B)" }}>
+              <span className={`${compact ? "text-[7px]" : "text-[8.5px]"} leading-tight font-medium`} style={{ color: "var(--doc-muted, #64748B)" }}>
                 Client Stamp / Seal<br />(Optional)
               </span>
             </div>
@@ -323,7 +325,7 @@ export default function DocSignatureArea({
         </div>
 
         {/* Client Details */}
-        <div className="space-y-1.5 text-[10px] mt-1" style={{ color: "var(--doc-text, #1E293B)" }}>
+        <div className={`${compact ? "space-y-0.5 text-[8.5px] mt-0.5" : "space-y-1.5 text-[10px] mt-1"}`} style={{ color: "var(--doc-text, #1E293B)" }}>
           <div>
             <span className="font-medium" style={{ color: "var(--doc-muted, #64748B)" }}>Client Representative: </span>
             <span className="font-semibold">{clientName || "__________________________"}</span>

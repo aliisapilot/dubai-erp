@@ -37,6 +37,7 @@ import {
 } from "@/lib/documentDesigner";
 import PageBorderSection from "./PageBorderSection";
 import PrintingSettingsSection from "./PrintingSettingsSection";
+import SmartFitSection from "./SmartFitSection";
 
 // ── Universal Text Editor: Element Content Configuration ──────────────────────
 // Describes what text each element type renders, whether it's dynamic, and
@@ -403,6 +404,13 @@ export default function RightInspector({
           </div>
         </div>
       </div>
+
+      {/* Dynamic Fitting & Adaptive Layout (A4) */}
+      <SmartFitSection
+        layout={layout}
+        onUpdatePageSettings={onUpdatePageSettings}
+        onPreviewActualSize={onPreviewActualSize}
+      />
 
       {/* Printing & Physical Output Settings (A4) */}
       <PrintingSettingsSection

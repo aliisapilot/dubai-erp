@@ -438,6 +438,14 @@ export function computeIntelligentFitProfile(
   let tiers: TierDefinition[];
   if (!isSmartFitEnabled) {
     tiers = [allTiers[0]];
+  } else if (smartFit.preferredDensity === "normal") {
+    tiers = [allTiers[0], allTiers[1]];
+  } else if (smartFit.preferredDensity === "compact") {
+    tiers = allTiers.slice(2);
+  } else if (smartFit.preferredDensity === "dense") {
+    tiers = allTiers.slice(3);
+  } else if (smartFit.preferredDensity === "ultra_dense") {
+    tiers = [allTiers[4]];
   } else if (mode === "readability") {
     // Readability prioritizes standard / comfortable / compact, preserving generous spacing
     tiers = allTiers.slice(0, 3).map((t) => ({
@@ -1188,4 +1196,147 @@ export function validateDocumentLayout(
       estimatedPageCount: pagination.totalPages,
     },
   };
+}
+
+export type AdaptiveDensityTier = "normal" | "comfortable" | "compact" | "dense" | "ultra_dense";
+
+export interface AdaptiveDocumentDensity {
+  tier: AdaptiveDensityTier;
+  sectionGapClass: string;
+  cardPaddingClass: string;
+  tableTextClass: string;
+  tableHeaderClass: string;
+  tableCellClass: string;
+  lineHeightClass: string;
+  subTextClass: string;
+  badgeClass: string;
+  signatureCompact: boolean;
+  compactSummary: boolean;
+  fontSizePt: number;
+  rowHeightMm: number;
+}
+
+/**
+ * Universal adaptive layout density engine for all ERP printable documents.
+ * Automatically chooses the smallest necessary compression level to ensure
+ * documents with up to ~28-30 rows fit cleanly onto ONE A4 page.
+ */
+export function getAdaptiveDocumentDensity(
+  itemCount: number,
+  options?: {
+    hasLongDescriptions?: boolean;
+    hasFormulas?: boolean;
+    preferredDensity?: "auto" | "normal" | "compact" | "dense" | "ultra_dense";
+  }
+): AdaptiveDocumentDensity {
+  const preferred = options?.preferredDensity || "auto";
+
+  let tier: AdaptiveDensityTier;
+  if (preferred !== "auto") {
+    tier = preferred;
+  } else {
+    const longDescBonus = options?.hasLongDescriptions ? 2 : 0;
+    const formulaBonus = options?.hasFormulas ? 2 : 0;
+    const effectiveCount = itemCount + longDescBonus + formulaBonus;
+
+    if (effectiveCount <= 7) {
+      tier = "normal";
+    } else if (effectiveCount <= 13) {
+      tier = "comfortable";
+    } else if (effectiveCount <= 20) {
+      tier = "compact";
+    } else if (effectiveCount <= 28) {
+      tier = "dense";
+    } else {
+      tier = "ultra_dense";
+    }
+  }
+
+  switch (tier) {
+    case "normal":
+      return {
+        tier: "normal",
+        sectionGapClass: "mb-3",
+        cardPaddingClass: "p-3",
+        tableTextClass: "text-[10px]",
+        tableHeaderClass: "py-1.5 px-2 text-[9px]",
+        tableCellClass: "py-1.5 px-2",
+        lineHeightClass: "leading-normal",
+        subTextClass: "text-[9px]",
+        badgeClass: "text-[9px] px-1.5 py-0.5",
+        signatureCompact: false,
+        compactSummary: false,
+        fontSizePt: 10,
+        rowHeightMm: 8.5,
+      };
+
+    case "comfortable":
+      return {
+        tier: "comfortable",
+        sectionGapClass: "mb-2.5",
+        cardPaddingClass: "p-2.5",
+        tableTextClass: "text-[9.5px]",
+        tableHeaderClass: "py-1 px-1.5 text-[8.5px]",
+        tableCellClass: "py-1 px-1.5",
+        lineHeightClass: "leading-snug",
+        subTextClass: "text-[8.5px]",
+        badgeClass: "text-[8.5px] px-1.5 py-0.25",
+        signatureCompact: false,
+        compactSummary: false,
+        fontSizePt: 9.2,
+        rowHeightMm: 7.2,
+      };
+
+    case "compact":
+      return {
+        tier: "compact",
+        sectionGapClass: "mb-1.5",
+        cardPaddingClass: "p-2",
+        tableTextClass: "text-[8.8px]",
+        tableHeaderClass: "py-0.75 px-1.5 text-[8px]",
+        tableCellClass: "py-0.75 px-1.5",
+        lineHeightClass: "leading-tight",
+        subTextClass: "text-[8px]",
+        badgeClass: "text-[8px] px-1 py-0.2",
+        signatureCompact: true,
+        compactSummary: true,
+        fontSizePt: 8.4,
+        rowHeightMm: 6.0,
+      };
+
+    case "dense":
+      return {
+        tier: "dense",
+        sectionGapClass: "mb-1",
+        cardPaddingClass: "p-1.5",
+        tableTextClass: "text-[8px]",
+        tableHeaderClass: "py-0.5 px-1 text-[7.5px]",
+        tableCellClass: "py-0.5 px-1",
+        lineHeightClass: "leading-tight",
+        subTextClass: "text-[7.2px]",
+        badgeClass: "text-[7px] px-1 py-0.1",
+        signatureCompact: true,
+        compactSummary: true,
+        fontSizePt: 7.6,
+        rowHeightMm: 5.2,
+      };
+
+    case "ultra_dense":
+    default:
+      return {
+        tier: "ultra_dense",
+        sectionGapClass: "mb-0.5",
+        cardPaddingClass: "p-1",
+        tableTextClass: "text-[7.2px]",
+        tableHeaderClass: "py-0.25 px-0.75 text-[7px]",
+        tableCellClass: "py-0.25 px-0.75",
+        lineHeightClass: "leading-none",
+        subTextClass: "text-[6.5px]",
+        badgeClass: "text-[6.5px] px-0.75 py-0.05",
+        signatureCompact: true,
+        compactSummary: true,
+        fontSizePt: 7.0,
+        rowHeightMm: 4.6,
+      };
+  }
 }

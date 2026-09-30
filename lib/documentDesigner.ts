@@ -317,12 +317,17 @@ export function normalizePageBorders(borders?: Partial<PageBorderSettings> | nul
 }
 
 export type SmartFitMode = "compact" | "balanced" | "readability";
+export type PreferredDensity = "auto" | "normal" | "compact" | "dense" | "ultra_dense";
 
 export interface SmartFitSettings {
   enabled: boolean;
   mode: SmartFitMode;
+  preferredDensity?: PreferredDensity;
   minFontSize: number;
   minRowHeight: number;
+  minSectionGap?: number;
+  maxItemsBeforeMultipage?: number;
+  preferSinglePage?: boolean;
   automaticSpacing: boolean;
   printSafeBorders: boolean;
   preventOverflow: boolean;
@@ -331,8 +336,12 @@ export interface SmartFitSettings {
 export const DEFAULT_SMART_FIT_SETTINGS: SmartFitSettings = {
   enabled: true,
   mode: "balanced",
+  preferredDensity: "auto",
   minFontSize: 7.5,
   minRowHeight: 4.8,
+  minSectionGap: 1.5,
+  maxItemsBeforeMultipage: 28,
+  preferSinglePage: true,
   automaticSpacing: true,
   printSafeBorders: true,
   preventOverflow: true,
@@ -345,12 +354,27 @@ export function normalizeSmartFit(smartFit?: Partial<SmartFitSettings> | null): 
       smartFit?.mode === "compact" || smartFit?.mode === "readability" || smartFit?.mode === "balanced"
         ? smartFit.mode
         : DEFAULT_SMART_FIT_SETTINGS.mode,
+    preferredDensity:
+      smartFit?.preferredDensity === "normal" ||
+      smartFit?.preferredDensity === "compact" ||
+      smartFit?.preferredDensity === "dense" ||
+      smartFit?.preferredDensity === "ultra_dense" ||
+      smartFit?.preferredDensity === "auto"
+        ? smartFit.preferredDensity
+        : DEFAULT_SMART_FIT_SETTINGS.preferredDensity,
     minFontSize: Number.isFinite(smartFit?.minFontSize)
       ? Math.max(6.5, Math.min(12, smartFit!.minFontSize!))
       : DEFAULT_SMART_FIT_SETTINGS.minFontSize,
     minRowHeight: Number.isFinite(smartFit?.minRowHeight)
       ? Math.max(4.0, Math.min(12, smartFit!.minRowHeight!))
       : DEFAULT_SMART_FIT_SETTINGS.minRowHeight,
+    minSectionGap: Number.isFinite(smartFit?.minSectionGap)
+      ? Math.max(0.5, Math.min(10, smartFit!.minSectionGap!))
+      : DEFAULT_SMART_FIT_SETTINGS.minSectionGap,
+    maxItemsBeforeMultipage: Number.isFinite(smartFit?.maxItemsBeforeMultipage)
+      ? Math.max(10, Math.min(50, smartFit!.maxItemsBeforeMultipage!))
+      : DEFAULT_SMART_FIT_SETTINGS.maxItemsBeforeMultipage,
+    preferSinglePage: smartFit?.preferSinglePage ?? DEFAULT_SMART_FIT_SETTINGS.preferSinglePage,
     automaticSpacing: smartFit?.automaticSpacing ?? DEFAULT_SMART_FIT_SETTINGS.automaticSpacing,
     printSafeBorders: smartFit?.printSafeBorders ?? DEFAULT_SMART_FIT_SETTINGS.printSafeBorders,
     preventOverflow: smartFit?.preventOverflow ?? DEFAULT_SMART_FIT_SETTINGS.preventOverflow,

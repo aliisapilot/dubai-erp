@@ -11,6 +11,7 @@ import {
   MeasurementSheetSummary,
 } from "@/lib/measurementTypes";
 import { formatResultWithUnit } from "@/lib/measurementCalculations";
+import { getAdaptiveDocumentDensity } from "@/lib/documentLayoutEngine";
 
 export type MeasurementSheetDocData = {
   id?: string;
@@ -36,6 +37,10 @@ export default function MeasurementSheetTemplate({
   data,
 }: MeasurementSheetTemplateProps) {
   const { summary } = data;
+  const density = getAdaptiveDocumentDensity(data.items.length, {
+    hasLongDescriptions: data.items.some((i) => (i.description?.length || 0) > 40),
+    hasFormulas: true,
+  });
 
   return (
     <DocumentContainer
@@ -49,7 +54,7 @@ export default function MeasurementSheetTemplate({
         <DocHeader company={company} docTitle="MEASUREMENT & TAKEOFF SHEET" docNumber={data.sheet_number} />
 
         {/* Document Reference Info */}
-        <div className="mb-2 grid grid-cols-2 gap-3 rounded border border-slate-200 bg-slate-50/70 p-2 text-xs">
+        <div className={`${density.sectionGapClass} grid grid-cols-2 gap-3 rounded border border-slate-200 bg-slate-50/70 ${density.cardPaddingClass} text-xs`}>
           <div>
             <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Sheet Title</p>
             <p className="font-bold text-slate-900 text-xs">{data.title || "Fabrication & Takeoff Sheet"}</p>
@@ -80,8 +85,8 @@ export default function MeasurementSheetTemplate({
         </div>
 
         {/* Measurements Table */}
-        <div className="mb-2 overflow-hidden rounded border border-slate-200">
-          <table className="w-full table-fixed border-collapse text-left text-[9.5px]">
+        <div className={`${density.sectionGapClass} overflow-hidden rounded border border-slate-200`}>
+          <table className={`w-full table-fixed border-collapse text-left ${density.tableTextClass}`}>
             <colgroup>
               <col style={{ width: "3.5%" }} />
               <col style={{ width: "8.5%" }} />
@@ -94,30 +99,30 @@ export default function MeasurementSheetTemplate({
               <col style={{ width: "11%" }} />
             </colgroup>
             <thead>
-              <tr className="bg-slate-900 text-white font-semibold text-[8.5px] uppercase tracking-wider">
-                <th className="py-1 px-1 text-center">#</th>
-                <th className="py-1 px-1.5 whitespace-nowrap">Area / Ref</th>
-                <th className="py-1 px-2">Description</th>
-                <th className="py-1 px-1 text-center whitespace-nowrap">Dimensions</th>
-                <th className="py-1 px-1 text-center whitespace-nowrap">Qty</th>
-                <th className="py-1 px-2">Calculation Type & Formula</th>
-                <th className="py-1 px-1.5 text-right whitespace-nowrap">Result & Unit</th>
-                <th className="py-1 px-1.5 text-right whitespace-nowrap">Rate</th>
-                <th className="py-1 px-2 text-right whitespace-nowrap">Amount</th>
+              <tr className="bg-slate-900 text-white font-semibold uppercase tracking-wider">
+                <th className={`${density.tableHeaderClass} text-center`}>#</th>
+                <th className={`${density.tableHeaderClass} whitespace-nowrap`}>Area / Ref</th>
+                <th className={`${density.tableHeaderClass}`}>Description</th>
+                <th className={`${density.tableHeaderClass} text-center whitespace-nowrap`}>Dimensions</th>
+                <th className={`${density.tableHeaderClass} text-center whitespace-nowrap`}>Qty</th>
+                <th className={`${density.tableHeaderClass}`}>Calculation Type & Formula</th>
+                <th className={`${density.tableHeaderClass} text-right whitespace-nowrap`}>Result & Unit</th>
+                <th className={`${density.tableHeaderClass} text-right whitespace-nowrap`}>Rate</th>
+                <th className={`${density.tableHeaderClass} text-right whitespace-nowrap`}>Amount</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {data.items.map((item, idx) => (
                 <tr key={item.id || idx} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
-                  <td className="py-1 px-1 text-center font-mono text-slate-400 text-[8.5px] align-top">{idx + 1}</td>
-                  <td className="py-1 px-1.5 font-bold text-slate-900 text-[9px] truncate align-top">
+                  <td className={`${density.tableCellClass} text-center font-mono text-slate-400 text-[8.5px] align-top`}>{idx + 1}</td>
+                  <td className={`${density.tableCellClass} font-bold text-slate-900 text-[9px] truncate align-top`}>
                     {item.area_name || `Area ${idx + 1}`}
                   </td>
-                  <td className="py-1 px-2 text-slate-700 text-[9px] break-words align-top">
+                  <td className={`${density.tableCellClass} text-slate-700 text-[9px] break-words align-top`}>
                     <div className="font-semibold text-slate-900 leading-snug">{item.description || "Measurement item"}</div>
                     {item.notes && <div className="text-[8px] text-slate-500 italic leading-snug mt-0.5">{item.notes}</div>}
                   </td>
-                  <td className="py-1 px-1 text-center text-slate-600 font-mono text-[8px] leading-snug align-top">
+                  <td className={`${density.tableCellClass} text-center text-slate-600 font-mono text-[8px] leading-snug align-top`}>
                     {item.calc_type === "quantity_only" ? (
                       "—"
                     ) : (
@@ -133,10 +138,10 @@ export default function MeasurementSheetTemplate({
                       </div>
                     )}
                   </td>
-                  <td className="py-1 px-1 text-center font-bold text-slate-900 text-[9px] whitespace-nowrap align-top">
+                  <td className={`${density.tableCellClass} text-center font-bold text-slate-900 text-[9px] whitespace-nowrap align-top`}>
                     {item.quantity} pcs
                   </td>
-                  <td className="py-1 px-2 text-slate-600 align-top">
+                  <td className={`${density.tableCellClass} text-slate-600 align-top`}>
                     <div className="font-semibold text-slate-800 text-[9px] leading-snug">
                       {item.calc_type === "pvc_edge_joint"
                         ? "PVC Edge + Centre Joint"
@@ -154,13 +159,13 @@ export default function MeasurementSheetTemplate({
                       {item.formula_display}
                     </div>
                   </td>
-                  <td className="py-1 px-1.5 text-right font-black font-mono text-slate-900 whitespace-nowrap text-[9.5px] align-top">
+                  <td className={`${density.tableCellClass} text-right font-black font-mono text-slate-900 whitespace-nowrap text-[9.5px] align-top`}>
                     {formatResultWithUnit(item.calculated_total, item.result_unit)}
                   </td>
-                  <td className="py-1 px-1.5 text-right text-slate-700 font-mono text-[8.5px] whitespace-nowrap align-top">
+                  <td className={`${density.tableCellClass} text-right text-slate-700 font-mono text-[8.5px] whitespace-nowrap align-top`}>
                     {item.rate > 0 ? `${fmtAED(item.rate)} / ${item.result_unit}` : "—"}
                   </td>
-                  <td className="py-1 px-2 text-right font-black text-slate-950 font-mono whitespace-nowrap text-[9.5px] align-top">
+                  <td className={`${density.tableCellClass} text-right font-black text-slate-950 font-mono whitespace-nowrap text-[9.5px] align-top`}>
                     {item.total_cost > 0 ? fmtAED(item.total_cost) : "—"}
                   </td>
                 </tr>
@@ -170,9 +175,9 @@ export default function MeasurementSheetTemplate({
         </div>
 
         {/* Unit-Safe Summary & Notes (Side by Side) */}
-        <div className="grid grid-cols-2 gap-3 mb-2">
+        <div className={`grid grid-cols-2 gap-3 ${density.sectionGapClass}`}>
           {/* Notes & Compliance */}
-          <div className="rounded border border-slate-200 bg-slate-50/50 p-2 text-[9px]">
+          <div className={`rounded border border-slate-200 bg-slate-50/50 ${density.cardPaddingClass} text-[9px]`}>
             <h4 className="font-bold text-slate-800 text-[9.5px] mb-0.5 uppercase tracking-wider">
               Measurement Notes & Compliance
             </h4>
@@ -188,7 +193,7 @@ export default function MeasurementSheetTemplate({
           </div>
 
           {/* Separated Totals */}
-          <div className="rounded border border-slate-200 bg-white p-2 shadow-2xs space-y-1">
+          <div className={`rounded border border-slate-200 bg-white ${density.cardPaddingClass} shadow-2xs ${density.compactSummary ? "space-y-0.5" : "space-y-1"}`}>
             <h4 className="font-bold text-slate-900 text-[9.5px] border-b border-slate-100 pb-0.5 uppercase tracking-wider">
               Takeoff Summary
             </h4>
@@ -230,6 +235,7 @@ export default function MeasurementSheetTemplate({
         {/* Signatures */}
         <DocSignatureArea
           mode="standard"
+          compact={density.signatureCompact}
           preparedByTitle="Prepared By (Estimator / Engineer)"
           receivedByTitle="Approved By (Project Manager / Client)"
         />

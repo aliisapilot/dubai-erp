@@ -5,6 +5,7 @@ import {
   DocumentLayout,
   SmartFitSettings,
   SmartFitMode,
+  PreferredDensity,
   DEFAULT_SMART_FIT_SETTINGS,
   normalizeSmartFit,
 } from "@/lib/documentDesigner";
@@ -142,6 +143,34 @@ export default function SmartFitSection({
             </div>
           </div>
 
+          {/* ── Preferred Density Selector: Auto / Normal / Compact / Dense ── */}
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
+              Preferred Density Level
+            </label>
+            <div className="grid grid-cols-4 gap-1 p-1 rounded-lg bg-slate-900 border border-slate-800">
+              {[
+                { id: "auto", label: "Auto" },
+                { id: "normal", label: "Normal" },
+                { id: "compact", label: "Compact" },
+                { id: "dense", label: "Dense" },
+              ].map((dOpt) => (
+                <button
+                  key={dOpt.id}
+                  type="button"
+                  onClick={() => updateSmartFit({ preferredDensity: dOpt.id as PreferredDensity })}
+                  className={`py-1 px-1 rounded text-center text-[10px] transition-all cursor-pointer ${
+                    (smartFit.preferredDensity || "auto") === dOpt.id
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                  }`}
+                >
+                  {dOpt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* ── Minimum Font Size (CSS pixels, matching saved layouts) ───── */}
           <div>
             <div className="flex items-center justify-between text-[10px] mb-1">
@@ -214,8 +243,75 @@ export default function SmartFitSection({
             </p>
           </div>
 
-          {/* ── Toggle Switches: Automatic Spacing & Print-Safe Borders ──── */}
+          {/* ── Minimum Section Gap (mm) ────────────────────────────────── */}
+          <div>
+            <div className="flex items-center justify-between text-[10px] mb-1">
+              <span className="text-slate-300 font-semibold">Minimum Section Gap</span>
+              <span className="font-mono font-bold text-amber-300">
+                {(smartFit.minSectionGap ?? 1.5).toFixed(1)} mm
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min={0.5}
+                max={5.0}
+                step={0.5}
+                value={smartFit.minSectionGap ?? 1.5}
+                onChange={(e) => updateSmartFit({ minSectionGap: Number(e.target.value) || 1.5 })}
+                className="flex-1 accent-amber-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+              />
+              <input
+                type="number"
+                min={0.5}
+                max={5.0}
+                step={0.5}
+                value={smartFit.minSectionGap ?? 1.5}
+                onChange={(e) => updateSmartFit({ minSectionGap: Number(e.target.value) || 1.5 })}
+                className="w-14 bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-[10px] text-white"
+              />
+            </div>
+          </div>
+
+          {/* ── Maximum Items Before Multipage ─────────────────────────── */}
+          <div className="flex items-center justify-between p-2 rounded bg-slate-900/60 border border-slate-800/80">
+            <div>
+              <span className="text-[10px] font-semibold text-slate-200 block">
+                Max Items Before Multipage
+              </span>
+              <span className="text-[9px] text-slate-400">
+                Threshold to allow continuation onto page 2
+              </span>
+            </div>
+            <input
+              type="number"
+              min={10}
+              max={50}
+              value={smartFit.maxItemsBeforeMultipage ?? 28}
+              onChange={(e) => updateSmartFit({ maxItemsBeforeMultipage: Number(e.target.value) || 28 })}
+              className="w-14 bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-[10px] text-white"
+            />
+          </div>
+
+          {/* ── Toggle Switches: Prefer Single Page, Auto Spacing, Print-Safe Borders ──── */}
           <div className="space-y-2 pt-1">
+            <label className="flex items-center justify-between cursor-pointer p-2 rounded bg-slate-900/60 border border-slate-800/80">
+              <div className="pr-2">
+                <span className="text-[10px] font-semibold text-slate-200 block">
+                  Prefer Single Page
+                </span>
+                <span className="text-[9px] text-slate-400">
+                  Aggressively compress ordinary datasets to stay on 1 page
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={smartFit.preferSinglePage !== false}
+                onChange={(e) => updateSmartFit({ preferSinglePage: e.target.checked })}
+                className="rounded accent-emerald-500 w-4 h-4 cursor-pointer"
+              />
+            </label>
+
             <label className="flex items-center justify-between cursor-pointer p-2 rounded bg-slate-900/60 border border-slate-800/80">
               <div className="pr-2">
                 <span className="text-[10px] font-semibold text-slate-200 block">

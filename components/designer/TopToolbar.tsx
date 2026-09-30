@@ -60,6 +60,8 @@ interface TopToolbarProps {
   totalPages: number;
   onPageChange: (page: number) => void;
   saving: boolean;
+  cloudStatus?: "saved" | "unsaved" | "saving" | "failed" | "conflict";
+  cloudVersion?: number;
   onSave: () => void;
   onReset: () => void;
   onAutoFix: () => void;
@@ -105,6 +107,8 @@ export default function TopToolbar({
   totalPages,
   onPageChange,
   saving,
+  cloudStatus = "saved",
+  cloudVersion,
   onSave,
   onReset,
   onAutoFix,
@@ -463,6 +467,80 @@ export default function TopToolbar({
               <Printer size={14} className="text-blue-400" />
               <span className="hidden lg:inline">Print</span>
             </button>
+
+            {/* Cloud Persistence Status Badge */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold border transition"
+                 style={{
+                   borderColor:
+                     cloudStatus === "saved"
+                       ? "rgba(16, 185, 129, 0.3)"
+                       : cloudStatus === "saving"
+                       ? "rgba(245, 158, 11, 0.3)"
+                       : cloudStatus === "failed"
+                       ? "rgba(239, 68, 68, 0.3)"
+                       : cloudStatus === "conflict"
+                       ? "rgba(99, 102, 241, 0.3)"
+                       : "rgba(245, 158, 11, 0.25)",
+                   backgroundColor:
+                     cloudStatus === "saved"
+                       ? "rgba(16, 185, 129, 0.08)"
+                       : cloudStatus === "saving"
+                       ? "rgba(245, 158, 11, 0.08)"
+                       : cloudStatus === "failed"
+                       ? "rgba(239, 68, 68, 0.08)"
+                       : cloudStatus === "conflict"
+                       ? "rgba(99, 102, 241, 0.08)"
+                       : "rgba(245, 158, 11, 0.05)",
+                   color:
+                     cloudStatus === "saved"
+                       ? "#34d399"
+                       : cloudStatus === "saving"
+                       ? "#fbbf24"
+                       : cloudStatus === "failed"
+                       ? "#f87171"
+                       : cloudStatus === "conflict"
+                       ? "#818cf8"
+                       : "#fbbf24",
+                 }}
+                 title={
+                   cloudStatus === "saved"
+                     ? "Design successfully synchronized to cloud"
+                     : cloudStatus === "saving"
+                     ? "Saving design to cloud..."
+                     : cloudStatus === "failed"
+                     ? "Cloud synchronization failed"
+                     : cloudStatus === "conflict"
+                     ? "Cloud version updated from another session"
+                     : "You have unsaved changes"
+                 }
+            >
+              {cloudStatus === "saved" ? (
+                <>
+                  <ShieldCheck size={11} className="text-emerald-400 shrink-0" />
+                  <span>Saved to Cloud{cloudVersion ? ` (v${cloudVersion})` : ""}</span>
+                </>
+              ) : cloudStatus === "saving" ? (
+                <>
+                  <Loader2 size={11} className="animate-spin text-amber-400 shrink-0" />
+                  <span>Saving...</span>
+                </>
+              ) : cloudStatus === "failed" ? (
+                <>
+                  <span className="text-red-400 font-bold">⚠</span>
+                  <span>Save Failed</span>
+                </>
+              ) : cloudStatus === "conflict" ? (
+                <>
+                  <span className="text-indigo-400 font-bold">ℹ</span>
+                  <span>Cloud Version Updated</span>
+                </>
+              ) : (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+                  <span>Unsaved Changes</span>
+                </>
+              )}
+            </div>
 
             <button
               type="button"

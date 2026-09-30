@@ -17,8 +17,24 @@ body,
 }
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0B0F19;
+  --foreground: #F8FAFC;
+
+  /* ── Dubai ERP Dark Business UI Design System ───────────────────────────── */
+  --erp-bg-app: #0B0F19;        /* Deep navy/charcoal main surface */
+  --erp-bg-sidebar: #070B14;    /* Slightly darker navy sidebar */
+  --erp-bg-card: #111827;       /* Elevated dark card/panel surface */
+  --erp-bg-card-hover: #162035; /* Card hover state */
+  --erp-bg-input: #0D1526;      /* Dark input surface */
+  --erp-border-input: #243047;  /* High-contrast visible input border */
+  --erp-border-card: #1E293B;   /* Card divider/outline */
+  --erp-accent-gold: #E0AC23;   /* Corporate UAE Gold brand accent */
+  --erp-accent-teal: #14B8A6;   /* Secondary teal accent */
+  --erp-text-main: #F8FAFC;     /* High-contrast off-white text */
+  --erp-text-muted: #94A3B8;    /* Muted cool gray secondary text */
+  --erp-status-success: #10B981;
+  --erp-status-warning: #F59E0B;
+  --erp-status-danger: #EF4444;
 
   /* ── Document Brand Color System ─────────────────────────────────────────
      Navy + Gold professional palette (overridable via DocumentContainer's
@@ -59,13 +75,6 @@ h1, h2, h3, h4, section, [id] {
   --color-foreground: var(--foreground);
   --font-sans: var(--font-app-sans);
   --font-mono: var(--font-app-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
