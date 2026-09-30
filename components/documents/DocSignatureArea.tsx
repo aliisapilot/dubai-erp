@@ -212,7 +212,7 @@ export default function DocSignatureArea({
           {/* Section Heading */}
           <div
             className="font-bold uppercase tracking-wider text-[11px] mb-2 pb-1 border-b"
-            style={{ color: "#C9A227", borderBottomColor: "#C9A227" }}
+            style={{ color: "var(--doc-primary, #0F172A)", borderBottomColor: "var(--doc-accent, #C9A227)" }}
           >
             {leftHeading}
           </div>
@@ -249,7 +249,14 @@ export default function DocSignatureArea({
               {stampSrc ? (
                 <CompanyStamp src={stampSrc} size={56} alt="Official Company Stamp" />
               ) : (
-                <div className="w-14 h-14" />
+                <div
+                  className="w-28 h-14 border border-dashed rounded flex items-center justify-center text-center p-1"
+                  style={{ borderColor: "var(--doc-border, #CBD5E1)", backgroundColor: "var(--doc-total-highlight, #F8FAFC)" }}
+                >
+                  <span className="text-[8.5px] leading-tight font-medium" style={{ color: "var(--doc-muted, #64748B)" }}>
+                    Company Stamp / Seal<br />(Official)
+                  </span>
+                </div>
               )}
             </div>
           </div>
@@ -281,7 +288,7 @@ export default function DocSignatureArea({
           {/* Section Heading */}
           <div
             className="font-bold uppercase tracking-wider text-[11px] mb-2 pb-1 border-b"
-            style={{ color: "#C9A227", borderBottomColor: "#C9A227" }}
+            style={{ color: "var(--doc-primary, #0F172A)", borderBottomColor: "var(--doc-accent, #C9A227)" }}
           >
             {rightHeading}
           </div>

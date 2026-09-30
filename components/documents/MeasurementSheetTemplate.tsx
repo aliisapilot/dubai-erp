@@ -83,39 +83,39 @@ export default function MeasurementSheetTemplate({
         <div className="mb-2 overflow-hidden rounded border border-slate-200">
           <table className="w-full table-fixed border-collapse text-left text-[9.5px]">
             <colgroup>
-              <col style={{ width: "4%" }} />
+              <col style={{ width: "3.5%" }} />
+              <col style={{ width: "8.5%" }} />
+              <col style={{ width: "22%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "5%" }} />
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "8%" }} />
               <col style={{ width: "11%" }} />
-              <col style={{ width: "23%" }} />
-              <col style={{ width: "14%" }} />
-              <col style={{ width: "6%" }} />
-              <col style={{ width: "18%" }} />
-              <col style={{ width: "11%" }} />
-              <col style={{ width: "6%" }} />
-              <col style={{ width: "7%" }} />
             </colgroup>
             <thead>
               <tr className="bg-slate-900 text-white font-semibold text-[8.5px] uppercase tracking-wider">
-                <th className="py-1.5 px-1 text-center">#</th>
-                <th className="py-1.5 px-2">Area / Ref</th>
-                <th className="py-1.5 px-2">Description</th>
-                <th className="py-1.5 px-1 text-center">Dimensions</th>
-                <th className="py-1.5 px-1 text-center">Qty</th>
-                <th className="py-1.5 px-2">Calculation Type & Formula</th>
-                <th className="py-1.5 px-2 text-right">Result & Unit</th>
-                <th className="py-1.5 px-1 text-right">Rate</th>
-                <th className="py-1.5 px-2 text-right">Amount</th>
+                <th className="py-1 px-1 text-center">#</th>
+                <th className="py-1 px-1.5 whitespace-nowrap">Area / Ref</th>
+                <th className="py-1 px-2">Description</th>
+                <th className="py-1 px-1 text-center whitespace-nowrap">Dimensions</th>
+                <th className="py-1 px-1 text-center whitespace-nowrap">Qty</th>
+                <th className="py-1 px-2">Calculation Type & Formula</th>
+                <th className="py-1 px-1.5 text-right whitespace-nowrap">Result & Unit</th>
+                <th className="py-1 px-1.5 text-right whitespace-nowrap">Rate</th>
+                <th className="py-1 px-2 text-right whitespace-nowrap">Amount</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {data.items.map((item, idx) => (
                 <tr key={item.id || idx} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
                   <td className="py-1 px-1 text-center font-mono text-slate-400 text-[8.5px] align-top">{idx + 1}</td>
-                  <td className="py-1 px-2 font-bold text-slate-900 text-[9px] truncate align-top">
+                  <td className="py-1 px-1.5 font-bold text-slate-900 text-[9px] truncate align-top">
                     {item.area_name || `Area ${idx + 1}`}
                   </td>
                   <td className="py-1 px-2 text-slate-700 text-[9px] break-words align-top">
                     <div className="font-semibold text-slate-900 leading-snug">{item.description || "Measurement item"}</div>
-                    {item.notes && <div className="text-[8px] text-slate-400 italic leading-snug mt-0.5">{item.notes}</div>}
+                    {item.notes && <div className="text-[8px] text-slate-500 italic leading-snug mt-0.5">{item.notes}</div>}
                   </td>
                   <td className="py-1 px-1 text-center text-slate-600 font-mono text-[8px] leading-snug align-top">
                     {item.calc_type === "quantity_only" ? (
@@ -150,17 +150,17 @@ export default function MeasurementSheetTemplate({
                         ? "Item Count"
                         : "Custom Formula"}
                     </div>
-                    <div className="text-[8px] font-mono text-slate-500 truncate" title={item.formula_display}>
+                    <div className="text-[8px] font-mono text-slate-600 break-words leading-tight mt-0.5" title={item.formula_display}>
                       {item.formula_display}
                     </div>
                   </td>
-                  <td className="py-1 px-2 text-right font-bold font-mono text-emerald-800 whitespace-nowrap text-[9.5px] align-top">
+                  <td className="py-1 px-1.5 text-right font-black font-mono text-slate-900 whitespace-nowrap text-[9.5px] align-top">
                     {formatResultWithUnit(item.calculated_total, item.result_unit)}
                   </td>
-                  <td className="py-1 px-1 text-right text-slate-600 font-mono text-[8.5px] whitespace-nowrap align-top">
+                  <td className="py-1 px-1.5 text-right text-slate-700 font-mono text-[8.5px] whitespace-nowrap align-top">
                     {item.rate > 0 ? `${fmtAED(item.rate)} / ${item.result_unit}` : "—"}
                   </td>
-                  <td className="py-1 px-2 text-right font-bold text-slate-900 font-mono whitespace-nowrap text-[9.5px] align-top">
+                  <td className="py-1 px-2 text-right font-black text-slate-950 font-mono whitespace-nowrap text-[9.5px] align-top">
                     {item.total_cost > 0 ? fmtAED(item.total_cost) : "—"}
                   </td>
                 </tr>
@@ -199,27 +199,27 @@ export default function MeasurementSheetTemplate({
             </div>
 
             {summary.totalLinearM > 0 && (
-              <div className="flex justify-between items-center text-[10px] bg-emerald-50/80 px-2 py-0.5 rounded border border-emerald-100">
-                <span className="text-emerald-900 font-semibold">Total Linear Metres:</span>
-                <span className="font-bold font-mono text-emerald-800 text-xs">
+              <div className="flex justify-between items-center text-[10px] bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                <span className="text-slate-700 font-semibold">Total Linear Metres:</span>
+                <span className="font-bold font-mono text-slate-900 text-xs">
                   {summary.totalLinearM.toFixed(3)} m
                 </span>
               </div>
             )}
 
             {summary.totalAreaM2 > 0 && (
-              <div className="flex justify-between items-center text-[10px] bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100">
-                <span className="text-blue-900 font-semibold">Total Square Metres:</span>
-                <span className="font-bold font-mono text-blue-800 text-xs">
+              <div className="flex justify-between items-center text-[10px] bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                <span className="text-slate-700 font-semibold">Total Square Metres:</span>
+                <span className="font-bold font-mono text-slate-900 text-xs">
                   {summary.totalAreaM2.toFixed(3)} m²
                 </span>
               </div>
             )}
 
             {summary.totalCostAED > 0 && (
-              <div className="flex justify-between items-center text-[10px] border-t border-slate-200 pt-0.5">
-                <span className="text-slate-900 font-bold uppercase text-[9px]">Total Estimated Cost:</span>
-                <span className="font-black font-mono text-slate-900 text-xs">
+              <div className="flex justify-between items-center text-[10px] border-t border-slate-200 pt-1 mt-0.5">
+                <span className="text-slate-900 font-bold uppercase text-[9px] tracking-wide">Total Estimated Cost:</span>
+                <span className="font-black font-mono text-slate-950 text-xs">
                   {fmtAED(summary.totalCostAED)}
                 </span>
               </div>

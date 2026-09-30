@@ -446,17 +446,22 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     word-break: normal !important;
   }
 
-  /* Strict single-page document enforcement */
+  /* Strict single-page document enforcement: Dual A4 (297mm) and Letter (279.4mm) safe bounds */
   .single-page-doc,
   .document-sheet.single-page-doc,
   .print-document.single-page-doc {
-    max-height: 297mm !important;
-    height: 297mm !important;
+    max-height: 275mm !important;
+    height: 275mm !important;
     overflow: hidden !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     page-break-after: avoid !important;
     break-after: avoid !important;
+  }
+
+  .single-page-doc .page-decorative-borders-container {
+    height: 275mm !important;
+    max-height: 275mm !important;
   }
 
   /* 2. Universal Non-Print Application Chrome & UI Elimination */

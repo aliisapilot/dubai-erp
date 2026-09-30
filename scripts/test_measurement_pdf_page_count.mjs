@@ -61,27 +61,27 @@ const htmlContent = `<!DOCTYPE html>
         <div class="mb-2 overflow-hidden rounded border border-slate-200">
           <table class="w-full table-fixed border-collapse text-left text-[9.5px]">
             <colgroup>
-              <col style="width: 4%" />
+              <col style="width: 3.5%" />
+              <col style="width: 8.5%" />
+              <col style="width: 22%" />
+              <col style="width: 12%" />
+              <col style="width: 5%" />
+              <col style="width: 20%" />
+              <col style="width: 10%" />
+              <col style="width: 8%" />
               <col style="width: 11%" />
-              <col style="width: 23%" />
-              <col style="width: 14%" />
-              <col style="width: 6%" />
-              <col style="width: 18%" />
-              <col style="width: 11%" />
-              <col style="width: 6%" />
-              <col style="width: 7%" />
             </colgroup>
             <thead>
               <tr class="bg-slate-900 text-white font-semibold text-[8.5px] uppercase tracking-wider">
-                <th class="py-1.5 px-1 text-center">#</th>
-                <th class="py-1.5 px-2">Area / Ref</th>
-                <th class="py-1.5 px-2">Description</th>
-                <th class="py-1.5 px-1 text-center">Dimensions</th>
-                <th class="py-1.5 px-1 text-center">Qty</th>
-                <th class="py-1.5 px-2">Calculation Type & Formula</th>
-                <th class="py-1.5 px-2 text-right">Result & Unit</th>
-                <th class="py-1.5 px-1 text-right">Rate</th>
-                <th class="py-1.5 px-2 text-right">Amount</th>
+                <th class="py-1 px-1 text-center">#</th>
+                <th class="py-1 px-1.5 whitespace-nowrap">Area / Ref</th>
+                <th class="py-1 px-2">Description</th>
+                <th class="py-1 px-1 text-center whitespace-nowrap">Dimensions</th>
+                <th class="py-1 px-1 text-center whitespace-nowrap">Qty</th>
+                <th class="py-1 px-2">Calculation Type & Formula</th>
+                <th class="py-1 px-1.5 text-right whitespace-nowrap">Result & Unit</th>
+                <th class="py-1 px-1.5 text-right whitespace-nowrap">Rate</th>
+                <th class="py-1 px-2 text-right whitespace-nowrap">Amount</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
