@@ -1535,7 +1535,50 @@ export default function RightInspector({
             </div>
 
             {/* Table Columns Config */}
-            <div className="pt-2">
+            <div className="pt-2 space-y-2">
+              {/* Quick Toggle for Calculation Type (Measurement Takeoff) */}
+              {elem.tableSettings.columns.some((c) => c.key === "calc_type") && (
+                <div className="p-2.5 rounded-lg border border-amber-500/30 bg-amber-950/20 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-amber-300 text-[11px]">
+                      Calculation Type &amp; Formula
+                    </span>
+                    {(() => {
+                      const calcColIdx = elem.tableSettings.columns.findIndex((c) => c.key === "calc_type");
+                      const isVisible = calcColIdx >= 0 && elem.tableSettings.columns[calcColIdx].visible;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...elem.tableSettings!.columns];
+                            if (calcColIdx >= 0) {
+                              updated[calcColIdx] = {
+                                ...updated[calcColIdx],
+                                visible: !isVisible,
+                              };
+                              onUpdateElement(elem.id, {
+                                tableSettings: { ...elem.tableSettings!, columns: updated },
+                              });
+                            }
+                          }}
+                          className={`px-2.5 py-1 rounded text-[10px] font-bold transition-colors ${
+                            isVisible
+                              ? "bg-amber-500 text-slate-950 hover:bg-amber-400"
+                              : "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-white"
+                          }`}
+                          title="Toggle Calculation Type & Formula column in Measurement Sheet"
+                        >
+                          {isVisible ? "Visible" : "Hidden (Removed)"}
+                        </button>
+                      );
+                    })()}
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-tight">
+                    Formulas are hidden by default for clean presentation. Click to toggle this column in the PDF.
+                  </p>
+                </div>
+              )}
+
               <label className="text-[10px] font-bold text-slate-400 block mb-1.5">
                 Columns Configuration (Show / Hide &amp; Width)
               </label>

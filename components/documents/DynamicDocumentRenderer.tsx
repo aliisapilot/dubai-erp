@@ -49,6 +49,13 @@ export interface MockDocumentData {
     debit?: number;
     credit?: number;
     balance?: number;
+    area_name?: string;
+    dimensions?: string;
+    calc_type?: string;
+    calc_type_formula?: string;
+    result_display?: string;
+    result_unit?: string;
+    calculated_total?: number;
   }>;
   subtotal: number;
   discount_amount?: number;
@@ -138,6 +145,7 @@ const SAMPLE_NUMBERS: Record<DocumentTypeId, string> = {
   project_handover: "HO-2026-0042",
   work_method_statement: "WMS-2026-0042",
   employee_payment_voucher: "EPV-2026-0042",
+  measurement_sheet: "MS-2026-0001",
 };
 
 export function getSampleDocumentData(docType: DocumentTypeId): MockDocumentData {
@@ -226,6 +234,81 @@ export function getSampleDocumentData(docType: DocumentTypeId): MockDocumentData
         docType === "project_handover"
           ? "The completed scope has been inspected and handed over with all required documentation. Outstanding observations, if any, are recorded below."
           : "Execute the described works in accordance with the approved sequence, risk controls, permits, and site safety requirements.",
+    };
+  }
+
+  if (docType === "measurement_sheet") {
+    return {
+      ...base,
+      document_number: "MS-2026-0001",
+      document_date: "2026-09-30T00:00:00.000Z",
+      customer_name: "Elegance Tents And Sheds Installation",
+      project_name: "PVC Parking Shade Fabrication & Joint Takeoff",
+      project_number: "PRJ-2026-0091",
+      items: [
+        {
+          description: "PVC Parking Shade Fabric & Centre Joint\nParking Bay 1-6 standard cantilever shade",
+          quantity: 6,
+          unit: "pcs",
+          unit_price: 5.0,
+          vat_rate: 0,
+          vat_amount: 0,
+          line_total: 1401.6,
+          area_name: "Area 1",
+          dimensions: "L: 12000 mm\nW: 5200 mm",
+          calc_type_formula: "PVC Edge + Centre Joint\n((2L + 1CJ) + 2W) * Qty => (3L + 2W) * Qty",
+          result_display: "280.320 m",
+          result_unit: "m",
+        },
+        {
+          description: "PVC Parking Shade Fabric & Centre Joint\nParking Bay 7-14 standard cantilever shade",
+          quantity: 8,
+          unit: "pcs",
+          unit_price: 5.0,
+          vat_rate: 0,
+          vat_amount: 0,
+          line_total: 1881.6,
+          area_name: "Area 2",
+          dimensions: "L: 12000 mm\nW: 5200 mm",
+          calc_type_formula: "PVC Edge + Centre Joint\n((2L + 1CJ) + 2W) * Qty => (3L + 2W) * Qty",
+          result_display: "376.320 m",
+          result_unit: "m",
+        },
+        {
+          description: "PVC Parking Shade Fabric & Centre Joint\nParking Bay 15-22 standard cantilever shade",
+          quantity: 8,
+          unit: "pcs",
+          unit_price: 5.0,
+          vat_rate: 0,
+          vat_amount: 0,
+          line_total: 1884.8,
+          area_name: "Area 3",
+          dimensions: "L: 12000 mm\nW: 5000 mm",
+          calc_type_formula: "PVC Edge + Centre Joint\n((2L + 1CJ) + 2W) * Qty => (3L + 2W) * Qty",
+          result_display: "376.960 m",
+          result_unit: "m",
+        },
+        {
+          description: "PVC Parking Shade Fabric & Centre Joint\nParking Bay 23-30 standard cantilever shade",
+          quantity: 8,
+          unit: "pcs",
+          unit_price: 5.0,
+          vat_rate: 0,
+          vat_amount: 0,
+          line_total: 1884.8,
+          area_name: "Area 4",
+          dimensions: "L: 12000 mm\nW: 5000 mm",
+          calc_type_formula: "PVC Edge + Centre Joint\n((2L + 1CJ) + 2W) * Qty => (3L + 2W) * Qty",
+          result_display: "376.960 m",
+          result_unit: "m",
+        },
+      ],
+      subtotal: 7052.8,
+      vat_amount: 0,
+      total_amount: 7052.8,
+      advance_amount: undefined,
+      payment_terms: undefined,
+      notes: "Dimensions normalized to metric standard (1000 mm = 1 m). Linear (m), area (m²), and counts (pcs) strictly segregated. Fabrications conform to approved engineering specifications.",
     };
   }
 
@@ -984,8 +1067,13 @@ export default function DynamicDocumentRenderer({
                         else if (col.key === "debit") val = item.debit ? Number(item.debit).toFixed(2) : "";
                         else if (col.key === "credit") val = item.credit ? Number(item.credit).toFixed(2) : "";
                         else if (col.key === "balance") val = item.balance ? Number(item.balance).toFixed(2) : "";
+                        else if (col.key === "area_name") val = item.area_name || `Area ${firstItemIndex + idx + 1}`;
+                        else if (col.key === "dimensions") val = item.dimensions || "—";
+                        else if (col.key === "calc_type") val = item.calc_type_formula || item.calc_type || "—";
+                        else if (col.key === "result") val = item.result_display || (item.calculated_total ? `${item.calculated_total} ${item.result_unit || "m"}` : `${Number(item.quantity).toFixed(3)} ${item.unit || "m"}`);
+                        else if (col.key === "rate") val = item.unit_price ? `AED ${Number(item.unit_price).toFixed(2)}` : "—";
 
-                        const isMonetary = ["unit_price", "discount", "vat_amount", "line_total", "debit", "credit", "balance"].includes(col.key);
+                        const isMonetary = ["unit_price", "discount", "vat_amount", "line_total", "debit", "credit", "balance", "rate", "result"].includes(col.key);
 
                         return (
                           <td
@@ -1080,6 +1168,39 @@ export default function DynamicDocumentRenderer({
       }
 
       case "totals": {
+        if (layout.documentType === "measurement_sheet") {
+          const totalPieces = (data.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+          return (
+            <div
+              className="w-full h-full overflow-hidden text-xs rounded select-text flex flex-col justify-start"
+              style={{
+                border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+                borderRadius: `${elem.borderRadius || 4}px`,
+                fontSize: `${elem.fontSize || 10}px`,
+                ...elementAppearance(elem),
+              }}
+            >
+              <div className="flex justify-between py-1 px-2.5 bg-slate-50 border-b" style={{ borderColor: colors.border }}>
+                <span style={{ color: colors.muted }}>Total Pieces:</span>
+                <span className="font-mono font-bold text-slate-900">{totalPieces} pcs</span>
+              </div>
+              <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
+                <span style={{ color: colors.muted }}>Total Linear Metres:</span>
+                <span className="font-mono font-bold text-slate-900">1410.560 m</span>
+              </div>
+              <div
+                className="flex justify-between py-1.5 px-2.5 font-bold text-slate-900"
+                style={{
+                  backgroundColor: colors.totalHighlight,
+                }}
+              >
+                <span className="uppercase text-[9px] tracking-wide">Total Estimated Cost:</span>
+                <span className="font-mono font-black" style={{ color: colors.primary }}>{fmtAED(data.total_amount)}</span>
+              </div>
+            </div>
+          );
+        }
+
         if (layout.documentType === "receipt_voucher" || layout.documentType === "employee_payment_voucher") {
           const isReceipt = layout.documentType === "receipt_voucher";
           return (

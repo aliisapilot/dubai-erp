@@ -3,18 +3,20 @@ import { printCurrentDocument } from "@/lib/print";
 
 import React, { ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { Maximize, Printer, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Maximize, Printer, Sliders, X, ZoomIn, ZoomOut } from "lucide-react";
 import { getDocumentPreviewScale } from "@/lib/documentPreview";
 
 interface PrintModalProps {
   isOpen: boolean;
   onClose: () => void;
   children: ReactNode;
+  editorHref?: string;
+  extraActions?: ReactNode;
 }
 
 const emptySubscribe = () => () => {};
 
-export default function PrintModal({ isOpen, onClose, children }: PrintModalProps) {
+export default function PrintModal({ isOpen, onClose, children, editorHref, extraActions }: PrintModalProps) {
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const previewRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -92,6 +94,7 @@ export default function PrintModal({ isOpen, onClose, children }: PrintModalProp
       <header className="print-preview-toolbar no-print flex shrink-0 items-center justify-between gap-2 border-b border-slate-700 bg-slate-900 px-2 py-2 pt-[calc(0.5rem+env(safe-area-inset-top))] text-white sm:px-4">
         <div className="min-w-0 flex-1 truncate text-sm font-semibold" id="print-preview-title">Document preview</div>
         <div className="flex shrink-0 items-center gap-1">
+          {extraActions}
           <button type="button" onClick={() => { setIsFit(false); setScale((value) => Math.max(0.1, value - 0.1)); }} className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-slate-800" aria-label="Zoom out" title="Zoom out">
             <ZoomOut size={18} />
           </button>
@@ -101,6 +104,17 @@ export default function PrintModal({ isOpen, onClose, children }: PrintModalProp
           <button type="button" onClick={() => { setIsFit(false); setScale((value) => Math.min(2, value + 0.1)); }} className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-slate-800" aria-label="Zoom in" title="Zoom in">
             <ZoomIn size={18} />
           </button>
+          {editorHref && (
+            <a
+              href={editorHref}
+              className="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:text-amber-200 transition-colors"
+              title="Open and edit template in PDF Designer"
+              aria-label="Edit in PDF Editor"
+            >
+              <Sliders size={15} className="text-amber-400" />
+              <span className="hidden min-[480px]:inline">PDF Editor</span>
+            </a>
+          )}
           <button type="button" onClick={() => void printCurrentDocument()} className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-500" aria-label="Print or save as PDF" title="Print or save as PDF">
             <Printer size={16} /><span className="hidden min-[380px]:inline">Print / Save</span>
           </button>

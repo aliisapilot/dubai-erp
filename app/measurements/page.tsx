@@ -24,7 +24,9 @@ import {
   Loader2,
   ShieldCheck,
   Check,
+  Sliders,
 } from "lucide-react";
+import Link from "next/link";
 import {
   getCompanyId,
   getCurrentCompany,
@@ -108,6 +110,7 @@ export default function MeasurementsPage() {
   // State: Modals
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showCalculationTypeInPdf, setShowCalculationTypeInPdf] = useState(false);
   const [showQuotationModal, setShowQuotationModal] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -603,6 +606,15 @@ export default function MeasurementsPage() {
             <Printer size={15} className="text-blue-400" />
             <span>Print / PDF</span>
           </button>
+
+          <Link
+            href="/settings/designer?type=measurement_sheet"
+            className="flex items-center gap-1.5 rounded-lg border border-purple-500/40 bg-purple-950/40 px-3 py-2 text-xs font-semibold text-purple-200 hover:bg-purple-900/60 hover:text-white transition-colors shadow-sm"
+            title="Edit Measurement Sheet PDF layout, table columns, header and styling in Document Designer"
+          >
+            <Sliders size={15} className="text-purple-400" />
+            <span>PDF Editor</span>
+          </Link>
 
           <button
             type="button"
@@ -1981,8 +1993,28 @@ export default function MeasurementsPage() {
         <PrintModal
           isOpen={showPrintModal}
           onClose={() => setShowPrintModal(false)}
+          editorHref="/settings/designer?type=measurement_sheet"
+          extraActions={
+            <button
+              type="button"
+              onClick={() => setShowCalculationTypeInPdf((prev) => !prev)}
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium border transition-colors ${
+                showCalculationTypeInPdf
+                  ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                  : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+              }`}
+              title="Toggle Calculation Type & Formula column in preview"
+            >
+              <Calculator size={13} className={showCalculationTypeInPdf ? "text-emerald-400" : "text-slate-400"} />
+              <span>{showCalculationTypeInPdf ? "Calculation Type: Visible" : "Calculation Type: Removed"}</span>
+            </button>
+          }
         >
-          <MeasurementSheetTemplate company={company} data={printDocData} />
+          <MeasurementSheetTemplate
+            company={company}
+            data={printDocData}
+            showCalculationType={showCalculationTypeInPdf}
+          />
         </PrintModal>
       )}
       </div>

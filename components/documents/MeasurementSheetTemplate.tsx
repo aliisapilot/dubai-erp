@@ -12,6 +12,7 @@ import {
 } from "@/lib/measurementTypes";
 import { formatResultWithUnit } from "@/lib/measurementCalculations";
 import { getAdaptiveDocumentDensity } from "@/lib/documentLayoutEngine";
+import { usePersistedDocumentDesign } from "./usePersistedDocumentDesign";
 
 export type MeasurementSheetDocData = {
   id?: string;
@@ -30,17 +31,31 @@ interface MeasurementSheetTemplateProps {
   company: CompanyDocInfo | null;
   data: MeasurementSheetDocData;
   scale?: number;
+  showCalculationType?: boolean;
 }
 
 export default function MeasurementSheetTemplate({
   company,
   data,
+  showCalculationType,
 }: MeasurementSheetTemplateProps) {
   const { summary } = data;
+  const design = usePersistedDocumentDesign(company?.id, 'measurement_sheet');
+  const tableElem = design.layout?.elements?.find((e) => e.type === "line_items");
+  const customColumns = tableElem?.tableSettings?.columns;
+  const showFormulaCol = showCalculationType !== undefined
+    ? showCalculationType
+    : (customColumns?.find((c) => c.key === "calc_type")?.visible ?? false);
+
   const density = getAdaptiveDocumentDensity(data.items.length, {
     hasLongDescriptions: data.items.some((i) => (i.description?.length || 0) > 40),
-    hasFormulas: true,
+    hasFormulas: showFormulaCol,
   });
+
+  const tableSettings = tableElem?.tableSettings;
+  const headerBg = tableSettings?.headerBg || "#0F172A";
+  const headerTextColor = tableSettings?.headerTextColor || "#FFFFFF";
+  const borderColor = tableSettings?.borderColor || "#CBD5E1";
 
   return (
     <DocumentContainer
@@ -48,6 +63,7 @@ export default function MeasurementSheetTemplate({
       docTypeLabel="MEASUREMENT TAKEOFF"
       company={company}
       totalPages={1}
+      layout={design.layout}
     >
       <div className="text-slate-800 bg-white font-sans text-xs">
         {/* Official Company Header */}
@@ -85,27 +101,32 @@ export default function MeasurementSheetTemplate({
         </div>
 
         {/* Measurements Table */}
-        <div className={`${density.sectionGapClass} overflow-hidden rounded border border-slate-200`}>
+        <div className={`${density.sectionGapClass} overflow-hidden rounded border`} style={{ borderColor }}>
           <table className={`w-full table-fixed border-collapse text-left ${density.tableTextClass}`}>
             <colgroup>
-              <col style={{ width: "3.5%" }} />
-              <col style={{ width: "8.5%" }} />
-              <col style={{ width: "22%" }} />
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "5%" }} />
-              <col style={{ width: "20%" }} />
-              <col style={{ width: "10%" }} />
-              <col style={{ width: "8%" }} />
-              <col style={{ width: "11%" }} />
+              <col style={{ width: showFormulaCol ? "3.5%" : "4%" }} />
+              <col style={{ width: showFormulaCol ? "8.5%" : "13%" }} />
+              <col style={{ width: showFormulaCol ? "22%" : "33%" }} />
+              <col style={{ width: showFormulaCol ? "12%" : "16%" }} />
+              <col style={{ width: showFormulaCol ? "5%" : "8%" }} />
+              {showFormulaCol && <col style={{ width: "20%" }} />}
+              <col style={{ width: showFormulaCol ? "10%" : "12%" }} />
+              <col style={{ width: showFormulaCol ? "8%" : "6%" }} />
+              <col style={{ width: showFormulaCol ? "11%" : "8%" }} />
             </colgroup>
             <thead>
-              <tr className="bg-slate-900 text-white font-semibold uppercase tracking-wider">
+              <tr
+                className="font-semibold uppercase tracking-wider"
+                style={{ backgroundColor: headerBg, color: headerTextColor }}
+              >
                 <th className={`${density.tableHeaderClass} text-center`}>#</th>
                 <th className={`${density.tableHeaderClass} whitespace-nowrap`}>Area / Ref</th>
                 <th className={`${density.tableHeaderClass}`}>Description</th>
                 <th className={`${density.tableHeaderClass} text-center whitespace-nowrap`}>Dimensions</th>
                 <th className={`${density.tableHeaderClass} text-center whitespace-nowrap`}>Qty</th>
-                <th className={`${density.tableHeaderClass}`}>Calculation Type & Formula</th>
+                {showFormulaCol && (
+                  <th className={`${density.tableHeaderClass}`}>Calculation Type & Formula</th>
+                )}
                 <th className={`${density.tableHeaderClass} text-right whitespace-nowrap`}>Result & Unit</th>
                 <th className={`${density.tableHeaderClass} text-right whitespace-nowrap`}>Rate</th>
                 <th className={`${density.tableHeaderClass} text-right whitespace-nowrap`}>Amount</th>
@@ -141,24 +162,26 @@ export default function MeasurementSheetTemplate({
                   <td className={`${density.tableCellClass} text-center font-bold text-slate-900 text-[9px] whitespace-nowrap align-top`}>
                     {item.quantity} pcs
                   </td>
-                  <td className={`${density.tableCellClass} text-slate-600 align-top`}>
-                    <div className="font-semibold text-slate-800 text-[9px] leading-snug">
-                      {item.calc_type === "pvc_edge_joint"
-                        ? "PVC Edge + Centre Joint"
-                        : item.calc_type === "linear"
-                        ? "Linear Length"
-                        : item.calc_type === "area"
-                        ? "Surface Area"
-                        : item.calc_type === "perimeter"
-                        ? "Perimeter"
-                        : item.calc_type === "quantity_only"
-                        ? "Item Count"
-                        : "Custom Formula"}
-                    </div>
-                    <div className="text-[8px] font-mono text-slate-600 break-words leading-tight mt-0.5" title={item.formula_display}>
-                      {item.formula_display}
-                    </div>
-                  </td>
+                  {showFormulaCol && (
+                    <td className={`${density.tableCellClass} text-slate-600 align-top`}>
+                      <div className="font-semibold text-slate-800 text-[9px] leading-snug">
+                        {item.calc_type === "pvc_edge_joint"
+                          ? "PVC Edge + Centre Joint"
+                          : item.calc_type === "linear"
+                          ? "Linear Length"
+                          : item.calc_type === "area"
+                          ? "Surface Area"
+                          : item.calc_type === "perimeter"
+                          ? "Perimeter"
+                          : item.calc_type === "quantity_only"
+                          ? "Item Count"
+                          : "Custom Formula"}
+                      </div>
+                      <div className="text-[8px] font-mono text-slate-600 break-words leading-tight mt-0.5" title={item.formula_display}>
+                        {item.formula_display}
+                      </div>
+                    </td>
+                  )}
                   <td className={`${density.tableCellClass} text-right font-black font-mono text-slate-900 whitespace-nowrap text-[9.5px] align-top`}>
                     {formatResultWithUnit(item.calculated_total, item.result_unit)}
                   </td>

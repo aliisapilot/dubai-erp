@@ -29,7 +29,8 @@ export type DocumentTypeId =
   | "salary_statement"
   | "project_handover"
   | "work_method_statement"
-  | "employee_payment_voucher";
+  | "employee_payment_voucher"
+  | "measurement_sheet";
 
 export interface DocumentTypeOption {
   id: DocumentTypeId;
@@ -136,6 +137,14 @@ export const DOCUMENT_TYPE_OPTIONS: DocumentTypeOption[] = [
     defaultTitle: "PAYMENT VOUCHER",
     defaultTitleAr: "سند صرف",
     category: "hr",
+  },
+  {
+    id: "measurement_sheet",
+    label: "Measurement & Takeoff Sheet",
+    labelAr: "جدول حصر الكميات والمقاسات",
+    defaultTitle: "MEASUREMENT & TAKEOFF SHEET",
+    defaultTitleAr: "جدول حصر الكميات والمقاسات",
+    category: "operations",
   },
 ];
 
@@ -474,6 +483,7 @@ const DOCUMENT_STYLES: Record<DocumentTypeId, DocumentLayout["branding"]> = {
   project_handover: { primaryColor: "#14532D", accentColor: "#CA8A04", textColor: "#26352B", mutedColor: "#64748B", borderColor: "#BBF7D0", tableHeaderColor: "#166534", totalHighlightColor: "#F7FEE7" },
   work_method_statement: { primaryColor: "#9A3412", accentColor: "#F59E0B", textColor: "#431407", mutedColor: "#78716C", borderColor: "#FED7AA", tableHeaderColor: "#C2410C", totalHighlightColor: "#FFF7ED" },
   employee_payment_voucher: { primaryColor: "#164E63", accentColor: "#0891B2", textColor: "#243B45", mutedColor: "#64748B", borderColor: "#A5F3FC", tableHeaderColor: "#155E75", totalHighlightColor: "#ECFEFF" },
+  measurement_sheet: { primaryColor: "#0F172A", accentColor: "#059669", textColor: "#334155", mutedColor: "#64748B", borderColor: "#CBD5E1", tableHeaderColor: "#0F172A", totalHighlightColor: "#F0FDF4" },
 };
 
 // ── Default Table Columns ──────────────────────────────────────────────────────
@@ -509,6 +519,18 @@ export const DEFAULT_SALARY_COLUMNS: TableColumnConfig[] = [
   { key: "index", label: "#", visible: true, widthPct: 8, align: "center" },
   { key: "description", label: "Earnings / Deductions", visible: true, widthPct: 62, align: "left" },
   { key: "line_total", label: "Amount (AED)", visible: true, widthPct: 30, align: "right" },
+];
+
+export const DEFAULT_MEASUREMENT_COLUMNS: TableColumnConfig[] = [
+  { key: "index", label: "#", visible: true, widthPct: 4, align: "center" },
+  { key: "area_name", label: "Area / Ref", visible: true, widthPct: 13, align: "left" },
+  { key: "description", label: "Description & Notes", visible: true, widthPct: 33, align: "left" },
+  { key: "dimensions", label: "Dimensions", visible: true, widthPct: 16, align: "center" },
+  { key: "quantity", label: "Qty", visible: true, widthPct: 8, align: "center" },
+  { key: "calc_type", label: "Calculation Type & Formula", visible: false, widthPct: 18, align: "left" },
+  { key: "result", label: "Result & Unit", visible: true, widthPct: 12, align: "right" },
+  { key: "rate", label: "Rate (AED)", visible: true, widthPct: 6, align: "right" },
+  { key: "line_total", label: "Amount (AED)", visible: true, widthPct: 8, align: "right" },
 ];
 
 type ElementOverrides = Record<string, Partial<LayoutElement>>;
@@ -647,6 +669,67 @@ function applyDocumentBusinessProfile(
     });
   }
 
+  if (docType === "measurement_sheet") {
+    add("customer_info", "line_items", "payment_terms", "totals", "company_signature", "company_stamp");
+    Object.assign(overrides, {
+      customer_info: {
+        x: 12,
+        y: 63,
+        width: 91,
+        height: 20,
+        label: "Project & Client Information",
+      },
+      doc_meta: {
+        x: 107,
+        y: 63,
+        width: 91,
+        height: 20,
+        label: "Sheet Number & Date",
+      },
+      line_items: {
+        x: 12,
+        y: 86,
+        width: 186,
+        height: 76,
+        label: "Takeoff Measurements Table",
+      },
+      payment_terms: {
+        x: 12,
+        y: 165,
+        width: 105,
+        height: 38,
+        label: "Measurement Notes & Compliance",
+        backgroundColor: "#F8FAFC",
+        borderColor: style.borderColor,
+        borderWidth: 1,
+        borderRadius: 4,
+        padding: 3,
+        customText: "Dimensions normalized to metric standard (1000 mm = 1 m). Linear (m), area (m²), and counts (pcs) strictly segregated. Fabrications conform to approved engineering specifications.",
+      },
+      totals: {
+        x: 121,
+        y: 165,
+        width: 77,
+        height: 38,
+        label: "Takeoff Summary",
+      },
+      company_signature: {
+        x: 12,
+        y: 206,
+        width: 90,
+        height: 40,
+        customText: "PREPARED BY (ESTIMATOR / ENGINEER)",
+      },
+      company_stamp: {
+        x: 108,
+        y: 206,
+        width: 90,
+        height: 40,
+        customText: "APPROVED BY (PROJECT MANAGER / CLIENT)",
+      },
+    });
+  }
+
   return sourceElements
     .filter((element) => allowedIds.has(element.id))
     .map((element) => {
@@ -659,6 +742,8 @@ function applyDocumentBusinessProfile(
             ? DEFAULT_STATEMENT_COLUMNS
             : docType === "salary_statement"
             ? DEFAULT_SALARY_COLUMNS
+            : docType === "measurement_sheet"
+            ? DEFAULT_MEASUREMENT_COLUMNS
             : DEFAULT_INVOICE_COLUMNS;
         profiled.tableSettings = {
           ...profiled.tableSettings,
@@ -850,6 +935,10 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
             ? DEFAULT_DELIVERY_COLUMNS
             : docType === "customer_statement"
             ? DEFAULT_STATEMENT_COLUMNS
+            : docType === "salary_statement"
+            ? DEFAULT_SALARY_COLUMNS
+            : docType === "measurement_sheet"
+            ? DEFAULT_MEASUREMENT_COLUMNS
             : DEFAULT_INVOICE_COLUMNS,
       },
     },
@@ -1008,6 +1097,69 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
             lockAspectRatio: true,
             zIndex: 21,
             imageFit: "contain" as const,
+          },
+        ]
+      : docType === "measurement_sheet"
+      ? [
+          {
+            id: "payment_terms",
+            type: "payment_terms" as ElementType,
+            label: "Measurement Notes & Compliance",
+            x: 12,
+            y: 165,
+            width: 105,
+            height: 38,
+            visible: true,
+            locked: false,
+            zIndex: 18,
+            fontSize: 9.5,
+            color: "#64748B",
+            customText: "Dimensions normalized to metric standard (1000 mm = 1 m). Linear (m), area (m²), and counts (pcs) strictly segregated. Fabrications conform to approved engineering specifications.",
+          },
+          {
+            id: "totals",
+            type: "totals" as ElementType,
+            label: "Takeoff Summary",
+            x: 121,
+            y: 165,
+            width: 77,
+            height: 38,
+            visible: true,
+            locked: false,
+            zIndex: 19,
+            fontSize: 10.5,
+            borderColor: "#CBD5E1",
+            borderWidth: 1,
+            borderRadius: 4,
+            padding: 2,
+          },
+          {
+            id: "company_signature",
+            type: "company_signature" as ElementType,
+            label: "Prepared By (Estimator / Engineer)",
+            x: 12,
+            y: 206,
+            width: 90,
+            height: 40,
+            visible: true,
+            locked: false,
+            lockAspectRatio: true,
+            zIndex: 20,
+            customText: "PREPARED BY (ESTIMATOR / ENGINEER)",
+          },
+          {
+            id: "company_stamp",
+            type: "company_stamp" as ElementType,
+            label: "Approved By (Project Manager / Client)",
+            x: 108,
+            y: 206,
+            width: 90,
+            height: 40,
+            visible: true,
+            locked: false,
+            lockAspectRatio: true,
+            zIndex: 21,
+            customText: "APPROVED BY (PROJECT MANAGER / CLIENT)",
           },
         ]
       : [

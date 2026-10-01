@@ -65,9 +65,22 @@ function getInitialLayout(docType: DocumentTypeId): DocumentLayout {
   return createDefaultLayout(docType);
 }
 
+function getRequestedDocType(): DocumentTypeId {
+  if (typeof window !== "undefined") {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const req = (params.get("type") || params.get("docType")) as DocumentTypeId;
+      if (req && DOCUMENT_TYPE_OPTIONS.some((d) => d.id === req)) {
+        return req;
+      }
+    } catch {}
+  }
+  return "tax_invoice";
+}
+
 export default function DocumentDesigner() {
-  const [selectedDocType, setSelectedDocType] = useState<DocumentTypeId>("tax_invoice");
-  const [layout, setLayout] = useState<DocumentLayout>(() => getInitialLayout("tax_invoice"));
+  const [selectedDocType, setSelectedDocType] = useState<DocumentTypeId>(getRequestedDocType);
+  const [layout, setLayout] = useState<DocumentLayout>(() => getInitialLayout(getRequestedDocType()));
   const [company, setCompany] = useState<CompanyDocInfo | null>(() => getCachedCompanySync() as CompanyDocInfo | null);
   const [companyId, setCompanyId] = useState<string | null | undefined>(() => getCachedCompanySync()?.id ?? undefined);
   const [stylePresets, setStylePresets] = useState<DocumentStylePreset[]>([]);
