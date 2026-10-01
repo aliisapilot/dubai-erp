@@ -13,6 +13,7 @@ import {
 import { formatResultWithUnit } from "@/lib/measurementCalculations";
 import { getAdaptiveDocumentDensity } from "@/lib/documentLayoutEngine";
 import { usePersistedDocumentDesign } from "./usePersistedDocumentDesign";
+import { numberToWordsEnglish } from "@/lib/amountInWords";
 
 export type MeasurementSheetDocData = {
   id?: string;
@@ -25,6 +26,8 @@ export type MeasurementSheetDocData = {
   notes?: string | null;
   items: MeasurementRowCalculated[];
   summary: MeasurementSheetSummary;
+  vat_rate?: number;
+  include_vat?: boolean;
 };
 
 interface MeasurementSheetTemplateProps {
@@ -32,14 +35,28 @@ interface MeasurementSheetTemplateProps {
   data: MeasurementSheetDocData;
   scale?: number;
   showCalculationType?: boolean;
+  showVat?: boolean;
 }
 
 export default function MeasurementSheetTemplate({
   company,
   data,
   showCalculationType,
+  showVat,
 }: MeasurementSheetTemplateProps) {
   const { summary } = data;
+  const isVatActive =
+    showVat !== undefined
+      ? showVat
+      : data.include_vat !== undefined
+      ? data.include_vat
+      : (summary.vatAmountAED !== undefined && summary.vatAmountAED > 0) ||
+        (data.vat_rate !== undefined && data.vat_rate > 0);
+
+  const effectiveVatRate = data.vat_rate ?? summary.vatRate ?? 5;
+  const netCost = summary.totalCostAED;
+  const vatAmount = summary.vatAmountAED ?? (isVatActive ? Math.round(netCost * effectiveVatRate) / 100 : 0);
+  const grandTotal = summary.grandTotalWithVatAED ?? (netCost + (isVatActive ? vatAmount : 0));
   const design = usePersistedDocumentDesign(company?.id, 'measurement_sheet');
   const tableElem = design.layout?.elements?.find((e) => e.type === "line_items");
   const customColumns = tableElem?.tableSettings?.columns;
@@ -244,12 +261,42 @@ export default function MeasurementSheetTemplate({
               </div>
             )}
 
-            {summary.totalCostAED > 0 && (
-              <div className="flex justify-between items-center text-[10px] border-t border-slate-200 pt-1 mt-0.5">
-                <span className="text-slate-900 font-bold uppercase text-[9px] tracking-wide">Total Estimated Cost:</span>
-                <span className="font-black font-mono text-slate-950 text-xs">
-                  {fmtAED(summary.totalCostAED)}
-                </span>
+            {netCost > 0 && (
+              <div className="border-t border-slate-200 pt-1 mt-0.5 space-y-0.5">
+                {isVatActive ? (
+                  <>
+                    <div className="flex justify-between items-center text-[10px]">
+                      <span className="text-slate-600 font-medium">Net Amount:</span>
+                      <span className="font-bold font-mono text-slate-900 text-xs">
+                        {fmtAED(netCost)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[10px]">
+                      <span className="text-slate-600 font-medium">VAT ({effectiveVatRate}%):</span>
+                      <span className="font-bold font-mono text-emerald-800 text-xs">
+                        {fmtAED(vatAmount)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[10px] border-t border-slate-300 pt-0.5 mt-0.5 bg-slate-50/80 -mx-1 px-1 rounded">
+                      <span className="text-slate-950 font-black uppercase text-[9px] tracking-wide">
+                        Total Amount:
+                      </span>
+                      <span className="font-black font-mono text-slate-950 text-xs">
+                        {fmtAED(grandTotal)}
+                      </span>
+                    </div>
+                    <div className="text-[8px] text-slate-500 italic mt-0.5 leading-tight truncate">
+                      Amount in words: {numberToWordsEnglish(grandTotal)}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-slate-900 font-bold uppercase text-[9px] tracking-wide">Total Estimated Cost:</span>
+                    <span className="font-black font-mono text-slate-950 text-xs">
+                      {fmtAED(netCost)}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>

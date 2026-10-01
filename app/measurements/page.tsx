@@ -25,8 +25,10 @@ import {
   ShieldCheck,
   Check,
   Sliders,
+  Receipt,
 } from "lucide-react";
 import Link from "next/link";
+import { numberToWordsEnglish } from "@/lib/amountInWords";
 import {
   getCompanyId,
   getCurrentCompany,
@@ -111,6 +113,8 @@ export default function MeasurementsPage() {
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showCalculationTypeInPdf, setShowCalculationTypeInPdf] = useState(false);
+  const [includeVat, setIncludeVat] = useState(true);
+  const [vatRate, setVatRate] = useState<number>(5);
   const [showQuotationModal, setShowQuotationModal] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -310,10 +314,10 @@ export default function MeasurementsPage() {
     return rawRows.map(calculateMeasurementRow);
   }, [rawRows]);
 
-  // Calculate sheet summary (enforces strict unit separation)
+  // Calculate sheet summary (enforces strict unit separation and VAT)
   const summary = useMemo(() => {
-    return calculateSheetSummary(calculatedRows);
-  }, [calculatedRows]);
+    return calculateSheetSummary(calculatedRows, includeVat ? vatRate : 0);
+  }, [calculatedRows, includeVat, vatRate]);
 
   // Live preview for row form modal
   const liveFormPreview = useMemo(() => {
@@ -545,6 +549,8 @@ export default function MeasurementsPage() {
     notes: activeSheet?.description,
     items: calculatedRows,
     summary: summary,
+    vat_rate: includeVat ? vatRate : 0,
+    include_vat: includeVat,
   };
 
   return (
@@ -980,21 +986,91 @@ export default function MeasurementsPage() {
                 </div>
               </div>
 
-              {/* Total Estimated Cost */}
+              {/* Total Estimated Cost & VAT Breakdown */}
               {summary.totalCostAED > 0 && (
-                <div className="mt-4 rounded-lg bg-slate-950 p-4 border border-slate-800 flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      Total Estimated Project Cost:
-                    </span>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Aggregated according to each calculation type rate
-                    </p>
+                <div className="mt-4 rounded-xl bg-slate-950 p-4 border border-slate-800 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+                    <div>
+                      <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider block">
+                        Costing &amp; UAE VAT Options
+                      </span>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Configure 5% standard UAE VAT on measurement rates and preview invoice totals
+                      </p>
+                    </div>
+
+                    {/* VAT Toggle & Rate Input */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIncludeVat(!includeVat)}
+                        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all border ${
+                          includeVat
+                            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm"
+                            : "bg-slate-900 text-slate-400 border-slate-700 hover:text-slate-200"
+                        }`}
+                      >
+                        <Receipt size={14} className={includeVat ? "text-emerald-400" : "text-slate-400"} />
+                        <span>{includeVat ? `Include VAT (${vatRate}%): ON` : "Include VAT: OFF"}</span>
+                      </button>
+
+                      {includeVat && (
+                        <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs">
+                          <span className="text-[10px] text-slate-400">Rate:</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={vatRate}
+                            onChange={(e) => setVatRate(Math.max(0, Number(e.target.value) || 0))}
+                            className="w-10 bg-transparent text-center font-mono font-bold text-white outline-none"
+                          />
+                          <span className="text-slate-400">%</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="font-black font-mono text-emerald-400 text-2xl">
-                      {fmtAED(summary.totalCostAED)}
-                    </span>
+
+                  {/* Financial Breakdown Rows */}
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="text-slate-400 font-medium">Net Amount (Subtotal):</span>
+                      <span className="font-mono font-semibold text-white">
+                        {fmtAED(summary.totalCostAED)}
+                      </span>
+                    </div>
+
+                    {includeVat && summary.vatAmountAED !== undefined && (
+                      <div className="flex justify-between items-center text-slate-300">
+                        <span className="text-slate-400 font-medium">VAT Amount ({vatRate}%):</span>
+                        <span className="font-mono font-bold text-emerald-400">
+                          {fmtAED(summary.vatAmountAED)}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-center pt-2 border-t border-slate-800 text-sm">
+                      <span className="font-bold text-white uppercase tracking-wider">
+                        {includeVat ? "Total Amount (Inc. VAT):" : "Total Estimated Cost:"}
+                      </span>
+                      <span className="font-black font-mono text-emerald-400 text-xl sm:text-2xl">
+                        {fmtAED(
+                          includeVat && summary.grandTotalWithVatAED !== undefined
+                            ? summary.grandTotalWithVatAED
+                            : summary.totalCostAED
+                        )}
+                      </span>
+                    </div>
+
+                    {includeVat && summary.grandTotalWithVatAED !== undefined && (
+                      <div className="text-[11px] text-slate-400 italic pt-1 border-t border-slate-800/50">
+                        <span className="text-slate-500 font-sans not-italic font-semibold mr-1.5">
+                          Amount in words:
+                        </span>
+                        {numberToWordsEnglish(summary.grandTotalWithVatAED)}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1995,25 +2071,42 @@ export default function MeasurementsPage() {
           onClose={() => setShowPrintModal(false)}
           editorHref="/settings/designer?type=measurement_sheet"
           extraActions={
-            <button
-              type="button"
-              onClick={() => setShowCalculationTypeInPdf((prev) => !prev)}
-              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium border transition-colors ${
-                showCalculationTypeInPdf
-                  ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                  : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
-              }`}
-              title="Toggle Calculation Type & Formula column in preview"
-            >
-              <Calculator size={13} className={showCalculationTypeInPdf ? "text-emerald-400" : "text-slate-400"} />
-              <span>{showCalculationTypeInPdf ? "Calculation Type: Visible" : "Calculation Type: Removed"}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIncludeVat((prev) => !prev)}
+                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium border transition-colors ${
+                  includeVat
+                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                    : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                }`}
+                title="Toggle 5% UAE VAT in preview and export"
+              >
+                <Receipt size={13} className={includeVat ? "text-emerald-400" : "text-slate-400"} />
+                <span>{includeVat ? `VAT (${vatRate}%): ON` : "VAT: OFF"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowCalculationTypeInPdf((prev) => !prev)}
+                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium border transition-colors ${
+                  showCalculationTypeInPdf
+                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                    : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                }`}
+                title="Toggle Calculation Type & Formula column in preview"
+              >
+                <Calculator size={13} className={showCalculationTypeInPdf ? "text-emerald-400" : "text-slate-400"} />
+                <span>{showCalculationTypeInPdf ? "Calculation Type: Visible" : "Calculation Type: Removed"}</span>
+              </button>
+            </div>
           }
         >
           <MeasurementSheetTemplate
             company={company}
             data={printDocData}
             showCalculationType={showCalculationTypeInPdf}
+            showVat={includeVat}
           />
         </PrintModal>
       )}

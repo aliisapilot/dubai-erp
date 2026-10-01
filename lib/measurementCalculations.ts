@@ -283,7 +283,10 @@ export function calculateMeasurementRow(input: MeasurementRowInput): Measurement
  * Enforces strict unit safety: NEVER mixes m with m² or pcs.
  * Produces separate totals for Linear Metres, Square Metres, Pieces, and Cost.
  */
-export function calculateSheetSummary(rows: MeasurementRowCalculated[]): MeasurementSheetSummary {
+export function calculateSheetSummary(
+  rows: MeasurementRowCalculated[],
+  vatRate: number = 0
+): MeasurementSheetSummary {
   let totalPieces = 0;
   let totalLinearM = 0;
   let totalAreaM2 = 0;
@@ -356,18 +359,25 @@ export function calculateSheetSummary(rows: MeasurementRowCalculated[]): Measure
     rowCount: unitMap[u].rowCount,
   }));
 
-  return {
-    totalPieces: Math.round(totalPieces),
-    totalLinearM: roundToDecimals(totalLinearM, 3),
-    totalAreaM2: roundToDecimals(totalAreaM2, 3),
-    totalQuantityOnlyPcs: Math.round(totalQuantityOnlyPcs),
-    totalVolumeM3: roundToDecimals(totalVolumeM3, 3),
-    totalCostAED: roundToDecimals(totalCostAED, 2),
-    hasMixedUnits,
-    unitBreakdown,
-    areaSummary,
-  };
-}
+    const totalCost = roundToDecimals(totalCostAED, 2);
+    const vatAmount = vatRate > 0 ? roundToDecimals((totalCost * vatRate) / 100, 2) : 0;
+    const grandTotal = roundToDecimals(totalCost + vatAmount, 2);
+
+    return {
+      totalPieces: Math.round(totalPieces),
+      totalLinearM: roundToDecimals(totalLinearM, 3),
+      totalAreaM2: roundToDecimals(totalAreaM2, 3),
+      totalQuantityOnlyPcs: Math.round(totalQuantityOnlyPcs),
+      totalVolumeM3: roundToDecimals(totalVolumeM3, 3),
+      totalCostAED: totalCost,
+      vatRate: vatRate > 0 ? vatRate : undefined,
+      vatAmountAED: vatRate > 0 ? vatAmount : undefined,
+      grandTotalWithVatAED: vatRate > 0 ? grandTotal : undefined,
+      hasMixedUnits,
+      unitBreakdown,
+      areaSummary,
+    };
+  }
 
 /**
  * Standard Parking Shade Real Test Project Preset

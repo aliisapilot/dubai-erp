@@ -192,8 +192,16 @@ const htmlContent = `<!DOCTYPE html>
               <span class="font-bold font-mono text-emerald-800 text-xs">1410.560 m</span>
             </div>
             <div class="flex justify-between items-center text-[10px] border-t border-slate-200 pt-0.5">
-              <span class="text-slate-900 font-bold uppercase text-[9px]">Total Estimated Cost:</span>
-              <span class="font-black font-mono text-slate-900 text-xs">AED 7,052.80</span>
+              <span class="text-slate-600 font-medium">Net Amount:</span>
+              <span class="font-bold font-mono text-slate-900 text-xs">AED 7,052.80</span>
+            </div>
+            <div class="flex justify-between items-center text-[10px]">
+              <span class="text-slate-600 font-medium">VAT (5%):</span>
+              <span class="font-bold font-mono text-emerald-800 text-xs">AED 352.64</span>
+            </div>
+            <div class="flex justify-between items-center text-[10px] border-t border-slate-300 pt-0.5 mt-0.5 bg-slate-50/80 -mx-1 px-1 rounded">
+              <span class="text-slate-950 font-black uppercase text-[9px] tracking-wide">Total Amount:</span>
+              <span class="font-black font-mono text-slate-950 text-xs">AED 7,405.44</span>
             </div>
           </div>
         </div>

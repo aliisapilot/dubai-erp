@@ -75,6 +75,9 @@ export interface MeasurementSheetSummary {
   totalQuantityOnlyPcs: number;
   totalVolumeM3: number;
   totalCostAED: number;
+  vatRate?: number;
+  vatAmountAED?: number;
+  grandTotalWithVatAED?: number;
   hasMixedUnits: boolean;
   unitBreakdown: {
     unit: ResultUnit;

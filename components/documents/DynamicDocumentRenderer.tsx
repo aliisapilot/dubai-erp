@@ -304,8 +304,8 @@ export function getSampleDocumentData(docType: DocumentTypeId): MockDocumentData
         },
       ],
       subtotal: 7052.8,
-      vat_amount: 0,
-      total_amount: 7052.8,
+      vat_amount: 352.64,
+      total_amount: 7405.44,
       advance_amount: undefined,
       payment_terms: undefined,
       notes: "Dimensions normalized to metric standard (1000 mm = 1 m). Linear (m), area (m²), and counts (pcs) strictly segregated. Fabrications conform to approved engineering specifications.",
@@ -1170,13 +1170,18 @@ export default function DynamicDocumentRenderer({
       case "totals": {
         if (layout.documentType === "measurement_sheet") {
           const totalPieces = (data.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+          const isVatDisabled = elem.customText === "vat_disabled";
+          const netAmount = data.subtotal || data.total_amount;
+          const vatAmount = data.vat_amount || Math.round(netAmount * 0.05 * 100) / 100;
+          const grandTotal = isVatDisabled ? netAmount : (data.total_amount || (netAmount + vatAmount));
+
           return (
             <div
               className="w-full h-full overflow-hidden text-xs rounded select-text flex flex-col justify-start"
               style={{
                 border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
                 borderRadius: `${elem.borderRadius || 4}px`,
-                fontSize: `${elem.fontSize || 10}px`,
+                fontSize: `${elem.fontSize || 9.5}px`,
                 ...elementAppearance(elem),
               }}
             >
@@ -1188,15 +1193,37 @@ export default function DynamicDocumentRenderer({
                 <span style={{ color: colors.muted }}>Total Linear Metres:</span>
                 <span className="font-mono font-bold text-slate-900">1410.560 m</span>
               </div>
-              <div
-                className="flex justify-between py-1.5 px-2.5 font-bold text-slate-900"
-                style={{
-                  backgroundColor: colors.totalHighlight,
-                }}
-              >
-                <span className="uppercase text-[9px] tracking-wide">Total Estimated Cost:</span>
-                <span className="font-mono font-black" style={{ color: colors.primary }}>{fmtAED(data.total_amount)}</span>
-              </div>
+              {isVatDisabled ? (
+                <div
+                  className="flex justify-between py-1.5 px-2.5 font-bold text-slate-900"
+                  style={{
+                    backgroundColor: colors.totalHighlight,
+                  }}
+                >
+                  <span className="uppercase text-[9px] tracking-wide">Total Estimated Cost:</span>
+                  <span className="font-mono font-black" style={{ color: colors.primary }}>{fmtAED(netAmount)}</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-between py-0.5 px-2.5 border-b text-[9px]" style={{ borderColor: colors.border }}>
+                    <span style={{ color: colors.muted }}>Net Amount:</span>
+                    <span className="font-mono font-bold text-slate-900">{fmtAED(netAmount)}</span>
+                  </div>
+                  <div className="flex justify-between py-0.5 px-2.5 border-b text-[9px]" style={{ borderColor: colors.border }}>
+                    <span style={{ color: colors.muted }}>VAT (5%):</span>
+                    <span className="font-mono font-bold text-emerald-800">{fmtAED(vatAmount)}</span>
+                  </div>
+                  <div
+                    className="flex justify-between py-1 px-2.5 font-bold text-slate-900"
+                    style={{
+                      backgroundColor: colors.totalHighlight,
+                    }}
+                  >
+                    <span className="uppercase text-[9px] tracking-wide">Total Amount:</span>
+                    <span className="font-mono font-black" style={{ color: colors.primary }}>{fmtAED(grandTotal)}</span>
+                  </div>
+                </>
+              )}
             </div>
           );
         }

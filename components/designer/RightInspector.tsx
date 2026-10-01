@@ -1579,6 +1579,44 @@ export default function RightInspector({
                 </div>
               )}
 
+              {/* Quick Toggle for UAE VAT in Takeoff Summary (Measurement Sheet) */}
+              {layout.documentType === "measurement_sheet" && (
+                <div className="p-2.5 rounded-lg border border-emerald-500/30 bg-emerald-950/20 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-emerald-300 text-[11px]">
+                      UAE VAT (5%) in Takeoff Summary
+                    </span>
+                    {(() => {
+                      const totalsElem = layout.elements.find((e) => e.type === "totals");
+                      const isVatDisabled = totalsElem?.customText === "vat_disabled";
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (totalsElem) {
+                              onUpdateElement(totalsElem.id, {
+                                customText: isVatDisabled ? undefined : "vat_disabled",
+                              });
+                            }
+                          }}
+                          className={`px-2.5 py-1 rounded text-[10px] font-bold transition-colors ${
+                            !isVatDisabled
+                              ? "bg-emerald-500 text-slate-950 hover:bg-emerald-400"
+                              : "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-white"
+                          }`}
+                          title="Toggle 5% UAE VAT in Takeoff Summary"
+                        >
+                          {!isVatDisabled ? "5% VAT: Active" : "VAT: Disabled"}
+                        </button>
+                      );
+                    })()}
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-tight">
+                    Shows Net Subtotal, 5% UAE VAT, and Grand Total in the Takeoff Summary card.
+                  </p>
+                </div>
+              )}
+
               <label className="text-[10px] font-bold text-slate-400 block mb-1.5">
                 Columns Configuration (Show / Hide &amp; Width)
               </label>
@@ -1631,6 +1669,43 @@ export default function RightInspector({
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── Totals Card Configuration ───────────────────────────────────── */}
+        {elem.type === "totals" && (
+          <div className="pt-3 border-t border-slate-800 space-y-3">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+              Totals &amp; Summary Configuration
+            </div>
+            {layout.documentType === "measurement_sheet" && (
+              <div className="p-2.5 rounded-lg border border-emerald-500/30 bg-emerald-950/20 text-xs space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-emerald-300 text-[11px]">
+                    UAE VAT (5%) Calculation
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const isVatDisabled = elem.customText === "vat_disabled";
+                      onUpdateElement(elem.id, {
+                        customText: isVatDisabled ? undefined : "vat_disabled",
+                      });
+                    }}
+                    className={`px-2.5 py-1 rounded text-[10px] font-bold transition-colors ${
+                      elem.customText !== "vat_disabled"
+                        ? "bg-emerald-500 text-slate-950 hover:bg-emerald-400"
+                        : "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-white"
+                    }`}
+                  >
+                    {elem.customText !== "vat_disabled" ? "5% VAT: Active" : "VAT: Disabled"}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  Calculates 5% standard UAE VAT on net measurement total and displays Grand Total (Inc. VAT).
+                </p>
+              </div>
+            )}
           </div>
         )}
         {/* ── Actions Group ───────────────────────────────────── */}
