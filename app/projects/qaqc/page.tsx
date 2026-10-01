@@ -231,42 +231,42 @@ export default function QAQCInspectionPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 shadow-sm flex items-center justify-between">
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wider">Passed Inspections</p>
-            <p className="text-2xl font-bold text-emerald-700 mt-1 font-mono">{passCount}</p>
-            <p className="text-xs text-emerald-600">Meets acceptance criteria</p>
+            <p className="text-xs font-semibold text-emerald-300 uppercase tracking-wider">Passed Inspections</p>
+            <p className="text-2xl font-bold text-emerald-400 mt-1 font-mono">{passCount}</p>
+            <p className="text-xs text-emerald-300/80">Meets acceptance criteria</p>
           </div>
-          <div className="p-3 bg-emerald-100 rounded-xl text-emerald-600">
+          <div className="p-3 bg-emerald-500/20 rounded-xl text-emerald-400 border border-emerald-500/30">
             <CheckCircle2 size={24} />
           </div>
         </div>
 
-        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm flex items-center justify-between">
+        <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wider">Pending Verification</p>
-            <p className="text-2xl font-bold text-amber-700 mt-1 font-mono">{pendingCount}</p>
-            <p className="text-xs text-amber-600">Awaiting site inspection</p>
+            <p className="text-xs font-semibold text-amber-300 uppercase tracking-wider">Pending Verification</p>
+            <p className="text-2xl font-bold text-amber-400 mt-1 font-mono">{pendingCount}</p>
+            <p className="text-xs text-amber-300/80">Awaiting site inspection</p>
           </div>
-          <div className="p-3 bg-amber-100 rounded-xl text-amber-600">
+          <div className="p-3 bg-amber-500/20 rounded-xl text-amber-400 border border-amber-500/30">
             <AlertCircle size={24} />
           </div>
         </div>
 
-        <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4 shadow-sm flex items-center justify-between">
+        <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-4 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-rose-800 uppercase tracking-wider">Failed / Rectification</p>
-            <p className="text-2xl font-bold text-rose-700 mt-1 font-mono">{failCount}</p>
-            <p className="text-xs text-rose-600">Snagged items requiring rework</p>
+            <p className="text-xs font-semibold text-rose-300 uppercase tracking-wider">Failed / Rectification</p>
+            <p className="text-2xl font-bold text-rose-400 mt-1 font-mono">{failCount}</p>
+            <p className="text-xs text-rose-300/80">Snagged items requiring rework</p>
           </div>
-          <div className="p-3 bg-rose-100 rounded-xl text-rose-600">
+          <div className="p-3 bg-rose-500/20 rounded-xl text-rose-400 border border-rose-500/30">
             <XCircle size={24} />
           </div>
         </div>
       </div>
 
       {/* Filter toolbar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-800/80 p-4 rounded-xl border border-slate-700/80 shadow-sm">
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
           <input
@@ -274,7 +274,7 @@ export default function QAQCInspectionPage() {
             placeholder="Search inspection item or criteria..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
           />
         </div>
 
@@ -282,7 +282,7 @@ export default function QAQCInspectionPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="px-3 py-2 text-sm rounded-lg border border-slate-700 bg-slate-900 text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
           >
             <option value="all">All Inspection Statuses</option>
             <option value="Pending">Pending</option>
@@ -295,10 +295,10 @@ export default function QAQCInspectionPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-slate-800/60 rounded-xl border border-slate-700/80 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 text-[11px] uppercase font-semibold text-slate-700 border-b border-slate-200">
+          <table className="w-full text-left text-xs text-slate-300">
+            <thead className="bg-slate-800 text-[11px] uppercase font-semibold text-slate-300 border-b border-slate-700">
               <tr>
                 <th className="px-4 py-3 w-12 text-center">#</th>
                 <th className="px-4 py-3">Inspection Item</th>
@@ -311,7 +311,7 @@ export default function QAQCInspectionPage() {
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-700/60">
               {loading ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
@@ -326,41 +326,41 @@ export default function QAQCInspectionPage() {
                 </tr>
               ) : (
                 filtered.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/75 transition-colors">
-                    <td className="px-4 py-3 text-center font-mono font-bold text-slate-500">
+                  <tr key={item.id} className="hover:bg-slate-700/40 transition-colors">
+                    <td className="px-4 py-3 text-center font-mono font-bold text-slate-400">
                       {item.item_number}
                     </td>
-                    <td className="px-4 py-3 font-semibold text-slate-900">
+                    <td className="px-4 py-3 font-semibold text-white">
                       {item.inspection_item}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-300">
                       {item.acceptance_criteria}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                         item.status === "Pass"
-                          ? "bg-emerald-100 text-emerald-800"
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                           : item.status === "Fail"
-                          ? "bg-rose-100 text-rose-800"
+                          ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
                           : item.status === "Hold"
-                          ? "bg-purple-100 text-purple-800"
+                          ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
                           : item.status === "N/A"
-                          ? "bg-slate-100 text-slate-700"
-                          : "bg-amber-100 text-amber-800"
+                          ? "bg-slate-700 text-slate-300 border border-slate-600"
+                          : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
                       }`}>
                         {item.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-600 font-medium">
+                    <td className="px-4 py-3 text-slate-300 font-medium">
                       {item.inspector_name || "-"}
                     </td>
-                    <td className="px-4 py-3 font-mono text-slate-500 whitespace-nowrap">
+                    <td className="px-4 py-3 font-mono text-slate-400 whitespace-nowrap">
                       {item.inspection_date || "-"}
                     </td>
-                    <td className="px-4 py-3 text-slate-600 truncate max-w-xs">
+                    <td className="px-4 py-3 text-slate-400 truncate max-w-xs">
                       {item.remarks || "-"}
                     </td>
-                    <td className="px-4 py-3 font-mono text-slate-500 text-[11px]">
+                    <td className="px-4 py-3 font-mono text-slate-400 text-[11px]">
                       {item.work_method_statements?.wms_number || "WMS"}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -368,14 +368,14 @@ export default function QAQCInspectionPage() {
                         <button
                           type="button"
                           onClick={() => handleEdit(item)}
-                          className="p-1 text-slate-400 hover:text-slate-700 rounded transition-colors"
+                          className="p-1 text-slate-400 hover:text-white rounded transition-colors"
                         >
                           <Edit2 size={14} />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDelete(item.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                          className="p-1 text-slate-400 hover:text-rose-400 rounded transition-colors"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -391,35 +391,35 @@ export default function QAQCInspectionPage() {
 
       {/* CREATE / EDIT MODAL */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl my-8">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <h3 className="text-lg font-bold text-slate-900">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl my-8 text-white">
+            <div className="flex items-center justify-between border-b border-slate-700 pb-3">
+              <h3 className="text-lg font-bold text-white">
                 {editingId ? "Edit QA/QC Inspection Item" : "New QA/QC Inspection Item"}
               </h3>
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
 
             {errorMsg && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg font-medium">
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs rounded-lg font-medium">
                 {errorMsg}
               </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Work Method Statement (WMS) *</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Work Method Statement (WMS) *</label>
                 <select
                   value={formWmsId}
                   onChange={(e) => setFormWmsId(e.target.value)}
                   required
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
                 >
                   {wmsOptions.map(w => (
                     <option key={w.id} value={w.id}>{w.wms_number} &bull; {w.title}</option>
@@ -429,46 +429,46 @@ export default function QAQCInspectionPage() {
 
               <div className="grid grid-cols-4 gap-3">
                 <div className="col-span-1">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Item #</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Item #</label>
                   <input
                     type="number"
                     value={formItemNumber}
                     onChange={(e) => setFormItemNumber(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
                   />
                 </div>
                 <div className="col-span-3">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Inspection Item / Task *</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Inspection Item / Task *</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Concrete slump test &amp; cube sampling"
                     value={formInspectionItem}
                     onChange={(e) => setFormInspectionItem(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Acceptance Criteria *</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Acceptance Criteria *</label>
                 <textarea
                   rows={2}
                   required
                   placeholder="Slump within 120 ± 25mm, temperature < 32°C, 3 cubes per 50m³ batch..."
                   value={formAcceptanceCriteria}
                   onChange={(e) => setFormAcceptanceCriteria(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 resize-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Inspection Status</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Inspection Status</label>
                   <select
                     value={formStatus}
                     onChange={(e) => setFormStatus(e.target.value as "Pending" | "Pass" | "Fail" | "Hold" | "N/A")}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
                   >
                     <option value="Pending">Pending</option>
                     <option value="Pass">Pass</option>
@@ -478,35 +478,35 @@ export default function QAQCInspectionPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Inspection Date</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Inspection Date</label>
                   <input
                     type="date"
                     value={formInspectionDate}
                     onChange={(e) => setFormInspectionDate(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">QA/QC Inspector</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">QA/QC Inspector</label>
                   <input
                     type="text"
                     placeholder="Eng. Tariq Al-Mansoor"
                     value={formInspector}
                     onChange={(e) => setFormInspector(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Remarks / Snag Ref</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Remarks / Snag Ref</label>
                   <input
                     type="text"
                     placeholder="Approved with no comments"
                     value={formRemarks}
                     onChange={(e) => setFormRemarks(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
                   />
                 </div>
               </div>
@@ -515,14 +515,14 @@ export default function QAQCInspectionPage() {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 font-medium"
+                  className="px-4 py-2 border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-700 hover:text-white rounded-lg text-sm font-medium transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 shadow-sm"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 shadow-sm transition-colors"
                 >
                   {submitting ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
                   {editingId ? "Save Changes" : "Save Inspection Item"}

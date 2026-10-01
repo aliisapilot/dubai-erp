@@ -205,44 +205,44 @@ export default function ProjectHandoverPage() {
         <div className="flex items-center gap-3">
           <Link
             href="/projects"
-            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
+            className="p-2 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
           >
             <ArrowLeft size={16} />
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-teal-100 text-teal-700">
+            <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                 <FileCheck size={20} />
               </span>
               Project Handover &amp; Snagging
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5">Formal taking-over certificates (TOC), snag resolution lists, and client sign-offs</p>
+            <p className="text-sm text-slate-400 mt-0.5">Formal taking-over certificates (TOC), snag resolution lists, and client sign-offs</p>
           </div>
         </div>
 
         <button
           type="button"
           onClick={handleOpenCreate}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-sm font-medium shadow-sm transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 text-sm font-medium shadow-sm transition-colors"
         >
           <Plus size={16} /> New Handover Certificate
         </button>
       </div>
 
       {successMsg && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-medium flex items-center justify-between">
+        <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm font-medium flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <CheckCircle size={18} className="text-emerald-600" />
+            <CheckCircle size={18} className="text-emerald-400" />
             {successMsg}
           </div>
-          <button type="button" onClick={() => setSuccessMsg("")} className="text-emerald-600 hover:text-emerald-800">
+          <button type="button" onClick={() => setSuccessMsg("")} className="text-emerald-400 hover:text-white">
             <X size={16} />
           </button>
         </div>
       )}
 
       {/* Filter toolbar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-800/80 p-4 rounded-xl border border-slate-700/80 shadow-sm">
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
           <input
@@ -250,7 +250,7 @@ export default function ProjectHandoverPage() {
             placeholder="Search handover #, project, client rep..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
           />
         </div>
 
@@ -258,7 +258,7 @@ export default function ProjectHandoverPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="px-3 py-2 text-sm rounded-lg border border-slate-700 bg-slate-900 text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
           >
             <option value="all">All Handover Statuses</option>
             <option value="Draft">Draft</option>
@@ -270,10 +270,10 @@ export default function ProjectHandoverPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-slate-800/60 rounded-xl border border-slate-700/80 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 text-[11px] uppercase font-semibold text-slate-700 border-b border-slate-200">
+          <table className="w-full text-left text-xs text-slate-300">
+            <thead className="bg-slate-800 text-[11px] uppercase font-semibold text-slate-300 border-b border-slate-700">
               <tr>
                 <th className="px-4 py-3">Handover Certificate #</th>
                 <th className="px-4 py-3">Project</th>
@@ -285,7 +285,7 @@ export default function ProjectHandoverPage() {
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-700/60">
               {loading ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
@@ -300,38 +300,38 @@ export default function ProjectHandoverPage() {
                 </tr>
               ) : (
                 filtered.map((h) => (
-                  <tr key={h.id} className="hover:bg-slate-50/75 transition-colors">
-                    <td className="px-4 py-3 font-semibold text-slate-900 font-mono">
+                  <tr key={h.id} className="hover:bg-slate-700/40 transition-colors">
+                    <td className="px-4 py-3 font-semibold text-white font-mono">
                       {h.handover_number}
                     </td>
                     <td className="px-4 py-3">
-                      <Link href={`/projects/${h.project_id}`} className="font-medium text-slate-800 hover:text-emerald-600">
+                      <Link href={`/projects/${h.project_id}`} className="font-medium text-emerald-400 hover:text-emerald-300">
                         {h.projects?.name || "Project"}
                       </Link>
                       <span className="block text-[10px] text-slate-400 font-mono">{h.projects?.project_number}</span>
                     </td>
-                    <td className="px-4 py-3 font-mono text-slate-500 whitespace-nowrap">
+                    <td className="px-4 py-3 font-mono text-slate-400 whitespace-nowrap">
                       {h.handover_date}
                     </td>
-                    <td className="px-4 py-3 text-slate-700 truncate max-w-xs">
+                    <td className="px-4 py-3 text-slate-300 truncate max-w-xs">
                       {h.scope_completed}
                     </td>
-                    <td className="px-4 py-3 text-slate-500 truncate max-w-xs">
+                    <td className="px-4 py-3 text-slate-400 truncate max-w-xs">
                       {h.snags_remarks || "No snags noted"}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className="px-4 py-3 text-slate-300">
                       <div><span className="text-[10px] text-slate-400">Client:</span> {h.client_representative || "-"}</div>
                       <div><span className="text-[10px] text-slate-400">Contractor:</span> {h.contractor_representative || "-"}</div>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                         h.status === "Approved"
-                          ? "bg-emerald-100 text-emerald-800"
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                           : h.status === "Completed"
-                          ? "bg-blue-100 text-blue-800"
+                          ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
                           : h.status === "Snag List Pending"
-                          ? "bg-amber-100 text-amber-800"
-                          : "bg-slate-100 text-slate-700"
+                          ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                          : "bg-slate-700 text-slate-300 border border-slate-600"
                       }`}>
                         {h.status}
                       </span>
@@ -341,7 +341,7 @@ export default function ProjectHandoverPage() {
                         <button
                           type="button"
                           onClick={() => setPreviewHandover(h)}
-                          className="inline-flex items-center gap-1 text-teal-600 hover:text-teal-800 font-medium px-2 py-1 rounded hover:bg-teal-50"
+                          className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-medium px-2 py-1 rounded hover:bg-emerald-500/10 transition-colors"
                           title="Print / PDF Preview"
                         >
                           <Printer size={13} /> Print
@@ -349,14 +349,14 @@ export default function ProjectHandoverPage() {
                         <button
                           type="button"
                           onClick={() => handleEdit(h)}
-                          className="p-1 text-slate-400 hover:text-slate-700 rounded transition-colors"
+                          className="p-1 text-slate-400 hover:text-white rounded transition-colors"
                         >
                           <Edit2 size={14} />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDelete(h.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                          className="p-1 text-slate-400 hover:text-rose-400 rounded transition-colors"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -372,23 +372,23 @@ export default function ProjectHandoverPage() {
 
       {/* CREATE / EDIT MODAL */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl my-8">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <h3 className="text-lg font-bold text-slate-900">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl my-8 text-white">
+            <div className="flex items-center justify-between border-b border-slate-700 pb-3">
+              <h3 className="text-lg font-bold text-white">
                 {editingId ? "Edit Handover Certificate" : "New Handover Certificate"}
               </h3>
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
 
             {errorMsg && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg font-medium">
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs rounded-lg font-medium">
                 {errorMsg}
               </div>
             )}
@@ -396,12 +396,12 @@ export default function ProjectHandoverPage() {
             <form onSubmit={handleSubmit} className="space-y-3.5">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Project *</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Project *</label>
                   <select
                     value={formProjectId}
                     onChange={(e) => setFormProjectId(e.target.value)}
                     required
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
                   >
                     {projects.map(p => (
                       <option key={p.id} value={p.id}>{p.name} ({p.project_number})</option>
@@ -409,34 +409,34 @@ export default function ProjectHandoverPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Handover # {editingId ? "(Read-only)" : "(Auto-generated on save)"}
                   </label>
                   <input
                     type="text"
                     disabled
                     value={editingId ? formNumber : "Auto-generated on save"}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono bg-slate-100 text-slate-500 cursor-not-allowed"
+                    className="w-full rounded-lg border border-slate-800 px-3 py-2 text-sm font-mono bg-slate-950 text-slate-400 cursor-not-allowed"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Handover Date</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Handover Date</label>
                   <input
                     type="date"
                     value={formDate}
                     onChange={(e) => setFormDate(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Status</label>
                   <select
                     value={formStatus}
                     onChange={(e) => setFormStatus(e.target.value as "Draft" | "Snag List Pending" | "Completed" | "Approved")}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
                   >
                     <option value="Draft">Draft</option>
                     <option value="Snag List Pending">Snag List Pending</option>
@@ -447,47 +447,47 @@ export default function ProjectHandoverPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Completed Scope of Work *</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Completed Scope of Work *</label>
                 <textarea
                   rows={3}
                   required
                   placeholder="Detail completed works, installations, and testing..."
                   value={formScope}
                   onChange={(e) => setFormScope(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 resize-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Snagging Remarks / Outstanding Minor Items</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Snagging Remarks / Outstanding Minor Items</label>
                 <textarea
                   rows={2}
                   placeholder="Any minor snags agreed to be closed during Defects Liability Period (DLP)..."
                   value={formSnags}
                   onChange={(e) => setFormSnags(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 resize-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Client Representative</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Client Representative</label>
                   <input
                     type="text"
                     placeholder="Name / Title"
                     value={formClientRep}
                     onChange={(e) => setFormClientRep(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Contractor Representative</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Contractor Representative</label>
                   <input
                     type="text"
                     placeholder="Name / Title"
                     value={formContractorRep}
                     onChange={(e) => setFormContractorRep(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
                   />
                 </div>
               </div>
@@ -496,14 +496,14 @@ export default function ProjectHandoverPage() {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 font-medium"
+                  className="px-4 py-2 border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-700 hover:text-white rounded-lg text-sm font-medium transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 shadow-sm"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 shadow-sm transition-colors"
                 >
                   {submitting ? <Loader2 size={16} className="animate-spin" /> : <FileCheck size={16} />}
                   {editingId ? "Save Changes" : "Create Certificate"}

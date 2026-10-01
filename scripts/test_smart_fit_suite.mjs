@@ -5,9 +5,11 @@ import { execFileSync } from "node:child_process";
 import { inflateSync } from "node:zlib";
 import ts from "typescript";
 
-const ARTIFACTS_DIR = "C:\\Users\\Ali\\.gemini\\antigravity-ide\\brain\\669d92d2-920d-4310-9e51-2d1c0de2539b";
+const ARTIFACTS_DIR = process.env.ARTIFACTS_DIR || join(process.cwd(), "test-output");
 const OUT_DIR = join(process.cwd(), "test-output", "smart-fit");
 mkdirSync(OUT_DIR, { recursive: true });
+mkdirSync(ARTIFACTS_DIR, { recursive: true });
+
 
 const CHROME_PATH = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 

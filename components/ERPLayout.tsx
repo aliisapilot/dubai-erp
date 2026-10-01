@@ -1,12 +1,17 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { ReactNode, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
+import { supabase } from "@/lib/supabase";
+import { Loader2 } from "lucide-react";
 
 export default function ERPLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [authChecking, setAuthChecking] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     // Prevent mouse-wheel scrolling from inadvertently incrementing/decrementing number fields.
@@ -26,9 +31,86 @@ export default function ERPLayout({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("wheel", handleWheel, { capture: true });
   }, []);
 
+  const isPublicPage =
+    pathname === "/login" ||
+    pathname.startsWith("/mobile") ||
+    pathname.startsWith("/print-test-sheet") ||
+    pathname.startsWith("/settings/designer");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function checkAuth() {
+      if (isPublicPage) {
+        if (isMounted) {
+          setIsAuthenticated(true);
+          setAuthChecking(false);
+        }
+        return;
+      }
+
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!data?.session) {
+          if (isMounted) {
+            setIsAuthenticated(false);
+            setAuthChecking(false);
+            router.replace("/login");
+          }
+        } else {
+          if (isMounted) {
+            setIsAuthenticated(true);
+            setAuthChecking(false);
+          }
+        }
+      } catch (err) {
+        console.warn("Auth check error:", err);
+        if (isMounted) {
+          setIsAuthenticated(false);
+          setAuthChecking(false);
+          router.replace("/login");
+        }
+      }
+    }
+
+    checkAuth();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session && !isPublicPage) {
+        if (isMounted) {
+          setIsAuthenticated(false);
+          router.replace("/login");
+        }
+      } else if (session) {
+        if (isMounted) {
+          setIsAuthenticated(true);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      authListener?.subscription?.unsubscribe();
+    };
+  }, [pathname, isPublicPage, router]);
+
   // On login or mobile portal pages, render children directly without ERP desktop sidebar/header
   if (pathname === "/login" || pathname.startsWith("/mobile")) {
     return <>{children}</>;
+  }
+
+  // If checking authentication for protected route, show clean loading state
+  if (authChecking && !isPublicPage) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-slate-900 text-slate-100">
+        <Loader2 className="animate-spin text-emerald-400" size={32} />
+      </div>
+    );
+  }
+
+  // If unauthenticated on protected route, do not render children (redirecting to /login)
+  if (!isAuthenticated && !isPublicPage) {
+    return null;
   }
 
   const isDesigner = pathname === "/settings/designer";

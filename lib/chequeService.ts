@@ -416,6 +416,13 @@ export async function getChequeDocumentSignedUrl(storagePath: string): Promise<s
  * Fetches active reminders for the company with deduplicated unread alerts
  */
 export async function fetchActiveReminders(): Promise<ChequeReminderRecord[]> {
+  try {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) return [];
+  } catch {
+    return [];
+  }
+
   const { data, error } = await supabase
     .from("cheque_reminders")
     .select(
@@ -429,7 +436,7 @@ export async function fetchActiveReminders(): Promise<ChequeReminderRecord[]> {
     .limit(50);
 
   if (error) {
-    console.error("Failed to load cheque reminders:", error);
+    console.warn("Failed to load cheque reminders:", error.message);
     return [];
   }
   return (data || []) as ChequeReminderRecord[];

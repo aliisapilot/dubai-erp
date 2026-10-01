@@ -1,10 +1,40 @@
-import {
+import fs from "node:fs";
+import { join } from "node:path";
+import { createRequire } from "node:module";
+const require = createRequire(join(process.cwd(), "lib", "index.js"));
+const ts = require("typescript");
+
+const loadedModules = new Map();
+function loadTs(file) {
+  const normalizedFile = file.endsWith(".ts") ? file : file + ".ts";
+  const filePath = join(process.cwd(), normalizedFile);
+  if (loadedModules.has(filePath)) return loadedModules.get(filePath);
+  const source = fs.readFileSync(filePath, "utf8");
+  const js = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
+  }).outputText;
+  const customRequire = (id) => {
+    if (id.startsWith("./") || id.startsWith("../") || id.startsWith("@/")) {
+      const relPath = id.startsWith("@/") ? id.replace("@/", "") : join(normalizedFile, "..", id);
+      return loadTs(relPath);
+    }
+    return require(id);
+  };
+  const exports = {};
+  loadedModules.set(filePath, exports);
+  new Function("exports", "require", js)(exports, customRequire);
+  return exports;
+}
+
+const {
   getCategoryLabel,
   getCategoryBadgeColor,
   DEFAULT_PERMISSIONS,
   isMissingMobilePermissionsSchema,
-} from "../lib/mobilePortalTypes.ts";
-import { getChequeUrgency, isChequeOverdue } from "../lib/chequeTypes.ts";
+} = loadTs("lib/mobilePortalTypes.ts");
+
+const { getChequeUrgency, isChequeOverdue } = loadTs("lib/chequeTypes.ts");
+
 
 function runTests() {
   console.log("================================================================================");

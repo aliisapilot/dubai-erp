@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 import path from "node:path";
 
 const nextConfig: NextConfig = {
+  devIndicators: {
+    position: "bottom-right",
+  },
   env: {
     NEXT_PUBLIC_ERP_BUILD_ID: process.env.ERP_BUILD_ID || process.env.GITHUB_SHA || "unidentified-local-build",
   },

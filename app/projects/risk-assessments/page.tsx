@@ -67,7 +67,10 @@ export default function RiskAssessmentsPage() {
     setLoading(true);
     try {
       const companyId = await getCompanyId();
-      if (!companyId) return;
+      if (!companyId) {
+        setLoading(false);
+        return;
+      }
 
       const [riskRes, wmsRes] = await Promise.all([
         supabase
@@ -97,7 +100,7 @@ export default function RiskAssessmentsPage() {
         setFormWmsId(wmsRes.data[0].id);
       }
     } catch (err) {
-      console.error("Error loading risk assessments:", err);
+      console.warn("Could not load risk assessments:", err);
     } finally {
       setLoading(false);
     }
@@ -212,25 +215,25 @@ export default function RiskAssessmentsPage() {
         <div className="flex items-center gap-3">
           <Link
             href="/projects"
-            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
+            className="p-2 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
           >
             <ArrowLeft size={16} />
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-rose-100 text-rose-700">
+            <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30">
                 <ShieldAlert size={20} />
               </span>
               Risk Assessments (HIRA)
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5">Hazard identification, risk level matrix, and engineering control measures</p>
+            <p className="text-sm text-slate-400 mt-0.5">Hazard identification, risk level matrix, and engineering control measures</p>
           </div>
         </div>
 
         <button
           type="button"
           onClick={handleOpenCreate}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-sm font-medium shadow-sm transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 text-sm font-medium shadow-sm transition-colors"
         >
           <Plus size={16} /> Add Hazard Assessment
         </button>
@@ -238,42 +241,42 @@ export default function RiskAssessmentsPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4 shadow-sm flex items-center justify-between">
+        <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-4 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-rose-800 uppercase tracking-wider">High Initial Hazards</p>
-            <p className="text-2xl font-bold text-rose-700 mt-1 font-mono">{highCount}</p>
-            <p className="text-xs text-rose-600">Requiring mandatory controls</p>
+            <p className="text-xs font-semibold text-rose-300 uppercase tracking-wider">High Initial Hazards</p>
+            <p className="text-2xl font-bold text-rose-400 mt-1 font-mono">{highCount}</p>
+            <p className="text-xs text-rose-300/80">Requiring mandatory controls</p>
           </div>
-          <div className="p-3 bg-rose-100 rounded-xl text-rose-600">
+          <div className="p-3 bg-rose-500/20 rounded-xl text-rose-400 border border-rose-500/30">
             <AlertTriangle size={24} />
           </div>
         </div>
 
-        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm flex items-center justify-between">
+        <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wider">Medium Risk Activities</p>
-            <p className="text-2xl font-bold text-amber-700 mt-1 font-mono">{medCount}</p>
-            <p className="text-xs text-amber-600">Operational precautions applied</p>
+            <p className="text-xs font-semibold text-amber-300 uppercase tracking-wider">Medium Risk Activities</p>
+            <p className="text-2xl font-bold text-amber-400 mt-1 font-mono">{medCount}</p>
+            <p className="text-xs text-amber-300/80">Operational precautions applied</p>
           </div>
-          <div className="p-3 bg-amber-100 rounded-xl text-amber-600">
+          <div className="p-3 bg-amber-500/20 rounded-xl text-amber-400 border border-amber-500/30">
             <ShieldAlert size={24} />
           </div>
         </div>
 
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 shadow-sm flex items-center justify-between">
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wider">Mitigated to Low Risk</p>
-            <p className="text-2xl font-bold text-emerald-700 mt-1 font-mono">{lowResidual}</p>
-            <p className="text-xs text-emerald-600">Controlled residual safety</p>
+            <p className="text-xs font-semibold text-emerald-300 uppercase tracking-wider">Mitigated to Low Risk</p>
+            <p className="text-2xl font-bold text-emerald-400 mt-1 font-mono">{lowResidual}</p>
+            <p className="text-xs text-emerald-300/80">Controlled residual safety</p>
           </div>
-          <div className="p-3 bg-emerald-100 rounded-xl text-emerald-600">
+          <div className="p-3 bg-emerald-500/20 rounded-xl text-emerald-400 border border-emerald-500/30">
             <CheckCircle2 size={24} />
           </div>
         </div>
       </div>
 
       {/* Filter toolbar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-800/80 p-4 rounded-xl border border-slate-700/80 shadow-sm">
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
           <input
@@ -281,7 +284,7 @@ export default function RiskAssessmentsPage() {
             placeholder="Search activity, hazard, or controls..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500"
+            className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-rose-500/50 focus:border-rose-500"
           />
         </div>
 
@@ -289,7 +292,7 @@ export default function RiskAssessmentsPage() {
           <select
             value={levelFilter}
             onChange={(e) => setLevelFilter(e.target.value)}
-            className="px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+            className="px-3 py-2 text-sm rounded-lg border border-slate-700 bg-slate-900 text-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500/50 focus:border-rose-500"
           >
             <option value="all">All Risk Levels</option>
             <option value="High">High Risk</option>
@@ -300,10 +303,10 @@ export default function RiskAssessmentsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-slate-800/60 rounded-xl border border-slate-700/80 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 text-[11px] uppercase font-semibold text-slate-700 border-b border-slate-200">
+          <table className="w-full text-left text-xs text-slate-300">
+            <thead className="bg-slate-800 text-[11px] uppercase font-semibold text-slate-300 border-b border-slate-700">
               <tr>
                 <th className="px-4 py-3 w-12 text-center">#</th>
                 <th className="px-4 py-3">Work Activity</th>
@@ -316,7 +319,7 @@ export default function RiskAssessmentsPage() {
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-700/60">
               {loading ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
@@ -331,45 +334,45 @@ export default function RiskAssessmentsPage() {
                 </tr>
               ) : (
                 filtered.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50/75 transition-colors">
-                    <td className="px-4 py-3 text-center font-mono font-bold text-slate-500">
+                  <tr key={r.id} className="hover:bg-slate-700/40 transition-colors">
+                    <td className="px-4 py-3 text-center font-mono font-bold text-slate-400">
                       {r.sequence_number}
                     </td>
-                    <td className="px-4 py-3 font-semibold text-slate-900">
+                    <td className="px-4 py-3 font-semibold text-white">
                       {r.activity}
                     </td>
-                    <td className="px-4 py-3 text-slate-700 font-medium">
+                    <td className="px-4 py-3 text-slate-300 font-medium">
                       {r.hazard}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
                         r.initial_risk_level === "High"
-                          ? "bg-rose-100 text-rose-800"
+                          ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
                           : r.initial_risk_level === "Medium"
-                          ? "bg-amber-100 text-amber-800"
-                          : "bg-emerald-100 text-emerald-800"
+                          ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                          : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                       }`}>
                         {r.initial_risk_level}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-700 max-w-sm">
+                    <td className="px-4 py-3 text-slate-300 max-w-sm">
                       {r.control_measures}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
                         r.residual_risk_level === "High"
-                          ? "bg-rose-100 text-rose-800"
+                          ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
                           : r.residual_risk_level === "Medium"
-                          ? "bg-amber-100 text-amber-800"
-                          : "bg-emerald-100 text-emerald-800"
+                          ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                          : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                       }`}>
                         {r.residual_risk_level}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className="px-4 py-3 text-slate-400">
                       {r.action_by || "Safety Officer"}
                     </td>
-                    <td className="px-4 py-3 font-mono text-slate-500 text-[11px]">
+                    <td className="px-4 py-3 font-mono text-slate-400 text-[11px]">
                       {r.work_method_statements?.wms_number || "WMS"}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -377,14 +380,14 @@ export default function RiskAssessmentsPage() {
                         <button
                           type="button"
                           onClick={() => handleEdit(r)}
-                          className="p-1 text-slate-400 hover:text-slate-700 rounded transition-colors"
+                          className="p-1 text-slate-400 hover:text-white rounded transition-colors"
                         >
                           <Edit2 size={14} />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDelete(r.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                          className="p-1 text-slate-400 hover:text-rose-400 rounded transition-colors"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -400,35 +403,35 @@ export default function RiskAssessmentsPage() {
 
       {/* CREATE / EDIT MODAL */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl my-8">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <h3 className="text-lg font-bold text-slate-900">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl my-8 text-white">
+            <div className="flex items-center justify-between border-b border-slate-700 pb-3">
+              <h3 className="text-lg font-bold text-white">
                 {editingId ? "Edit Risk Assessment" : "New Hazard & Risk Assessment"}
               </h3>
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
 
             {errorMsg && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg font-medium">
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs rounded-lg font-medium">
                 {errorMsg}
               </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Work Method Statement (WMS) *</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Work Method Statement (WMS) *</label>
                 <select
                   value={formWmsId}
                   onChange={(e) => setFormWmsId(e.target.value)}
                   required
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/50 focus:border-rose-500"
                 >
                   {wmsOptions.map(w => (
                     <option key={w.id} value={w.id}>{w.wms_number} &bull; {w.title}</option>
@@ -438,46 +441,46 @@ export default function RiskAssessmentsPage() {
 
               <div className="grid grid-cols-4 gap-3">
                 <div className="col-span-1">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Sequence</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Sequence</label>
                   <input
                     type="number"
                     value={formSequence}
                     onChange={(e) => setFormSequence(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-rose-500/50 focus:border-rose-500"
                   />
                 </div>
                 <div className="col-span-3">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Work Activity *</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Work Activity *</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Scaffolding erection above 3 meters"
                     value={formActivity}
                     onChange={(e) => setFormActivity(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/50 focus:border-rose-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Identified Hazard *</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Identified Hazard *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Fall from height, collapse of unsupported frame"
                   value={formHazard}
                   onChange={(e) => setFormHazard(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/50 focus:border-rose-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Initial Risk Level</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Initial Risk Level</label>
                   <select
                     value={formInitialRisk}
                     onChange={(e) => setFormInitialRisk(e.target.value as "High" | "Medium" | "Low")}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/50 focus:border-rose-500"
                   >
                     <option value="High">High</option>
                     <option value="Medium">Medium</option>
@@ -485,11 +488,11 @@ export default function RiskAssessmentsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Residual Risk Level</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Residual Risk Level</label>
                   <select
                     value={formResidualRisk}
                     onChange={(e) => setFormResidualRisk(e.target.value as "High" | "Medium" | "Low")}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 text-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/50 focus:border-rose-500"
                   >
                     <option value="Low">Low</option>
                     <option value="Medium">Medium</option>
@@ -499,25 +502,25 @@ export default function RiskAssessmentsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Control Measures *</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Control Measures *</label>
                 <textarea
                   rows={3}
                   required
                   placeholder="Full body safety harness 100% tied off, green tagged scaffolding, daily tool-box talk..."
                   value={formControlMeasures}
                   onChange={(e) => setFormControlMeasures(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 resize-none"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/50 focus:border-rose-500 resize-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Action / Responsible Person</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Action / Responsible Person</label>
                 <input
                   type="text"
                   placeholder="e.g. Scaffolding Supervisor / HSE Officer"
                   value={formActionBy}
                   onChange={(e) => setFormActionBy(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 text-white placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/50 focus:border-rose-500"
                 />
               </div>
 
@@ -525,14 +528,14 @@ export default function RiskAssessmentsPage() {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 font-medium"
+                  className="px-4 py-2 border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-700 hover:text-white rounded-lg text-sm font-medium transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 shadow-sm"
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 shadow-sm transition-colors"
                 >
                   {submitting ? <Loader2 size={16} className="animate-spin" /> : <ShieldAlert size={16} />}
                   {editingId ? "Save Changes" : "Record Assessment"}

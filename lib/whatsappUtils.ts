@@ -1,5 +1,5 @@
-import { ChequeRecord, getDaysDifference } from "@/lib/chequeTypes";
-import { fmtAED } from "@/lib/helpers";
+import { ChequeRecord, getDaysDifference } from "./chequeTypes";
+import { fmtAED } from "./helpers";
 
 /**
  * Normalizes UAE or International phone numbers for WhatsApp API links.

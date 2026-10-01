@@ -6,7 +6,7 @@ import DocFooter from "./DocFooter";
 import DocSignatureArea from "./DocSignatureArea";
 import DocumentContainer from "./DocumentContainer";
 import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
-import { usePersistedDocumentDesign } from "./usePersistedDocumentDesign";
+import { usePersistedDocumentDesign, DesignLoadState } from "./usePersistedDocumentDesign";
 import { DocumentLayout } from "@/lib/documentDesigner";
 import { fmtAED, fmtDate } from "@/lib/helpers";
 import {
@@ -47,22 +47,22 @@ export default function MeasurementSheetTemplate({
   showCalculationType,
   showVat,
 }: MeasurementSheetTemplateProps) {
+  const design = usePersistedDocumentDesign(company?.id, "measurement_sheet");
+  const customLayout = design.layout;
+
   const { summary } = data;
   const isVatActive =
     showVat !== undefined
       ? showVat
       : data.include_vat !== undefined
       ? data.include_vat
-      : (summary.vatAmountAED !== undefined && summary.vatAmountAED > 0) ||
+      : (summary?.vatAmountAED !== undefined && summary.vatAmountAED > 0) ||
         (data.vat_rate !== undefined && data.vat_rate > 0);
 
-  const effectiveVatRate = data.vat_rate ?? summary.vatRate ?? 5;
-  const netCost = summary.totalCostAED;
-  const vatAmount = summary.vatAmountAED ?? (isVatActive ? Math.round(netCost * effectiveVatRate) / 100 : 0);
-  const grandTotal = summary.grandTotalWithVatAED ?? (netCost + (isVatActive ? vatAmount : 0));
-
-  const design = usePersistedDocumentDesign(company?.id, "measurement_sheet");
-  const customLayout = design.layout;
+  const effectiveVatRate = data.vat_rate ?? summary?.vatRate ?? 5;
+  const netCost = summary?.totalCostAED ?? 0;
+  const vatAmount = summary?.vatAmountAED ?? (isVatActive ? Math.round(netCost * effectiveVatRate) / 100 : 0);
+  const grandTotal = summary?.grandTotalWithVatAED ?? (netCost + (isVatActive ? vatAmount : 0));
 
   // Map measurement domain data to standard renderer document data
   const rendererData: MockDocumentData = useMemo(() => {
@@ -182,23 +182,22 @@ export default function MeasurementSheetTemplate({
   const headerTextColor = tableSettings?.headerTextColor || "#FFFFFF";
   const borderColor = tableSettings?.borderColor || "#CBD5E1";
 
-  // Only use the saved cloud layout when it has fully loaded from Supabase.
-  // When no cloud design has been saved yet (design.ready=false), fall through
-  // to the static HTML fallback so printing always works.
-  const useCustomLayout = design.ready && Boolean(activeLayout);
+  if (!design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
 
   return (
+
     <DocumentContainer
       docNumber={data.sheet_number}
       docTypeLabel="MEASUREMENT TAKEOFF"
       company={company}
       totalPages={totalPages}
-      layout={useCustomLayout ? activeLayout : undefined}
-      noPadding={useCustomLayout}
-      showWatermark={!useCustomLayout}
+      layout={activeLayout || undefined}
+      noPadding={Boolean(activeLayout)}
+      showWatermark={!activeLayout}
     >
-      {useCustomLayout ? (
+      {activeLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">
+
           {Array.from({ length: totalPages }, (_, index) => (
             <DynamicDocumentRenderer
               key={index}
