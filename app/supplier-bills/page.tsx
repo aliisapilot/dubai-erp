@@ -81,7 +81,7 @@ const emptyLine = (): BillItem => ({
   sort_order: 0,
 });
 
-const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none";
+const inp = "w-full rounded-lg border border-slate-700 bg-slate-800 text-slate-100 px-3 py-2 text-xs focus:border-amber-500 focus:outline-none placeholder:text-slate-500";
 const sel = inp + " appearance-none";
 
 export default function SupplierBillsPage() {
@@ -385,31 +385,31 @@ export default function SupplierBillsPage() {
       <div className="mx-auto max-w-7xl px-6 py-8 space-y-6">
         {/* KPI Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Invoiced (Bills)</span>
+          <div className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm">
+            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Invoiced (Bills)</span>
             <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-slate-900">{fmtAED(totalBilled)}</span>
+              <span className="text-2xl font-bold text-slate-100">{fmtAED(totalBilled)}</span>
               <span className="text-xs text-slate-400 font-mono">{bills.length} bills</span>
             </div>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Disbursed / Paid</span>
+          <div className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm">
+            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Disbursed / Paid</span>
             <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-emerald-600">{fmtAED(totalPaid)}</span>
+              <span className="text-2xl font-bold text-emerald-400">{fmtAED(totalPaid)}</span>
               <CheckCircle size={18} className="text-emerald-500" />
             </div>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Outstanding Payable</span>
+          <div className="rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-sm">
+            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Outstanding Payable</span>
             <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-amber-600">{fmtAED(totalOutstanding)}</span>
+              <span className="text-2xl font-bold text-amber-400">{fmtAED(totalOutstanding)}</span>
               <Clock size={18} className="text-amber-500" />
             </div>
           </div>
         </div>
 
         {/* Filter Bar */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-sm">
           <div className="relative flex-1 max-w-md">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -417,14 +417,14 @@ export default function SupplierBillsPage() {
               placeholder="Search by bill number, vendor, invoice ref..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-4 text-xs focus:border-slate-400 focus:outline-none"
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 text-slate-100 placeholder:text-slate-500 py-2 pl-9 pr-4 text-xs focus:border-amber-500 focus:outline-none"
             />
           </div>
           <div className="flex items-center gap-3">
             <select
               value={filterStatus}
               onChange={e => setFilterStatus(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none"
+              className="rounded-lg border border-slate-700 bg-slate-900 text-slate-100 px-3 py-2 text-xs focus:outline-none"
             >
               <option value="">All Statuses</option>
               <option value="Pending">Pending</option>
@@ -436,18 +436,18 @@ export default function SupplierBillsPage() {
         </div>
 
         {/* Bills Table */}
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800 shadow-sm">
           {loading ? (
             <div className="flex justify-center py-20">
               <Loader2 size={32} className="animate-spin text-slate-400" />
             </div>
           ) : filtered.length === 0 ? (
-            <div className="py-16 text-center text-slate-500 text-sm">
+            <div className="py-16 text-center text-slate-400 text-sm">
               No supplier bills found. Click &quot;New Supplier Bill&quot; to record vendor payables.
             </div>
           ) : (
             <table className="w-full text-left text-xs">
-              <thead className="border-b border-slate-200 bg-slate-50/75 text-slate-600 font-semibold uppercase tracking-wider text-[11px]">
+              <thead className="border-b border-slate-700 bg-slate-900/60 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
                 <tr>
                   <th className="px-5 py-3">Bill Number</th>
                   <th className="px-4 py-3">Vendor / Supplier</th>
@@ -460,25 +460,25 @@ export default function SupplierBillsPage() {
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-slate-700/50">
                 {filtered.map(b => {
                   const sName = supMap[b.supplier_id] || "—";
                   const paid = Number(b.paid_amount) || 0;
                   const bal = Math.max(0, b.total_amount - paid);
                   return (
-                    <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-5 py-3.5 font-bold font-mono text-slate-900">
+                    <tr key={b.id} className="hover:bg-slate-700/30 transition-colors">
+                      <td className="px-5 py-3.5 font-bold font-mono text-slate-100">
                         {b.bill_number}
                         {b.supplier_invoice_ref && (
                           <div className="text-[10px] text-slate-400 font-normal">Ref: {b.supplier_invoice_ref}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3.5 font-medium text-slate-800">{sName}</td>
-                      <td className="px-4 py-3.5 text-slate-600">{fmtDate(b.bill_date)}</td>
-                      <td className="px-4 py-3.5 text-slate-600">{fmtDate(b.due_date)}</td>
-                      <td className="px-4 py-3.5 text-right font-mono font-semibold text-slate-900">{fmtAED(b.total_amount)}</td>
-                      <td className="px-4 py-3.5 text-right font-mono text-emerald-600">{fmtAED(paid)}</td>
-                      <td className="px-4 py-3.5 text-right font-mono font-semibold text-amber-700">{fmtAED(bal)}</td>
+                      <td className="px-4 py-3.5 font-medium text-slate-200">{sName}</td>
+                      <td className="px-4 py-3.5 text-slate-400">{fmtDate(b.bill_date)}</td>
+                      <td className="px-4 py-3.5 text-slate-400">{fmtDate(b.due_date)}</td>
+                      <td className="px-4 py-3.5 text-right font-mono font-semibold text-slate-100">{fmtAED(b.total_amount)}</td>
+                      <td className="px-4 py-3.5 text-right font-mono text-emerald-400">{fmtAED(paid)}</td>
+                      <td className="px-4 py-3.5 text-right font-mono font-semibold text-amber-400">{fmtAED(bal)}</td>
                       <td className="px-4 py-3.5 text-center">
                         <span className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${statusClass(b.status)}`}>
                           {b.status}
@@ -487,21 +487,21 @@ export default function SupplierBillsPage() {
                       <td className="px-5 py-3.5 text-right space-x-2">
                         <button
                           onClick={() => handlePrint(b)}
-                          className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-800 transition"
+                          className="rounded p-1.5 text-slate-400 hover:bg-slate-700 hover:text-slate-100 transition"
                           title="Print / PDF"
                         >
                           <Printer size={15} />
                         </button>
                         <button
                           onClick={() => openEdit(b)}
-                          className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-800 transition"
+                          className="rounded p-1.5 text-slate-400 hover:bg-slate-700 hover:text-slate-100 transition"
                           title="Edit Bill"
                         >
                           <Pencil size={15} />
                         </button>
                         <button
                           onClick={() => deleteBill(b)}
-                          className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"
+                          className="rounded p-1.5 text-slate-400 hover:bg-red-900/40 hover:text-red-400 transition"
                           title="Delete Supplier Bill"
                         >
                           <Trash2 size={15} />
@@ -518,30 +518,30 @@ export default function SupplierBillsPage() {
 
       {/* Add / Edit Bill Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-slate-900">
+                <h2 className="text-base font-bold text-slate-100">
                   {editing ? "Edit Supplier Bill" : "New Supplier Bill"}
                 </h2>
                 {!editing ? (
-                  <span className="text-xs font-mono bg-blue-50 text-blue-700 px-2.5 py-1 rounded font-medium border border-blue-200">
+                  <span className="text-xs font-mono bg-blue-900/40 text-blue-300 px-2.5 py-1 rounded font-medium border border-blue-700">
                     Bill #: Auto-generated on save
                   </span>
                 ) : (
-                  <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
+                  <span className="text-xs font-mono bg-slate-800 text-slate-300 px-2.5 py-1 rounded font-medium border border-slate-600">
                     Bill #: {editing.bill_number} (Read-only)
                   </span>
                 )}
               </div>
-              <button onClick={() => setShowModal(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
+              <button onClick={() => setShowModal(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800">
                 <X size={18} />
               </button>
             </div>
 
             {error && (
-              <div className="mx-6 mt-4 rounded-lg bg-red-50 p-3 text-xs text-red-700 border border-red-200">
+              <div className="mx-6 mt-4 rounded-lg bg-red-900/40 p-3 text-xs text-red-300 border border-red-700">
                 {error}
               </div>
             )}
@@ -550,7 +550,7 @@ export default function SupplierBillsPage() {
               {/* Header Fields */}
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">Vendor / Supplier *</label>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Vendor / Supplier *</label>
                   <select
                     value={form.supplier_id}
                     onChange={e => setForm(f => ({ ...f, supplier_id: e.target.value }))}
@@ -564,7 +564,7 @@ export default function SupplierBillsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">Bill Date</label>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Bill Date</label>
                   <input
                     type="date"
                     value={form.bill_date}
@@ -574,7 +574,7 @@ export default function SupplierBillsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">Payment Due Date</label>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Payment Due Date</label>
                   <input
                     type="date"
                     value={form.due_date}
@@ -586,7 +586,7 @@ export default function SupplierBillsPage() {
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">Vendor Invoice / Ref #</label>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Vendor Invoice / Ref #</label>
                   <input
                     type="text"
                     placeholder="e.g. INV-98741"
@@ -596,7 +596,7 @@ export default function SupplierBillsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">Purchase Order Ref</label>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Purchase Order Ref</label>
                   <select
                     value={form.purchase_order_id}
                     onChange={e => setForm(f => ({ ...f, purchase_order_id: e.target.value }))}
@@ -609,7 +609,7 @@ export default function SupplierBillsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">Link to Project</label>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Link to Project</label>
                   <select
                     value={form.project_id}
                     onChange={e => setForm(f => ({ ...f, project_id: e.target.value }))}
@@ -624,21 +624,21 @@ export default function SupplierBillsPage() {
               </div>
 
               {/* Line items table */}
-              <div className="border-t border-slate-200 pt-4">
+              <div className="border-t border-slate-700 pt-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Bill Line Items</span>
+                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Bill Line Items</span>
                   <button
                     type="button"
                     onClick={addLine}
-                    className="flex items-center gap-1 text-xs font-semibold text-indigo-700 hover:text-indigo-900"
+                    className="flex items-center gap-1 text-xs font-semibold text-indigo-400 hover:text-indigo-300"
                   >
                     <Plus size={14} /> Add Line
                   </button>
                 </div>
 
-                <div className="overflow-hidden rounded-lg border border-slate-200">
+                <div className="overflow-hidden rounded-lg border border-slate-700">
                   <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-100 text-slate-700 font-semibold">
+                    <thead className="bg-slate-800 text-slate-400 font-semibold">
                       <tr>
                         <th className="p-2 w-48">Product</th>
                         <th className="p-2">Description</th>
@@ -650,7 +650,7 @@ export default function SupplierBillsPage() {
                         <th className="p-2 w-10 text-center"></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
+                    <tbody className="divide-y divide-slate-700 bg-slate-800/50">
                       {lines.map((l, i) => (
                         <tr key={i}>
                           <td className="p-2">
@@ -718,7 +718,7 @@ export default function SupplierBillsPage() {
                               className={inp + " text-center font-mono"}
                             />
                           </td>
-                          <td className="p-2 text-right font-mono font-bold text-slate-800">
+                          <td className="p-2 text-right font-mono font-bold text-slate-200">
                             {l.line_total.toFixed(2)}
                           </td>
                           <td className="p-2 text-center">
@@ -740,18 +740,18 @@ export default function SupplierBillsPage() {
 
               {/* Totals Summary */}
               <div className="flex justify-end pt-2">
-                <div className="w-72 rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-xs space-y-1.5">
-                  <div className="flex justify-between text-slate-600">
+                <div className="w-72 rounded-lg border border-slate-700 bg-slate-800/60 p-3 text-xs space-y-1.5">
+                  <div className="flex justify-between text-slate-400">
                     <span>Subtotal:</span>
                     <span className="font-mono font-semibold">{fmtAED(totals().subtotal)}</span>
                   </div>
-                  <div className="flex justify-between text-slate-600">
+                  <div className="flex justify-between text-slate-400">
                     <span>VAT (5%):</span>
-                    <span className="font-mono font-semibold text-amber-700">{fmtAED(totals().vat_amount)}</span>
+                    <span className="font-mono font-semibold text-amber-400">{fmtAED(totals().vat_amount)}</span>
                   </div>
-                  <div className="flex justify-between border-t border-slate-200 pt-1.5 font-bold text-slate-900 text-sm">
+                  <div className="flex justify-between border-t border-slate-600 pt-1.5 font-bold text-slate-100 text-sm">
                     <span>Total Bill:</span>
-                    <span className="font-mono text-indigo-900">{fmtAED(totals().total_amount)}</span>
+                    <span className="font-mono text-indigo-300">{fmtAED(totals().total_amount)}</span>
                   </div>
                 </div>
               </div>
@@ -767,19 +767,19 @@ export default function SupplierBillsPage() {
                 />
               </div>
 
-              <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
+              <div className="flex justify-end gap-3 border-t border-slate-700 pt-4">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
                   disabled={saving}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="rounded-lg border border-slate-600 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-lg bg-amber-600 px-5 py-2 text-xs font-semibold text-white hover:bg-amber-500 disabled:opacity-50"
                 >
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                   {saving ? "Saving..." : editing ? "Update Bill" : "Record Supplier Bill"}
