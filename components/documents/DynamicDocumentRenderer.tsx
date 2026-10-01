@@ -32,6 +32,7 @@ export interface MockDocumentData {
   supplier_name?: string;
   project_name?: string;
   project_number?: string;
+  title?: string;
   location?: string;
   scope_of_work?: string;
   items: Array<{
@@ -694,7 +695,7 @@ export default function DynamicDocumentRenderer({
                   letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
                 }}
               >
-                {elem.customText || "TAX INVOICE"}
+                {elem.customText || (layout.documentType === "measurement_sheet" ? "MEASUREMENT & TAKEOFF SHEET" : "TAX INVOICE")}
               </span>
             </div>
             <div className="text-right font-mono font-bold text-xs" style={{ color: colors.accent }}>
@@ -712,6 +713,8 @@ export default function DynamicDocumentRenderer({
             ? "Employee / Payee (المستفيد):"
             : layout.documentType === "salary_statement"
             ? "Employee Details (بيانات الموظف):"
+            : layout.documentType === "measurement_sheet"
+            ? "Project & Client Information (بيانات المشروع والعميل):"
             : "Customer / Client Details (بيانات العميل):";
         const partyRole =
           layout.documentType === "receipt_voucher"
@@ -720,6 +723,8 @@ export default function DynamicDocumentRenderer({
             ? "Payee"
             : layout.documentType === "salary_statement"
             ? "Employee"
+            : layout.documentType === "measurement_sheet"
+            ? "Client"
             : "Buyer";
         const configuredPaddingMm = elem.padding !== undefined ? elem.padding : 3.2;
         const isUltraCompact = elem.height <= 22;
@@ -773,28 +778,50 @@ export default function DynamicDocumentRenderer({
                   lineHeight: isUltraCompact ? 1.1 : isCompactPartyCard ? 1.15 : 1.25,
                 }}
               >
-                <div className="font-bold text-slate-900 break-words leading-tight" style={{ overflowWrap: "anywhere" }}>{data.customer_name}</div>
-                {data.customer_trn && (
-                  <div>
-                    <span style={{ color: colors.muted }}>TRN: </span>
-                    <span className="font-mono font-bold text-slate-900">{data.customer_trn}</span>
-                  </div>
-                )}
-                {data.customer_address && (
-                  <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>
-                    {data.customer_address}
-                  </div>
-                )}
-                {data.contact_person && (
-                  <div className="break-words" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>
-                    Attn: {data.contact_person}
-                  </div>
-                )}
-                {data.contact_number && (
-                  <div className="break-words" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>Tel/Mob: {data.contact_number}</div>
-                )}
-                {data.contact_email && (
-                  <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>Email: {data.contact_email}</div>
+                {layout.documentType === "measurement_sheet" ? (
+                  <>
+                    <div className="font-bold text-slate-900 break-words leading-tight" style={{ overflowWrap: "anywhere" }}>
+                      {data.title || "Fabrication & Takeoff Sheet"}
+                    </div>
+                    {data.project_name && (
+                      <div className="text-[10px] mt-0.5">
+                        <span style={{ color: colors.muted }}>Project: </span>
+                        <span className="font-semibold text-slate-900">{data.project_name} {data.project_number ? `(${data.project_number})` : ""}</span>
+                      </div>
+                    )}
+                    {data.customer_name && (
+                      <div className="text-[10px] mt-0.5">
+                        <span style={{ color: colors.muted }}>Client: </span>
+                        <span className="font-bold text-slate-900">{data.customer_name}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="font-bold text-slate-900 break-words leading-tight" style={{ overflowWrap: "anywhere" }}>{data.customer_name}</div>
+                    {data.customer_trn && (
+                      <div>
+                        <span style={{ color: colors.muted }}>TRN: </span>
+                        <span className="font-mono font-bold text-slate-900">{data.customer_trn}</span>
+                      </div>
+                    )}
+                    {data.customer_address && (
+                      <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>
+                        {data.customer_address}
+                      </div>
+                    )}
+                    {data.contact_person && (
+                      <div className="break-words" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>
+                        Attn: {data.contact_person}
+                      </div>
+                    )}
+                    {data.contact_number && (
+                      <div className="break-words" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>Tel/Mob: {data.contact_number}</div>
+                    )}
+                    {data.contact_email && (
+                      <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>Email: {data.contact_email}</div>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -1071,14 +1098,14 @@ export default function DynamicDocumentRenderer({
                         else if (col.key === "dimensions") val = item.dimensions || "—";
                         else if (col.key === "calc_type") val = item.calc_type_formula || item.calc_type || "—";
                         else if (col.key === "result") val = item.result_display || (item.calculated_total ? `${item.calculated_total} ${item.result_unit || "m"}` : `${Number(item.quantity).toFixed(3)} ${item.unit || "m"}`);
-                        else if (col.key === "rate") val = item.unit_price ? `AED ${Number(item.unit_price).toFixed(2)}` : "—";
+                        else if (col.key === "rate") val = item.unit_price ? `AED ${Number(item.unit_price).toFixed(2)}${item.result_unit ? ` / ${item.result_unit}` : ""}` : "—";
 
                         const isMonetary = ["unit_price", "discount", "vat_amount", "line_total", "debit", "credit", "balance", "rate", "result"].includes(col.key);
 
                         return (
                           <td
                             key={col.key}
-                            className={`${cellPadding} break-words`}
+                            className={`${cellPadding} break-words ${col.key === "dimensions" || col.key === "calc_type" || col.key === "description" ? "whitespace-pre-line" : ""}`}
                             style={{
                               ...customPaddingStyle,
                               textAlign: col.align,
@@ -1170,6 +1197,18 @@ export default function DynamicDocumentRenderer({
       case "totals": {
         if (layout.documentType === "measurement_sheet") {
           const totalPieces = (data.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+          const totalLinearM = (data.items || []).reduce((sum, item) => {
+            if (item.result_unit === "m" || (!item.result_unit && item.dimensions)) {
+              return sum + (Number(item.calculated_total) || 0);
+            }
+            return sum;
+          }, 0);
+          const totalAreaM2 = (data.items || []).reduce((sum, item) => {
+            if (item.result_unit === "m²") {
+              return sum + (Number(item.calculated_total) || 0);
+            }
+            return sum;
+          }, 0);
           const isVatDisabled = elem.customText === "vat_disabled";
           const netAmount = data.subtotal || data.total_amount;
           const vatAmount = data.vat_amount || Math.round(netAmount * 0.05 * 100) / 100;
@@ -1189,10 +1228,18 @@ export default function DynamicDocumentRenderer({
                 <span style={{ color: colors.muted }}>Total Pieces:</span>
                 <span className="font-mono font-bold text-slate-900">{totalPieces} pcs</span>
               </div>
-              <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
-                <span style={{ color: colors.muted }}>Total Linear Metres:</span>
-                <span className="font-mono font-bold text-slate-900">1410.560 m</span>
-              </div>
+              {totalLinearM > 0 && (
+                <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
+                  <span style={{ color: colors.muted }}>Total Linear Metres:</span>
+                  <span className="font-mono font-bold text-slate-900">{totalLinearM.toFixed(3)} m</span>
+                </div>
+              )}
+              {totalAreaM2 > 0 && (
+                <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
+                  <span style={{ color: colors.muted }}>Total Square Metres:</span>
+                  <span className="font-mono font-bold text-slate-900">{totalAreaM2.toFixed(3)} m²</span>
+                </div>
+              )}
               {isVatDisabled ? (
                 <div
                   className="flex justify-between py-1.5 px-2.5 font-bold text-slate-900"
@@ -1221,6 +1268,9 @@ export default function DynamicDocumentRenderer({
                   >
                     <span className="uppercase text-[9px] tracking-wide">Total Amount:</span>
                     <span className="font-mono font-black" style={{ color: colors.primary }}>{fmtAED(grandTotal)}</span>
+                  </div>
+                  <div className="px-2.5 py-0.5 text-[7.5px] text-slate-500 italic leading-tight truncate">
+                    Amount in words: {numberToWordsEnglish(grandTotal)}
                   </div>
                 </>
               )}
@@ -1420,6 +1470,8 @@ export default function DynamicDocumentRenderer({
             ? "Handover Scope & Completion Remarks:"
             : layout.documentType === "work_method_statement"
             ? "Method, Scope & Safety Notes:"
+            : layout.documentType === "measurement_sheet"
+            ? "Measurement Notes & Compliance:"
             : "Terms & Remarks:";
         return (
           <div
@@ -1488,28 +1540,41 @@ export default function DynamicDocumentRenderer({
         const stampSrc = elem.imageSrc || brand.assets.stamp;
         return (
           <div
-            className="w-full h-full flex items-center justify-center select-none overflow-hidden"
+            className={`w-full h-full flex flex-col items-center justify-between text-center select-none overflow-hidden ${elem.padding !== undefined ? "" : "p-1.5"}`}
             style={{
               backgroundColor: elem.backgroundColor,
               border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
               borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
+              padding: elem.padding !== undefined ? `${elem.padding}mm` : undefined,
               opacity: elem.opacity ?? 1,
               ...elementAppearance(elem),
             }}
           >
-            {stampSrc ? (
-              <Image
-                src={stampSrc}
-                alt="Official Company Stamp"
-                width={80}
-                height={80}
+            {elem.customText && (
+              <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: colors.primary }}>
+                {elem.customText}
+              </div>
+            )}
+            <div className="relative w-full flex-1 flex items-center justify-center overflow-hidden">
+              {stampSrc ? (
+                <Image
+                  src={stampSrc}
+                  alt="Official Company Stamp"
+                  width={80}
+                  height={80}
                   className="max-h-full max-w-full"
                   style={{ width: "auto", height: "auto", objectFit: elem.imageFit || "contain" }}
-                unoptimized
-              />
-            ) : (
-              <div className="w-16 h-16 rounded-full border border-dashed border-slate-300 flex items-center justify-center text-[8px] text-slate-400 text-center p-1">
-                Official Stamp
+                  unoptimized
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full border border-dashed border-slate-300 flex items-center justify-center text-[8px] text-slate-400 text-center p-1">
+                  Official Stamp
+                </div>
+              )}
+            </div>
+            {elem.customText && (
+              <div className="w-full border-t border-slate-300 pt-0.5 text-[8px] text-slate-500">
+                Official Stamp / Seal
               </div>
             )}
           </div>
