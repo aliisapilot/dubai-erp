@@ -6,7 +6,7 @@ import DocFooter from "./DocFooter";
 import DocSignatureArea from "./DocSignatureArea";
 import DocumentContainer from "./DocumentContainer";
 import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
-import { usePersistedDocumentDesign, DesignLoadState } from "./usePersistedDocumentDesign";
+import { usePersistedDocumentDesign } from "./usePersistedDocumentDesign";
 import { DocumentLayout } from "@/lib/documentDesigner";
 import { fmtAED, fmtDate } from "@/lib/helpers";
 import {
@@ -182,8 +182,10 @@ export default function MeasurementSheetTemplate({
   const headerTextColor = tableSettings?.headerTextColor || "#FFFFFF";
   const borderColor = tableSettings?.borderColor || "#CBD5E1";
 
-  // Block print with clear load state until the user's saved cloud design has loaded
-  if (!design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
+  // Only use the saved cloud layout when it has fully loaded from Supabase.
+  // When no cloud design has been saved yet (design.ready=false), fall through
+  // to the static HTML fallback so printing always works.
+  const useCustomLayout = design.ready && Boolean(activeLayout);
 
   return (
     <DocumentContainer
@@ -191,11 +193,11 @@ export default function MeasurementSheetTemplate({
       docTypeLabel="MEASUREMENT TAKEOFF"
       company={company}
       totalPages={totalPages}
-      layout={activeLayout}
-      noPadding={Boolean(activeLayout)}
-      showWatermark={!activeLayout}
+      layout={useCustomLayout ? activeLayout : undefined}
+      noPadding={useCustomLayout}
+      showWatermark={!useCustomLayout}
     >
-      {activeLayout ? (
+      {useCustomLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">
           {Array.from({ length: totalPages }, (_, index) => (
             <DynamicDocumentRenderer
