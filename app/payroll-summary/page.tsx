@@ -59,7 +59,7 @@ export default function PayrollSummaryPage() {
   const finalized = records.filter(r => ["paid", "approved", "Finalized", "Paid", "Approved"].includes(r.status || "")).length;
   const draft = records.filter(r => !["paid", "approved", "Finalized", "Paid", "Approved"].includes(r.status || "")).length;
 
-  if (loading || loadedPeriod !== `${year}-${month}` || loadError) return <ReportLoadState loading={loading || loadedPeriod !== `${year}-${month}`} error={loadError} onRetry={() => void load()} />;
+
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -78,6 +78,7 @@ export default function PayrollSummaryPage() {
         </div>
       </header>
       <div className="mx-auto max-w-7xl px-6 py-8">
+        {loading || loadedPeriod !== `${year}-${month}` || loadError ? <ReportLoadState loading={loading || loadedPeriod !== `${year}-${month}`} error={loadError} onRetry={() => void load()} /> : <>
         <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[["Total Employees",records.length,"slate"],["Gross Payroll",fmtAED(totalGross),"emerald"],["OT Amount",fmtAED(totalOT),"amber"],["Total Deductions",fmtAED(totalDed),"red"],["Net Payroll",fmtAED(totalNet),"emerald"],["Finalized",finalized,"emerald"],["Draft/Pending",draft,"amber"]].map(([l,v,c])=>(
             <div key={String(l)} className="rounded-xl border border-slate-200 bg-white px-4 py-4">
@@ -117,6 +118,7 @@ export default function PayrollSummaryPage() {
             </table>
           </div>
         )}
+        </>}
       </div>
     </main>
   );
