@@ -131,6 +131,24 @@ export interface DocumentFitText {
   project_name?: string;
   location?: string;
   scope_of_work?: string;
+  notes?: string;
+  payment_terms?: string;
+}
+
+/** Remove unused paragraph-card space while retaining conservative text clearance. */
+export function fitDocumentContentBoxes(layout: DocumentLayout, text?: DocumentFitText): DocumentLayout {
+  if (!text || layout.page.smartFit?.enabled === false || layout.page.smartFit?.automaticSpacing === false) return layout;
+  return { ...layout, elements: layout.elements.map((element) => {
+    if (!element.visible || element.flowMode === "fixed" || element.type !== "payment_terms") return element;
+    // Tokenized custom text may include company fields unavailable to this estimator.
+    if (element.customText?.includes("{{")) return element;
+    const fontSize = Math.max(11, element.fontSize || 10);
+    const values = element.customText ? [element.customText] : [text.notes, text.payment_terms];
+    const lines = values.filter((value): value is string => Boolean(value?.trim())).reduce(
+      (count, value) => count + estimateWrappedLines(value, Math.max(20, element.width - 12), fontSize), 0);
+    const requiredHeight = Math.max(28, (lines + 4) * fontSize * 1.6 / 3.7795 + 8);
+    return { ...element, height: Math.min(element.height, Math.ceil(requiredHeight)) };
+  }) };
 }
 
 function estimateWrappedLines(value: string, widthMm: number, fontSizePx: number): number {
@@ -258,6 +276,34 @@ function followerHeight(element: LayoutElement, scale: number): number {
   return Math.max(element.height * scale, minimum);
 }
 
+/** Pack saved rows without treating full-width cards as a separate left column. */
+function packContentRows(elements: LayoutElement[], startY: number, gap: number, scale: number) {
+  const positions = new Map<string, { y: number; height: number }>();
+  const rows: LayoutElement[][] = [];
+  for (const element of [...elements].sort((a, b) => a.y - b.y)) {
+    const row = rows.find((candidate) => Math.abs(candidate[0].y - element.y) < 5);
+    if (row) row.push(element);
+    else rows.push([element]);
+  }
+  const placed: { element: LayoutElement; bottom: number }[] = [];
+  for (const row of rows) {
+    let y = startY;
+    for (const element of row) {
+      for (const previous of placed) {
+        if (element.x < previous.element.x + previous.element.width && element.x + element.width > previous.element.x) {
+          y = Math.max(y, previous.bottom + gap);
+        }
+      }
+    }
+    for (const element of row) {
+      const height = Math.round(followerHeight(element, scale) * 10) / 10;
+      positions.set(element.id, { y, height });
+      placed.push({ element, bottom: y + height });
+    }
+  }
+  return positions;
+}
+
 export function calculateFollowerVerticalSpan(
   followers: LayoutElement[],
   scale: number,
@@ -265,33 +311,11 @@ export function calculateFollowerVerticalSpan(
 ): number {
   if (followers.length === 0) return 0;
 
-  // Group followers into visual columns
-  // Column 1: Left / Center (x < 115) e.g. amount_in_words, bank_details, payment_terms
-  // Column 2: Right (x >= 115) e.g. totals, company_signature, company_stamp
-  const colLeft = followers.filter((f) => f.x < 115);
-  const colRight = followers.filter((f) => f.x >= 115);
-
-  const measureCol = (col: LayoutElement[]) => {
-    if (col.length === 0) return 0;
-    const sorted = [...col].sort((a, b) => a.y - b.y);
-    const rows: LayoutElement[][] = [];
-    for (const el of sorted) {
-      const existingRow = rows.find((r) => Math.abs(r[0].y - el.y) < 5);
-      if (existingRow) existingRow.push(el);
-      else rows.push([el]);
-    }
-    let totalH = 0;
-    for (let i = 0; i < rows.length; i++) {
-      const rowMaxH = Math.max(...rows[i].map((el) => followerHeight(el, scale)));
-      totalH += rowMaxH;
-      if (i < rows.length - 1) totalH += gap;
-    }
-    return totalH;
-  };
-
-  const spanLeft = measureCol(colLeft);
-  const spanRight = measureCol(colRight);
-  return Math.max(spanLeft, spanRight);
+  const positions = packContentRows(followers, 0, gap, scale);
+  return Math.max(...followers.map((element) => {
+    const position = positions.get(element.id)!;
+    return position.y + position.height;
+  }));
 }
 
 /**
@@ -479,8 +503,8 @@ export function computeIntelligentFitProfile(
       effectiveAbove = minHeaderY + compactedSpan;
     }
 
-    const tableY = tier.allowSlideTableUp && smartFit.automaticSpacing !== false
-      ? Math.min(table.y, effectiveAbove + tier.gap)
+    const tableY = isSmartFitEnabled && smartFit.automaticSpacing !== false
+      ? (tier.allowSlideTableUp ? Math.min(table.y, effectiveAbove + tier.gap) : effectiveAbove + tier.gap)
       : Math.max(table.y, maxAboveBottom + tier.gap);
 
     const tableHeight = calculateTableRenderedHeight(
@@ -549,6 +573,7 @@ export function computePaginationPlan(
   itemsData?: ItemDescriptionLike[],
   documentText?: DocumentFitText
 ): PaginationPlan {
+  layout = fitDocumentContentBoxes(layout, documentText);
   const table = layout.elements.find((el) => el.type === "line_items" && el.visible);
   if (!table || totalItems <= 0) {
     return {
@@ -683,7 +708,8 @@ export function computeEffectiveLayout(
   itemsData?: ItemDescriptionLike[],
   documentText?: DocumentFitText
 ): EffectiveLayoutResult {
-  const table = layout.elements.find((el) => el.type === "line_items");
+  layout = fitDocumentContentBoxes(layout, documentText);
+  const table = layout.elements.find((el) => el.type === "line_items" && el.visible);
 
   // Determine pagination plan and fit profile
   const paginationPlan = computePaginationPlan(layout, pageItemsCount, itemsData, documentText);
@@ -721,36 +747,23 @@ export function computeEffectiveLayout(
 
   // Identify follower elements
   const followers = layout.elements.filter((el) => isFollowerElement(el, table));
-  const followerMap = new Map<string, { y: number; height: number }>();
+  let followerMap = new Map<string, { y: number; height: number }>();
 
   if (followers.length > 0 && isLastPage) {
-    const colLeft = followers.filter((f) => f.x < 115);
-    const colRight = followers.filter((f) => f.x >= 115);
+    followerMap = packContentRows(followers, actualTableBottom + fitProfile.gap, fitProfile.gap, fitProfile.followerScale);
+  }
 
-    const positionColumn = (col: LayoutElement[]) => {
-      const sorted = [...col].sort((a, b) => a.y - b.y);
-      const rows: LayoutElement[][] = [];
-      for (const el of sorted) {
-        const existingRow = rows.find((r) => Math.abs(r[0].y - el.y) < 5);
-        if (existingRow) existingRow.push(el);
-        else rows.push([el]);
-      }
-
-      let currentY = actualTableBottom + fitProfile.gap;
-      for (const row of rows) {
-        const rowHeight = Math.max(
-          ...row.map((el) => Math.round(followerHeight(el, fitProfile.followerScale) * 10) / 10)
-        );
-        for (const el of row) {
-          const scaledH = Math.round(followerHeight(el, fitProfile.followerScale) * 10) / 10;
-          followerMap.set(el.id, { y: currentY, height: scaledH });
-        }
-        currentY += rowHeight + fitProfile.gap;
-      }
-    };
-
-    positionColumn(colLeft);
-    positionColumn(colRight);
+  const automaticSpacing = layout.page.smartFit?.enabled !== false && layout.page.smartFit?.automaticSpacing !== false;
+  if (!table && automaticSpacing && isLastPage) {
+    const bodyTypes = ["amount_in_words", "totals", "bank_details", "payment_terms", "company_signature", "company_stamp"];
+    const body = layout.elements.filter((element) => element.visible && element.flowMode !== "fixed" &&
+      (element.pageNumber === undefined || element.pageNumber === pageNumber) && bodyTypes.includes(element.type));
+    const firstBodyY = body.length ? Math.min(...body.map((element) => element.y)) : Infinity;
+    const headers = layout.elements.filter((element) => element.visible && element.type !== "watermark" &&
+      element.type !== "footer" && !body.includes(element) && element.y < firstBodyY);
+    const headerBottom = headers.length ? Math.max(...headers.map((element) => element.y +
+      (["customer_info", "supplier_info", "project_info"].includes(element.type) ? Math.max(element.height, fitProfile.partyInfoHeight || 0) : element.height))) : firstBodyY - 3;
+    followerMap = packContentRows(body, headerBottom + 3, 3, 1);
   }
 
   // Check if header compaction is active (table shifted upwards to fit single A4 page)
@@ -764,7 +777,7 @@ export function computeEffectiveLayout(
   const minHeaderY = elementsAbove.length > 0 ? Math.min(...elementsAbove.map((el) => el.y)) : 10;
   const originalHeaderSpan = Math.max(20, originalTableY - minHeaderY);
   const targetHeaderSpan = Math.max(15, effectiveTableY - fitProfile.gap - minHeaderY);
-  const headerScale = tableShift > 0 && originalHeaderSpan > 0
+  const headerScale = tableShift > 0 && fitProfile.level !== "standard" && originalHeaderSpan > 0
     ? Math.min(1.0, targetHeaderSpan / originalHeaderSpan)
     : 1.0;
 
@@ -806,6 +819,13 @@ export function computeEffectiveLayout(
 
   const elements: EffectiveLayoutElement[] = layout.elements.map((el) => {
     const pageMatches = el.pageNumber === undefined || el.pageNumber === pageNumber;
+
+    const noTablePosition = !table ? followerMap.get(el.id) : undefined;
+    if (noTablePosition) return {
+      ...el, effectiveX: el.x, effectiveY: noTablePosition.y, effectiveWidth: el.width,
+      effectiveHeight: noTablePosition.height, isFollower: true, shiftY: noTablePosition.y - el.y,
+      effectiveVisible: el.visible && pageMatches,
+    };
 
     // 1. Table itself: dynamic height, fitted settings, effective Y
     if (table && el.id === table.id) {

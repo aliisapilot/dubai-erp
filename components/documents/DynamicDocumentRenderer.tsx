@@ -1179,7 +1179,7 @@ export default function DynamicDocumentRenderer({
                   Amount in Words (المبلغ بالحروف):
                   {(layout.documentType === "receipt_voucher" || layout.documentType === "employee_payment_voucher") &&
                     !effectiveGeometry.elements.some((element) => element.type === "totals" && element.visible && element.effectiveVisible !== false) && (
-                      <span className="float-right font-mono">{fmtAED(data.total_amount)}</span>
+                      <span className="float-right font-mono font-bold">{fmtAED(data.total_amount)}</span>
                     )}
                 </div>
                 <div className={`italic text-slate-700 font-medium ${isDenseWords ? "text-[9.5px]" : "text-[11px]"} leading-tight`}>
@@ -1218,7 +1218,7 @@ export default function DynamicDocumentRenderer({
                 ...elementAppearance(elem),
               }}
             >
-              <div className="px-2.5 py-1 text-[10px] font-semibold uppercase" style={{ color: colors.muted }}>
+              <div className="px-2.5 py-1 text-[10px] font-bold uppercase" style={{ color: colors.muted }}>
                 {isReceipt ? "Amount Received" : "Amount Paid"}
               </div>
               <div className="px-2.5 py-1.5 text-right font-mono text-base font-bold" style={{ backgroundColor: colors.totalHighlight, color: colors.primary }}>
@@ -1240,12 +1240,12 @@ export default function DynamicDocumentRenderer({
               }}
             >
               <div className="flex justify-between py-1 px-2.5 bg-slate-50 border-b" style={{ borderColor: colors.border }}>
-                <span style={{ color: colors.muted }}>Total Invoiced (Debits):</span>
-                <span className="font-mono font-semibold">{fmtAED(data.subtotal)}</span>
+                <span className="font-bold" style={{ color: colors.muted }}>Total Invoiced (Debits):</span>
+                <span className="font-mono font-bold">{fmtAED(data.subtotal)}</span>
               </div>
               <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
-                <span style={{ color: colors.muted }}>Total Paid (Credits):</span>
-                <span className="font-mono font-semibold" style={{ color: colors.accent }}>{fmtAED(totalCredits)}</span>
+                <span className="font-bold" style={{ color: colors.muted }}>Total Paid (Credits):</span>
+                <span className="font-mono font-bold" style={{ color: colors.accent }}>{fmtAED(totalCredits)}</span>
               </div>
               <div
                 className="flex justify-between py-1.5 px-2.5 font-bold text-slate-900 border-b"
@@ -1265,12 +1265,12 @@ export default function DynamicDocumentRenderer({
           return (
             <div className="w-full h-full overflow-hidden rounded border text-[10px]" style={{ borderColor: elem.borderColor || colors.border }}>
               <div className="flex justify-between border-b px-2.5 py-1" style={{ borderColor: colors.border }}>
-                <span style={{ color: colors.muted }}>Gross Earnings:</span>
-                <span className="font-mono font-semibold">{fmtAED(data.subtotal)}</span>
+                <span className="font-bold" style={{ color: colors.muted }}>Gross Earnings:</span>
+                <span className="font-mono font-bold">{fmtAED(data.subtotal)}</span>
               </div>
               <div className="flex justify-between border-b px-2.5 py-1" style={{ borderColor: colors.border }}>
-                <span style={{ color: colors.muted }}>Deductions:</span>
-                <span className="font-mono font-semibold">{fmtAED(totalDeductions)}</span>
+                <span className="font-bold" style={{ color: colors.muted }}>Deductions:</span>
+                <span className="font-mono font-bold">{fmtAED(totalDeductions)}</span>
               </div>
               <div className="flex justify-between px-2.5 py-1.5 font-bold" style={{ backgroundColor: colors.totalHighlight, color: colors.primary }}>
                 <span>Net Pay:</span>
@@ -1318,13 +1318,13 @@ export default function DynamicDocumentRenderer({
             }}
           >
             <div className={`flex justify-between ${rowPy} ${rowPx} bg-slate-50 border-b`} style={{ borderColor: colors.border }}>
-              <span style={{ color: colors.muted }}>Subtotal:</span>
-              <span className="font-mono font-semibold">{fmtAED(data.subtotal)}</span>
+              <span className="font-bold" style={{ color: colors.muted }}>Subtotal:</span>
+              <span className="font-mono font-bold">{fmtAED(data.subtotal)}</span>
             </div>
             {usesVat && (
               <div className={`flex justify-between ${rowPy} ${rowPx} border-b`} style={{ borderColor: colors.border }}>
-                <span style={{ color: colors.muted }}>VAT Total (5%):</span>
-                <span className="font-mono font-semibold" style={{ color: colors.accent }}>{fmtAED(data.vat_amount)}</span>
+                <span className="font-bold" style={{ color: colors.muted }}>VAT Total (5%):</span>
+                <span className="font-mono font-bold" style={{ color: colors.accent }}>{fmtAED(data.vat_amount)}</span>
               </div>
             )}
             <div
@@ -1339,7 +1339,7 @@ export default function DynamicDocumentRenderer({
             </div>
             {advance > 0 && (
               <div className={`flex justify-between ${rowPy} ${rowPx} bg-slate-50 text-[9.5px]`}>
-                <span style={{ color: colors.muted }}>Balance Due:</span>
+                <span className="font-bold" style={{ color: colors.muted }}>Balance Due:</span>
                 <span className="font-mono font-bold text-slate-900">{fmtAED(balanceDue)}</span>
               </div>
             )}
