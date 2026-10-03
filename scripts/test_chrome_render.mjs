@@ -9,7 +9,7 @@ function fetchChromeDom(url) {
       chromePath,
       ["--headless=new", "--disable-gpu", "--dump-dom", url],
       { maxBuffer: 10 * 1024 * 1024 },
-      (error, stdout, stderr) => {
+      (error, stdout) => {
         if (error) {
           reject(error);
         } else {

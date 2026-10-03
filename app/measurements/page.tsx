@@ -160,6 +160,9 @@ export default function MeasurementsPage() {
     } finally {
       setLoading(false);
     }
+    // createInitialSheet and loadSheetItems are stable helpers defined in component scope.
+    // Listing them as deps would cause re-creation on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

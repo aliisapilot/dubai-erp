@@ -30,7 +30,6 @@ function loadTs(file) {
 
 const {
   computeChequeMetrics,
-  getChequeUrgency,
   isChequeOverdue,
   getDaysDifference,
 } = loadTs("lib/chequeTypes.ts");
@@ -43,8 +42,6 @@ const {
 
 const {
   normalizeWhatsAppNumber,
-  generateChequeWhatsAppMessage,
-  generateDailyDigestWhatsAppMessage,
   getWhatsAppShareUrl,
 } = loadTs("lib/whatsappUtils.ts");
 

@@ -102,8 +102,11 @@ export default function ChequeReminderSettingsPage() {
 
   useEffect(() => {
     // Initial data hydration from Supabase is intentionally effect-driven.
-    // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAll();
+    // loadAll is defined in module scope and does not change between renders;
+    // omitting it from deps is intentional to prevent infinite re-fetch loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function showFeedback(type: "success" | "error", msg: string) {
