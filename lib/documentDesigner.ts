@@ -11,6 +11,18 @@ import { supabase } from "./supabase";
 import { createDocumentCloud, revisionOf, cloudError, type CloudRevision } from './documentCloud';
 import { preserveDesignDraft } from './documentDesignBackup';
 export const documentCloud = createDocumentCloud(supabase);
+if (typeof window !== 'undefined') {
+  supabase.auth.onAuthStateChange(() => documentCloud.clearPreviewCache());
+  window.addEventListener('storage', event => {
+    if (event.key === 'dubai-erp.design-preview-invalidated' || event.key === null) documentCloud.clearPreviewCache();
+  });
+}
+export function peekDocumentPreview(companyId: string | null | undefined, documentType: DocumentTypeId): LoadedDocumentDesign | undefined {
+  const snapshot = companyId ? documentCloud.peekPreview(companyId, documentType) : undefined;
+  if (!snapshot?.template) return undefined;
+  return {layout: normalizeLayout({...snapshot.template.layout_json, templateName: snapshot.template.template_name}),
+    source: 'database', revision: revisionOf(snapshot), updatedAt: snapshot.template.updated_at};
+}
 export interface LoadedDocumentDesign {
   layout: DocumentLayout; source: 'database' | 'local' | 'default';
   revision?: CloudRevision; error?: string; updatedAt?: string;
@@ -1411,17 +1423,21 @@ export function sortAndNormalizeLayerZIndexes(elements: LayoutElement[]): Layout
  * 3. Default UAE corporate layout
  */
 export async function loadDocumentLayout(
-  companyId?: string | null, docType: DocumentTypeId = 'tax_invoice'
+  companyId?: string | null, docType: DocumentTypeId = 'tax_invoice',
+  options: { preview?: boolean; fresh?: boolean } = {}
 ): Promise<LoadedDocumentDesign> {
   let error: string | undefined;
   let revision: CloudRevision | undefined;
   if (companyId) {
     try {
-      const snapshot = await documentCloud.load(companyId, docType);
+      const snapshot = options.preview
+        ? await documentCloud.loadPreview(companyId, docType, options.fresh)
+        : await documentCloud.load(companyId, docType);
       revision = revisionOf(snapshot);
       if (snapshot.template) {
         const layout = normalizeLayout({ ...snapshot.template.layout_json, templateName: snapshot.template.template_name });
-        try { window.localStorage.setItem('dubai-erp.design-cache.' + companyId + '.' + docType, JSON.stringify(layout)); } catch {}
+        // Preview reads already have a memory cache; avoid serialising large embedded images on every open.
+        if (!options.preview) { try { window.localStorage.setItem('dubai-erp.design-cache.' + companyId + '.' + docType, JSON.stringify(layout)); } catch {} }
         return { layout, source: 'database', revision, updatedAt: snapshot.template.updated_at };
       }
     } catch (failure) { error = cloudError(failure).message; }

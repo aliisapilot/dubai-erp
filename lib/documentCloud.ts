@@ -1,3 +1,4 @@
+import { createDocumentPreviewCache } from './documentPreviewCache';
 import type { DocumentLayout, DocumentTypeId } from './documentDesigner';
 import type { DocumentStylePreset } from './documentStylePresetModel';
 
@@ -44,6 +45,13 @@ export function revisionOf(snapshot: CloudSnapshot): CloudRevision {
   return { templateId: snapshot.template?.id || null, version: snapshot.template?.version || 0, selectionVersion: snapshot.selection_version };
 }
 export function createDocumentCloud(client: CloudRpcClient) {
+  const previews = createDocumentPreviewCache<CloudSnapshot>();
+  const notifyChanged = () => {
+    previews.clear();
+    if (typeof window !== "undefined") {
+      try { window.localStorage.setItem("dubai-erp.design-preview-invalidated", `${Date.now()}:${Math.random()}`); } catch {}
+    }
+  };
   async function rpc(name: string, args: Record<string, unknown>, timeoutMs = 8000) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<{ data: unknown; error: { code?: string; message: string } | null }>((_, reject) => {
@@ -58,6 +66,16 @@ export function createDocumentCloud(client: CloudRpcClient) {
     }
   }
   return {
+    clearPreviewCache: () => previews.clear(),
+    peekPreview(companyId: string, documentType: DocumentTypeId) { return previews.peek(`${companyId}:${documentType}`); },
+    loadPreview(companyId: string, documentType: DocumentTypeId, fresh = false): Promise<CloudSnapshot> {
+      return previews.load(`${companyId}:${documentType}`, async () => {
+        const snapshot = await this.load(companyId, documentType);
+        // Images already live inside layout_json. Avoid keeping a duplicate asset map in preview memory.
+        if (snapshot.template) delete snapshot.template.assets_json;
+        return snapshot;
+      }, fresh);
+    },
     async load(companyId: string, documentType: DocumentTypeId): Promise<CloudSnapshot> {
       const snapshot = await rpc('read_document_design', { p_company_id: companyId, p_document_type: documentType }) as CloudSnapshot;
       if (!snapshot || !Number.isInteger(snapshot.selection_version)) throw new DocumentCloudError('Invalid cloud design response. Reload before editing.');
@@ -68,16 +86,20 @@ export function createDocumentCloud(client: CloudRpcClient) {
       if (!companyId || !revision || !Number.isInteger(revision.selectionVersion)) throw new DocumentCloudError('Load the cloud design successfully before saving.');
       if (layout.documentType !== documentType) throw new DocumentCloudError('The design belongs to another document type.');
       const assets = collectDesignAssets(layout);
-      return await rpc('write_document_design', {
+      const saved = await rpc('write_document_design', {
         p_company_id: companyId, p_document_type: documentType, p_template_id: revision.templateId,
         p_expected_version: revision.version, p_expected_selection: revision.selectionVersion,
         p_name: name.trim(), p_layout: { ...layout, templateName: name.trim() }, p_assets: assets, p_activate: activate,
       }) as CloudSnapshot;
+      notifyChanged();
+      return saved;
     },
     async mutate(companyId: string, preset: DocumentStylePreset, action: 'rename' | 'delete' | 'select', selectionVersion = 0, name = preset.template_name): Promise<CloudSnapshot> {
-      return await rpc('mutate_document_design', { p_company_id: companyId, p_document_type: preset.document_type,
+      const saved = await rpc('mutate_document_design', { p_company_id: companyId, p_document_type: preset.document_type,
         p_template_id: preset.id, p_expected_version: preset.version, p_expected_selection: selectionVersion,
         p_action: action, p_name: name.trim() }) as CloudSnapshot;
+      notifyChanged();
+      return saved;
     },
   };
 }

@@ -16,6 +16,8 @@ import { CompanyDocInfo } from "./DocHeader";
 import { numberToWordsArabic, numberToWordsEnglish } from "@/lib/amountInWords";
 import { fmtAED, fmtDate } from "@/lib/helpers";
 import PageDecorativeBorders from "./PageDecorativeBorders";
+import MeasurementTotals from "./MeasurementTotals";
+import { fitMeasurementSummaryLayout } from "@/lib/measurementPdfSummary";
 
 export interface MockDocumentData {
   document_number: string;
@@ -61,6 +63,7 @@ export interface MockDocumentData {
   subtotal: number;
   discount_amount?: number;
   vat_amount: number;
+  vat_rate?: number;
   total_amount: number;
   advance_amount?: number;
   payment_terms?: string;
@@ -347,11 +350,11 @@ export function getDocumentPageCount(
   itemsData?: ItemDescriptionLike[],
   documentText?: DocumentFitText
 ): number {
-  return computePaginationPlan(layout, itemCount, itemsData, documentText).totalPages;
+  return computePaginationPlan(fitMeasurementSummaryLayout(layout, documentText), itemCount, itemsData, documentText).totalPages;
 }
 
 export default function DynamicDocumentRenderer({
-  layout,
+  layout: savedLayout,
   company,
   data: providedData,
   isDesignerPreview = false,
@@ -359,7 +362,8 @@ export default function DynamicDocumentRenderer({
   pageNumber = 1,
   totalPages,
 }: DynamicDocumentRendererProps) {
-  const data = providedData || getSampleDocumentData(layout.documentType);
+  const data = providedData || getSampleDocumentData(savedLayout.documentType);
+  const layout = fitMeasurementSummaryLayout(savedLayout, data);
   const brand = getBrandConfig(company);
   const [logoFailed, setLogoFailed] = useState(false);
 
@@ -1196,86 +1200,7 @@ export default function DynamicDocumentRenderer({
 
       case "totals": {
         if (layout.documentType === "measurement_sheet") {
-          const totalPieces = (data.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-          const totalLinearM = (data.items || []).reduce((sum, item) => {
-            if (item.result_unit === "m" || (!item.result_unit && item.dimensions)) {
-              return sum + (Number(item.calculated_total) || 0);
-            }
-            return sum;
-          }, 0);
-          const totalAreaM2 = (data.items || []).reduce((sum, item) => {
-            if (item.result_unit === "m²") {
-              return sum + (Number(item.calculated_total) || 0);
-            }
-            return sum;
-          }, 0);
-          const isVatDisabled = elem.customText === "vat_disabled";
-          const netAmount = data.subtotal || data.total_amount;
-          const vatAmount = data.vat_amount || Math.round(netAmount * 0.05 * 100) / 100;
-          const grandTotal = isVatDisabled ? netAmount : (data.total_amount || (netAmount + vatAmount));
-
-          return (
-            <div
-              className="w-full h-full overflow-hidden text-xs rounded select-text flex flex-col justify-start"
-              style={{
-                border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
-                borderRadius: `${elem.borderRadius || 4}px`,
-                fontSize: `${elem.fontSize || 9.5}px`,
-                ...elementAppearance(elem),
-              }}
-            >
-              <div className="flex justify-between py-1 px-2.5 bg-slate-50 border-b" style={{ borderColor: colors.border }}>
-                <span style={{ color: colors.muted }}>Total Pieces:</span>
-                <span className="font-mono font-bold text-slate-900">{totalPieces} pcs</span>
-              </div>
-              {totalLinearM > 0 && (
-                <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
-                  <span style={{ color: colors.muted }}>Total Linear Metres:</span>
-                  <span className="font-mono font-bold text-slate-900">{totalLinearM.toFixed(3)} m</span>
-                </div>
-              )}
-              {totalAreaM2 > 0 && (
-                <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
-                  <span style={{ color: colors.muted }}>Total Square Metres:</span>
-                  <span className="font-mono font-bold text-slate-900">{totalAreaM2.toFixed(3)} m²</span>
-                </div>
-              )}
-              {isVatDisabled ? (
-                <div
-                  className="flex justify-between py-1.5 px-2.5 font-bold text-slate-900"
-                  style={{
-                    backgroundColor: colors.totalHighlight,
-                  }}
-                >
-                  <span className="uppercase text-[9px] tracking-wide">Total Estimated Cost:</span>
-                  <span className="font-mono font-black" style={{ color: colors.primary }}>{fmtAED(netAmount)}</span>
-                </div>
-              ) : (
-                <>
-                  <div className="flex justify-between py-0.5 px-2.5 border-b text-[9px]" style={{ borderColor: colors.border }}>
-                    <span style={{ color: colors.muted }}>Net Amount:</span>
-                    <span className="font-mono font-bold text-slate-900">{fmtAED(netAmount)}</span>
-                  </div>
-                  <div className="flex justify-between py-0.5 px-2.5 border-b text-[9px]" style={{ borderColor: colors.border }}>
-                    <span style={{ color: colors.muted }}>VAT (5%):</span>
-                    <span className="font-mono font-bold text-emerald-800">{fmtAED(vatAmount)}</span>
-                  </div>
-                  <div
-                    className="flex justify-between py-1 px-2.5 font-bold text-slate-900"
-                    style={{
-                      backgroundColor: colors.totalHighlight,
-                    }}
-                  >
-                    <span className="uppercase text-[9px] tracking-wide">Total Amount:</span>
-                    <span className="font-mono font-black" style={{ color: colors.primary }}>{fmtAED(grandTotal)}</span>
-                  </div>
-                  <div className="px-2.5 py-0.5 text-[7.5px] text-slate-500 italic leading-tight truncate">
-                    Amount in words: {numberToWordsEnglish(grandTotal)}
-                  </div>
-                </>
-              )}
-            </div>
-          );
+          return <MeasurementTotals element={elem} data={data} appearance={elementAppearance(elem)} colors={colors} />;
         }
 
         if (layout.documentType === "receipt_voucher" || layout.documentType === "employee_payment_voucher") {
@@ -1820,7 +1745,7 @@ export default function DynamicDocumentRenderer({
           const posX = isDesignerPreview ? elem.x : elem.effectiveX;
           const posY = isDesignerPreview ? elem.y : elem.effectiveY;
           const width = isDesignerPreview ? elem.width : elem.effectiveWidth;
-          const height = isDesignerPreview ? elem.height : elem.effectiveHeight;
+          const height = isDesignerPreview ? Math.max(elem.height, (elem as LayoutElement & {runtimeMinHeight?: number}).runtimeMinHeight ?? 0) : elem.effectiveHeight;
 
           return (
             <div

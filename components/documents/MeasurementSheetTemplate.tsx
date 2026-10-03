@@ -119,6 +119,7 @@ export default function MeasurementSheetTemplate({
       }),
       subtotal: netCost,
       vat_amount: isVatActive ? vatAmount : 0,
+      vat_rate: effectiveVatRate,
       total_amount: isVatActive ? grandTotal : netCost,
       notes: data.notes || undefined,
       payment_terms:

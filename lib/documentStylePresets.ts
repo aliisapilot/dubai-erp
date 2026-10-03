@@ -4,13 +4,17 @@ import { cloudError } from './documentCloud';
 import type { DocumentLayout, DocumentTypeId } from './documentDesigner';
 import type { DocumentStylePreset } from './documentStylePresetModel';
 export type { DocumentStylePreset } from './documentStylePresetModel';
-const columns = 'id,company_id,document_type,template_name,layout_json,is_default,updated_at,version,assets_json';
+const columns = 'id,company_id,document_type,template_name,layout_json,is_default,updated_at,version';
 export const documentStylePresets = {
   async listAll(companyId: string) {
     const { data, error } = await supabase.from('document_templates').select(columns).eq('company_id',companyId).order('template_name');
     if(error) throw cloudError(error); return (data || []) as DocumentStylePreset[];
   },
-  async list(companyId: string, documentType: DocumentTypeId) { return (await this.listAll(companyId)).filter(p => p.document_type === documentType); },
+  async list(companyId: string, documentType: DocumentTypeId) {
+    const {data, error} = await supabase.from('document_templates').select(columns).eq('company_id',companyId).eq('document_type',documentType).order('template_name');
+    if (error) throw cloudError(error);
+    return (data || []) as DocumentStylePreset[];
+  },
   async duplicate(companyId: string, documentType: DocumentTypeId, preset: DocumentStylePreset, name: string) {
     const result = await documentCloud.save(companyId,documentType,preset.layout_json,{templateId:null,version:0,selectionVersion:0},name,false);
     return result.template!;

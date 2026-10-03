@@ -6,6 +6,8 @@ import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabase";
 import { Loader2 } from "lucide-react";
+import { getCurrentCompany } from "@/lib/helpers";
+import { documentTypeForPreviewPath } from "@/lib/documentPreviewRoute";
 
 export default function ERPLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -93,6 +95,30 @@ export default function ERPLayout({ children }: { children: ReactNode }) {
       authListener?.subscription?.unsubscribe();
     };
   }, [pathname, isPublicPage, router]);
+
+  useEffect(() => {
+    const documentType = documentTypeForPreviewPath(pathname);
+    if (!isAuthenticated || !documentType) return;
+    let cancelled = false;
+    let warm: (() => void) | undefined;
+    void Promise.all([getCurrentCompany(), import('@/lib/documentDesigner')]).then(([company, {loadDocumentLayout}]) => {
+      if (cancelled || !company?.id) return;
+      warm = () => { void loadDocumentLayout(company.id, documentType, {preview: true}).catch(() => {}); };
+      warm();
+    }).catch(() => { /* Opening the preview exposes errors and allows a fresh retry. */ });
+    const onIntent = (event: Event) => {
+      const target = event.target instanceof Element ? event.target.closest('button, a') : null;
+      const label = target?.getAttribute('title') || target?.getAttribute('aria-label') || target?.textContent || '';
+      if (/\b(print|pdf)\b/i.test(label)) warm?.();
+    };
+    document.addEventListener('pointerover', onIntent);
+    document.addEventListener('focusin', onIntent);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('pointerover', onIntent);
+      document.removeEventListener('focusin', onIntent);
+    };
+  }, [isAuthenticated, pathname]);
 
   // On login or mobile portal pages, render children directly without ERP desktop sidebar/header
   if (pathname === "/login" || pathname.startsWith("/mobile")) {

@@ -253,6 +253,11 @@ export function isFollowerElement(
  * Calculates the required vertical span in mm for all follower elements
  * using visual two-column grouping with side-by-side detection (e.g. signature + stamp).
  */
+function followerHeight(element: LayoutElement, scale: number): number {
+  const minimum = (element as LayoutElement & {runtimeMinHeight?: number}).runtimeMinHeight ?? 0;
+  return Math.max(element.height * scale, minimum);
+}
+
 export function calculateFollowerVerticalSpan(
   followers: LayoutElement[],
   scale: number,
@@ -277,7 +282,7 @@ export function calculateFollowerVerticalSpan(
     }
     let totalH = 0;
     for (let i = 0; i < rows.length; i++) {
-      const rowMaxH = Math.max(...rows[i].map((el) => el.height * scale));
+      const rowMaxH = Math.max(...rows[i].map((el) => followerHeight(el, scale)));
       totalH += rowMaxH;
       if (i < rows.length - 1) totalH += gap;
     }
@@ -734,10 +739,10 @@ export function computeEffectiveLayout(
       let currentY = actualTableBottom + fitProfile.gap;
       for (const row of rows) {
         const rowHeight = Math.max(
-          ...row.map((el) => Math.round(el.height * fitProfile.followerScale * 10) / 10)
+          ...row.map((el) => Math.round(followerHeight(el, fitProfile.followerScale) * 10) / 10)
         );
         for (const el of row) {
-          const scaledH = Math.round(el.height * fitProfile.followerScale * 10) / 10;
+          const scaledH = Math.round(followerHeight(el, fitProfile.followerScale) * 10) / 10;
           followerMap.set(el.id, { y: currentY, height: scaledH });
         }
         currentY += rowHeight + fitProfile.gap;
