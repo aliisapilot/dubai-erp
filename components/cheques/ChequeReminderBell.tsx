@@ -3,9 +3,9 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { Bell, AlertTriangle, Clock, Calendar, CheckCircle2, RefreshCw, X, ArrowUpRight } from "lucide-react";
-import { ChequeReminderRecord, getChequeUrgency } from "@/lib/chequeTypes";
+import { ChequeReminderRecord } from "@/lib/chequeTypes";
 import { fetchActiveReminders, evaluateAndTriggerReminders } from "@/lib/chequeService";
-import { fmtAED, fmtDate } from "@/lib/helpers";
+import { fmtDate } from "@/lib/helpers";
 import { supabase } from "@/lib/supabase";
 
 export default function ChequeReminderBell() {

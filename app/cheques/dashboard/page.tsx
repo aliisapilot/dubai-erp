@@ -3,9 +3,9 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import {
-  Calendar as CalendarIcon, ChevronLeft, ChevronRight, Wallet, ArrowDownLeft,
-  ArrowUpRight, Clock, AlertTriangle, CheckCircle2, ShieldAlert, Filter,
-  Building2, Search, ArrowRight, Printer, RefreshCw, MessageCircle
+  Calendar as CalendarIcon, ChevronLeft, ChevronRight, Wallet,
+  Clock, AlertTriangle, CheckCircle2, ShieldAlert, Filter,
+  Search, ArrowRight, Printer, RefreshCw, MessageCircle
 } from "lucide-react";
 import { fetchCheques } from "@/lib/chequeService";
 import {

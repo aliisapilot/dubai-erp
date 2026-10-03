@@ -3,10 +3,10 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import {
-  Wallet, Bell, UserCheck, Code2, Users, Send, Settings,
-  CheckCircle2, AlertTriangle, Plus, Trash2, Edit3, Save,
-  X, Mail, MessageSquare, ShieldAlert, RefreshCw, Check, Loader2,
-  Calendar, Phone, Building2, HelpCircle, ArrowLeft
+  UserCheck, Code2, Users, Send, Settings,
+  Plus, Trash2, Edit3, Save,
+  X, Mail, RefreshCw, Loader2,
+  Calendar, ArrowLeft
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
@@ -102,8 +102,8 @@ export default function ChequeReminderSettingsPage() {
 
   useEffect(() => {
     // Initial data hydration from Supabase is intentionally effect-driven.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadAll();
+    // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+    void loadAll();
   }, []);
 
   function showFeedback(type: "success" | "error", msg: string) {
@@ -114,11 +114,6 @@ export default function ChequeReminderSettingsPage() {
   // Filtered lists
   const supervisorsList = useMemo(
     () => recipients.filter((r) => r.recipient_category === "supervisor"),
-    [recipients]
-  );
-
-  const developerRecipient = useMemo(
-    () => recipients.find((r) => r.recipient_category === "developer"),
     [recipients]
   );
 

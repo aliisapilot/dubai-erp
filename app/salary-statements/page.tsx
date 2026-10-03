@@ -197,8 +197,8 @@ export default function SalaryStatementsPage() {
   }
 
   function openEdit(ss: SS) {
-    if (ss.status === "Finalized") {
-      setError("Finalized statements cannot be edited.");
+    if (normalizeSalaryStatementStatus(ss.status) === "paid") {
+      setError("Paid salary statements cannot be edited.");
       return;
     }
     setError("");
@@ -247,32 +247,38 @@ export default function SalaryStatementsPage() {
     setError("");
     setSuccess("");
 
-    const { gross, net } = calcTotals(form);
+    const { gross, deductions, net } = calcTotals(form);
     const yr = Number(form.payroll_year) || now.getFullYear();
     const mo = Number(form.payroll_month) || (now.getMonth() + 1);
     const payrollDate = `${yr}-${String(mo).padStart(2, "0")}-01`;
 
     const cid = await getCompanyId();
-    const otherDeductions = (Number(form.other_deductions) || 0) +
-      (Number(form.advance_deduction) || 0) +
-      (Number(form.loan_deduction) || 0) +
-      (Number(form.leave_deduction) || 0);
 
     const payload = {
       company_id: cid,
       employee_id: form.employee_id,
       payroll_month: payrollDate,
+      payroll_year: yr,
       basic_salary: Number(form.basic_salary) || 0,
+      housing_allowance: Number(form.housing_allowance) || 0,
+      transport_allowance: Number(form.transport_allowance) || 0,
+      other_allowances: Number(form.other_allowances) || 0,
       friday_pay: Number(form.friday_pay) || 0,
       overtime_amount: Number(form.overtime_amount) || 0,
+      bonus: Number(form.bonus) || 0,
       gross_salary: gross,
       absence_deduction: Number(form.absence_deduction) || 0,
+      advance_deduction: Number(form.advance_deduction) || 0,
       insurance_deduction: Number(form.insurance_deduction) || 0,
-      other_deductions: otherDeductions,
+      loan_deduction: Number(form.loan_deduction) || 0,
+      leave_deduction: Number(form.leave_deduction) || 0,
+      other_deductions: Number(form.other_deductions) || 0,
+      total_deductions: deductions,
       net_salary: net,
       payment_method: form.payment_method,
       payment_date: form.payment_date || null,
       status: normalizeSalaryStatementStatus(form.status),
+      notes: form.notes || null,
     };
 
     let res;

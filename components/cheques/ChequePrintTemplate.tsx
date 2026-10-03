@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ChequeRecord, formatChequeStatus, formatChequeType } from "@/lib/chequeTypes";
+import { ChequeRecord, formatChequeStatus } from "@/lib/chequeTypes";
 import { fmtAED, fmtDate } from "@/lib/helpers";
 import { numberToWordsEnglish } from "@/lib/amountInWords";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";

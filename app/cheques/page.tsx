@@ -4,15 +4,15 @@ import { FormEvent, useEffect, useState, useMemo, ChangeEvent } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
-  Plus, Search, Wallet, X, Save, Loader2, ArrowUpRight, ArrowDownLeft,
-  Calendar, CheckCircle2, AlertCircle, Ban, History, Printer, Eye,
-  Building2, Upload, FileText, LayoutDashboard, ChevronRight, ShieldAlert,
+  Search, Wallet, X, Loader2, ArrowUpRight, ArrowDownLeft,
+  History, Printer, Eye,
+  FileText, LayoutDashboard, ShieldAlert,
   MessageCircle, Copy, Check, FileSpreadsheet, Bell
 } from "lucide-react";
-import { getCompanyId, getCurrentCompany, fmtAED, fmtDate, todayISO } from "@/lib/helpers";
+import { getCurrentCompany, fmtAED, fmtDate, todayISO } from "@/lib/helpers";
 import {
   ChequeRecord, ChequeType, ChequeStatus, ChequeFormInput,
-  UAE_BANKS, CHEQUE_STATUS_CONFIG, formatChequeStatus, chequeStatusBadge,
+  UAE_BANKS, formatChequeStatus, chequeStatusBadge,
   getChequeUrgency, isChequeOverdue, computeChequeMetrics, ChequeStatusHistoryRecord
 } from "@/lib/chequeTypes";
 import {

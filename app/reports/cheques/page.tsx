@@ -3,12 +3,12 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import {
-  FileText, Download, Printer, ArrowLeft, Calendar, Filter,
+  Download, Printer, ArrowLeft,
   ArrowDownLeft, ArrowUpRight, ShieldAlert, BarChart3, Loader2, X
 } from "lucide-react";
 import { fetchCheques } from "@/lib/chequeService";
 import {
-  ChequeRecord, formatChequeStatus, formatChequeType,
+  ChequeRecord, formatChequeStatus,
   isChequeOverdue, UAE_BANKS
 } from "@/lib/chequeTypes";
 import { getCurrentCompany, fmtAED, fmtDate, todayISO } from "@/lib/helpers";
