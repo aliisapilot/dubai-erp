@@ -53,7 +53,7 @@ export default function PrintTestSheetPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center py-6 px-4 print:p-0 print:bg-white print:text-black">
+    <div className="print-calibration-screen min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center py-6 px-4 print:p-0 print:bg-white print:text-black">
       {/* ── Top Bar (Hidden on print) ── */}
       <header className="w-full max-w-[210mm] mb-6 flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-xl print:hidden">
         <div className="flex items-center gap-3">

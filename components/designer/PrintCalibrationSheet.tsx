@@ -12,7 +12,7 @@ export default function PrintCalibrationSheet({
 }: PrintCalibrationSheetProps) {
   return (
     <div
-      className={`erp-document-surface w-[210mm] min-h-[297mm] max-h-[297mm] h-[297mm] bg-white text-slate-900 shadow-2xl relative box-border overflow-hidden select-none print:shadow-none print:m-0 print:border-none ${
+      className={`print-document print-calibration-sheet erp-document-surface w-[210mm] min-h-[297mm] max-h-[297mm] h-[297mm] bg-white text-slate-900 shadow-2xl relative box-border overflow-hidden select-none print:shadow-none print:m-0 print:border-none ${
         grayscaleSim ? "filter grayscale contrast-110" : ""
       }`}
       style={{
