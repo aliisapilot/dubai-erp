@@ -168,12 +168,24 @@ export function fmtAED(value: number | null | undefined): string {
   return `AED ${num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
 }
 
-/** Format date as DD/MM/YYYY */
+/** Format date as DD/MM/YYYY — parses YYYY-MM-DD as local calendar date to prevent UTC midnight timezone shift */
 export function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-GB");
+  const trimmed = iso.trim();
+  // Handle YYYY-MM-DD exactly: parse as local calendar date to avoid UTC midnight shift
+  // (e.g. "2026-09-01" would shift to Aug 31 in UTC+4 if parsed via new Date())
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10) - 1; // JS months are 0-indexed
+    const d = parseInt(isoMatch[3], 10);
+    if (m >= 0 && m <= 11 && d >= 1 && d <= 31) {
+      return new Date(y, m, d).toLocaleDateString("en-GB");
+    }
+  }
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) return parsed.toLocaleDateString("en-GB");
+  return trimmed;
 }
 
 /** Today's date as YYYY-MM-DD */

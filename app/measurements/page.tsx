@@ -203,11 +203,15 @@ export default function MeasurementsPage() {
         }));
         setRawRows(loaded);
       } else {
-        // If sheet is empty, preload the 4 standard parking shade test cases
-        setRawRows(REAL_PROJECT_PARKING_SHADE_TEST_ROWS);
+        // Sheet exists but has no rows — preserve empty state. Do NOT inject
+        // test/sample data, as the user may have intentionally cleared all rows.
+        setRawRows([]);
       }
-    } catch {
-      setRawRows(REAL_PROJECT_PARKING_SHADE_TEST_ROWS);
+    } catch (err) {
+      // On DB error, leave existing rows unchanged and surface the issue in the
+      // console. Do NOT overwrite saved data with sample rows.
+      console.error("Failed to load measurement sheet items:", err);
+      setError("Could not load sheet items. Please refresh.");
     }
   }
 
@@ -248,18 +252,23 @@ export default function MeasurementsPage() {
   }
 
   function initializeFallbackData() {
+    // DB connection failed. Provide a local-only session with an empty sheet
+    // so the user can calculate without risk of overwriting saved DB data.
+    // Do NOT load sample/test rows here — those can only be loaded by the
+    // explicit "Load Test Cases" button which includes a confirmation guard.
     const fallbackSheet: MeasurementSheet = {
-      id: "demo-sheet-001",
-      company_id: "demo-co",
-      sheet_number: "MS-2026-0001",
-      title: "PVC Parking Shade Fabrication & Joint Takeoff",
-      description: "Standard real project test measurement sheet",
+      id: "demo-sheet-offline",
+      company_id: "offline",
+      sheet_number: "MS-OFFLINE",
+      title: "PVC Parking Shade Fabrication & Joint Takeoff (Offline)",
+      description: "Working in offline mode — data will not be saved to the database",
       status: "draft",
       created_at: todayISO(),
     };
     setSheets([fallbackSheet]);
     setActiveSheet(fallbackSheet);
-    setRawRows(REAL_PROJECT_PARKING_SHADE_TEST_ROWS);
+    setRawRows([]);
+    setError("Database unavailable — working in offline mode. Data will not be saved.");
   }
 
   // Persist Rows to Database
@@ -400,6 +409,13 @@ export default function MeasurementsPage() {
 
   // Load & Verify Real Test Cases (Area 1, 2, 3, 4 -> 1,410.560 m)
   async function handleLoadRealTestCases() {
+    // Guard: never silently overwrite existing saved rows with sample data.
+    if (rawRows.length > 0) {
+      const confirmed = confirm(
+        `⚠️ Warning: This will permanently replace all ${rawRows.length} saved row(s) in this sheet with sample test data and save to the database.\n\nYour current measurements will be lost.\n\nAre you sure you want to continue?`
+      );
+      if (!confirmed) return;
+    }
     setIsVerifying(true);
     setRawRows(REAL_PROJECT_PARKING_SHADE_TEST_ROWS);
     if (activeSheet) {
