@@ -111,6 +111,8 @@ export default function MeasurementsPage() {
   const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null);
   const [rowForm, setRowForm] = useState<MeasurementRowInput>(DEFAULT_NEW_ROW);
   const [showRowModal, setShowRowModal] = useState(false);
+  const [showNewSheetForm, setShowNewSheetForm] = useState(false);
+  const [newSheetTitle, setNewSheetTitle] = useState("New Measurement & Takeoff Sheet");
 
   // State: Collapsed status of explanations for rows
   const [expandedExplanations, setExpandedExplanations] = useState<Record<number, boolean>>({});
@@ -380,7 +382,10 @@ export default function MeasurementsPage() {
 
   // Create New Sheet
   async function handleCreateNewSheet() {
-    if (saveInFlight.current) return;
+    if (saveInFlight.current || sheetReadInFlight.current) return;
+    const newTitle = newSheetTitle.trim();
+    if (!newTitle) { setError("Enter a sheet title."); return; }
+    saveInFlight.current = true; setSaving(true); setError(null); setSuccess(null);
     try {
       const coId = await getCompanyId();
       let sheetNum = `MS-${new Date().getFullYear()}-${String(sheets.length + 1).padStart(4, "0")}`;
@@ -388,8 +393,6 @@ export default function MeasurementsPage() {
         sheetNum = await generateDocNumber(coId, "MS");
       } catch {}
 
-      const newTitle = prompt("Enter Sheet Title:", "New Measurement & Takeoff Sheet");
-      if (!newTitle) return;
 
       const newSheetData = {
         company_id: coId,
@@ -407,14 +410,15 @@ export default function MeasurementsPage() {
       if (crErr) throw crErr;
 
       const createdSheet = created as MeasurementSheet;
-      setSheets([createdSheet, ...sheets]);
+      setSheets((previous) => [createdSheet, ...previous]);
+      setShowNewSheetForm(false);
       setActiveSheet(createdSheet);
       setRawRows([]);
       setSuccess(`Sheet ${sheetNum} created.`);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "The measurement sheet could not be created.");
-    }
+    } finally { saveInFlight.current = false; setSaving(false); }
   }
 
   // Transfer to Quotation
@@ -658,7 +662,8 @@ export default function MeasurementsPage() {
 
           <button
             type="button"
-            onClick={handleCreateNewSheet}
+            disabled={saving || loading}
+            onClick={() => { setNewSheetTitle("New Measurement & Takeoff Sheet"); setShowNewSheetForm(true); setError(null); }}
             className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors"
           >
             <Plus size={14} />
@@ -666,6 +671,22 @@ export default function MeasurementsPage() {
           </button>
         </div>
       </div>
+
+      {showNewSheetForm && (
+        <form
+          className="mb-6 rounded-xl border border-slate-700 bg-slate-900 p-4"
+          onSubmit={(event) => { event.preventDefault(); void handleCreateNewSheet(); }}
+        >
+          <label htmlFor="new-sheet-title" className="mb-2 block text-sm font-semibold text-slate-100">New sheet title</label>
+          <input id="new-sheet-title" autoFocus required maxLength={200} value={newSheetTitle}
+            disabled={saving} onChange={(event) => setNewSheetTitle(event.target.value)}
+            className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-slate-100" />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="submit" disabled={saving || !newSheetTitle.trim()} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Creating sheet..." : "Create Sheet"}</button>
+            <button type="button" disabled={saving} onClick={() => setShowNewSheetForm(false)} className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200">Cancel</button>
+          </div>
+        </form>
+      )}
 
       {/* Main Measurements Workspace */}
       <div className="space-y-6">
