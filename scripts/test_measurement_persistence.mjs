@@ -54,7 +54,7 @@ console.log('PASS atomic measurement save: rollback, stale version protection, s
 // Quotation transfer must also be atomic and safe to retry after a lost response.
 await db.exec('RESET ROLE;');
 await db.exec(`ALTER TABLE projects ADD COLUMN company_id uuid;ALTER TABLE customers ADD COLUMN company_id uuid;
-CREATE TABLE quotations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid,quotation_number text,customer_id uuid,project_id uuid,quotation_date date,expiry_date date,status text,subtotal numeric,discount_amount numeric,vat_amount numeric,total_amount numeric,notes text);
+CREATE TABLE quotations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),company_id uuid,quotation_number text,customer_id uuid,project_id uuid,quotation_date date,expiry_date date,status text,subtotal numeric,discount_amount numeric,taxable_amount numeric,vat_amount numeric,total_amount numeric,notes text);
 CREATE TABLE quotation_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),quotation_id uuid REFERENCES quotations(id),description text NOT NULL,quantity numeric,unit text,unit_price numeric,discount_percent numeric,discount_amount numeric,taxable_amount numeric,vat_rate numeric,vat_amount numeric,line_total numeric,sort_order int);
 INSERT INTO customers VALUES('${sheet}','${company}');
 GRANT SELECT ON projects,customers TO authenticated;GRANT ALL ON quotations,quotation_items TO authenticated;`);
@@ -65,10 +65,12 @@ const header={quotation_number:'QT-TEST',customer_id:sheet,quotation_date:'2026-
 const quote=(rows)=>db.query('SELECT create_measurement_quotation($1,$2,$3,$4) AS id',[company,sheet,JSON.stringify(header),JSON.stringify(rows)]);
 await assert.rejects(quote([{description:null}]),/null value/);
 assert.equal((await db.query('SELECT count(*)::int AS n FROM quotations')).rows[0].n,0,'Failed items roll back the header');
+header.subtotal=100;header.discount_amount=10;header.vat_amount=4.5;header.total_amount=94.5;
 const item={description:'Measured scope',quantity:5,unit:'m²',unit_price:0,discount_percent:0,discount_amount:0,taxable_amount:0,vat_rate:0,vat_amount:0,line_total:0,sort_order:0};
 assert.equal((await quote([item])).rows[0].id,sheet);assert.equal((await quote([item])).rows[0].id,sheet);
 assert.equal((await db.query('SELECT count(*)::int AS n FROM quotations')).rows[0].n,1);
 assert.equal((await db.query('SELECT count(*)::int AS n FROM quotation_items')).rows[0].n,1);
+assert.equal(Number((await db.query('SELECT taxable_amount FROM quotations')).rows[0].taxable_amount),90);
 const line=(await db.query('SELECT unit,unit_price,vat_rate FROM quotation_items')).rows[0];
 assert.equal(line.unit,'m²');assert.equal(Number(line.unit_price),0);assert.equal(Number(line.vat_rate),0);
 await db.exec(`SELECT set_config('request.jwt.claim.sub','${outsider}',false);`);

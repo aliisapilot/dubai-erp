@@ -19,8 +19,8 @@ BEGIN
   IF existing.company_id IS DISTINCT FROM p_company_id OR existing.quotation_number IS DISTINCT FROM h.quotation_number THEN RAISE EXCEPTION 'Quotation identity conflict'; END IF;
   RETURN p_id;
  END IF;
- INSERT INTO public.quotations(id,company_id,quotation_number,customer_id,project_id,quotation_date,expiry_date,status,subtotal,discount_amount,vat_amount,total_amount,notes)
- VALUES(p_id,p_company_id,h.quotation_number,h.customer_id,h.project_id,h.quotation_date,h.expiry_date,'draft',h.subtotal,h.discount_amount,h.vat_amount,h.total_amount,h.notes);
+ INSERT INTO public.quotations(id,company_id,quotation_number,customer_id,project_id,quotation_date,expiry_date,status,subtotal,discount_amount,taxable_amount,vat_amount,total_amount,notes)
+ VALUES(p_id,p_company_id,h.quotation_number,h.customer_id,h.project_id,h.quotation_date,h.expiry_date,'draft',h.subtotal,h.discount_amount,coalesce(h.taxable_amount,h.subtotal-h.discount_amount,0),h.vat_amount,h.total_amount,h.notes);
  INSERT INTO public.quotation_items(quotation_id,description,quantity,unit,unit_price,discount_percent,discount_amount,taxable_amount,vat_rate,vat_amount,line_total,sort_order)
  SELECT p_id,r.description,r.quantity,r.unit,r.unit_price,r.discount_percent,r.discount_amount,r.taxable_amount,r.vat_rate,r.vat_amount,r.line_total,r.sort_order
  FROM jsonb_populate_recordset(NULL::public.quotation_items,p_items) r;
