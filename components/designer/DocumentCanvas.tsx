@@ -366,7 +366,7 @@ export default function DocumentCanvas({
         {/* The true A4 Document Sheet (210mm x 297mm) */}
         <div
           ref={pageRef}
-          className="absolute top-0 left-0 origin-top-left"
+          className="erp-document-surface absolute top-0 left-0 origin-top-left"
           style={{
             width: `${layout.page.widthMm}mm`,
             height: `${layout.page.heightMm}mm`,

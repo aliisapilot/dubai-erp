@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import ERPLayout from "@/components/ERPLayout";
 import "./globals.css";
+import "./erp-screen-theme.css";
 
 export const metadata: Metadata = {
   title: "Dubai ERP - UAE Cloud Business Suite",
