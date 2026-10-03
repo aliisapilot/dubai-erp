@@ -69,14 +69,14 @@ CREATE POLICY "company_measurement_projects" ON public.measurement_projects
     company_id IN (
       SELECT id FROM public.companies WHERE owner_id = auth.uid()
       UNION
-      SELECT company_id FROM public.profiles WHERE id = auth.uid()
+      SELECT company_id FROM public.profiles WHERE id = auth.uid() AND COALESCE(active, true)
     )
   )
   WITH CHECK (
     company_id IN (
       SELECT id FROM public.companies WHERE owner_id = auth.uid()
       UNION
-      SELECT company_id FROM public.profiles WHERE id = auth.uid()
+      SELECT company_id FROM public.profiles WHERE id = auth.uid() AND COALESCE(active, true)
     )
   );
 
@@ -87,17 +87,19 @@ CREATE POLICY "company_measurement_items" ON public.measurement_items
     company_id IN (
       SELECT id FROM public.companies WHERE owner_id = auth.uid()
       UNION
-      SELECT company_id FROM public.profiles WHERE id = auth.uid()
+      SELECT company_id FROM public.profiles WHERE id = auth.uid() AND COALESCE(active, true)
     )
   )
   WITH CHECK (
     company_id IN (
       SELECT id FROM public.companies WHERE owner_id = auth.uid()
       UNION
-      SELECT company_id FROM public.profiles WHERE id = auth.uid()
+      SELECT company_id FROM public.profiles WHERE id = auth.uid() AND COALESCE(active, true)
     )
   );
 
 -- 6. Permissions Grant
-GRANT ALL ON public.measurement_projects TO anon, authenticated;
-GRANT ALL ON public.measurement_items TO anon, authenticated;
+REVOKE ALL ON public.measurement_projects FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.measurement_projects TO authenticated;
+REVOKE ALL ON public.measurement_items FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.measurement_items TO authenticated;

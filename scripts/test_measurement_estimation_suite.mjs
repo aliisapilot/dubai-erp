@@ -184,7 +184,7 @@ await db.exec(`
   CREATE SCHEMA IF NOT EXISTS auth;
   CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT '00000000-0000-0000-0000-000000000001'::uuid $$;
   CREATE TABLE public.companies(id uuid PRIMARY KEY, owner_id uuid);
-  CREATE TABLE public.profiles(id uuid PRIMARY KEY, company_id uuid);
+  CREATE TABLE public.profiles(id uuid PRIMARY KEY, company_id uuid, active boolean);
   CREATE TABLE public.customers(id uuid PRIMARY KEY, name text);
   CREATE TABLE public.projects(id uuid PRIMARY KEY, name text);
 `);

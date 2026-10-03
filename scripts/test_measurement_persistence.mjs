@@ -17,6 +17,12 @@ INSERT INTO work_method_statements VALUES('${sheet}','Existing WMS');`);
 await db.exec(fs.readFileSync('supabase/migrations/20261004000000_measurement_estimation.sql','utf8'));
 await db.exec(`INSERT INTO measurement_projects(id,company_id,sheet_number,title) VALUES('${sheet}','${company}','MS-1','Original');
 INSERT INTO measurement_items(sheet_id,company_id,area_name) VALUES('${sheet}','${company}','Original row');`);
+for (const table of ['measurement_projects','measurement_items']) {
+  for (const role of ['anon','authenticated']) {
+    assert.equal((await db.query('SELECT has_table_privilege($1,$2,\'TRUNCATE\') AS allowed',[role,table])).rows[0].allowed,false);
+  }
+  assert.equal((await db.query('SELECT has_table_privilege(\'anon\',$1,\'SELECT\') AS allowed',[table])).rows[0].allowed,false);
+}
 const before=(await db.query('SELECT to_jsonb(t) AS row FROM measurement_items t')).rows[0].row;
 const migration=fs.readFileSync('supabase/migrations/20261005000000_measurement_atomic_save_wms_revisions.sql','utf8');
 await db.exec(migration);await db.exec(migration);
@@ -40,6 +46,10 @@ const empty=(await save(saved.updated_at,[])).rows[0].data;
 assert.equal(empty.row_count,0);assert.equal((await db.query('SELECT count(*)::int AS n FROM measurement_items')).rows[0].n,0);
 await db.exec('RESET ROLE;SET ROLE anon;');
 await assert.rejects(save(empty.updated_at,[]),/permission denied/);
+await db.exec(`RESET ROLE;INSERT INTO profiles VALUES('${outsider}','${company}',false);SET ROLE authenticated;SELECT set_config('request.jwt.claim.sub','${outsider}',false);`);
+assert.equal((await db.query('SELECT count(*)::int AS n FROM measurement_projects')).rows[0].n,0,'Inactive staff cannot read sheets');
+await assert.rejects(db.query('INSERT INTO measurement_projects(company_id,sheet_number,title) VALUES($1,\'Denied\',\'Denied\')',[company]),/row-level security/);
+await db.exec('RESET ROLE;SET ROLE anon;');
 console.log('PASS atomic measurement save: rollback, stale version protection, scoped access, empty sheet, anonymous denial and non-destructive repeatable migration.');
 // Quotation transfer must also be atomic and safe to retry after a lost response.
 await db.exec('RESET ROLE;');
