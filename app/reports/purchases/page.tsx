@@ -12,8 +12,8 @@ import {
 export default function PurchasesReportPage() {
   type SupplierBillRow = { id: string; bill_number?: string | null; bill_date?: string | null; subtotal?: number | null; vat_amount?: number | null; total_amount?: number | null; paid_amount?: number | null; balance_due?: number | null; status?: string | null; suppliers?: { name?: string | null } | { name?: string | null }[] | null };
   const [bills, setBills] = useState<SupplierBillRow[]>([]);
-  const [dateFrom] = useState("");
-  const [dateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   async function loadPurchasingData() {
     try {
@@ -82,6 +82,37 @@ export default function PurchasesReportPage() {
         >
           <Printer size={15} /> Print Report
         </button>
+      </div>
+
+      {/* Date filter */}
+      <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-slate-600 uppercase">From:</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-slate-600 uppercase">To:</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs"
+          />
+        </div>
+        {(dateFrom || dateTo) && (
+          <button
+            type="button"
+            onClick={() => { setDateFrom(""); setDateTo(""); }}
+            className="text-xs text-rose-600 hover:underline font-medium"
+          >
+            Clear Filters
+          </button>
+        )}
       </div>
 
       {/* KPI Cards */}

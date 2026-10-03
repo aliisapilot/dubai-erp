@@ -71,7 +71,7 @@ export default function PayslipsPage() {
       supabase
         .from("salary_statements")
         .select("*")
-        .in("status", ["approved", "paid", "Finalized", "Approved", "Paid"])
+        .in("status", ["approved", "paid"])
         .order("payroll_month", { ascending: false }),
       supabase
         .from("employees")
@@ -113,14 +113,14 @@ export default function PayslipsPage() {
       other_allowances: Number(r.other_allowances) || 0,
       friday_pay: Number(r.friday_pay) || 0,
       overtime_amount: Number(r.overtime_amount) || 0,
-      absence_deduction: Number(r.absence_deduction || r.leave_deduction) || 0,
+      absence_deduction: (Number(r.absence_deduction) || 0) + (Number(r.leave_deduction) || 0),
       advance_deduction: Number(r.advance_deduction) || 0,
       insurance_deduction: Number(r.insurance_deduction) || 0,
-      other_deductions: Number(r.other_deductions || r.loan_deduction) || 0,
+      other_deductions: (Number(r.other_deductions) || 0) + (Number(r.loan_deduction) || 0),
       total_earnings: Number(r.gross_salary) || 0,
-      total_deductions: (Number(r.gross_salary) || 0) - (Number(r.net_salary) || 0),
+      total_deductions: Number(r.total_deductions) || ((Number(r.gross_salary) || 0) - (Number(r.net_salary) || 0)),
       net_pay: Number(r.net_salary) || 0,
-      status: r.status || "Finalized",
+      status: r.status || "paid",
     };
     setActiveSlip(slipData);
   }

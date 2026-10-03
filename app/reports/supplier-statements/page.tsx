@@ -34,11 +34,10 @@ type Bill = {
 type SupplierPayment = {
   id: string;
   supplier_id: string;
-  payment_number: string;
+  payment_number: string | null;
   payment_date: string;
   amount: number;
-  payment_method: string;
-  reference_number: string | null;
+  payment_method: string | null;
   status?: string | null;
 };
 
@@ -98,8 +97,8 @@ export default function SupplierStatementOfAccountPage() {
           .eq("supplier_id", selectedSupplierId)
           .order("bill_date", { ascending: true }),
         supabase
-          .from("payments")
-          .select("id, supplier_id, payment_number, payment_date, amount, payment_method, reference_number")
+          .from("supplier_payments")
+          .select("id, supplier_id, payment_number, payment_date, amount, payment_method")
           .eq("supplier_id", selectedSupplierId)
           .order("payment_date", { ascending: true })
       ]);
