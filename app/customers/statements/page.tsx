@@ -373,7 +373,7 @@ export default function StatementOfAccountPage() {
             </div>
 
             {/* Table */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                 <div>
                   <h2 className="font-bold text-slate-900 text-sm">{statement.customer_name}</h2>

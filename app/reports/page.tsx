@@ -123,7 +123,7 @@ export default function ReportsPage() {
                     {statCard("Total Invoices", tis.length)}
                     {statCard("Total Invoice Value", fmtAED(tis.reduce((s,i)=>s+(i.total_amount||0),0)))}
                   </div>
-                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                     <div className="border-b border-slate-100 px-4 py-3 flex justify-between items-center"><p className="font-semibold text-slate-900">Tax Invoices</p></div>
                     <table className="w-full text-sm"><thead><tr className="bg-slate-50 text-xs font-semibold uppercase text-slate-500"><th className="px-4 py-2 text-left">Invoice No.</th><th className="px-4 py-2 text-left">Date</th><th className="px-4 py-2 text-right">Subtotal</th><th className="px-4 py-2 text-right">VAT</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2 text-center">Status</th></tr></thead>
                     <tbody className="divide-y divide-slate-100">{tis.slice(0,50).map((ti,i)=><tr key={i} className="hover:bg-slate-50"><td className="px-4 py-2 font-mono text-xs">{ti.invoice_number||"—"}</td><td className="px-4 py-2 text-slate-600">{fmtDate(ti.invoice_date)}</td><td className="px-4 py-2 text-right">{fmtAED(ti.subtotal||0)}</td><td className="px-4 py-2 text-right text-amber-600">{fmtAED(ti.vat_amount)}</td><td className="px-4 py-2 text-right font-bold">{fmtAED(ti.total_amount)}</td><td className="px-4 py-2 text-center text-xs">{ti.status}</td></tr>)}</tbody>
@@ -144,7 +144,7 @@ export default function ReportsPage() {
                     {statCard("Received", pos.filter(p=>(p.status||"").toLowerCase()==="received").length)}
                     {statCard("Total Value", fmtAED(pos.reduce((s,p)=>s+(p.total_amount||0),0)))}
                   </div>
-                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                     <table className="w-full text-sm"><thead><tr className="bg-slate-50 text-xs font-semibold uppercase text-slate-500"><th className="px-4 py-2 text-left">PO No.</th><th className="px-4 py-2 text-left">Date</th><th className="px-4 py-2 text-right">VAT</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2 text-center">Status</th></tr></thead>
                     <tbody className="divide-y divide-slate-100">{pos.slice(0,50).map((po,i)=><tr key={i} className="hover:bg-slate-50"><td className="px-4 py-2 font-mono text-xs">{po.purchase_order_number||"—"}</td><td className="px-4 py-2 text-slate-600">{fmtDate(po.order_date)}</td><td className="px-4 py-2 text-right text-amber-600">{fmtAED(po.vat_amount)}</td><td className="px-4 py-2 text-right font-bold">{fmtAED(po.total_amount)}</td><td className="px-4 py-2 text-center text-xs">{po.status}</td></tr>)}</tbody>
                     </table>
@@ -193,7 +193,7 @@ export default function ReportsPage() {
                     {statCard("Active", cs.filter(c=>c.active).length)}
                     {statCard("Total Received", fmtAED(pays.reduce((s,p)=>s+(p.amount||0),0)))}
                   </div>
-                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                     <table className="w-full text-sm"><thead><tr className="bg-slate-50 text-xs font-semibold uppercase text-slate-500"><th className="px-4 py-2 text-left">Code</th><th className="px-4 py-2 text-left">Name</th><th className="px-4 py-2 text-right">Total Paid</th><th className="px-4 py-2 text-center">Status</th></tr></thead>
                     <tbody className="divide-y divide-slate-100">{cs.map((c,i)=><tr key={i} className="hover:bg-slate-50"><td className="px-4 py-2 font-mono text-xs">{c.customer_code||"—"}</td><td className="px-4 py-2 font-semibold">{c.name}</td><td className="px-4 py-2 text-right">{fmtAED(pays.filter(p=>p.customer_id===c.id).reduce((s,p)=>s+(p.amount||0),0))}</td><td className="px-4 py-2 text-center"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${c.active?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500"}`}>{c.active?"Active":"Inactive"}</span></td></tr>)}</tbody>
                     </table>
@@ -213,7 +213,7 @@ export default function ReportsPage() {
                     {statCard("Active", ss.filter(s=>s.active).length)}
                     {statCard("Total Paid Out", fmtAED(pays.reduce((s,p)=>s+(p.amount||0),0)))}
                   </div>
-                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                     <table className="w-full text-sm"><thead><tr className="bg-slate-50 text-xs font-semibold uppercase text-slate-500"><th className="px-4 py-2 text-left">Code</th><th className="px-4 py-2 text-left">Name</th><th className="px-4 py-2 text-right">Total Paid</th><th className="px-4 py-2 text-center">Status</th></tr></thead>
                     <tbody className="divide-y divide-slate-100">{ss.map((s,i)=><tr key={i} className="hover:bg-slate-50"><td className="px-4 py-2 font-mono text-xs">{s.supplier_code||"—"}</td><td className="px-4 py-2 font-semibold">{s.name}</td><td className="px-4 py-2 text-right">{fmtAED(pays.filter(p=>p.supplier_id===s.id).reduce((ss2,p)=>ss2+(p.amount||0),0))}</td><td className="px-4 py-2 text-center"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${s.active?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500"}`}>{s.active?"Active":"Inactive"}</span></td></tr>)}</tbody>
                     </table>
@@ -234,7 +234,7 @@ export default function ReportsPage() {
                     {statCard("Low Stock", lowStock.length, "At or below minimum")}
                     {statCard("Stock Movements", movs.length)}
                   </div>
-                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                     <div className="border-b border-slate-100 px-4 py-3"><p className="font-semibold text-slate-900">Current Stock Levels</p></div>
                     <table className="w-full text-sm"><thead><tr className="bg-slate-50 text-xs font-semibold uppercase text-slate-500"><th className="px-4 py-2 text-left">SKU</th><th className="px-4 py-2 text-left">Product</th><th className="px-4 py-2 text-center">Current Stock</th><th className="px-4 py-2 text-center">Min Stock</th><th className="px-4 py-2 text-center">Status</th></tr></thead>
                     <tbody className="divide-y divide-slate-100">{prods.map((p,i)=><tr key={i} className="hover:bg-slate-50"><td className="px-4 py-2 font-mono text-xs">{p.sku||"—"}</td><td className="px-4 py-2 font-semibold">{p.name}</td><td className="px-4 py-2 text-center tabular-nums">{p.current_stock||0}</td><td className="px-4 py-2 text-center tabular-nums text-slate-500">{p.minimum_stock||0}</td><td className="px-4 py-2 text-center"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${(p.current_stock||0)<=(p.minimum_stock||0)?"bg-amber-50 text-amber-700":"bg-emerald-50 text-emerald-700"}`}>{(p.current_stock||0)<=(p.minimum_stock||0)?"Low Stock":"OK"}</span></td></tr>)}</tbody>
@@ -258,7 +258,7 @@ export default function ReportsPage() {
                     {statCard("Approved OT Hours", ots.filter(o=>o.approval_status?.toLowerCase()==="approved").reduce((s,o)=>s+(Number(o.hours)||0),0).toFixed(1))}
                     {statCard("Attendance Records", atts.length)}
                   </div>
-                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                     <div className="border-b border-slate-100 px-4 py-3"><p className="font-semibold text-slate-900">Employees</p></div>
                     <table className="w-full text-sm"><thead><tr className="bg-slate-50 text-xs font-semibold uppercase text-slate-500"><th className="px-4 py-2 text-left">Name</th><th className="px-4 py-2 text-left">Designation</th><th className="px-4 py-2 text-left">Department</th><th className="px-4 py-2 text-right">Basic Salary</th><th className="px-4 py-2 text-center">Status</th></tr></thead>
                     <tbody className="divide-y divide-slate-100">{emps.map((e,i)=>{ const active = e.status?.toLowerCase() === "active"; return <tr key={i} className="hover:bg-slate-50"><td className="px-4 py-2 font-semibold">{e.first_name}</td><td className="px-4 py-2 text-slate-600">{e.designation||"—"}</td><td className="px-4 py-2 text-slate-600">{e.department||"—"}</td><td className="px-4 py-2 text-right">{fmtAED(e.basic_salary)}</td><td className="px-4 py-2 text-center"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${active?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500"}`}>{active ? "Active" : e.status || "Active"}</span></td></tr>;})}</tbody>

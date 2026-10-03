@@ -26,8 +26,7 @@ export async function fetchReminderRecipients(
 
   const { data, error } = await query;
   if (error) {
-    console.error("fetchReminderRecipients error:", error);
-    return [];
+    throw new Error(`Could not load reminder recipients: ${error.message}`);
   }
   return (data || []) as ChequeReminderRecipientRecord[];
 }
@@ -112,8 +111,7 @@ export async function fetchCustomerReminderConfigs(): Promise<
     .eq("company_id", companyId);
 
   if (error) {
-    console.error("fetchCustomerReminderConfigs error:", error);
-    return {};
+    throw new Error(`Could not load customer reminder preferences: ${error.message}`);
   }
 
   const map: Record<string, CustomerReminderConfigRecord> = {};
@@ -164,8 +162,7 @@ export async function fetchCompanyChequeSettings(): Promise<CompanyChequeSetting
     .maybeSingle();
 
   if (error) {
-    console.error("fetchCompanyChequeSettings error:", error);
-    return null;
+    throw new Error(`Could not load company cheque settings: ${error.message}`);
   }
   return data as CompanyChequeSettingsRecord | null;
 }

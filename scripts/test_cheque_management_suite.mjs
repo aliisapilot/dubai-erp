@@ -14,6 +14,10 @@ function loadTs(file) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
   }).outputText;
   const customRequire = (id) => {
+    // Pure template/calculation tests must never depend on live database credentials.
+    if (id === "@/lib/supabase" || id === "./supabase") return {
+      supabase: new Proxy({}, {get(){throw new Error("Unexpected database access in isolated cheque tests");}}),
+    };
     if (id.startsWith("./") || id.startsWith("../") || id.startsWith("@/")) {
       const relPath = id.startsWith("@/") ? id.replace("@/", "") : join(normalizedFile, "..", id);
       return loadTs(relPath);

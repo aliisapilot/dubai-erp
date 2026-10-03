@@ -252,7 +252,7 @@ export default function PurchaseOrdersPage() {
           {loading ? <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-slate-400"/></div> : filtered.length===0 ? (
             <div className="rounded-xl border border-slate-200 bg-white py-20 text-center"><FileSignature size={40} className="mx-auto mb-3 text-slate-300"/><p className="text-sm text-slate-500">No purchase orders.</p></div>
           ) : (
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
               <table className="w-full text-sm">
                 <thead><tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><th className="px-4 py-3">PO No.</th><th className="px-4 py-3">Supplier / Project</th><th className="px-4 py-3">PO Date</th><th className="px-4 py-3">Expected</th><th className="px-4 py-3 text-right">VAT</th><th className="px-4 py-3 text-right">Total (AED)</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Actions</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">{filtered.map(po=>{

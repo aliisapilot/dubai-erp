@@ -436,7 +436,7 @@ export default function SupplierBillsPage() {
         </div>
 
         {/* Bills Table */}
-        <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800 shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-slate-700 bg-slate-800 shadow-sm">
           {loading ? (
             <div className="flex justify-center py-20">
               <Loader2 size={32} className="animate-spin text-slate-400" />
@@ -636,7 +636,7 @@ export default function SupplierBillsPage() {
                   </button>
                 </div>
 
-                <div className="overflow-hidden rounded-lg border border-slate-700">
+                <div className="overflow-x-auto rounded-lg border border-slate-700">
                   <table className="w-full text-xs text-left">
                     <thead className="bg-slate-800 text-slate-400 font-semibold">
                       <tr>

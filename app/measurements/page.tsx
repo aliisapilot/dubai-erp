@@ -131,7 +131,7 @@ export default function MeasurementsPage() {
       const co = await getCurrentCompany();
       if (co) setCompany(co as CompanyDocInfo);
 
-      const [{ data: custs }, { data: prjs }, { data: dbSheets }] = await Promise.all([
+      const [customerResult, projectResult, sheetResult] = await Promise.all([
         supabase.from("customers").select("id, name").eq("active", true).order("name"),
         supabase.from("projects").select("id, name, project_number").order("created_at", { ascending: false }),
         supabase
@@ -141,6 +141,9 @@ export default function MeasurementsPage() {
           .order("created_at", { ascending: false }),
       ]);
 
+      const failedRead = customerResult.error || projectResult.error || sheetResult.error;
+      if (failedRead) throw failedRead;
+      const custs = customerResult.data, prjs = projectResult.data, dbSheets = sheetResult.data;
       setCustomers((custs || []) as Customer[]);
       setProjects((prjs || []) as Project[]);
 
@@ -150,7 +153,7 @@ export default function MeasurementsPage() {
         setActiveSheet(firstSheet);
         await loadSheetItems(firstSheet.id);
       } else {
-        // Automatically initialize default parking shade sheet if none exists
+        // A genuinely empty account starts with an empty sheet, never sample rows.
         await createInitialSheet(companyId);
       }
     } catch (err: unknown) {
@@ -243,9 +246,7 @@ export default function MeasurementsPage() {
       setSheets([createdSheet]);
       setActiveSheet(createdSheet);
 
-      // Insert real test cases into this sheet
-      await saveRowsToDatabase(createdSheet.id, companyId, REAL_PROJECT_PARKING_SHADE_TEST_ROWS);
-      setRawRows(REAL_PROJECT_PARKING_SHADE_TEST_ROWS);
+      setRawRows([]);
     } catch {
       initializeFallbackData();
     }

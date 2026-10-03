@@ -9,6 +9,7 @@ import {
   Calendar, ArrowLeft
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import ReportLoadState from "@/components/ReportLoadState";
 import {
   ChequeReminderRecipientRecord,
   CustomerReminderConfigRecord,
@@ -41,6 +42,7 @@ type CustomerRow = {
 export default function ChequeReminderSettingsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("supervisors");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [recipients, setRecipients] = useState<ChequeReminderRecipientRecord[]>([]);
   const [customerConfigs, setCustomerConfigs] = useState<Record<string, CustomerReminderConfigRecord>>({});
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
@@ -72,6 +74,7 @@ export default function ChequeReminderSettingsPage() {
   async function loadAll() {
     await Promise.resolve();
     setLoading(true);
+    setLoadError("");
     try {
       const [recs, configs, custsRes, settings] = await Promise.all([
         fetchReminderRecipients(),
@@ -80,6 +83,7 @@ export default function ChequeReminderSettingsPage() {
         fetchCompanyChequeSettings(),
       ]);
 
+      if (custsRes.error) throw new Error(`Could not load customers: ${custsRes.error.message}`);
       setRecipients(recs);
       setCustomerConfigs(configs);
       setCustomers((custsRes.data || []) as CustomerRow[]);
@@ -93,8 +97,7 @@ export default function ChequeReminderSettingsPage() {
         }
       );
     } catch (err) {
-      console.error("Load settings error:", err);
-      showFeedback("error", "Failed to load reminder settings.");
+      setLoadError(err instanceof Error ? err.message : "Failed to load reminder settings.");
     } finally {
       setLoading(false);
     }
@@ -104,9 +107,6 @@ export default function ChequeReminderSettingsPage() {
     // Initial data hydration from Supabase is intentionally effect-driven.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAll();
-    // loadAll is defined in module scope and does not change between renders;
-    // omitting it from deps is intentional to prevent infinite re-fetch loops.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function showFeedback(type: "success" | "error", msg: string) {
@@ -280,6 +280,8 @@ export default function ChequeReminderSettingsPage() {
       setSavingRecipient(false);
     }
   }
+
+  if (loading || loadError) return <ReportLoadState loading={loading} error={loadError} subject="reminder settings" unavailableMessage="Settings cannot be edited until the saved preferences load successfully." onRetry={() => void loadAll()} />;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">

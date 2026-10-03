@@ -20,7 +20,7 @@ const {
   calculateMeasurementRow,
   calculateSheetSummary,
   REAL_PROJECT_PARKING_SHADE_TEST_ROWS
-} = loadTs('lib/helpers.ts');
+} = loadTs('lib/measurementCalculations.ts');
 
 console.log('--- 1. Testing Automatic Unit Conversions ---');
 assert.equal(normalizeToMetres(12000, 'mm'), 12.0);
@@ -47,9 +47,9 @@ const linearRow = calculateMeasurementRow({
 assert.equal(linearRow.calculated_total, 96.0);
 assert.equal(linearRow.result_unit, 'm');
 assert.equal(linearRow.total_cost, 960.0);
-console.log('? Linear Length calculates Length × Quantity = 96.000 m');
+console.log('? Linear Length calculates Length Ã— Quantity = 96.000 m');
 
-console.log('--- 3. Testing Area / Square Metre (m²) ---');
+console.log('--- 3. Testing Area / Square Metre (mÂ²) ---');
 const areaRow = calculateMeasurementRow({
   area_name: 'Fabric Roof',
   description: 'Canopy Cover',
@@ -64,9 +64,9 @@ const areaRow = calculateMeasurementRow({
   rate: 25
 });
 assert.equal(areaRow.calculated_total, 533.76);
-assert.equal(areaRow.result_unit, 'm²');
+assert.equal(areaRow.result_unit, 'mÂ²');
 assert.equal(areaRow.total_cost, 13344.0);
-console.log('? Area calculates 12 × 5.56 × 8 = 533.760 m²');
+console.log('? Area calculates 12 Ã— 5.56 Ã— 8 = 533.760 mÂ²');
 
 console.log('--- 4. Testing Perimeter (m) ---');
 const perimRow = calculateMeasurementRow({
@@ -84,7 +84,7 @@ const perimRow = calculateMeasurementRow({
 });
 assert.equal(perimRow.calculated_total, 280.96);
 assert.equal(perimRow.result_unit, 'm');
-console.log('? Perimeter calculates 2 × (12 + 5.56) × 8 = 280.960 m');
+console.log('? Perimeter calculates 2 Ã— (12 + 5.56) Ã— 8 = 280.960 m');
 
 console.log('--- 5. Testing Real Project PVC Edge + Centre Joint Test Cases ---');
 const realCalculated = REAL_PROJECT_PARKING_SHADE_TEST_ROWS.map(calculateMeasurementRow);
@@ -117,7 +117,7 @@ console.log(`TOTAL COST: AED ${summary.totalCostAED.toFixed(2)} (expected: AED 7
 
 assert.equal(summary.totalLinearM, 1410.56);
 assert.equal(summary.totalPieces, 30);
-assert.equal(summary.totalAreaM2, 0); // Must NOT be m²
+assert.equal(summary.totalAreaM2, 0); // Must NOT be mÂ²
 assert.equal(summary.totalCostAED, 7052.80);
 console.log('? EXACT 1,410.560 m REPRODUCED SUCCESSFULLY!');
 
@@ -155,15 +155,15 @@ const varWidthArea = calculateMeasurementRow({
   pvc_centre_joints: 0,
   rate: 20
 });
-// avg width = (4 + 6) / 2 = 5m. Area = 10 * 5 * 2 = 100 m²
+// avg width = (4 + 6) / 2 = 5m. Area = 10 * 5 * 2 = 100 mÂ²
 assert.equal(varWidthArea.calculated_total, 100.0);
-assert.equal(varWidthArea.result_unit, 'm²');
-console.log('? Variable width calculates trapezoidal average width correctly (100.000 m²)');
+assert.equal(varWidthArea.result_unit, 'mÂ²');
+console.log('? Variable width calculates trapezoidal average width correctly (100.000 mÂ²)');
 
-console.log('--- 8. Testing Unit Safety (No mixing m with m²) ---');
+console.log('--- 8. Testing Unit Safety (No mixing m with mÂ²) ---');
 const mixedRows = [
   realCalculated[0], // 280.320 m
-  areaRow            // 533.760 m²
+  areaRow            // 533.760 mÂ²
 ];
 const mixedSummary = calculateSheetSummary(mixedRows);
 assert.equal(mixedSummary.hasMixedUnits, true);
@@ -171,7 +171,7 @@ assert.equal(mixedSummary.totalLinearM, 280.32);
 assert.equal(mixedSummary.totalAreaM2, 533.76);
 // Unit breakdown has separate entries
 assert.equal(mixedSummary.unitBreakdown.length, 2);
-console.log('? Unit safety enforced: Linear (280.320 m) and Area (533.760 m²) kept separate');
+console.log('? Unit safety enforced: Linear (280.320 m) and Area (533.760 mÂ²) kept separate');
 
 console.log('--- 9. Testing Database Migration with PGlite ---');
 const { PGlite } = await import('@electric-sql/pglite');
@@ -236,7 +236,7 @@ const area1At58 = calculateMeasurementRow({
 assert.equal(area1At58.calculated_total, 280.32);
 assert.equal(area1At58.rate, 58);
 assert.equal(area1At58.total_cost, 16258.56);
-console.log(`? 280.320 m × AED 58/m = AED ${area1At58.total_cost.toFixed(2)} (Expected: AED 16,258.56)`);
+console.log(`? 280.320 m Ã— AED 58/m = AED ${area1At58.total_cost.toFixed(2)} (Expected: AED 16,258.56)`);
 
 // Decimal rate 58.50
 const area1At58_5 = calculateMeasurementRow({
@@ -244,7 +244,7 @@ const area1At58_5 = calculateMeasurementRow({
   rate: 58.50
 });
 assert.equal(area1At58_5.total_cost, 16398.72);
-console.log(`? Decimal rate 58.50: 280.320 m × AED 58.50/m = AED ${area1At58_5.total_cost.toFixed(2)}`);
+console.log(`? Decimal rate 58.50: 280.320 m Ã— AED 58.50/m = AED ${area1At58_5.total_cost.toFixed(2)}`);
 
 console.log('\nALL 10 MEASUREMENT CALCULATION & DATABASE TESTS PASSED!');
 

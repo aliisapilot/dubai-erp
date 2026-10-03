@@ -68,6 +68,7 @@ function getPageMeta(pathname: string): { title: string; icon: LucideIcon } {
   if (pathname.startsWith("/payroll-summary")) return { title: "Payroll Summary", icon: BarChart3 };
   if (pathname.startsWith("/employee-payment-vouchers")) return { title: "Payment Vouchers", icon: Wallet };
   if (pathname.startsWith("/cheques/dashboard")) return { title: "Cheque Calendar & Dashboard", icon: CalendarCheck };
+  if (pathname.startsWith("/cheques/settings")) return { title: "Cheque Reminder Settings", icon: CalendarCheck };
   if (pathname.startsWith("/cheques")) return { title: "Cheque Register", icon: Wallet };
   if (pathname.startsWith("/payments")) return { title: "Payments & Banking", icon: Wallet };
   if (pathname.startsWith("/expenses")) return { title: "Expenses", icon: Receipt };

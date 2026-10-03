@@ -31,7 +31,7 @@ function reportFixture(file){
  const reportState=()=>{};
  const react={useState(initial){const i=cursor++;if(!(i in states))states[i]=typeof initial==='function'?initial():initial;return [states[i],value=>{states[i]=typeof value==='function'?value(states[i]):value;}];},useEffect(){},useRef:initial=>{const i=cursor++;if(!(i in states))states[i]={current:initial};return states[i];}};
  const query={select(){return this;},eq(){return this;},in(){return this;},gte(){return this;},lte(){return this;},order(){return this;},then(resolve,reject){return Promise.resolve({data:rows[this.table] || [],error:errors?{message:'Network test failure'}:null}).then(resolve,reject);}};
- const componentExports={};const js=ts.transpileModule(fs.readFileSync(file,'utf8').replace('  useEffect(() => {\n    void Promise.resolve().then(loadInitialData);','  globalThis.auditActions.generate = generateStatement;\n  useEffect(() => {\n    void Promise.resolve().then(loadInitialData);'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+ const componentExports={};const js=ts.transpileModule(fs.readFileSync(file,'utf8').replace(/  useEffect\(\(\) => \{\r?\n    void Promise\.resolve\(\)\.then\(loadInitialData\);/,'  globalThis.auditActions.generate = generateStatement;\n  useEffect(() => {\n    void Promise.resolve().then(loadInitialData);'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
  vm.runInNewContext(js,{exports:componentExports,auditActions:actions,console:{error(){}},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})}:id==='@/lib/supabase'?{supabase:{from:table=>Object.assign(Object.create(query),{table})}}:id==='@/lib/helpers'?{...exports,getCompanyId:async()=> 'company-a',getCurrentCompany:async()=>companies.a,todayISO:()=>expected}:id==='@/components/ReportLoadState'?{default:reportState}:new Proxy({},{get:()=>()=>{}})});
  return {render(){cursor=0;const tree=componentExports.default();return findNode(tree,reportState)||tree;},succeed(){errors=false;},fail(){errors=true;},setRows:(table,value)=>{rows[table]=value;},actions,reportState};
 }
@@ -58,3 +58,27 @@ const planned=stockExports.planDeliveryStock([{product_id:'p',quantity:2},{produ
 assert.equal(planned[0].newStock,8);assert.equal(planned[1].previousStock,8);assert.equal(planned[1].newStock,5,'Repeated delivery lines deduct both quantities');
 assert.throws(()=>stockExports.planDeliveryStock([{product_id:'missing',quantity:2}],[]),/unavailable/);
 console.log('PASS ERP audit: account-isolated company cache, late-load rejection, compound status accents, reference-before-stock mutation, report loading/error/retry behavior');
+const recipientExports={};
+let recipientFailure={message:'Reminder database unavailable'};
+const recipientQuery={select(){return this;},eq(){return this;},order(){return this;},maybeSingle(){return this;},then(resolve,reject){return Promise.resolve({data:null,error:recipientFailure}).then(resolve,reject);}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/chequeRecipientService.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:recipientExports,require:id=>id==='@/lib/supabase'?{supabase:{from:()=>recipientQuery}}:id==='@/lib/helpers'?{getCompanyId:async()=> 'company-a'}:{},console});
+for(const name of ['fetchReminderRecipients','fetchCustomerReminderConfigs','fetchCompanyChequeSettings']) {
+  await assert.rejects(recipientExports[name](),/Reminder database unavailable/,'Failed reminder reads must not masquerade as empty saved settings');
+}
+recipientFailure=null;
+assert.equal((await recipientExports.fetchReminderRecipients()).length,0);
+assert.equal(Object.keys(await recipientExports.fetchCustomerReminderConfigs()).length,0);
+assert.equal(await recipientExports.fetchCompanyChequeSettings(),null);
+console.log('PASS reminder reads distinguish unavailable data from genuinely empty settings');
+const measurementSource=fs.readFileSync('app/measurements/page.tsx','utf8');
+const loadStart=measurementSource.indexOf('const loadData = useCallback(async () => {');
+const loadEnd=measurementSource.indexOf('// createInitialSheet and loadSheetItems',loadStart);
+const loadFunction=measurementSource.slice(loadStart,loadEnd).replace('const loadData = useCallback(async () => {','export async function loadData() {')+'}';
+const measurementExports={};let measurementReadFails=true,createdSheets=0,fallbacks=0;
+const measurementQuery={select(){return this;},eq(){return this;},order(){return this;},then(resolve,reject){return Promise.resolve({data:[],error:measurementReadFails?{message:'Unavailable measurements'}:null}).then(resolve,reject);}};
+vm.runInNewContext(ts.transpileModule(loadFunction,{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports:measurementExports,supabase:{from:()=>measurementQuery},getCompanyId:async()=> 'company-a',getCurrentCompany:async()=>companies.a,setError(){},setCompany(){},setCustomers(){},setProjects(){},setSheets(){},setActiveSheet(){},setLoading(){},initializeFallbackData(){fallbacks++;},createInitialSheet:async()=>{createdSheets++;},loadSheetItems:async()=>{},console:{warn(){}}});
+await measurementExports.loadData();assert.equal(createdSheets,0,'Failed reads must never create a replacement measurement sheet');assert.equal(fallbacks,1);
+measurementReadFails=false;await measurementExports.loadData();assert.equal(createdSheets,1,'A successful empty read may initialize an empty sheet');
+const initialSheet=measurementSource.slice(measurementSource.indexOf('async function createInitialSheet'),measurementSource.indexOf('function initializeFallbackData'));
+assert.ok(!initialSheet.includes('REAL_PROJECT_PARKING_SHADE_TEST_ROWS'),'Initial sheets must never inject sample measurements');
+console.log('PASS measurement read failures cannot create replacement sheets or inject sample rows');

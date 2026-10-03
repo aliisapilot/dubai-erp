@@ -113,7 +113,7 @@ export default function ChequeDashboardPage() {
       {/* Header */}
       <header className="border-b border-slate-200 bg-white sticky top-0 z-20 shadow-xs">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="rounded-xl bg-slate-900 p-2.5 text-white shadow-sm">
               <CalendarIcon size={22} className="text-emerald-400" />
             </div>
@@ -251,7 +251,7 @@ export default function ChequeDashboardPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="relative">
               <Search size={14} className="absolute left-2.5 top-2 text-slate-400" />
               <input

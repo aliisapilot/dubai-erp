@@ -701,14 +701,14 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                 <span className={`text-lg font-bold font-mono mt-1 block ${grossProfit >= 0 ? "text-emerald-700" : "text-red-700"}`}>
                   {fmtAED(grossProfit)}
                 </span>
-                <span className="text-[10px] text-slate-400">Projected project contribution</span>
+                <span className="text-[10px] text-slate-400">{totalInvoiced > 0 ? "Linked invoice value less project costs" : "Contract value less project costs"}</span>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <span className="text-xs text-slate-500 block font-medium">Profit Margin</span>
                 <span className={`text-lg font-black font-mono mt-1 block ${profitMargin >= 15 ? "text-emerald-700" : profitMargin > 0 ? "text-amber-700" : "text-rose-700"}`}>
                   {profitMargin.toFixed(1)}%
                 </span>
-                <span className="text-[10px] text-slate-400">Return on contract value</span>
+                <span className="text-[10px] text-slate-400">{totalInvoiced > 0 ? "Margin on linked invoice value" : "Margin on contract value"}</span>
               </div>
             </div>
 

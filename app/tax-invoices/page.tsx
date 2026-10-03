@@ -267,7 +267,7 @@ function TIContent() {
         ) : filtered.length===0 ? (
           <div className="rounded-xl border border-slate-200 bg-white py-20 text-center"><FileCheck2 size={40} className="mx-auto mb-3 text-slate-300"/><p className="text-sm text-slate-500">No tax invoices.</p></div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><th className="px-4 py-3">Invoice No.</th><th className="px-4 py-3">Customer / Project</th><th className="px-4 py-3">Date</th><th className="px-4 py-3 text-right">Taxable</th><th className="px-4 py-3 text-right">VAT</th><th className="px-4 py-3 text-right">Total (AED)</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Actions</th></tr></thead>
               <tbody className="divide-y divide-slate-100">{filtered.map(ti=>(
@@ -325,7 +325,7 @@ function TIContent() {
             <div className="flex-1 overflow-y-auto">
               <form id="ti-form" onSubmit={save} className="p-6 space-y-5">
                 {error&&<div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 [&>div]:min-w-0 [&>.col-span-2]:col-span-1 sm:[&>.col-span-2]:col-span-2">
                   <div className="col-span-2"><label className="mb-1 block text-sm font-medium text-slate-700">Customer <span className="text-red-500">*</span></label><select value={form.customer_id} onChange={e=>ff("customer_id",e.target.value)} required className={sel}><option value="">— Select Customer —</option>{selectableCustomers.map(c=><option key={c.id} value={c.id}>{c.name}{c.trn?` (TRN: ${c.trn})`:""}</option>)}</select></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Status</label><select value={form.status} onChange={e=>ff("status",e.target.value)} className={sel}><option value="draft">Draft</option><option value="issued">Final</option><option value="cancelled">Cancelled</option><option value="partially_paid">Partially Paid</option><option value="paid">Paid</option><option value="overdue">Overdue</option></select></div>
                   <div>

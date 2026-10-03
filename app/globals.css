@@ -228,6 +228,15 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 /* Clean ERP horizontal table overflow wrapper */
+@media screen {
+  /* Centered flex children must fit the scrollport, not their table's intrinsic width. */
+  .erp-screen-theme [data-print-root] > :is(div, main) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
 .erp-table-scroll {
   width: 100%;
   overflow-x: auto;

@@ -250,7 +250,7 @@ export default function SupplierPaymentsPage() {
         </div>
 
         {/* Table */}
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           {loading ? (
             <div className="flex justify-center py-20">
               <Loader2 size={32} className="animate-spin text-slate-400" />

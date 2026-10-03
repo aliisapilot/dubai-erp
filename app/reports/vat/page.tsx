@@ -175,7 +175,7 @@ export default function VatReportPage() {
       </div>
 
       {/* FTA Return Boxes Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
         <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
           <h3 className="font-bold text-slate-900 text-sm">VAT on Sales and all other Outputs (Output Tax)</h3>
         </div>
