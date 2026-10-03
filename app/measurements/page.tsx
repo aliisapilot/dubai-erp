@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { saveMeasurementRows } from "@/lib/measurementPersistence";
 import { supabase } from "@/lib/supabase";
 import {
   Ruler,
@@ -95,6 +96,11 @@ export default function MeasurementsPage() {
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const saveInFlight = useRef(false);
+  const quotationInFlight = useRef(false);
+  const pendingQuotation = useRef<{companyId:string;id:string;header:Record<string,unknown>;items:Record<string,unknown>[]} | null>(null);
+  const sheetLoadVersion = useRef(0);
+  const sheetReadInFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -117,7 +123,7 @@ export default function MeasurementsPage() {
   const [vatRate, setVatRate] = useState<number>(5);
   const [showQuotationModal, setShowQuotationModal] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [isVerifying] = useState(false);
   const [hasVerified, setHasVerified] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -128,12 +134,13 @@ export default function MeasurementsPage() {
     setError(null);
     try {
       const companyId = await getCompanyId();
+      if (!companyId) throw new Error("Select a company before loading measurements.");
       const co = await getCurrentCompany();
       if (co) setCompany(co as CompanyDocInfo);
 
       const [customerResult, projectResult, sheetResult] = await Promise.all([
-        supabase.from("customers").select("id, name").eq("active", true).order("name"),
-        supabase.from("projects").select("id, name, project_number").order("created_at", { ascending: false }),
+        supabase.from("customers").select("id, name").eq("company_id", companyId).eq("active", true).order("name"),
+        supabase.from("projects").select("id, name, project_number").eq("company_id", companyId).order("created_at", { ascending: false }),
         supabase
           .from("measurement_projects")
           .select("*")
@@ -175,13 +182,19 @@ export default function MeasurementsPage() {
 
   // Load Sheet items from Supabase
   async function loadSheetItems(sheetId: string) {
+    const version = ++sheetLoadVersion.current;
+    sheetReadInFlight.current = true;
+    setRawRows([]); setError(null);
     try {
+      const companyId = await getCompanyId();
       const { data: items, error: itemErr } = await supabase
         .from("measurement_items")
         .select("*")
         .eq("sheet_id", sheetId)
+        .eq("company_id", companyId)
         .order("sort_order", { ascending: true });
 
+      if (version !== sheetLoadVersion.current) return;
       if (itemErr) throw itemErr;
 
       if (items && items.length > 0) {
@@ -214,7 +227,9 @@ export default function MeasurementsPage() {
       // On DB error, leave existing rows unchanged and surface the issue in the
       // console. Do NOT overwrite saved data with sample rows.
       console.error("Failed to load measurement sheet items:", err);
-      setError("Could not load sheet items. Please refresh.");
+      if (version === sheetLoadVersion.current) {setActiveSheet(null);setError("Could not load sheet items. Please retry before saving or printing.");}
+    } finally {
+      if (version === sheetLoadVersion.current) sheetReadInFlight.current = false;
     }
   }
 
@@ -273,53 +288,33 @@ export default function MeasurementsPage() {
   }
 
   // Persist Rows to Database
-  async function saveRowsToDatabase(
-    sheetId: string,
-    companyId: string,
-    rowsToSave: MeasurementRowInput[]
-  ) {
-    try {
-      // 1. Delete existing rows for this sheet
-      await supabase.from("measurement_items").delete().eq("sheet_id", sheetId);
-
-      // 2. Insert calculated rows
-      const calculatedToInsert = rowsToSave.map((r, idx) => {
-        const c = calculateMeasurementRow(r);
-        return {
-          sheet_id: sheetId,
-          company_id: companyId,
-          area_name: c.area_name,
-          description: c.description,
-          calc_type: c.calc_type,
-          dim_unit: c.dim_unit,
-          length_entered: c.length_entered,
-          width_entered: c.width_entered,
-          width2_entered: c.width2_entered ?? null,
-          is_variable_width: c.is_variable_width ?? false,
-          length_m: c.length_m,
-          width_m: c.width_m,
-          width2_m: c.width2_m ?? null,
-          quantity: c.quantity,
-          pvc_length_edges: c.pvc_length_edges,
-          pvc_width_edges: c.pvc_width_edges,
-          pvc_centre_joints: c.pvc_centre_joints,
-          custom_components: c.custom_components ?? null,
-          formula_text: c.formula_display,
-          per_piece_result: c.per_piece_result,
-          calculated_total: c.calculated_total,
-          result_unit: c.result_unit,
-          rate: c.rate,
-          total_cost: c.total_cost,
-          notes: c.notes ?? null,
-          sort_order: idx,
-        };
-      });
-
-      const { error: insErr } = await supabase.from("measurement_items").insert(calculatedToInsert);
-      if (insErr) throw insErr;
-    } catch (err: unknown) {
-      console.warn("Database sync notice:", err);
+  async function commitRows(rows: MeasurementRowInput[]): Promise<boolean> {
+    if (!activeSheet || saveInFlight.current) return false;
+    if (sheetReadInFlight.current) {setError("Wait for the saved measurement rows to finish loading before editing.");return false;}
+    const sheet = activeSheet;
+    if (sheet.company_id === "offline") {
+      setRawRows(rows); setSuccess(null);
+      setError("Local calculation only. These entries are not saved to the database; export a backup.");
+      return true;
     }
+    saveInFlight.current = true; setSaving(true); setError(null); setSuccess(null);
+    try {
+      const updatedAt = await saveMeasurementRows(supabase, sheet, rows);
+      setRawRows(rows);
+      const saved = {...sheet,updated_at:updatedAt};
+      setActiveSheet(saved); setSheets(current => current.map(item => item.id === sheet.id ? saved : item));
+      setSuccess("Measurement rows saved to the database.");
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Measurements could not be saved. Your entries have been kept.");
+      return false;
+    } finally { saveInFlight.current = false; setSaving(false); }
+  }
+
+  function exportMeasurementBackup() {
+    const backup = {sheet:activeSheet,rows:rawRows,openRowForm:showRowModal ? rowForm : null,includeVat,vatRate,pendingQuotation:pendingQuotation.current,pendingQuotationBackup:company?.id ? localStorage.getItem("dxb_measurement_quote_draft_"+company.id) : null};
+    const url = URL.createObjectURL(new Blob([JSON.stringify(backup,null,2)],{type:"application/json"}));
+    const link=document.createElement("a");link.href=url;link.download=(activeSheet?.sheet_number || "measurements")+"-backup.json";link.click();URL.revokeObjectURL(url);
   }
 
   // Calculate live rows
@@ -356,91 +351,36 @@ export default function MeasurementsPage() {
     setShowRowModal(true);
   }
 
-  // Duplicate row
-  function handleDuplicateRow(index: number) {
+  // Displayed saved rows change only after an acknowledged transaction.
+  async function handleDuplicateRow(index: number) {
     const rowToDup = rawRows[index];
-    const newRow: MeasurementRowInput = {
-      ...rowToDup,
-      id: undefined,
-      area_name: `${rowToDup.area_name} (Copy)`,
-    };
-    const updated = [...rawRows.slice(0, index + 1), newRow, ...rawRows.slice(index + 1)];
-    setRawRows(updated);
-    if (activeSheet) {
-      getCompanyId().then((coId) => saveRowsToDatabase(activeSheet.id, coId, updated));
-    }
+    await commitRows([...rawRows.slice(0,index+1),{...rowToDup,id:undefined,area_name:rowToDup.area_name+" (Copy)"},...rawRows.slice(index+1)]);
   }
 
-  // Delete row
-  function handleDeleteRow(index: number) {
-    const updated = rawRows.filter((_, i) => i !== index);
-    setRawRows(updated);
-    if (activeSheet) {
-      getCompanyId().then((coId) => saveRowsToDatabase(activeSheet.id, coId, updated));
-    }
+  async function handleDeleteRow(index: number) {
+    await commitRows(rawRows.filter((_,i) => i !== index));
   }
 
-  // Save row from modal
   async function handleSaveRowForm(e: React.FormEvent) {
     e.preventDefault();
-    let updated: MeasurementRowInput[];
-    if (editingRowIndex !== null) {
-      updated = [...rawRows];
-      updated[editingRowIndex] = rowForm;
-    } else {
-      updated = [...rawRows, rowForm];
-    }
-    setRawRows(updated);
-    setShowRowModal(false);
-
-    if (activeSheet) {
-      setSaving(true);
-      try {
-        const coId = await getCompanyId();
-        await saveRowsToDatabase(activeSheet.id, coId, updated);
-        setSuccess("Measurement saved successfully.");
-        setTimeout(() => setSuccess(null), 3000);
-      } catch {
-        // Keep local state
-      } finally {
-        setSaving(false);
-      }
-    }
+    const updated=[...rawRows];
+    if (editingRowIndex !== null) updated[editingRowIndex]=rowForm; else updated.push(rowForm);
+    if (await commitRows(updated)) setShowRowModal(false);
   }
 
-  // Load & Verify Real Test Cases (Area 1, 2, 3, 4 -> 1,410.560 m)
+  // Samples are a separate local preview; they never replace saved sheet rows.
   async function handleLoadRealTestCases() {
-    // Guard: never silently overwrite existing saved rows with sample data.
-    if (rawRows.length > 0) {
-      const confirmed = confirm(
-        `⚠️ Warning: This will permanently replace all ${rawRows.length} saved row(s) in this sheet with sample test data and save to the database.\n\nYour current measurements will be lost.\n\nAre you sure you want to continue?`
-      );
-      if (!confirmed) return;
-    }
-    setIsVerifying(true);
+    if (saveInFlight.current) return;
+    setActiveSheet({id:"test-preview",company_id:"offline",sheet_number:"MS-TEST-PREVIEW",title:"Measurement test preview (not saved)",status:"draft"});
     setRawRows(REAL_PROJECT_PARKING_SHADE_TEST_ROWS);
-    if (activeSheet) {
-      setSaving(true);
-      try {
-        const coId = await getCompanyId();
-        await saveRowsToDatabase(activeSheet.id, coId, REAL_PROJECT_PARKING_SHADE_TEST_ROWS);
-      } catch (err) {
-        console.warn("Could not save to db, using memory:", err);
-      } finally {
-        setSaving(false);
-      }
-    }
-    setTimeout(() => {
-      setIsVerifying(false);
-      setHasVerified(true);
-      setShowVerificationModal(true);
-      setSuccess("Real Project test cases loaded & verified: 1,410.560 m exact match!");
-      setTimeout(() => setSuccess(null), 4000);
-    }, 250);
+    setHasVerified(true); setShowVerificationModal(true);
+    setError("Test preview only. Saved sheets are unchanged; choose a saved sheet to return.");
+    setSuccess(null);
   }
 
   // Create New Sheet
   async function handleCreateNewSheet() {
+    if (saveInFlight.current) return;
     try {
       const coId = await getCompanyId();
       let sheetNum = `MS-${new Date().getFullYear()}-${String(sheets.length + 1).padStart(4, "0")}`;
@@ -472,8 +412,8 @@ export default function MeasurementsPage() {
       setRawRows([]);
       setSuccess(`Sheet ${sheetNum} created.`);
       setTimeout(() => setSuccess(null), 3000);
-    } catch {
-      alert("Created local sheet session.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The measurement sheet could not be created.");
     }
   }
 
@@ -483,17 +423,31 @@ export default function MeasurementsPage() {
       alert("No measurement rows to transfer.");
       return;
     }
+    if (quotationInFlight.current) return;
+    if (!selectedCustomerId) {setError("Select the actual customer before creating a quotation.");return;}
+    quotationInFlight.current = true;
     setTransferringToQuote(true);
     try {
       const coId = await getCompanyId();
-      const quoteNumber = await generateDocNumber(coId, "QT");
+      const quoteKey = "dxb_measurement_quote_draft_" + coId;
+      if (!pendingQuotation.current) {
+        const stored = localStorage.getItem(quoteKey);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.companyId !== coId || !parsed.id || !parsed.header || !Array.isArray(parsed.items)) throw new Error("The browser quotation backup is incompatible. Export it before continuing.");
+          pendingQuotation.current = parsed;
+          setSelectedCustomerId(String(parsed.header.customer_id || ""));
+          setSelectedProjectId(String(parsed.header.project_id || ""));
+        }
+      }
+      const quoteNumber = pendingQuotation.current ? String(pendingQuotation.current.header.quotation_number) : await generateDocNumber(coId, "QT");
 
       // Prepare line items strictly preserving unit, rate, amount, and description
       const quoteLines = calculatedRows.map((r, i) => {
-        const rate = r.rate > 0 ? r.rate : 5.0; // fallback rate
+        const rate = r.rate;
         const qty = r.calculated_total;
         const taxable = Math.round(qty * rate * 100) / 100;
-        const vat = Math.round(taxable * 0.05 * 100) / 100;
+        const vat = Math.round(taxable * (includeVat ? vatRate : 0) / 100 * 100) / 100;
         const total = Math.round((taxable + vat) * 100) / 100;
 
         return {
@@ -504,7 +458,7 @@ export default function MeasurementsPage() {
           discount_percent: 0,
           discount_amount: 0,
           taxable_amount: taxable,
-          vat_rate: 5,
+          vat_rate: includeVat ? vatRate : 0,
           vat_amount: vat,
           line_total: total,
           sort_order: i,
@@ -518,8 +472,8 @@ export default function MeasurementsPage() {
       const quotePayload = {
         company_id: coId,
         quotation_number: quoteNumber,
-        customer_id: selectedCustomerId || (customers[0]?.id ?? null),
-        project_id: selectedProjectId || (projects[0]?.id ?? null),
+        customer_id: selectedCustomerId,
+        project_id: selectedProjectId || null,
         quotation_date: todayISO(),
         expiry_date: todayISO(),
         status: "draft",
@@ -530,30 +484,24 @@ export default function MeasurementsPage() {
         notes: `Generated from Measurement Sheet ${activeSheet?.sheet_number || ""}: ${activeSheet?.title || ""}`,
       };
 
-      const { data: newQuote, error: qErr } = await supabase
-        .from("quotations")
-        .insert(quotePayload)
-        .select()
-        .single();
-
-      if (qErr) throw qErr;
-
-      const itemPayload = quoteLines.map((l) => ({
-        ...l,
-        quotation_id: newQuote.id,
-      }));
-
-      const { error: itemsErr } = await supabase.from("quotation_items").insert(itemPayload);
-      if (itemsErr) throw itemsErr;
-
+      if (!pendingQuotation.current) pendingQuotation.current = {companyId:coId,id:crypto.randomUUID(),header:quotePayload,items:quoteLines};
+      const draft = pendingQuotation.current;
+      if (draft.companyId !== coId) throw new Error("The unfinished quotation belongs to another company.");
+      localStorage.setItem(quoteKey,JSON.stringify(draft));
+      const {data,error:quoteError} = await supabase.rpc("create_measurement_quotation", {p_company_id:draft.companyId,p_id:draft.id,p_header:draft.header,p_items:draft.items});
+      if (quoteError) throw new Error(quoteError.message);
+      if (data !== draft.id) throw new Error("The database did not confirm the quotation. Retry the preserved draft.");
+      localStorage.removeItem(quoteKey);
+      pendingQuotation.current = null;
       setShowQuotationModal(false);
-      setSuccess(`Quotation ${quoteNumber} generated with ${quoteLines.length} items!`);
+      setSuccess(`Quotation ${String(draft.header.quotation_number)} generated with ${draft.items.length} items!`);
       setTimeout(() => {
         router.push("/quotations");
       }, 1500);
     } catch (err: unknown) {
-      alert("Notice: Could not insert quotation to database: " + (err instanceof Error ? err.message : String(err)));
+      setError("Quotation was not confirmed. Your draft is preserved for retry. " + (err instanceof Error ? err.message : "Saving failed."));
     } finally {
+      quotationInFlight.current = false;
       setTransferringToQuote(false);
     }
   }
@@ -661,6 +609,7 @@ export default function MeasurementsPage() {
           <span>{success}</span>
         </div>
       )}
+      <button onClick={exportMeasurementBackup} className="mb-3 rounded-lg border border-slate-600 px-3 py-2 text-sm">Export measurement backup</button>
       {error && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-950/50 p-3 text-xs text-red-300 shadow">
           <Info size={16} />
@@ -683,10 +632,12 @@ export default function MeasurementsPage() {
         </div>
 
         <div className="flex items-center gap-2 justify-end md:col-span-2">
-          {sheets.length > 1 && (
+          {sheets.length > 0 && (
             <select
-              value={activeSheet?.id}
+              value={activeSheet?.id || ""}
+              disabled={saving}
               onChange={(e) => {
+                if (saveInFlight.current) return;
                 const s = sheets.find((x) => x.id === e.target.value);
                 if (s) {
                   setActiveSheet(s);
@@ -695,6 +646,8 @@ export default function MeasurementsPage() {
               }}
               className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:outline-none"
             >
+              {!activeSheet && <option value="">Choose a saved sheet</option>}
+              {activeSheet?.company_id === "offline" && !sheets.some(s=>s.id===activeSheet.id) && <option value={activeSheet.id}>{activeSheet.sheet_number}</option>}
               {sheets.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.sheet_number} - {s.title}
@@ -1791,6 +1744,8 @@ export default function MeasurementsPage() {
               </button>
             </div>
 
+            {error && <p role="alert" className="text-sm text-amber-300">{error}</p>}
+            {pendingQuotation.current && <p className="text-xs text-amber-300">Retrying the preserved quotation {String(pendingQuotation.current.header.quotation_number)} with {pendingQuotation.current.items.length} original items and total {fmtAED(Number(pendingQuotation.current.header.total_amount))}. Its contents remain unchanged.</p>}
             <p className="text-xs text-slate-300 leading-relaxed">
               This will create a new official Dubai quotation with {calculatedRows.length} measurement line items,
               strictly preserving units (<span className="text-emerald-400 font-mono">m</span>,{" "}
@@ -1802,6 +1757,7 @@ export default function MeasurementsPage() {
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">Select Customer</label>
                 <select
+                  disabled={transferringToQuote || !!pendingQuotation.current}
                   value={selectedCustomerId}
                   onChange={(e) => setSelectedCustomerId(e.target.value)}
                   className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"
@@ -1818,6 +1774,7 @@ export default function MeasurementsPage() {
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">Link to Project (Optional)</label>
                 <select
+                  disabled={transferringToQuote || !!pendingQuotation.current}
                   value={selectedProjectId}
                   onChange={(e) => setSelectedProjectId(e.target.value)}
                   className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"

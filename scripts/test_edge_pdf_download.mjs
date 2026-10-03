@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import ts from 'typescript';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const js=ts.transpileModule(fs.readFileSync('app/api/print-test-sheet/download/route.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+const pdf=fs.readFileSync('public/dubai_erp_print_test_sheet_a4.pdf');
+let response=new Response(pdf,{headers:{'Content-Type':'application/pdf'}}),throws=false,requested;
+const exports={};new Function('exports','require','fetch',js)(exports,require,async url=>{requested=String(url);if(throws)throw new Error('Network');return response;});
+const result=await exports.GET({url:'https://erp.example/api/print-test-sheet/download'});
+assert.equal(requested,'https://erp.example/dubai_erp_print_test_sheet_a4.pdf');
+assert.equal(result.status,200);assert.equal(result.headers.get('content-type'),'application/pdf');
+assert.ok(result.headers.get('content-disposition').startsWith('attachment;'));
+assert.deepEqual(Buffer.from(await result.arrayBuffer()),pdf);
+response=new Response('',{status:404});assert.equal((await exports.GET({url:'https://erp.example/api/print-test-sheet/download'})).status,404);
+throws=true;assert.equal((await exports.GET({url:'https://erp.example/api/print-test-sheet/download'})).status,502);
+console.log('PASS edge PDF download: exact asset bytes, download headers and unavailable/network failures.');

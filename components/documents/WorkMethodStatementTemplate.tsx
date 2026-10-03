@@ -84,7 +84,7 @@ export default function WorkMethodStatementTemplate({
       showWatermark={false}
     >
       {Array.from({length:coverPages},(_,index)=><DynamicDocumentRenderer key={index} layout={design.layout} company={company} data={cover} pageNumber={index+1} totalPages={coverPages} />)}
-      <div className="print-page space-y-6 bg-white p-[10mm]" style={{breakBefore:'page'}}>
+      <div className="print-page space-y-6 bg-white p-[10mm]" data-flow-document="wms" style={{breakBefore:'page'}}>
         {/* Letterhead Header */}
         <DocHeader
           company={company}
@@ -136,11 +136,11 @@ export default function WorkMethodStatementTemplate({
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <span className="text-slate-500 block text-[10px]">Prepared By:</span>
-                  <span className="font-semibold text-slate-800">{wms.prepared_by || "Project Engineer"}</span>
+                  <span className="font-semibold text-slate-800">{wms.prepared_by || "Not recorded"}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[10px]">Approved By:</span>
-                  <span className="font-semibold text-slate-800">{wms.approved_by || "Project Manager"}</span>
+                  <span className="font-semibold text-slate-800">{wms.approved_by || "Not recorded"}</span>
                 </div>
               </div>
               <div>
@@ -158,7 +158,7 @@ export default function WorkMethodStatementTemplate({
               1. Purpose of Work
             </h3>
             <p className="text-slate-700 leading-relaxed text-[11px]">
-              {wms.purpose || "To define the systematic and safe installation, testing, and quality requirements to ensure strict compliance with project specifications, authority regulations, and engineering standards."}
+              {wms.purpose || "Not recorded"}
             </p>
           </div>
           <div className="rounded border border-slate-300 p-3 bg-white">
@@ -166,7 +166,7 @@ export default function WorkMethodStatementTemplate({
               2. Scope of Work
             </h3>
             <p className="text-slate-700 leading-relaxed text-[11px]">
-              {wms.scope || "Covers receiving inspection, handling, site storage, pre-installation preparation, installation procedures, QA/QC verification, and safety precautions for the complete execution."}
+              {wms.scope || "Not recorded"}
             </p>
           </div>
         </div>
@@ -178,7 +178,7 @@ export default function WorkMethodStatementTemplate({
               3. Reference Documents & Specifications
             </h3>
             <p className="text-slate-700 leading-relaxed text-[11px]">
-              {wms.reference_documents || "Project IFC Drawings, Approved Material Submittals (MAS), UAE Fire & Life Safety Code, Project HSE Plan, and Manufacturer Technical Guidelines."}
+              {wms.reference_documents || "Not recorded"}
             </p>
           </div>
           <div className="rounded border border-slate-300 p-3 bg-white">
@@ -186,7 +186,7 @@ export default function WorkMethodStatementTemplate({
               4. Key Responsibilities
             </h3>
             <p className="text-slate-700 leading-relaxed text-[11px]">
-              {wms.responsibilities || "Project Manager ensures overall compliance and resources. Site Engineer directs daily operations. QA/QC Engineer verifies inspections. Safety Officer enforces permits and PPE."}
+              {wms.responsibilities || "Not recorded"}
             </p>
           </div>
         </div>
@@ -206,13 +206,7 @@ export default function WorkMethodStatementTemplate({
                   </div>
                 ))
               ) : (
-                <div className="text-slate-600 text-[11px] space-y-1">
-                  <div className="flex justify-between"><span>Site Engineer:</span> <span className="font-bold">1</span></div>
-                  <div className="flex justify-between"><span>Safety Officer:</span> <span className="font-bold">1</span></div>
-                  <div className="flex justify-between"><span>Foreman / Chargehand:</span> <span className="font-bold">2</span></div>
-                  <div className="flex justify-between"><span>Skilled Technicians:</span> <span className="font-bold">6</span></div>
-                  <div className="flex justify-between"><span>General Helpers:</span> <span className="font-bold">4</span></div>
-                </div>
+                <p className="text-slate-600 text-[11px]">No saved manpower allocations.</p>
               )}
             </div>
           </div>
@@ -230,12 +224,7 @@ export default function WorkMethodStatementTemplate({
                   </div>
                 ))
               ) : (
-                <div className="text-slate-600 text-[11px] space-y-1">
-                  <div className="flex justify-between"><span>Calibrated Measuring Tools:</span> <span className="font-bold">1 Set</span></div>
-                  <div className="flex justify-between"><span>Mobile Scaffolding / Ladders:</span> <span className="font-bold">2 Sets</span></div>
-                  <div className="flex justify-between"><span>Power Tools & Hand Drills:</span> <span className="font-bold">4 Nos</span></div>
-                  <div className="flex justify-between"><span>Safety Equipment & Fire Extinguishers:</span> <span className="font-bold">2 Sets</span></div>
-                </div>
+                <p className="text-slate-600 text-[11px]">No saved equipment allocations.</p>
               )}
             </div>
           </div>
@@ -248,7 +237,7 @@ export default function WorkMethodStatementTemplate({
               7. Pre-Installation Inspection & Preparation
             </h3>
             <p className="text-slate-700 leading-relaxed text-[11px]">
-              {wms.pre_installation || "Verify civil clearances, benchmarks, and MEP provisions. Check delivered materials against approved submittals and delivery notes. Obtain Permit to Work (PTW) from main contractor prior to commencement."}
+              {wms.pre_installation || "Not recorded"}
             </p>
           </div>
           <div className="border-t border-slate-200 pt-3">
@@ -256,7 +245,7 @@ export default function WorkMethodStatementTemplate({
               8. Step-by-Step Installation Procedure
             </h3>
             <p className="text-slate-700 leading-relaxed whitespace-pre-line text-[11px]">
-              {wms.installation_procedure || "1. Mark out alignments and bracket fixing locations according to approved drawings.\n2. Fix supports securely using approved anchors and torque specifications.\n3. Position equipment and secure all structural connections.\n4. Complete connections in conformity with engineering guidelines.\n5. Conduct preliminary checks and clean the workspace."}
+              {wms.installation_procedure || "Not recorded"}
             </p>
           </div>
           <div className="border-t border-slate-200 pt-3 grid grid-cols-2 gap-4">
@@ -265,7 +254,7 @@ export default function WorkMethodStatementTemplate({
                 9. Quality Control & Acceptance
               </h3>
               <p className="text-slate-700 leading-relaxed text-[11px]">
-                {wms.quality_control || "Inspect all works in accordance with Project Quality Plan and submit Inspection & Test Plan (ITP) for Consultant sign-off."}
+                {wms.quality_control || "Not recorded"}
               </p>
             </div>
             <div>
@@ -273,14 +262,14 @@ export default function WorkMethodStatementTemplate({
                 10. HSE & Environmental Safeguards
               </h3>
               <p className="text-slate-700 leading-relaxed text-[11px]">
-                {wms.health_safety || "Mandatory PPE (Helmet, High-Vis Vest, Safety Shoes, Eye Protection). Work-at-height harness compliance and daily toolbox talk before shift."}
+                {wms.health_safety || "Not recorded"}
               </p>
             </div>
           </div>
         </div>
 
         {/* Section 11: Structured Risk Assessment Table */}
-        <div className="overflow-hidden rounded border border-slate-300 text-xs avoid-break">
+        <div className="overflow-hidden rounded border border-slate-300 text-xs" data-flow-table="true">
           <div className="bg-rose-900 text-white font-bold px-3 py-2 uppercase text-[11px] flex items-center gap-2">
             <ShieldAlert size={14} /> 11. Structured Risk Assessment (تقييم المخاطر وتدابير السلامة)
           </div>
@@ -321,7 +310,7 @@ export default function WorkMethodStatementTemplate({
         </div>
 
         {/* Section 12: QA/QC Inspection Checklist */}
-        <div className="overflow-hidden rounded border border-slate-300 text-xs avoid-break">
+        <div className="overflow-hidden rounded border border-slate-300 text-xs" data-flow-table="true">
           <div className="bg-slate-800 text-white font-bold px-3 py-2 uppercase text-[11px] flex items-center gap-2">
             <CheckCircle2 size={14} /> 12. QA/QC Inspection Checklist (قائمة فحص ومطابقة الجودة)
           </div>
@@ -366,7 +355,7 @@ export default function WorkMethodStatementTemplate({
         </div>
 
         {/* Section 13: Revision History Table */}
-        <div className="overflow-hidden rounded border border-slate-300 text-xs avoid-break">
+        <div className="overflow-hidden rounded border border-slate-300 text-xs" data-flow-table="true">
           <div className="bg-slate-100 font-bold text-slate-900 px-3 py-1.5 border-b border-slate-200 uppercase text-[10px]">
             Technical Document Revision Control Log (سجل مراجعات الوثيقة)
           </div>
@@ -384,25 +373,25 @@ export default function WorkMethodStatementTemplate({
               <tr className="font-mono">
                 <td className="py-1.5 px-3 font-bold text-slate-900">{wms.revision}</td>
                 <td className="py-1.5 px-3 text-slate-600">{new Date(wms.date).toLocaleDateString("en-GB")}</td>
-                <td className="py-1.5 px-3 font-sans text-slate-800">Initial Submittal for Consultant Approval</td>
-                <td className="py-1.5 px-3 font-sans text-slate-700">{wms.prepared_by || "Project Eng."}</td>
-                <td className="py-1.5 px-3 font-sans text-slate-700">{wms.approved_by || "Project Mgr."}</td>
+                <td className="py-1.5 px-3 font-sans text-slate-800">Current saved revision</td>
+                <td className="py-1.5 px-3 font-sans text-slate-700">{wms.prepared_by || "Not recorded"}</td>
+                <td className="py-1.5 px-3 font-sans text-slate-700">{wms.approved_by || "Not recorded"}</td>
               </tr>
             </tbody>
           </table>
         </div>
 
         {/* Sign-off Multi-Party Matrix */}
-        <div className="grid grid-cols-3 gap-4 border-t-2 border-slate-300 pt-4 text-xs avoid-break">
+        <div className="grid grid-cols-3 gap-4 border-t-2 border-slate-300 pt-4 text-xs" data-flow-table="true">
           <div className="rounded border border-slate-200 p-3 text-center">
             <div className="text-[10px] text-slate-500 uppercase font-semibold">Subcontractor Engineer</div>
-            <div className="font-bold text-slate-800 text-xs mt-1">{wms.prepared_by || "Site Engineer"}</div>
+            <div className="font-bold text-slate-800 text-xs mt-1">{wms.prepared_by || "Not recorded"}</div>
             <div className="h-12 border-b border-dashed border-slate-300 my-2"></div>
             <div className="text-[10px] text-slate-400">Signature & Date</div>
           </div>
           <div className="rounded border border-slate-200 p-3 text-center">
             <div className="text-[10px] text-slate-500 uppercase font-semibold">Subcontractor PM Approval</div>
-            <div className="font-bold text-slate-800 text-xs mt-1">{wms.approved_by || "Project Manager"}</div>
+            <div className="font-bold text-slate-800 text-xs mt-1">{wms.approved_by || "Not recorded"}</div>
             <div className="h-12 border-b border-dashed border-slate-300 my-2"></div>
             <div className="text-[10px] text-slate-400">Signature & Stamp</div>
           </div>

@@ -108,3 +108,13 @@ writeFailure=false;await actions.addExpense({preventDefault(){}});render();asser
 writeFailure=true;await actions.deleteExpense('expense-saved');render();assert.equal(actions.snapshot().expenses.length,1,'Failed delete must retain displayed saved row');
 readFailure=true;await actions.load();render();assert.match(actions.snapshot().loadError,/Expense read denied/);
 console.log('Actual project handlers: 11 assertions passed for failed saves/deletes, preserved entries, scoped writes and cloud-authoritative totals.');
+// Older database schemas keep working while preserving a clearly identified local revision backup.
+let legacyCalls=0;
+const oldSchema={from:table=>({upsert:rows=>({select:async()=>{
+ if(table==='work_method_statements'&&'revision_history' in rows){legacyCalls++;return {data:null,error:{message:"Could not find the 'revision_history' column in the schema cache"}};}
+ return {data:(Array.isArray(rows)?rows:[rows]).map(row=>({id:row.id})),error:null};
+}})})};
+assert.equal(await saveProjectWmsDraft(oldSchema,draft),false);assert.equal(legacyCalls,1);
+assert.equal(await saveProjectWmsDraft(client,draft),true);
+assert.deepEqual(database.get('work_method_statements').get('wms-a').revision_history,draft.revHistory);
+console.log('PASS WMS revision cloud save and explicit legacy-schema fallback.');

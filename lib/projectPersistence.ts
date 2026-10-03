@@ -37,7 +37,7 @@ type WmsClient = {
 };
 
 /** Stable IDs make a retry after a partial network failure safe, without deleting saved rows. */
-export async function saveProjectWmsDraft(client: WmsClient, draft: ProjectWmsDraft): Promise<void> {
+export async function saveProjectWmsDraft(client: WmsClient, draft: ProjectWmsDraft): Promise<boolean> {
   if (!draft.parent.id || !draft.parent.company_id || !draft.parent.project_id || draft.parent.status !== "Draft") {
     throw new Error("The unfinished WMS must belong to a project and remain a draft.");
   }
@@ -50,10 +50,18 @@ export async function saveProjectWmsDraft(client: WmsClient, draft: ProjectWmsDr
       ids.add(row.id);
     }
   }
-  await writeProjectResult(client.from("work_method_statements").upsert(draft.parent, {onConflict: "id"}).select("id"));
+  let revisionsSaved = true;
+  const result = await client.from("work_method_statements").upsert({...draft.parent,revision_history:draft.revHistory}, {onConflict:"id"}).select("id");
+  if (result.error && /revision_history/.test(result.error.message) && /column|schema cache/.test(result.error.message)) {
+    revisionsSaved = false;
+    await writeProjectResult(client.from("work_method_statements").upsert(draft.parent,{onConflict:"id"}).select("id"));
+  } else {
+    await writeProjectResult(Promise.resolve(result));
+  }
   for (const [table, rows] of [["wms_risk_assessments", draft.risks], ["wms_qaqc_checklists", draft.qaqc]] as const) {
     if (!rows.length) continue;
     const saved = await writeProjectResult(client.from(table).upsert(rows, {onConflict: "id"}).select("id"));
     if (saved.length !== rows.length) throw new Error(`Some ${table === "wms_risk_assessments" ? "risk assessments" : "inspection items"} were not saved. Retry the unfinished draft.`);
   }
+  return revisionsSaved;
 }

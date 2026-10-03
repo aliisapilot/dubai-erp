@@ -75,7 +75,7 @@ export default function ProjectHandoverTemplate({
       company={company ?? undefined}
       noPadding={Boolean(customLayout)}
       showWatermark={!customLayout}
-      totalPages={totalPages}
+      totalPages={customLayout ? totalPages : undefined}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">
@@ -94,7 +94,7 @@ export default function ProjectHandoverTemplate({
         </div>
       ) : (
         <>
-      <div className="space-y-6">
+      <div className="space-y-6" data-flow-document="handover">
         {/* Letterhead Header */}
         <DocHeader
           company={company}

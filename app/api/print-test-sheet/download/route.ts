@@ -1,32 +1,21 @@
-import { NextResponse } from "next/server";
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const pdfPath = join(process.cwd(), "public", "dubai_erp_print_test_sheet_a4.pdf");
-
-    if (!existsSync(pdfPath)) {
-      return NextResponse.json(
-        { error: "Print test sheet PDF is currently not available. Please retry in a moment." },
-        { status: 404 }
-      );
+    const asset = await fetch(new URL("/dubai_erp_print_test_sheet_a4.pdf", request.url));
+    if (!asset.ok) {
+      return NextResponse.json({error:"Print test sheet PDF is currently not available."}, {status:asset.status === 404 ? 404 : 502});
     }
-
-    const fileBuffer = readFileSync(pdfPath);
-
-    return new NextResponse(new Uint8Array(fileBuffer), {
-      status: 200,
+    return new NextResponse(asset.body, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": 'attachment; filename="dubai_erp_print_test_sheet_a4.pdf"',
         "Cache-Control": "public, max-age=3600",
       },
     });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Failed to download test sheet PDF";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return NextResponse.json({error:"Failed to download test sheet PDF. Please retry."}, {status:502});
   }
 }

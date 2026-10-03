@@ -76,6 +76,7 @@ type ProjectExpense = {
 };
 
 type WMS = {
+  revision_history?: WMSData["revision_history"];
   id: string;
   wms_number: string;
   title: string;
@@ -419,14 +420,15 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       const key = 'dxb_wms_draft_' + project.company_id + '_' + projectId;
       // Write recovery data before network requests. Never discard another saved design or record.
       localStorage.setItem(key,JSON.stringify(draft));
-      try { await saveProjectWmsDraft(supabase,draft); }
+      let revisionsSaved = false;
+      try { revisionsSaved = await saveProjectWmsDraft(supabase,draft); }
       catch (error) { throw new Error('WMS "' + draft.parent.title + '" is unfinished. Your draft is preserved; retry to complete it. ' + (error instanceof Error ? error.message : "Saving failed.")); }
       localStorage.setItem('wms_extra_' + draft.parent.id,JSON.stringify({revHistory:draft.revHistory}));
       localStorage.removeItem(key);
       pendingWms.current = null;
       setShowWmsModal(false); setWmsTitle("");
       await loadProjectDetails();
-      setBrowserNotice("WMS and assessments saved to cloud as a draft. Revision history is preserved in this browser only; export a backup for another device.");
+      setBrowserNotice(revisionsSaved ? "WMS, assessments and revision history saved to cloud as a draft." : "WMS and assessments saved to cloud as a draft. The revision-history schema is not ready; a browser backup is preserved for export.");
     });
   }
 
@@ -440,12 +442,12 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     ]);
     const risks: RiskAssessmentRow[] = (rData || []).map(r=>({activity:r.activity,hazard:r.hazard,control_measures:r.control_measures,risk_level:r.risk_level}));
     const qaqc: QAQCChecklistItem[] = (qData || []).map(q=>({inspection_item:q.inspection_item,acceptance_criteria:q.acceptance_criteria,status:q.status,remarks:q.remarks,inspector_name:q.inspector_name}));
-    let revHistory = [{rev:w.revision,date:w.document_date || todayISO(),description:"Technical Method Statement Submittal",prepared_by:w.prepared_by || ""}];
+    let revHistory = Array.isArray(w.revision_history) ? w.revision_history : [{rev:w.revision,date:w.document_date || todayISO(),description:"Technical Method Statement Submittal",prepared_by:w.prepared_by || ""}];
     try {
       const local = localStorage.getItem('wms_extra_' + w.id);
       if (local) {
         const parsed = JSON.parse(local);
-        if (parsed.revHistory?.length) {
+        if (!Array.isArray(w.revision_history) && parsed.revHistory?.length) {
           revHistory = parsed.revHistory;
           setBrowserNotice("This WMS preview includes revision history saved only in this browser. Export a backup before switching devices.");
         }
@@ -1340,7 +1342,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
             <form onSubmit={handleCreateWms} className="min-h-0 flex-1 overflow-y-auto p-6 text-xs space-y-4">
               {actionFeedback}
-              <p className="rounded-lg bg-amber-50 p-3 text-amber-800">Saved as a draft. Risk assessments and inspections save to cloud; revision history stays in this browser. Export a backup for another device.</p>
+              <p className="rounded-lg bg-amber-50 p-3 text-amber-800">Saved as a draft. Assessments and revision history save to cloud when the database schema is ready. A browser recovery backup is kept.</p>
               {pendingWms.current && <p role="status" className="text-amber-800">Retrying the preserved unfinished draft: {pendingWms.current.parent.title}. Its entries are locked until saving completes.</p>}
               <fieldset disabled={savingItem || !!pendingWms.current} className="space-y-4">
               {/* TAB 1: General & Scope */}

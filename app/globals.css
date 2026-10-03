@@ -974,3 +974,32 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     border-color: #CBD5E1 !important;
   }
 }
+
+/* Technical documents keep readable text and let long saved sections paginate. */
+@media print {
+  [data-flow-document] [data-flow-table] { break-inside: auto !important; overflow: visible !important; }
+  [data-flow-document] thead { display: table-header-group; }
+  [data-flow-document] tr { break-inside: avoid; }
+  [data-flow-document] td, [data-flow-document] th { overflow-wrap: anywhere; }
+}
+
+@page technical-flow { size: A4; margin: 10mm; }
+@media print {
+  [data-flow-document] { page: technical-flow; }
+  [data-flow-document="wms"] {
+    width: 190mm !important; min-width: 190mm !important; max-width: 190mm !important;
+    min-height: 0 !important; padding: 0 !important;
+  }
+  .print-document:has([data-flow-document="handover"]) {
+    page: technical-flow; width: 190mm !important; min-width: 190mm !important; max-width: 190mm !important;
+    min-height: 0 !important; padding: 0 !important;
+  }
+}
+
+@media print {
+  .print-document:has([data-flow-document="handover"]) > .page-decorative-borders-container {
+    position: fixed !important; top: -10mm !important; left: -10mm !important;
+    right: auto !important; bottom: auto !important;
+    width: 210mm !important; height: 297mm !important;
+  }
+}
