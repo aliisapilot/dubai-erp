@@ -12,7 +12,7 @@ export default function MeasurementTotals({element, data, appearance, colors}: {
   const summary = measurementSummary(data, element.customText === 'vat_disabled');
   return <div data-measurement-summary className="w-full rounded select-text" style={{
     border: `${element.borderWidth ?? 1}px solid ${element.borderColor || colors.border}`,
-    borderRadius: `${element.borderRadius ?? 4}px`, minHeight: '100%', ...appearance,
+    borderRadius: `${element.borderRadius ?? 4}px`, ...appearance,
     fontSize, lineHeight, fontFamily: element.fontFamily || 'Arial, Helvetica, sans-serif', overflow: 'visible',
   }}>
     {summary.rows.map(row => <div key={row.label} data-summary-kind={row.kind} className="flex items-start justify-between gap-2 px-2 py-0.5" style={{

@@ -1211,7 +1211,7 @@ export default function DynamicDocumentRenderer({
           const isReceipt = layout.documentType === "receipt_voucher";
           return (
             <div
-              className="w-full h-full rounded select-text flex flex-col items-stretch justify-center overflow-hidden"
+              className="w-full h-fit rounded select-text flex flex-col items-stretch justify-center overflow-hidden"
               style={{
                 border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
                 borderRadius: `${elem.borderRadius || 4}px`,
@@ -1231,7 +1231,7 @@ export default function DynamicDocumentRenderer({
         if (layout.documentType === "customer_statement") {
           return (
             <div
-              className="w-full h-full overflow-hidden text-xs rounded select-text flex flex-col justify-start"
+              className="w-full h-fit overflow-hidden text-xs rounded select-text flex flex-col justify-start"
               style={{
                 border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
                 borderRadius: `${elem.borderRadius || 4}px`,
@@ -1263,7 +1263,7 @@ export default function DynamicDocumentRenderer({
 
         if (layout.documentType === "salary_statement") {
           return (
-            <div className="w-full h-full overflow-hidden rounded border text-[10px]" style={{ borderColor: elem.borderColor || colors.border }}>
+            <div className="w-full h-fit overflow-hidden rounded border text-[10px]" style={{ borderColor: elem.borderColor || colors.border }}>
               <div className="flex justify-between border-b px-2.5 py-1" style={{ borderColor: colors.border }}>
                 <span className="font-bold" style={{ color: colors.muted }}>Gross Earnings:</span>
                 <span className="font-mono font-bold">{fmtAED(data.subtotal)}</span>
@@ -1283,7 +1283,7 @@ export default function DynamicDocumentRenderer({
         if ((layout.documentType === "delivery_note" || layout.documentType === "project_handover") && data.total_amount === 0) {
           return (
             <div
-              className="w-full h-full p-2.5 rounded text-xs select-text flex flex-col justify-center bg-slate-50 border"
+              className="w-full h-fit p-2.5 rounded text-xs select-text flex flex-col justify-center bg-slate-50 border"
               style={{
                 borderColor: elem.borderColor || colors.border,
                 ...elementAppearance(elem),
@@ -1308,7 +1308,7 @@ export default function DynamicDocumentRenderer({
 
         return (
           <div
-            className="w-full h-full overflow-hidden rounded select-text flex flex-col justify-start"
+            className="w-full h-fit overflow-hidden rounded select-text flex flex-col justify-start"
             style={{
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
