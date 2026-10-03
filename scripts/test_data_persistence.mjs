@@ -1,160 +1,251 @@
-ï»¿/**
- * Data Persistence Regression Tests â€” Dubai ERP
- * Tests that saved values survive load/reload and sample/test data
- * cannot silently overwrite saved records.
- *
- * Run: node scripts/test_data_persistence.mjs
- */
-import assert from "node:assert/strict";
-import test from "node:test";
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const ts = require('typescript');
 
-// ---------------------------------------------------------------------------
-// Helper mirrors (inline copies of lib/helpers.ts functions under test)
-// ---------------------------------------------------------------------------
-
-function fmtDate(iso) {
-  if (!iso) return "â€”";
-  const trimmed = iso.trim();
-  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) {
-    const y = parseInt(isoMatch[1], 10);
-    const m = parseInt(isoMatch[2], 10) - 1;
-    const d = parseInt(isoMatch[3], 10);
-    if (m >= 0 && m <= 11 && d >= 1 && d <= 31) {
-      return new Date(y, m, d).toLocaleDateString("en-GB");
-    }
-  }
-  const parsed = new Date(trimmed);
-  if (!isNaN(parsed.getTime())) return parsed.toLocaleDateString("en-GB");
-  return trimmed;
+// Transpile and load measurementTypes and measurementCalculations
+function loadTs(file) {
+  const source = fs.readFileSync(file, 'utf8');
+  const js = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
+  }).outputText;
+  const exports = {};
+  new Function('exports', 'require', js)(exports, require);
+  return exports;
 }
 
-function toISODate(dateVal) {
-  if (!dateVal) return null;
-  if (typeof dateVal === "string") {
-    const trimmed = dateVal.trim();
-    if (!trimmed) return null;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-    const d = new Date(trimmed);
-    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
-    return null;
-  }
-  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
-    return dateVal.toISOString().split("T")[0];
-  }
-  return null;
+const {
+  normalizeToMetres,
+  calculateMeasurementRow,
+  calculateSheetSummary,
+  REAL_PROJECT_PARKING_SHADE_TEST_ROWS
+} = loadTs('lib/helpers.ts');
+
+console.log('--- 1. Testing Automatic Unit Conversions ---');
+assert.equal(normalizeToMetres(12000, 'mm'), 12.0);
+assert.equal(normalizeToMetres(5560, 'mm'), 5.56);
+assert.equal(normalizeToMetres(1200, 'cm'), 12.0);
+assert.equal(normalizeToMetres(556, 'cm'), 5.56);
+assert.equal(normalizeToMetres(12, 'm'), 12.0);
+console.log('? Unit conversions normalize correctly (1000mm = 1m, 100cm = 1m)');
+
+console.log('--- 2. Testing Linear Length (m) ---');
+const linearRow = calculateMeasurementRow({
+  area_name: 'Test Pipe',
+  description: 'Fabrication Steel Tube',
+  calc_type: 'linear',
+  dim_unit: 'mm',
+  length_entered: 12000,
+  width_entered: 0,
+  quantity: 8,
+  pvc_length_edges: 0,
+  pvc_width_edges: 0,
+  pvc_centre_joints: 0,
+  rate: 10
+});
+assert.equal(linearRow.calculated_total, 96.0);
+assert.equal(linearRow.result_unit, 'm');
+assert.equal(linearRow.total_cost, 960.0);
+console.log('? Linear Length calculates Length × Quantity = 96.000 m');
+
+console.log('--- 3. Testing Area / Square Metre (m²) ---');
+const areaRow = calculateMeasurementRow({
+  area_name: 'Fabric Roof',
+  description: 'Canopy Cover',
+  calc_type: 'area',
+  dim_unit: 'mm',
+  length_entered: 12000,
+  width_entered: 5560,
+  quantity: 8,
+  pvc_length_edges: 0,
+  pvc_width_edges: 0,
+  pvc_centre_joints: 0,
+  rate: 25
+});
+assert.equal(areaRow.calculated_total, 533.76);
+assert.equal(areaRow.result_unit, 'm²');
+assert.equal(areaRow.total_cost, 13344.0);
+console.log('? Area calculates 12 × 5.56 × 8 = 533.760 m²');
+
+console.log('--- 4. Testing Perimeter (m) ---');
+const perimRow = calculateMeasurementRow({
+  area_name: 'Boundary',
+  description: 'Edge Trim',
+  calc_type: 'perimeter',
+  dim_unit: 'm',
+  length_entered: 12,
+  width_entered: 5.56,
+  quantity: 8,
+  pvc_length_edges: 0,
+  pvc_width_edges: 0,
+  pvc_centre_joints: 0,
+  rate: 0
+});
+assert.equal(perimRow.calculated_total, 280.96);
+assert.equal(perimRow.result_unit, 'm');
+console.log('? Perimeter calculates 2 × (12 + 5.56) × 8 = 280.960 m');
+
+console.log('--- 5. Testing Real Project PVC Edge + Centre Joint Test Cases ---');
+const realCalculated = REAL_PROJECT_PARKING_SHADE_TEST_ROWS.map(calculateMeasurementRow);
+
+// Area 1
+console.log(`Area 1: ${realCalculated[0].calculated_total.toFixed(3)} m (expected: 280.320 m)`);
+assert.equal(realCalculated[0].calculated_total, 280.32);
+assert.equal(realCalculated[0].result_unit, 'm');
+
+// Area 2
+console.log(`Area 2: ${realCalculated[1].calculated_total.toFixed(3)} m (expected: 376.320 m)`);
+assert.equal(realCalculated[1].calculated_total, 376.32);
+assert.equal(realCalculated[1].result_unit, 'm');
+
+// Area 3
+console.log(`Area 3: ${realCalculated[2].calculated_total.toFixed(3)} m (expected: 376.960 m)`);
+assert.equal(realCalculated[2].calculated_total, 376.96);
+assert.equal(realCalculated[2].result_unit, 'm');
+
+// Area 4
+console.log(`Area 4: ${realCalculated[3].calculated_total.toFixed(3)} m (expected: 376.960 m)`);
+assert.equal(realCalculated[3].calculated_total, 376.96);
+assert.equal(realCalculated[3].result_unit, 'm');
+
+// Grand Total
+const summary = calculateSheetSummary(realCalculated);
+console.log(`GRAND TOTAL LINEAR METRES: ${summary.totalLinearM.toFixed(3)} m (expected: 1410.560 m)`);
+console.log(`TOTAL PIECES: ${summary.totalPieces} pcs (expected: 30 pcs)`);
+console.log(`TOTAL COST: AED ${summary.totalCostAED.toFixed(2)} (expected: AED 7,052.80)`);
+
+assert.equal(summary.totalLinearM, 1410.56);
+assert.equal(summary.totalPieces, 30);
+assert.equal(summary.totalAreaM2, 0); // Must NOT be m²
+assert.equal(summary.totalCostAED, 7052.80);
+console.log('? EXACT 1,410.560 m REPRODUCED SUCCESSFULLY!');
+
+console.log('--- 6. Testing Configurable PVC Joints ---');
+const configJointRow = calculateMeasurementRow({
+  area_name: 'Double Joint Bay',
+  description: 'Special Canopy',
+  calc_type: 'pvc_edge_joint',
+  dim_unit: 'm',
+  length_entered: 10,
+  width_entered: 5,
+  quantity: 1,
+  pvc_length_edges: 2,
+  pvc_width_edges: 2,
+  pvc_centre_joints: 2, // 2 length + 2 centre joints = 4L
+  rate: 0
+});
+// 4L + 2W = 4*10 + 2*5 = 40 + 10 = 50 m
+assert.equal(configJointRow.calculated_total, 50.0);
+console.log('? Configurable PVC joints calculate correctly (4L + 2W = 50.000 m)');
+
+console.log('--- 7. Testing Variable Width (Trapezoid) ---');
+const varWidthArea = calculateMeasurementRow({
+  area_name: 'Tapered Bay',
+  description: 'Trapezoidal Section',
+  calc_type: 'area',
+  dim_unit: 'm',
+  length_entered: 10,
+  width_entered: 4,
+  width2_entered: 6,
+  is_variable_width: true,
+  quantity: 2,
+  pvc_length_edges: 0,
+  pvc_width_edges: 0,
+  pvc_centre_joints: 0,
+  rate: 20
+});
+// avg width = (4 + 6) / 2 = 5m. Area = 10 * 5 * 2 = 100 m²
+assert.equal(varWidthArea.calculated_total, 100.0);
+assert.equal(varWidthArea.result_unit, 'm²');
+console.log('? Variable width calculates trapezoidal average width correctly (100.000 m²)');
+
+console.log('--- 8. Testing Unit Safety (No mixing m with m²) ---');
+const mixedRows = [
+  realCalculated[0], // 280.320 m
+  areaRow            // 533.760 m²
+];
+const mixedSummary = calculateSheetSummary(mixedRows);
+assert.equal(mixedSummary.hasMixedUnits, true);
+assert.equal(mixedSummary.totalLinearM, 280.32);
+assert.equal(mixedSummary.totalAreaM2, 533.76);
+// Unit breakdown has separate entries
+assert.equal(mixedSummary.unitBreakdown.length, 2);
+console.log('? Unit safety enforced: Linear (280.320 m) and Area (533.760 m²) kept separate');
+
+console.log('--- 9. Testing Database Migration with PGlite ---');
+const { PGlite } = await import('@electric-sql/pglite');
+const db = new PGlite();
+
+// Mock base Supabase schema
+await db.exec(`
+  CREATE ROLE anon;
+  CREATE ROLE authenticated;
+  CREATE SCHEMA IF NOT EXISTS auth;
+  CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT '00000000-0000-0000-0000-000000000001'::uuid $$;
+  CREATE TABLE public.companies(id uuid PRIMARY KEY, owner_id uuid);
+  CREATE TABLE public.profiles(id uuid PRIMARY KEY, company_id uuid);
+  CREATE TABLE public.customers(id uuid PRIMARY KEY, name text);
+  CREATE TABLE public.projects(id uuid PRIMARY KEY, name text);
+`);
+
+const migrationSql = fs.readFileSync('supabase/migrations/20261004000000_measurement_estimation.sql', 'utf8');
+await db.exec(migrationSql);
+
+// Test inserting into measurement_projects and measurement_items
+const compId = '10000000-0000-0000-0000-000000000001';
+await db.query(`
+  INSERT INTO public.measurement_projects (id, company_id, sheet_number, title, status)
+  VALUES ('20000000-0000-0000-0000-000000000001', '${compId}', 'MS-2026-0001', 'Parking Shade PVC', 'draft')
+`);
+
+for (const row of realCalculated) {
+  await db.query(`
+    INSERT INTO public.measurement_items (
+      sheet_id, company_id, area_name, description, calc_type, dim_unit,
+      length_entered, width_entered, length_m, width_m, quantity,
+      pvc_length_edges, pvc_width_edges, pvc_centre_joints,
+      per_piece_result, calculated_total, result_unit, rate, total_cost
+    ) VALUES (
+      '20000000-0000-0000-0000-000000000001', '${compId}', $1, $2, $3, $4,
+      $5, $6, $7, $8, $9,
+      $10, $11, $12,
+      $13, $14, $15, $16, $17
+    )
+  `, [
+    row.area_name, row.description, row.calc_type, row.dim_unit,
+    row.length_entered, row.width_entered, row.length_m, row.width_m, row.quantity,
+    row.pvc_length_edges, row.pvc_width_edges, row.pvc_centre_joints,
+    row.per_piece_result, row.calculated_total, row.result_unit, row.rate, row.total_cost
+  ]);
 }
 
-function calcLineItem(qty, unitPrice, discountPct, vatRate) {
-  const q = Number(qty) || 0;
-  const p = Number(unitPrice) || 0;
-  const d = Math.max(0, Math.min(100, Number(discountPct) || 0));
-  const v = Math.max(0, Number(vatRate) || 0);
-  const gross = Math.round(q * p * 100) / 100;
-  const discountAmt = Math.round(gross * (d / 100) * 100) / 100;
-  const taxable = Math.max(0, Math.round((gross - discountAmt) * 100) / 100);
-  const vatAmount = Math.round(taxable * (v / 100) * 100) / 100;
-  const lineTotal = Math.round((taxable + vatAmount) * 100) / 100;
-  return { taxable, vatAmount, lineTotal, gross, discountAmt };
-}
+const dbSumRes = await db.query(`
+  SELECT sum(calculated_total) as grand_linear, sum(quantity) as grand_qty, sum(total_cost) as grand_cost
+  FROM public.measurement_items
+  WHERE sheet_id = '20000000-0000-0000-0000-000000000001'
+`);
 
-// ---------------------------------------------------------------------------
-// SUITE 1: Date timezone safety
-// ---------------------------------------------------------------------------
-test("fmtDate YYYY-MM-DD must not shift day due to UTC midnight parsing", () => {
-  const r = fmtDate("2026-09-01");
-  assert.equal(r, "01/09/2026", `Expected 01/09/2026 but got ${r}`);
+assert.equal(Number(dbSumRes.rows[0].grand_linear), 1410.56);
+assert.equal(Number(dbSumRes.rows[0].grand_qty), 30);
+console.log('--- 10. Testing Rate Calculation (58 AED/m -> AED 16,258.56) ---');
+const area1At58 = calculateMeasurementRow({
+  ...REAL_PROJECT_PARKING_SHADE_TEST_ROWS[0], // Area 1: 280.320 m
+  rate: 58
 });
-test("fmtDate null/empty returns dash", () => {
-  assert.equal(fmtDate(null), "â€”");
-  assert.equal(fmtDate(""), "â€”");
-});
-test("toISODate YYYY-MM-DD passthrough without mutation", () => {
-  assert.equal(toISODate("2026-09-15"), "2026-09-15");
-  assert.equal(toISODate("2026-01-01"), "2026-01-01");
-});
-test("toISODate null/empty returns null", () => {
-  assert.equal(toISODate(null), null);
-  assert.equal(toISODate(""), null);
-});
+assert.equal(area1At58.calculated_total, 280.32);
+assert.equal(area1At58.rate, 58);
+assert.equal(area1At58.total_cost, 16258.56);
+console.log(`? 280.320 m × AED 58/m = AED ${area1At58.total_cost.toFixed(2)} (Expected: AED 16,258.56)`);
 
-// ---------------------------------------------------------------------------
-// SUITE 2: Numeric precision
-// ---------------------------------------------------------------------------
-test("calcLineItem 5% VAT on round amount no floating point drift", () => {
-  const { taxable, vatAmount, lineTotal } = calcLineItem(1, 1000, 0, 5);
-  assert.equal(taxable, 1000); assert.equal(vatAmount, 50); assert.equal(lineTotal, 1050);
+// Decimal rate 58.50
+const area1At58_5 = calculateMeasurementRow({
+  ...REAL_PROJECT_PARKING_SHADE_TEST_ROWS[0],
+  rate: 58.50
 });
-test("calcLineItem discount reduces taxable before VAT", () => {
-  const { taxable, vatAmount, lineTotal } = calcLineItem(1, 1000, 10, 5);
-  assert.equal(taxable, 900); assert.equal(vatAmount, 45); assert.equal(lineTotal, 945);
-});
-test("calcLineItem zero VAT produces zero vatAmount", () => {
-  assert.equal(calcLineItem(5, 200, 0, 0).vatAmount, 0);
-});
-test("calcLineItem stored values survive recalc round-trip", () => {
-  const a = calcLineItem(12, 5360, 0, 5);
-  const b = calcLineItem(12, 5360, 0, 5);
-  assert.deepEqual(a, b);
-});
+assert.equal(area1At58_5.total_cost, 16398.72);
+console.log(`? Decimal rate 58.50: 280.320 m × AED 58.50/m = AED ${area1At58_5.total_cost.toFixed(2)}`);
 
-// ---------------------------------------------------------------------------
-// SUITE 3: Measurement test data injection guard
-// ---------------------------------------------------------------------------
-test("loadSheetItems empty result produces empty rawRows not test data", () => {
-  function simulateLoad(items) {
-    if (items && items.length > 0) return items;
-    return []; // fixed: was REAL_PROJECT_PARKING_SHADE_TEST_ROWS
-  }
-  assert.equal(simulateLoad([]).length, 0);
-  assert.equal(simulateLoad([{ area_name: "Saved" }]).length, 1);
-});
-test("handleLoadRealTestCases cancelled when user declines confirmation", () => {
-  function simulate(rows, confirm) {
-    if (rows.length > 0 && !confirm()) return "cancelled";
-    return "loaded";
-  }
-  assert.equal(simulate([{ x: 1 }, { x: 2 }], () => false), "cancelled");
-  assert.equal(simulate([], () => false), "loaded");
-  assert.equal(simulate([{ x: 1 }], () => true), "loaded");
-});
+console.log('\nALL 10 MEASUREMENT CALCULATION & DATABASE TESTS PASSED!');
 
-// ---------------------------------------------------------------------------
-// SUITE 4: Payslips deduction mapping
-// ---------------------------------------------------------------------------
-test("payslip absence + leave deductions are summed", () => {
-  const r = { absence_deduction: 150, leave_deduction: 75, other_deductions: 200, loan_deduction: 300, total_deductions: 725, gross_salary: 5000, net_salary: 4275 };
-  const absence = (Number(r.absence_deduction)||0) + (Number(r.leave_deduction)||0);
-  const other = (Number(r.other_deductions)||0) + (Number(r.loan_deduction)||0);
-  const total = Number(r.total_deductions) || ((Number(r.gross_salary)||0) - (Number(r.net_salary)||0));
-  assert.equal(absence, 225);
-  assert.equal(other, 500);
-  assert.equal(total, 725);
-});
-test("payslip status uses stored value not hardcoded string", () => {
-  const get = (r) => r.status || "paid";
-  assert.equal(get({ status: "approved" }), "approved");
-  assert.equal(get({ status: "paid" }), "paid");
-  assert.equal(get({ status: null }), "paid");
-});
 
-// ---------------------------------------------------------------------------
-// SUITE 5: Supplier statements table
-// ---------------------------------------------------------------------------
-test("supplier statement uses supplier_payments not payments table", () => {
-  const TABLE = "supplier_payments";
-  assert.notEqual(TABLE, "payments");
-  assert.equal(TABLE, "supplier_payments");
-});
-
-// ---------------------------------------------------------------------------
-// SUITE 6: Offline fallback empty sheet
-// ---------------------------------------------------------------------------
-test("initializeFallbackData offline mode starts with empty rows", () => {
-  function simulate() { return { rawRows: [], error: "Database unavailable â€” working in offline mode." }; }
-  const s = simulate();
-  assert.equal(s.rawRows.length, 0);
-  assert.ok(s.error.includes("offline"));
-});
-
-console.log("\nâœ… All data persistence regression tests passed.\n");

@@ -1,0 +1,21 @@
+warning: in the working copy of 'scripts/test_data_persistence.mjs', LF will be replaced by CRLF the next time Git touches it
+ app/globals.css                                   |  22 [32m+[m[31m-[m
+ app/inventory/stock-in/page.tsx                   |   4 [32m+[m[31m-[m
+ app/inventory/stock-out/page.tsx                  |   4 [32m+[m[31m-[m
+ app/layout.tsx                                    |   2 [32m+[m[31m-[m
+ app/projects/costing/page.tsx                     |  24 [32m+[m[31m-[m
+ app/reports/cheques/page.tsx                      |  14 [32m+[m[31m-[m
+ app/reports/inventory/page.tsx                    |  20 [32m+[m[31m-[m
+ app/reports/purchases/page.tsx                    |  18 [32m+[m[31m-[m
+ app/reports/sales/page.tsx                        |  18 [32m+[m[31m-[m
+ app/reports/vat/page.tsx                          |  20 [32m+[m[31m-[m
+ app/settings/page.tsx                             |   2 [32m+[m[31m-[m
+ components/ERPLayout.tsx                          |  52 [32m+[m[31m--[m
+ components/documents/DynamicDocumentRenderer.tsx  |   6 [32m+[m[31m-[m
+ components/documents/MeasurementSheetTemplate.tsx |   2 [32m+[m[31m-[m
+ lib/documentCloud.ts                              |  30 [32m+[m[31m-[m
+ lib/documentDesigner.ts                           |  34 [32m+[m[31m-[m
+ lib/documentLayoutEngine.ts                       |  10 [32m+[m[31m-[m
+ scripts/test_data_persistence.mjs                 | 377 [32m++++++++++++++[m[31m--------[m
+ scripts/test_document_cloud.mjs                   |   6 [32m+[m[31m-[m
+ 19 files changed, 378 insertions(+), 287 deletions(-)
