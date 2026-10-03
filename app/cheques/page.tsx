@@ -20,7 +20,7 @@ import {
   fetchChequeById, uploadChequeDocument, getChequeDocumentSignedUrl
 } from "@/lib/chequeService";
 import { openWhatsApp, generateChequeWhatsAppMessage } from "@/lib/whatsappUtils";
-import { printCurrentDocument } from "@/lib/print";
+import PrintModal from "@/components/documents/PrintModal";
 import ChequePrintTemplate from "@/components/cheques/ChequePrintTemplate";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
@@ -1463,39 +1463,12 @@ export default function ChequeRegisterPage() {
         </div>
       )}
 
-      {/* PRINT MODAL (Pixel-Perfect A4) */}
+      {/* The shared portal keeps the voucher outside hidden screen ancestors. */}
       {printCheque && (
-        <div className="print-modal-container fixed inset-0 z-50 flex flex-col bg-slate-900/80 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:m-0 print:bg-white print:static print:inset-auto">
-          <div className="no-print mx-auto my-4 max-w-4xl w-full flex items-center justify-between bg-slate-900 text-white p-3 rounded-t-xl print:hidden">
-            <span className="font-bold text-sm">Print Cheque Voucher (A4)</span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => printCurrentDocument()}
-                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition-colors shadow-sm"
-              >
-                <Printer size={14} /> Print Document (A4)
-              </button>
-              <button
-                type="button"
-                onClick={() => setPrintCheque(null)}
-                className="rounded p-1 text-slate-400 hover:text-white"
-              >
-                <X size={18} />
-              </button>
-            </div>
-          </div>
-
-          <div className="mx-auto w-fit bg-transparent print:w-[210mm] print:m-0 print:p-0 shadow-2xl print:shadow-none">
-            <ChequePrintTemplate
-              mode="voucher"
-              company={company}
-              cheque={printCheque}
-            />
-          </div>
-        </div>
+        <PrintModal isOpen={true} onClose={() => setPrintCheque(null)}>
+          <ChequePrintTemplate mode="voucher" company={company} cheque={printCheque} />
+        </PrintModal>
       )}
-
       {/* WHATSAPP REMINDER DISPATCH MODAL */}
       {whatsAppModalCheque && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
