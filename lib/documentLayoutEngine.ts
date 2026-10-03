@@ -277,17 +277,23 @@ function followerHeight(element: LayoutElement, scale: number): number {
 }
 
 /** Pack saved rows without treating full-width cards as a separate left column. */
-function packContentRows(elements: LayoutElement[], startY: number, gap: number, scale: number) {
+function packContentRows(elements: LayoutElement[], startY: number, gap: number, scale: number, signaturesLast = false) {
   const positions = new Map<string, { y: number; height: number }>();
   const rows: LayoutElement[][] = [];
-  for (const element of [...elements].sort((a, b) => a.y - b.y)) {
-    const row = rows.find((candidate) => Math.abs(candidate[0].y - element.y) < 5);
+  const isSignature = (element: LayoutElement) => ["company_signature", "company_stamp"].includes(element.type);
+  for (const element of [...elements].sort((a, b) =>
+    (signaturesLast ? Number(isSignature(a)) - Number(isSignature(b)) : 0) || a.y - b.y)) {
+    const row = rows.find((candidate) => Math.abs(candidate[0].y - element.y) < 5 &&
+      (!signaturesLast || isSignature(candidate[0]) === isSignature(element)));
     if (row) row.push(element);
     else rows.push([element]);
   }
   const placed: { element: LayoutElement; bottom: number }[] = [];
   for (const row of rows) {
     let y = startY;
+    if (signaturesLast && row.some(isSignature) && placed.length) {
+      y = Math.max(y, ...placed.filter((previous) => !isSignature(previous.element)).map((previous) => previous.bottom + gap));
+    }
     for (const element of row) {
       for (const previous of placed) {
         if (element.x < previous.element.x + previous.element.width && element.x + element.width > previous.element.x) {
@@ -763,7 +769,7 @@ export function computeEffectiveLayout(
       element.type !== "footer" && !body.includes(element) && element.y < firstBodyY);
     const headerBottom = headers.length ? Math.max(...headers.map((element) => element.y +
       (["customer_info", "supplier_info", "project_info"].includes(element.type) ? Math.max(element.height, fitProfile.partyInfoHeight || 0) : element.height))) : firstBodyY - 3;
-    followerMap = packContentRows(body, headerBottom + 3, 3, 1);
+    followerMap = packContentRows(body, headerBottom + 3, 3, 1, true);
   }
 
   // Check if header compaction is active (table shifted upwards to fit single A4 page)
