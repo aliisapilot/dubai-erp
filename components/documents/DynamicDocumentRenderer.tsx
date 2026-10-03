@@ -1092,12 +1092,12 @@ export default function DynamicDocumentRenderer({
                         else if (col.key === "discount") val = (item.discount || 0).toFixed(2);
                         else if (col.key === "vat_amount") val = Number(item.vat_amount).toFixed(2);
                         else if (col.key === "line_total") val = Number(item.line_total).toFixed(2);
-                        else if (col.key === "date") val = item.date || "";
+                        else if (col.key === "date") val = item.date ? (/^\d{4}-\d{2}-\d{2}/.test(item.date) ? fmtDate(item.date) : item.date) : "—";
                         else if (col.key === "type") val = item.type || "";
                         else if (col.key === "reference") val = item.reference || "";
-                        else if (col.key === "debit") val = item.debit ? Number(item.debit).toFixed(2) : "";
-                        else if (col.key === "credit") val = item.credit ? Number(item.credit).toFixed(2) : "";
-                        else if (col.key === "balance") val = item.balance ? Number(item.balance).toFixed(2) : "";
+                        else if (col.key === "debit") val = item.debit ? Number(item.debit).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
+                        else if (col.key === "credit") val = item.credit ? Number(item.credit).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
+                        else if (col.key === "balance") val = item.balance == null ? "—" : Number(item.balance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                         else if (col.key === "area_name") val = item.area_name || `Area ${firstItemIndex + idx + 1}`;
                         else if (col.key === "dimensions") val = item.dimensions || "—";
                         else if (col.key === "calc_type") val = item.calc_type_formula || item.calc_type || "—";
