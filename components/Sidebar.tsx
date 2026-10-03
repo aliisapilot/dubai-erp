@@ -397,7 +397,7 @@ export default function Sidebar() {
               <SubLink href="/reports/purchases" icon={<ShoppingBag size={14} />} label="Purchase Reports" />
               <SubLink href="/reports/customer-statements" icon={<FileSpreadsheet size={14} />} label="Customer Statements" />
               <SubLink href="/reports/supplier-statements" icon={<Truck size={14} />} label="Supplier Statements" />
-              <SubLink href="/reports/vat" icon={<FileCheck2 size={14} />} label="VAT Reports (FTA 201)" />
+              <SubLink href="/reports/vat" icon={<FileCheck2 size={14} />} label="VAT Summary" />
               <SubLink href="/reports/inventory" icon={<Package size={14} />} label="Inventory Reports" />
               <SubLink href="/reports/project-profitability" icon={<TrendingUp size={14} />} label="Project Profitability" />
               <SubLink href="/reports/payroll" icon={<BarChart3 size={14} />} label="Payroll Reports" />
