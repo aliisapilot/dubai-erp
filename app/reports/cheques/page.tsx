@@ -1,4 +1,5 @@
 "use client";
+import ReportLoadState from "@/components/ReportLoadState";
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
@@ -33,7 +34,10 @@ export default function ChequeReportsPage() {
   // Print Mode
   const [printOpen, setPrintOpen] = useState(false);
 
+  const [loadError, setLoadError] = useState("");
+
   async function loadAll() {
+    setLoadError("");
     await Promise.resolve();
     setLoading(true);
     try {
@@ -42,6 +46,7 @@ export default function ChequeReportsPage() {
       if (co) setCompany(co as CompanyDocInfo);
     } catch (err) {
       console.error("Failed to load cheques for reports:", err);
+      setLoadError(err instanceof Error ? err.message : "Could not load cheques.");
     } finally {
       setLoading(false);
     }
@@ -179,6 +184,8 @@ export default function ChequeReportsPage() {
     link.click();
     document.body.removeChild(link);
   }
+
+  if (loading || loadError) return <ReportLoadState loading={loading} error={loadError} onRetry={() => void loadAll()} />;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900 pb-16">

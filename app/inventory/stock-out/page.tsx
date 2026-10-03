@@ -121,6 +121,8 @@ function StockOutForm() {
       const newStock = prevStock - qtyNum;
       const costVal = Number(prodData.cost_price || 0);
 
+      const refNo = referenceNumber.trim() || await generateDocNumber(companyId, "GIN");
+
       // Update product current stock
       const { error: updateErr } = await supabase
         .from("products")
@@ -129,7 +131,7 @@ function StockOutForm() {
 
       if (updateErr) throw updateErr;
 
-      const refNo = referenceNumber.trim() || await generateDocNumber(companyId, "GIN");
+
 
       // Log movement
       const { error: moveErr } = await supabase

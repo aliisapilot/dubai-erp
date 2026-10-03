@@ -1,4 +1,5 @@
 "use client";
+import ReportLoadState from "@/components/ReportLoadState";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -15,7 +16,12 @@ export default function PurchasesReportPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
   async function loadPurchasingData() {
+    setLoading(true);
+    setLoadError("");
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -31,9 +37,10 @@ export default function PurchasesReportPage() {
 
       setBills((billRes.data || []) as SupplierBillRow[]);
     } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Please try again.");
       console.error("Error loading purchases report:", err);
     } finally {
-      // The report remains usable with an empty result when the query fails.
+      setLoading(false);
     }
   }
 
@@ -53,6 +60,8 @@ export default function PurchasesReportPage() {
   const totalBillVat = filteredBills.reduce((acc, b) => acc + (Number(b.vat_amount) || 0), 0);
   const totalPaid = filteredBills.reduce((acc, b) => acc + (Number(b.paid_amount) || 0), 0);
   const totalDue = filteredBills.reduce((acc, b) => acc + (Number(b.balance_due) || 0), 0);
+
+  if (loading || loadError) return <ReportLoadState loading={loading} error={loadError} onRetry={() => void loadPurchasingData()} />;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6" data-print-root>

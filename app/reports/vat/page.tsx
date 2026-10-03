@@ -1,7 +1,9 @@
 "use client";
+import ReportLoadState from "@/components/ReportLoadState";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { printCurrentDocument } from "@/lib/print";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId, getCurrentCompany } from "@/lib/helpers";
 import {
@@ -20,7 +22,12 @@ export default function VatReportPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
   async function loadVatData() {
+    setLoading(true);
+    setLoadError("");
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -39,9 +46,10 @@ export default function VatReportPage() {
       setExpenses((expRes.data || []).filter(e => (e.status || "").toLowerCase() !== "rejected"));
       if (co) setCompany(co as CompanyDocInfo);
     } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Please try again.");
       console.error("Error loading VAT data:", err);
     } finally {
-      // The report remains usable with an empty result when the query fails.
+      setLoading(false);
     }
   }
 
@@ -86,6 +94,8 @@ export default function VatReportPage() {
   const netVatPayable = box1Vat - box9Vat;
   const isPayable = netVatPayable >= 0;
 
+  if (loading || loadError) return <ReportLoadState loading={loading} error={loadError} onRetry={() => void loadVatData()} />;
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
@@ -102,18 +112,18 @@ export default function VatReportPage() {
               <span className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700">
                 <ShieldCheck size={20} />
               </span>
-              UAE FTA VAT Return (Form 201) Summary
+              UAE VAT Summary
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5">Official Federal Tax Authority compliant Output Tax, Input Tax &amp; Net VAT position</p>
+            <p className="text-sm text-slate-500 mt-0.5">Internal sales VAT, purchase VAT, expense VAT, and net position for the selected period</p>
           </div>
         </div>
 
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={() => void printCurrentDocument()}
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm font-medium transition-colors"
         >
-          <Printer size={15} /> Print Return
+          <Printer size={15} /> Print Summary
         </button>
       </div>
 
@@ -121,9 +131,9 @@ export default function VatReportPage() {
       <div className="bg-slate-900 text-white p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Taxable Person Details</p>
-          <h2 className="text-xl font-bold mt-0.5">{company?.name || "Your Company LLC"}</h2>
+          <h2 className="text-xl font-bold mt-0.5">{company?.name || "Company details unavailable"}</h2>
           <p className="text-xs text-slate-400 mt-0.5 font-mono">
-            Tax Registration Number (TRN): <span className="text-white font-bold">{company?.trn || "100XXXXXXXXX003"}</span>
+            Tax Registration Number (TRN): <span className="text-white font-bold">{company?.trn || "Not provided"}</span>
           </p>
         </div>
         <div className="text-right">
@@ -194,10 +204,10 @@ export default function VatReportPage() {
             <tr className="bg-slate-50/50">
               <td className="px-4 py-3 font-mono text-slate-400">Box 2 - 8</td>
               <td className="px-4 py-3 text-slate-400">
-                Zero-rated, exempt &amp; supplies subject to reverse charge provisions
+                Other tax categories are not broken down in this summary
               </td>
-              <td className="px-4 py-3 text-right font-mono text-slate-400">0.00</td>
-              <td className="px-4 py-3 text-right font-mono text-slate-400">0.00</td>
+              <td className="px-4 py-3 text-right font-mono text-slate-400">—</td>
+              <td className="px-4 py-3 text-right font-mono text-slate-400">—</td>
             </tr>
           </tbody>
         </table>

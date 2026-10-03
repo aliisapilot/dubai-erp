@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import ReportLoadState from "@/components/ReportLoadState";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { BarChart3, Loader2 } from "lucide-react";
 import { fmtAED } from "@/lib/helpers";
@@ -16,21 +17,35 @@ export default function PayrollSummaryPage() {
   const [month, setMonth] = useState(now.getMonth()+1);
   const [loading, setLoading] = useState(true);
 
+  const [loadError, setLoadError] = useState("");
+  const [loadedPeriod, setLoadedPeriod] = useState("");
+  const requestVersion = useRef(0);
+
   async function load() {
+    const version = ++requestVersion.current;
+    setLoadError("");
+    try {
     setLoading(true);
     const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
-    const [{ data: ss }, { data: emps }] = await Promise.all([
+    const [{ data: ss, error: salaryError }, { data: emps, error: employeeError }] = await Promise.all([
       supabase.from("salary_statements").select("*").gte("payroll_month", startDate).lte("payroll_month", endDate),
       supabase.from("employees").select("id, first_name").order("first_name"),
     ]);
+    if (salaryError || employeeError) throw new Error((salaryError || employeeError)!.message);
+    if (version !== requestVersion.current) return;
+    setLoadedPeriod(`${year}-${month}`);
     setRecords((ss || []) as SS[]);
     const em: Record<string, Employee> = {};
     (emps || []).forEach((e: Employee) => { em[e.id] = e; });
     setEmpMap(em);
-    setLoading(false);
+    } catch (err) {
+      if (version === requestVersion.current) { setLoadError(err instanceof Error ? err.message : "Could not load payroll."); setLoadedPeriod(`${year}-${month}`); }
+    } finally {
+      if (version === requestVersion.current) setLoading(false);
+    }
   }
 
   // The selected payroll period is the complete refresh key.
@@ -43,6 +58,8 @@ export default function PayrollSummaryPage() {
   const totalNet = records.reduce((s,r) => s + (r.net_salary||0), 0);
   const finalized = records.filter(r => ["paid", "approved", "Finalized", "Paid", "Approved"].includes(r.status || "")).length;
   const draft = records.filter(r => !["paid", "approved", "Finalized", "Paid", "Approved"].includes(r.status || "")).length;
+
+  if (loading || loadedPeriod !== `${year}-${month}` || loadError) return <ReportLoadState loading={loading || loadedPeriod !== `${year}-${month}`} error={loadError} onRetry={() => void load()} />;
 
   return (
     <main className="min-h-screen bg-slate-50">

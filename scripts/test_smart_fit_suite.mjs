@@ -415,10 +415,19 @@ for (const count of TEST_COUNTS) {
   const layout = createStandardInvoiceLayout();
   const plan = computePaginationPlan(layout, count, items);
   const fit = plan.fitProfile;
-  const effective = computeEffectiveLayout(layout, count, plan.isSinglePage, 1, plan.totalPages, items);
 
   const docNumber = `INV-2026-${String(count).padStart(4, "0")}`;
-  const html = buildHtmlDocument(layout, effective, items, docNumber);
+  // Render every planned page instead of silently clipping all rows into one sheet.
+  const pages = plan.pageItemRanges.map(range => {
+    const rows = items.slice(range.startIndex, range.endIndex);
+    const pageLayout = computeEffectiveLayout(layout, rows.length, range.isLastPage, range.pageNumber, plan.totalPages, rows);
+    return buildHtmlDocument(layout, pageLayout, rows, docNumber);
+  });
+  const bodies = pages.map(page => page.match(/<body>([\s\S]*?)<\/body>/)[1]).join('');
+  const html = pages[0].replace(/<body>[\s\S]*?<\/body>/, '<body>' + bodies + '</body>')
+    .replace('</style>', 'html, body { height: auto !important; overflow: visible !important; } .dynamic-document-page { break-after: page; } .dynamic-document-page:last-child { break-after: auto; }</style>');
+  assert.equal(plan.pageItemRanges.reduce((sum, range) => sum + range.itemCount, 0), count, 'Every item must be allocated');
+  for (const item of items) assert.equal(html.split(item.description).length - 1, 1, 'Every item must render exactly once');
 
   const htmlPath = join(OUT_DIR, `invoice_${count}_items.html`);
   const pdfPath = join(OUT_DIR, `invoice_${count}_items.pdf`);
@@ -441,6 +450,7 @@ for (const count of TEST_COUNTS) {
     "--headless=new",
     "--disable-gpu",
     "--window-size=794,1123",
+    "--hide-scrollbars",
     `--screenshot=${pngPath}`,
     htmlPath,
   ]);
@@ -468,15 +478,15 @@ for (const count of TEST_COUNTS) {
     passed: false,
   };
 
-  if (count <= 30) {
-    // Must fit on exactly 1 page
+  if (plan.isSinglePage) {
+    // One-page plans must really print as one page.
     const fitsOnePage = printedPageCount === 1 && plan.totalPages === 1 && fit.fits === true;
     const readable = fit.fontSize >= 7.0 && fit.rowHeight >= 4.5;
     const safeBounds = fit.totalContentBottom <= 273.0;
     result.passed = fitsOnePage && readable && safeBounds && isTopGold && isBottomNavy;
   } else {
-    // 40 items: must cleanly paginate to multi-page with warning
-    const cleanlyPaginated = plan.totalPages > 1 && fit.fits === false;
+    // Preserve readable text when a saved layout needs multiple pages.
+    const cleanlyPaginated = plan.totalPages > 1 && printedPageCount === plan.totalPages && fit.fits === false;
     const hasWarning = Boolean(fit.warning || plan.warning);
     result.passed = cleanlyPaginated && hasWarning && isTopGold && isBottomNavy;
   }

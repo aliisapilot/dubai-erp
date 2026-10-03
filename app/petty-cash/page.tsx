@@ -3,7 +3,7 @@
 import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, getCurrentCompany, generateDocNumber } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, generateDocNumber, todayISO } from "@/lib/helpers";
 import {
   Wallet, Search, ArrowLeft, ArrowDownRight, ArrowUpRight,
   Loader2, X, Trash2, CheckCircle2, Printer
@@ -50,7 +50,7 @@ export default function PettyCashPage() {
   // Modal
   const [showModal, setShowModal] = useState(false);
   const [txType, setTxType] = useState<"DISBURSEMENT" | "REPLENISHMENT">("DISBURSEMENT");
-  const [formDate, setFormDate] = useState(new Date().toISOString().split("T")[0]);
+  const [formDate, setFormDate] = useState(todayISO());
   const [formPayee, setFormPayee] = useState("");
   const [formCategory, setFormCategory] = useState(PETTY_CATEGORIES[0]);
   const [formAmount, setFormAmount] = useState("");
@@ -97,7 +97,7 @@ export default function PettyCashPage() {
 
   function handleOpenCreate(type: "DISBURSEMENT" | "REPLENISHMENT") {
     setTxType(type);
-    setFormDate(new Date().toISOString().split("T")[0]);
+    setFormDate(todayISO());
     setFormPayee(type === "REPLENISHMENT" ? "Bank Cash Withdrawal (Company Account)" : "");
     setFormCategory(type === "REPLENISHMENT" ? "Bank Cash Withdrawal (Replenishment)" : PETTY_CATEGORIES[0]);
     setFormAmount("");

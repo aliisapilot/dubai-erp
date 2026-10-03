@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, getCurrentCompany, parsePayrollMonth } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, parsePayrollMonth, todayISO } from "@/lib/helpers";
 import {
   FileCheck2, Search, ArrowLeft, Printer, Banknote
 } from "lucide-react";
@@ -92,7 +92,7 @@ export default function EmployeePaymentVouchersPage() {
 
     setActiveVoucher({
       voucher_number: voucherNo,
-      voucher_date: ss.payment_date || new Date().toISOString().split("T")[0],
+      voucher_date: ss.payment_date || todayISO(),
       employee_name: emp?.first_name || "Employee",
       employee_id: emp?.employee_number || "-",
       designation: emp?.designation || "-",

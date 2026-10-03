@@ -75,7 +75,7 @@ export default function PurchaseOrdersPage() {
       quantity: Number(it.quantity) || 1,
       unit: it.unit || "Nos",
       unit_price: Number(it.unit_price) || 0,
-      vat_rate: Number(it.vat_rate) || 5,
+      vat_rate: Number(it.vat_rate ?? 5),
       vat_amount: Number(it.vat_amount) || 0,
       line_total: Number(it.line_total) || 0,
     }));
@@ -127,7 +127,7 @@ export default function PurchaseOrdersPage() {
     const { data: items } = await supabase.from("purchase_order_items").select("*").eq("purchase_order_id", po.id).order("sort_order");
     // Map DB discount_percent → UI discount_pct
     type DBPOItem = { id?: string; purchase_order_id?: string; product_id?: string; description?: string; quantity?: number; unit_price?: number; discount_percent?: number; vat_rate?: number; line_total?: number; vat_amount?: number; sort_order?: number };
-    setLines((items||[]).length>0?(items as DBPOItem[]).map(it => ({ product_id: it.product_id||"", description: it.description||"", quantity: Number(it.quantity)||1, unit_price: Number(it.unit_price)||0, discount_pct: Number(it.discount_percent??0), vat_rate: Number(it.vat_rate)||5, line_total: Number(it.line_total)||0, vat_amount: Number(it.vat_amount)||0, sort_order: Number(it.sort_order)||0 })):[emptyLine()]);
+    setLines((items||[]).length>0?(items as DBPOItem[]).map(it => ({ product_id: it.product_id||"", description: it.description||"", quantity: Number(it.quantity)||1, unit_price: Number(it.unit_price)||0, discount_pct: Number(it.discount_percent??0), vat_rate: Number(it.vat_rate ?? 5), line_total: Number(it.line_total)||0, vat_amount: Number(it.vat_amount)||0, sort_order: Number(it.sort_order)||0 })):[emptyLine()]);
     setShowForm(true);
   }
   async function openView(po: PO) { const { data: items } = await supabase.from("purchase_order_items").select("*").eq("purchase_order_id", po.id).order("sort_order"); setViewing({ po, lines: (items||[]) as POLine[] }); }

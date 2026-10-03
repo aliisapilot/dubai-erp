@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, getCurrentCompany } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, todayISO } from "@/lib/helpers";
 import {
   FileText, Search, ArrowLeft, Printer, ExternalLink, Plus
 } from "lucide-react";
@@ -267,7 +267,7 @@ export default function WorkMethodStatementsPage() {
             wms={{
               ...(previewWms as unknown as WMSData),
               project_name: previewWms.projects?.name || "Project",
-              date: previewWms.document_date || new Date().toISOString().split("T")[0],
+              date: previewWms.document_date || todayISO(),
               risk_assessment: risks,
               qaqc_checklist: qaqc,
             }}

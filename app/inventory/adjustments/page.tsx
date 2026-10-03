@@ -3,7 +3,7 @@
 import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, generateDocNumber } from "@/lib/helpers";
+import { getCompanyId, generateDocNumber, todayISO } from "@/lib/helpers";
 import {
   RefreshCw, Plus, Search, ArrowLeft, Loader2, CheckCircle2, X, Trash2, Eye
 } from "lucide-react";
@@ -57,7 +57,7 @@ export default function StockAdjustmentsPage() {
 
   // Modal create state
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [adjustmentDate, setAdjustmentDate] = useState(new Date().toISOString().split("T")[0]);
+  const [adjustmentDate, setAdjustmentDate] = useState(todayISO());
   const [reason, setReason] = useState("Physical Stock Count Variance");
   const [notes, setNotes] = useState("");
   const [itemRows, setItemRows] = useState<AdjustmentItemRow[]>([]);
@@ -103,7 +103,7 @@ export default function StockAdjustmentsPage() {
   }
 
   function handleOpenCreate() {
-    setAdjustmentDate(new Date().toISOString().split("T")[0]);
+    setAdjustmentDate(todayISO());
     setReason("Physical Stock Count Variance");
     setNotes("");
     setItemRows([]);

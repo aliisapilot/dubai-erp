@@ -3,7 +3,7 @@
 import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, getCurrentCompany, generateDocNumber } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, generateDocNumber, todayISO } from "@/lib/helpers";
 import {
   CheckCircle, ArrowLeft, Search, Plus, Printer, Loader2, X,
   Trash2, Edit2, FileCheck
@@ -40,7 +40,7 @@ export default function ProjectHandoverPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formProjectId, setFormProjectId] = useState("");
   const [formNumber, setFormNumber] = useState("");
-  const [formDate, setFormDate] = useState(new Date().toISOString().split("T")[0]);
+  const [formDate, setFormDate] = useState(todayISO());
   const [formScope, setFormScope] = useState("");
   const [formSnags, setFormSnags] = useState("");
   const [formClientRep, setFormClientRep] = useState("");
@@ -96,7 +96,7 @@ export default function ProjectHandoverPage() {
   function handleOpenCreate() {
     setEditingId(null);
     setFormNumber("");
-    setFormDate(new Date().toISOString().split("T")[0]);
+    setFormDate(todayISO());
     setFormScope("All structural and architectural fit-out scope completed as per approved drawing revisions and employer requirements.");
     setFormSnags("No critical snags. Minor touch-up painting in corridor to be resolved within 7 days.");
     setFormClientRep("Client Project Manager");

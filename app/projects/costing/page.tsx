@@ -1,4 +1,5 @@
 "use client";
+import ReportLoadState from "@/components/ReportLoadState";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -32,7 +33,11 @@ export default function ProjectCostingPortfolioPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
+  const [loadError, setLoadError] = useState("");
+
   async function loadPortfolioCosting() {
+    setLoading(true);
+    setLoadError("");
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -61,6 +66,9 @@ export default function ProjectCostingPortfolioPage() {
         supabase.from("supplier_bills").select("project_id, total_amount").in("project_id", projectIds),
       ]);
 
+      const queryError = invRes.error || manRes.error || eqRes.error || expRes.error || billRes.error;
+      if (queryError) throw new Error(queryError.message);
+
       const invoiceProjectMap: Record<string, string> = {};
       invRes.data?.forEach(inv => {
         if (inv.id && inv.project_id) {
@@ -71,10 +79,11 @@ export default function ProjectCostingPortfolioPage() {
 
       let payData: { tax_invoice_id: string | null; amount: number | null }[] = [];
       if (invoiceIds.length > 0) {
-        const { data: pays } = await supabase
+        const { data: pays, error: paymentError } = await supabase
           .from("payments")
           .select("tax_invoice_id, amount")
           .in("tax_invoice_id", invoiceIds);
+        if (paymentError) throw new Error(paymentError.message);
         payData = (pays || []) as { tax_invoice_id: string | null; amount: number | null }[];
       }
 
@@ -159,6 +168,7 @@ export default function ProjectCostingPortfolioPage() {
       setSummaries(list);
     } catch (err) {
       console.error("Error loading portfolio costing:", err);
+      setLoadError(err instanceof Error ? err.message : "Please try again.");
     } finally {
       setLoading(false);
     }
@@ -182,6 +192,8 @@ export default function ProjectCostingPortfolioPage() {
   const totalCosts = summaries.reduce((acc, s) => acc + s.total_cost, 0);
   const totalProfit = totalContractVal - totalCosts;
   const portfolioMargin = totalContractVal > 0 ? (totalProfit / totalContractVal) * 100 : 0;
+
+  if (loading || loadError) return <ReportLoadState loading={loading} error={loadError} onRetry={() => void loadPortfolioCosting()} />;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">

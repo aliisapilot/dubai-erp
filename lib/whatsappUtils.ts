@@ -1,5 +1,5 @@
 import { ChequeRecord, getDaysDifference } from "./chequeTypes";
-import { fmtAED } from "./helpers";
+import { fmtAED, todayISO } from "./helpers";
 
 /**
  * Normalizes UAE or International phone numbers for WhatsApp API links.
@@ -89,7 +89,7 @@ export function generateChequeWhatsAppMessage(cheque: ChequeRecord, companyName?
  */
 export function generateDailyDigestWhatsAppMessage(cheques: ChequeRecord[], companyName?: string | null): string {
   const company = companyName || "Dubai ERP";
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayISO();
 
   const dueToday = cheques.filter((c) => c.due_date === today && ["pending", "deposited"].includes(c.status));
   const overdue = cheques.filter((c) => c.due_date < today && ["pending", "deposited"].includes(c.status));

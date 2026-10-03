@@ -71,97 +71,79 @@ export async function getCompanyId(): Promise<string> {
 
 let inMemoryCompanyCache: CompanyDocDetails | null = null;
 let pendingCompanyPromise: Promise<CompanyDocDetails | null> | null = null;
+let companyCacheUser: string | null = null;
+let companyCacheGeneration = 0;
 
-/**
- * Synchronously retrieves cached company details from localStorage/memory if available.
- */
-export function getCachedCompanySync(): CompanyDocDetails | null {
-  if (inMemoryCompanyCache) return inMemoryCompanyCache;
+/** Clear display data after account changes or successful company settings edits. */
+export function clearCompanyCache(): void {
+  inMemoryCompanyCache = null;
+  pendingCompanyPromise = null;
+  companyCacheGeneration++;
   if (typeof window !== "undefined") {
-    try {
-      const stored = window.localStorage.getItem("dubai-erp.company-cache");
-      if (stored) {
-        inMemoryCompanyCache = JSON.parse(stored);
-        return inMemoryCompanyCache;
-      }
-    } catch {}
+    try { window.localStorage.removeItem("dubai-erp.company-cache"); } catch {}
   }
-  return null;
 }
 
-async function fetchCompanyFresh(): Promise<CompanyDocDetails | null> {
+// Do not restore an unscoped persisted company before verifying the current user.
+export function getCachedCompanySync(): CompanyDocDetails | null {
+  return inMemoryCompanyCache;
+}
+
+if (typeof window !== "undefined") {
+  supabase.auth.onAuthStateChange((_event, session) => {
+    const userId = session?.user?.id ?? null;
+    if (userId !== companyCacheUser) {
+      clearCompanyCache();
+      companyCacheUser = userId;
+    }
+  });
+}
+
+async function fetchCompanyFresh(userId: string, generation: number): Promise<CompanyDocDetails | null> {
   try {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData?.session?.user ?? (await supabase.auth.getUser()).data?.user;
-    if (!user) return null;
-
-    // 1. Try owner lookup
-    const { data: ownerCo } = await supabase
-      .from("companies")
-      .select("*")
-      .eq("owner_id", user.id)
-      .maybeSingle();
-    if (ownerCo) {
-      inMemoryCompanyCache = ownerCo as CompanyDocDetails;
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem("dubai-erp.company-cache", JSON.stringify(ownerCo));
-        } catch {}
-      }
-      return ownerCo as CompanyDocDetails;
-    }
-
-    // 2. Try member profile lookup
-    const { data: prof } = await supabase
-      .from("profiles")
-      .select("company_id")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (prof?.company_id) {
-      const { data: memberCo } = await supabase
-        .from("companies")
-        .select("*")
-        .eq("id", prof.company_id)
-        .maybeSingle();
-      if (memberCo) {
-        inMemoryCompanyCache = memberCo as CompanyDocDetails;
-        if (typeof window !== "undefined") {
-          try {
-            window.localStorage.setItem("dubai-erp.company-cache", JSON.stringify(memberCo));
-          } catch {}
-        }
-        return memberCo as CompanyDocDetails;
+    const { data: ownerCo, error: ownerError } = await supabase.from("companies")
+      .select("*").eq("owner_id", userId).maybeSingle();
+    if (ownerError) throw new Error(ownerError.message);
+    let company = ownerCo;
+    if (!company) {
+      const { data: prof, error: profileError } = await supabase.from("profiles")
+        .select("company_id").eq("id", userId).maybeSingle();
+      if (profileError) throw new Error(profileError.message);
+      if (prof?.company_id) {
+        const { data: memberCo, error: memberError } = await supabase.from("companies")
+          .select("*").eq("id", prof.company_id).maybeSingle();
+        if (memberError) throw new Error(memberError.message);
+        company = memberCo;
       }
     }
-
-    return null;
+    if (generation !== companyCacheGeneration || userId !== companyCacheUser) return null;
+    inMemoryCompanyCache = company as CompanyDocDetails | null;
+    return inMemoryCompanyCache;
   } catch (err) {
     console.error("Error retrieving current company:", err);
     return null;
   }
 }
 
-/**
- * Loads current company details for letterhead headers, documents, and navigation
- * for either company owner or authorized company member.
- * Returns cached details instantly if available, refreshing in the background.
- */
+/** Return only the verified current user's company, sharing concurrent reads. */
 export async function getCurrentCompany(): Promise<CompanyDocDetails | null> {
-  const syncCached = getCachedCompanySync();
-  if (syncCached) {
-    if (!pendingCompanyPromise) {
-      pendingCompanyPromise = fetchCompanyFresh().finally(() => {
-        pendingCompanyPromise = null;
-      });
-    }
-    return syncCached;
+  const { data: sessionData } = await supabase.auth.getSession();
+  const user = sessionData?.session?.user ?? (await supabase.auth.getUser()).data?.user;
+  const userId = user?.id ?? null;
+  if (companyCacheUser !== userId) {
+    clearCompanyCache();
+    companyCacheUser = userId;
   }
-
+  if (!userId) return null;
+  if (inMemoryCompanyCache) return inMemoryCompanyCache;
   if (pendingCompanyPromise) return pendingCompanyPromise;
-  pendingCompanyPromise = fetchCompanyFresh().finally(() => {
-    pendingCompanyPromise = null;
+  const generation = companyCacheGeneration;
+  const pending = fetchCompanyFresh(userId, generation);
+  pendingCompanyPromise = pending;
+  void pending.finally(() => {
+    if (pendingCompanyPromise === pending) pendingCompanyPromise = null;
   });
-  return pendingCompanyPromise;
+  return pending;
 }
 
 /** Generate next sequential document number via DB function */
@@ -248,7 +230,7 @@ export function statusClass(status: string): string {
     Late: "bg-orange-50 text-orange-700",
   };
   if (!status) return "bg-slate-100 text-slate-600";
-  const normalized = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+  const normalized = status.trim().replace(/_/g, " ").toLowerCase().replace(/\b\w/g, letter => letter.toUpperCase());
   return map[status] ?? map[normalized] ?? map[status.replace(/_/g, " ")] ?? "bg-slate-100 text-slate-600";
 }
 

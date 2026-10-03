@@ -3,7 +3,7 @@
 import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, generateDocNumber } from "@/lib/helpers";
+import { getCompanyId, generateDocNumber, todayISO } from "@/lib/helpers";
 import {
   CreditCard, Search, Plus, Loader2, X, Trash2,
   Edit2, Receipt, CheckCircle2,
@@ -59,7 +59,7 @@ export default function ExpensesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formNumber, setFormNumber] = useState("");
-  const [formDate, setFormDate] = useState(new Date().toISOString().split("T")[0]);
+  const [formDate, setFormDate] = useState(todayISO());
   const [formCategory, setFormCategory] = useState(DEFAULT_CATEGORIES[0]);
   const [customCategory, setCustomCategory] = useState("");
   const [formAmount, setFormAmount] = useState("");
@@ -113,7 +113,7 @@ export default function ExpensesPage() {
   function handleOpenCreate() {
     setEditingId(null);
     setFormNumber("");
-    setFormDate(new Date().toISOString().split("T")[0]);
+    setFormDate(todayISO());
     setFormCategory(DEFAULT_CATEGORIES[0]);
     setCustomCategory("");
     setFormAmount("");

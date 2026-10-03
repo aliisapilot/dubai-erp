@@ -126,7 +126,7 @@ function TIContent() {
       setForm(f => ({ ...f, customer_id: pi.customer_id||"", project_id: pi.project_id||"", notes: pi.notes||"" }));
       // Map DB discount_percent → UI discount_pct
       type DBProformaItem = { id?: string; proforma_invoice_id?: string; product_id?: string; description?: string; quantity?: number; unit_price?: number; discount_percent?: number; vat_rate?: number; taxable_amount?: number; vat_amount?: number; line_total?: number; sort_order?: number; unit?: string };
-      setLines((items||[]).map((it: DBProformaItem) => ({ ...emptyLine(), product_id: it.product_id||"", description: it.description||"", quantity: Number(it.quantity)||1, unit_price: Number(it.unit_price)||0, discount_pct: Number(it.discount_percent??0), vat_rate: Number(it.vat_rate)||5, taxable_amount: Number(it.taxable_amount)||0, vat_amount: Number(it.vat_amount)||0, line_total: Number(it.line_total)||0, sort_order: Number(it.sort_order)||0, unit: it.unit||"", id: undefined })));
+      setLines((items||[]).map((it: DBProformaItem) => ({ ...emptyLine(), product_id: it.product_id||"", description: it.description||"", quantity: Number(it.quantity)||1, unit_price: Number(it.unit_price)||0, discount_pct: Number(it.discount_percent??0), vat_rate: Number(it.vat_rate ?? 5), taxable_amount: Number(it.taxable_amount)||0, vat_amount: Number(it.vat_amount)||0, line_total: Number(it.line_total)||0, sort_order: Number(it.sort_order)||0, unit: it.unit||"", id: undefined })));
       setShowForm(true);
     }
   }

@@ -92,7 +92,7 @@ function PIContent() {
         quantity: Number(it.quantity) || 1,
         unit_price: Number(it.unit_price) || 0,
         discount_pct: Number(it.discount_percent ?? 0), // DB: discount_percent
-        vat_rate: Number(it.vat_rate) || 5,
+        vat_rate: Number(it.vat_rate ?? 5),
         line_total: Number(it.line_total) || 0,
         vat_amount: Number(it.vat_amount) || 0,
         sort_order: Number(it.sort_order) || 0,

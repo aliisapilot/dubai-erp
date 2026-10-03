@@ -1,65 +1,77 @@
 "use client";
-import { useEffect, useState } from "react";
+import ReportLoadState from "@/components/ReportLoadState";
+import { readReportQuery } from "@/lib/reportData";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { BarChart3, Loader2 } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import { fmtAED, fmtDate } from "@/lib/helpers";
 
 type Tab = "sales" | "purchasing" | "vat" | "customers" | "suppliers" | "inventory" | "hr";
 
 export default function ReportsPage() {
   const [tab, setTab] = useState<Tab>("sales");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [data, setData] = useState<Record<string, unknown[]>>({});
 
+  const [loadError, setLoadError] = useState("");
+  const [loadedTab, setLoadedTab] = useState<Tab | null>(null);
+  const requestVersion = useRef(0);
+
   async function loadReport() {
+    const version = ++requestVersion.current;
+    setLoading(true);
+    setLoadError("");
     const d: Record<string, unknown[]> = {};
     try {
       if (tab === "sales") {
-        const [{ data: q }, { data: pi }, { data: ti }] = await Promise.all([
+        const [q, pi, ti] = await Promise.all([
           supabase.from("quotations").select("*").order("quotation_date", { ascending: false }),
           supabase.from("proforma_invoices").select("*").order("proforma_date", { ascending: false }),
           supabase.from("tax_invoices").select("*").order("invoice_date", { ascending: false }),
-        ]);
+        ].map(readReportQuery));
         d.quotations = q||[]; d.proformas = pi||[]; d.invoices = ti||[];
       } else if (tab === "purchasing") {
-        const { data: po } = await supabase.from("purchase_orders").select("*").order("order_date", { ascending: false });
+        const po = await readReportQuery(supabase.from("purchase_orders").select("*").order("order_date", { ascending: false }));
         d.purchase_orders = po||[];
       } else if (tab === "vat") {
-        const [{ data: ti }, { data: poi }] = await Promise.all([
+        const [ti, poi] = await Promise.all([
           supabase.from("tax_invoices").select("*").order("invoice_date", { ascending: false }),
           supabase.from("purchase_orders").select("*").order("order_date", { ascending: false }),
-        ]);
+        ].map(readReportQuery));
         d.sales_invoices = ti||[]; d.purchase_orders = poi||[];
       } else if (tab === "customers") {
-        const [{ data: c }, { data: pay }] = await Promise.all([
+        const [c, pay] = await Promise.all([
           supabase.from("customers").select("*").order("name"),
           supabase.from("payments").select("*").in("payment_type", ["customer_receipt", "customer"]),
-        ]);
+        ].map(readReportQuery));
         d.customers = c||[]; d.payments = pay||[];
       } else if (tab === "suppliers") {
-        const [{ data: s }, { data: pay }] = await Promise.all([
+        const [s, pay] = await Promise.all([
           supabase.from("suppliers").select("*").order("name"),
           supabase.from("payments").select("*").in("payment_type", ["supplier_payment", "supplier"]),
-        ]);
+        ].map(readReportQuery));
         d.suppliers = s||[]; d.payments = pay||[];
       } else if (tab === "inventory") {
-        const [{ data: p }, { data: sm }] = await Promise.all([
+        const [p, sm] = await Promise.all([
           supabase.from("products").select("*").order("name"),
           supabase.from("stock_movements").select("*").order("created_at", { ascending: false }),
-        ]);
+        ].map(readReportQuery));
         d.products = p||[]; d.movements = sm||[];
       } else if (tab === "hr") {
-        const [{ data: e }, { data: att }, { data: ot }, { data: ss }] = await Promise.all([
+        const [e, att, ot, ss] = await Promise.all([
           supabase.from("employees").select("*").order("first_name"),
           supabase.from("attendance").select("*").order("attendance_date", { ascending: false }),
           supabase.from("overtime").select("*").order("overtime_date", { ascending: false }),
           supabase.from("salary_statements").select("*").order("created_at", { ascending: false }),
-        ]);
+        ].map(readReportQuery));
         d.employees = e||[]; d.attendance = att||[]; d.overtime = ot||[]; d.salary_statements = ss||[];
       }
-    } catch { /* ignore */ }
-    setData(d);
-    setLoading(false);
+      if (version === requestVersion.current) { setData(d); setLoadedTab(tab); }
+    } catch (err) {
+      if (version === requestVersion.current) { setLoadError(err instanceof Error ? err.message : "Could not load report."); setLoadedTab(tab); }
+    } finally {
+      if (version === requestVersion.current) setLoading(false);
+    }
   }
 
   // The active report tab is the complete refresh key.
@@ -96,7 +108,7 @@ export default function ReportsPage() {
         </div>
       </header>
       <div className="mx-auto max-w-7xl px-6 py-8">
-        {loading ? <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-slate-400"/></div> : (
+        {loading || loadedTab !== tab || loadError ? <ReportLoadState loading={loading || loadedTab !== tab} error={loadError} onRetry={() => void loadReport()} /> : (
           <>
             {/* SALES */}
             {tab === "sales" && (() => {

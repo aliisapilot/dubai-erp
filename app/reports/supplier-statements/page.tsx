@@ -1,9 +1,10 @@
 "use client";
+import ReportLoadState from "@/components/ReportLoadState";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, getCurrentCompany } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, todayISO } from "@/lib/helpers";
 import {
   FileSpreadsheet, ArrowLeft, Printer,
   Truck, RefreshCw
@@ -45,7 +46,7 @@ export default function SupplierStatementOfAccountPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState(new Date().toISOString().split("T")[0]);
+  const [toDate, setToDate] = useState(todayISO());
   const [openingBalance] = useState(0);
 
   const [generating, setGenerating] = useState(false);
@@ -53,7 +54,12 @@ export default function SupplierStatementOfAccountPage() {
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
 
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
   async function loadSuppliers() {
+    setLoading(true);
+    setLoadError("");
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -72,8 +78,9 @@ export default function SupplierStatementOfAccountPage() {
       if (co) setCompany(co as CompanyDocInfo);
     } catch (err) {
       console.error("Error loading suppliers:", err);
+      setLoadError(err instanceof Error ? err.message : "Could not load suppliers.");
     } finally {
-      // The page renders its empty-state if supplier loading fails.
+      setLoading(false);
     }
   }
 
@@ -84,6 +91,8 @@ export default function SupplierStatementOfAccountPage() {
   async function generateStatement() {
     if (!selectedSupplierId) return;
     setGenerating(true);
+    setLoadError("");
+    setStatement(null);
 
     try {
       const selected = suppliers.find(s => s.id === selectedSupplierId);
@@ -185,12 +194,15 @@ export default function SupplierStatementOfAccountPage() {
       });
     } catch (err) {
       console.error("Error generating supplier statement:", err);
+      setLoadError(err instanceof Error ? err.message : "Could not load supplier transactions.");
     } finally {
       setGenerating(false);
     }
   }
 
   const selectedSup = suppliers.find(s => s.id === selectedSupplierId);
+
+  if (loading || loadError) return <ReportLoadState loading={loading} error={loadError} onRetry={() => void (suppliers.length ? generateStatement() : loadSuppliers())} />;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">

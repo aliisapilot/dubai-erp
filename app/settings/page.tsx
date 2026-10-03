@@ -17,7 +17,7 @@ import {
   Sliders,
 } from "lucide-react";
 import { DEFAULT_BRAND_COLORS } from "@/lib/brandConfig";
-import { getCurrentCompany } from "@/lib/helpers";
+import { getCurrentCompany, clearCompanyCache } from "@/lib/helpers";
 
 type Company = {
   id: string;
@@ -378,6 +378,7 @@ export default function SettingsPage() {
     if (error) {
       setError(error.message);
     } else {
+      clearCompanyCache();
       setMessage("Company settings saved successfully.");
     }
 

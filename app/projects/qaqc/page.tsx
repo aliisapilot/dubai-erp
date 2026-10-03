@@ -3,7 +3,7 @@
 import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId } from "@/lib/helpers";
+import { getCompanyId, todayISO } from "@/lib/helpers";
 import {
   ShieldCheck, CheckCircle2, XCircle, AlertCircle, ArrowLeft, Search,
   Plus, Loader2, X, Trash2, Edit2
@@ -51,7 +51,7 @@ export default function QAQCInspectionPage() {
   const [formStatus, setFormStatus] = useState<"Pending" | "Pass" | "Fail" | "Hold" | "N/A">("Pending");
   const [formRemarks, setFormRemarks] = useState("");
   const [formInspector, setFormInspector] = useState("");
-  const [formInspectionDate, setFormInspectionDate] = useState(new Date().toISOString().split("T")[0]);
+  const [formInspectionDate, setFormInspectionDate] = useState(todayISO());
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -102,7 +102,7 @@ export default function QAQCInspectionPage() {
     setFormStatus("Pending");
     setFormRemarks("");
     setFormInspector("");
-    setFormInspectionDate(new Date().toISOString().split("T")[0]);
+    setFormInspectionDate(todayISO());
     setErrorMsg("");
     setShowModal(true);
   }
@@ -116,7 +116,7 @@ export default function QAQCInspectionPage() {
     setFormStatus(item.status);
     setFormRemarks(item.remarks || "");
     setFormInspector(item.inspector_name || "");
-    setFormInspectionDate(item.inspection_date || new Date().toISOString().split("T")[0]);
+    setFormInspectionDate(item.inspection_date || todayISO());
     setErrorMsg("");
     setShowModal(true);
   }

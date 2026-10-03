@@ -1,13 +1,14 @@
 "use client";
+import ReportLoadState from "@/components/ReportLoadState";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { FileSpreadsheet, Loader2, Printer, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import StatementOfAccountTemplate, { StatementData, StatementEntry } from "@/components/documents/StatementOfAccountTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { getCurrentCompany } from "@/lib/helpers";
+import { getCurrentCompany, todayISO } from "@/lib/helpers";
 
 type Customer = {
   id: string;
@@ -54,7 +55,7 @@ export default function StatementOfAccountPage() {
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState(new Date().toISOString().split("T")[0]);
+  const [toDate, setToDate] = useState(todayISO());
   const [openingBalance, setOpeningBalance] = useState(0);
 
   const [loading, setLoading] = useState(true);
@@ -62,12 +63,18 @@ export default function StatementOfAccountPage() {
   const [statement, setStatement] = useState<StatementData | null>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
 
+  const [loadError, setLoadError] = useState("");
+  const requestVersion = useRef(0);
+
   async function loadInitialData() {
+    setLoadError("");
+    try {
     setLoading(true);
-    const [{ data: custs }, co] = await Promise.all([
+    const [{ data: custs, error: customerError }, co] = await Promise.all([
       supabase.from("customers").select("id, name, customer_code, trn, address, phone").eq("active", true).order("name"),
       getCurrentCompany(),
     ]);
+    if (customerError) throw new Error(customerError.message);
     setCustomers((custs || []) as Customer[]);
     if (co) setCompany(co as CompanyDocInfo);
     if ((custs || []).length > 0) {
@@ -79,12 +86,20 @@ export default function StatementOfAccountPage() {
         setSelectedCustomerId(custs![0].id);
       }
     }
-    setLoading(false);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Could not load customers.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function generateStatement() {
     if (!selectedCustomerId) return;
+    const version = ++requestVersion.current;
     setCalculating(true);
+    setLoadError("");
+    setStatement(null);
+    try {
 
     const cust = customers.find(c => c.id === selectedCustomerId);
     if (!cust) {
@@ -93,7 +108,7 @@ export default function StatementOfAccountPage() {
     }
 
     // Fetch Invoices, Payments, and Receipt Vouchers for this customer
-    const [{ data: invs }, { data: pays }, { data: rcvs }] = await Promise.all([
+    const [{ data: invs, error: invoiceError }, { data: pays, error: paymentError }, { data: rcvs, error: receiptError }] = await Promise.all([
       supabase
         .from("tax_invoices")
         .select("id, customer_id, invoice_number, invoice_date, total_amount, status")
@@ -110,6 +125,10 @@ export default function StatementOfAccountPage() {
         .eq("customer_id", selectedCustomerId)
         .order("voucher_date", { ascending: true }),
     ]);
+
+    const queryError = invoiceError || paymentError || receiptError;
+    if (queryError) throw new Error(queryError.message);
+    if (version !== requestVersion.current) return;
 
     // Build unified transactions list
     type RawTx = {
@@ -199,7 +218,7 @@ export default function StatementOfAccountPage() {
 
     const statementData: StatementData = {
       statement_number: stNumber,
-      statement_date: now.toISOString().split("T")[0],
+      statement_date: todayISO(),
       from_date: fromDate || null,
       to_date: toDate || null,
       customer_name: cust.name || "Customer",
@@ -211,8 +230,12 @@ export default function StatementOfAccountPage() {
       closing_balance: currentBalance,
     };
 
-    setStatement(statementData);
-    setCalculating(false);
+    if (version === requestVersion.current) setStatement(statementData);
+    } catch (err) {
+      if (version === requestVersion.current) setLoadError(err instanceof Error ? err.message : "Could not load statement transactions.");
+    } finally {
+      if (version === requestVersion.current) setCalculating(false);
+    }
   }
 
   useEffect(() => {
@@ -223,9 +246,14 @@ export default function StatementOfAccountPage() {
     if (selectedCustomerId) {
       void Promise.resolve().then(generateStatement);
     }
+    // This ref is a request counter, not a DOM node. Invalidate the newest pending request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { requestVersion.current++; };
   // Inputs intentionally define when a statement is regenerated.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustomerId, fromDate, toDate, openingBalance]);
+
+  if (loading || calculating || loadError) return <ReportLoadState loading={loading || calculating} error={loadError} onRetry={() => void (customers.length ? generateStatement() : loadInitialData())} />;
 
   return (
     <main className="min-h-screen bg-slate-50">

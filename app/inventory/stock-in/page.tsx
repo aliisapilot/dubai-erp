@@ -131,6 +131,8 @@ function StockInForm() {
       const newStock = prevStock + qtyNum;
       const costVal = parseFloat(unitCost) || Number(prodData.cost_price || 0);
 
+      const refNo = referenceNumber.trim() || await generateDocNumber(companyId, "GRN");
+
       // Update product current stock
       const { error: updateErr } = await supabase
         .from("products")
@@ -139,7 +141,7 @@ function StockInForm() {
 
       if (updateErr) throw updateErr;
 
-      const refNo = referenceNumber.trim() || await generateDocNumber(companyId, "GRN");
+
 
       // Log movement
       const { error: moveErr } = await supabase

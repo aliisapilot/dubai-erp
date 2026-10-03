@@ -1,4 +1,5 @@
 "use client";
+import ReportLoadState from "@/components/ReportLoadState";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -13,7 +14,12 @@ export default function InventoryReportPage() {
   type ProductRow = { id: string; sku?: string | null; name?: string | null; category?: string | null; unit?: string | null; cost_price?: number | null; selling_price?: number | null; current_stock?: number | null; minimum_stock?: number | null; active?: boolean | null };
   const [products, setProducts] = useState<ProductRow[]>([]);
 
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
   async function loadInventoryData() {
+    setLoading(true);
+    setLoadError("");
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -24,11 +30,13 @@ export default function InventoryReportPage() {
         .eq("company_id", companyId)
         .order("name");
 
+      if (pRes.error) throw new Error(pRes.error.message);
       setProducts((pRes.data || []) as ProductRow[]);
     } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Please try again.");
       console.error("Error loading inventory report:", err);
     } finally {
-      // The report remains usable with an empty result when the query fails.
+      setLoading(false);
     }
   }
 
@@ -41,6 +49,8 @@ export default function InventoryReportPage() {
   const totalValuation = products.reduce((acc, p) => acc + ((p.current_stock || 0) * (p.cost_price || 0)), 0);
   const lowStockItems = products.filter(p => (p.current_stock ?? 0) <= (p.minimum_stock ?? 0) && p.active);
   const outOfStockItems = products.filter(p => (p.current_stock ?? 0) <= 0 && p.active);
+
+  if (loading || loadError) return <ReportLoadState loading={loading} error={loadError} onRetry={() => void loadInventoryData()} />;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6" data-print-root>

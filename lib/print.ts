@@ -14,6 +14,10 @@ export async function printCurrentDocument(): Promise<void> {
   if (scope.querySelector('[data-design-print-blocked]')) {
     window.alert('Wait for the saved cloud design to load successfully before exporting this PDF.'); return;
   }
+  if (scope.querySelector('[data-report-print-blocked]')) {
+    window.alert('Report data must load successfully before exporting this PDF.');
+    return;
+  }
   const modal = scope instanceof HTMLElement ? scope : null;
   if (modal && !modal.querySelector('.print-document, .dynamic-document-page')) {
     window.alert('Wait for the document preview to finish loading before exporting this PDF.');
@@ -76,7 +80,7 @@ export async function printCurrentDocument(): Promise<void> {
     // Assets can load while React replaces/closes the preview. Never export a
     // stale sheet or an unfinished cloud design after that asynchronous wait.
     if ((modal && (!modal.isConnected || !modal.querySelector('.print-document, .dynamic-document-page'))) ||
-        sheets.some(sheet => !sheet.isConnected) || scope.querySelector('[data-design-print-blocked]')) {
+        sheets.some(sheet => !sheet.isConnected) || scope.querySelector('[data-design-print-blocked], [data-report-print-blocked]')) {
       cleanup();
       window.alert('The document preview changed. Open it again and wait for it to finish loading.');
       return;

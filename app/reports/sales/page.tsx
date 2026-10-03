@@ -1,4 +1,5 @@
 "use client";
+import ReportLoadState from "@/components/ReportLoadState";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -16,7 +17,12 @@ export default function SalesReportPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
   async function loadSalesData() {
+    setLoading(true);
+    setLoadError("");
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -32,9 +38,10 @@ export default function SalesReportPage() {
       setInvoices((invRes.data || []) as SalesDocumentRow[]);
       setQuotations((qRes.data || []) as SalesDocumentRow[]);
     } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Please try again.");
       console.error("Error loading sales report:", err);
     } finally {
-      // The report remains usable with an empty result when the query fails.
+      setLoading(false);
     }
   }
 
@@ -57,6 +64,8 @@ export default function SalesReportPage() {
 
   const acceptedQuotes = quotations.filter(q => (q.status || "").toLowerCase() === "accepted").length;
   const quoteWinRate = quotations.length > 0 ? (acceptedQuotes / quotations.length) * 100 : 0;
+
+  if (loading || loadError) return <ReportLoadState loading={loading} error={loadError} onRetry={() => void loadSalesData()} />;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6" data-print-root>
