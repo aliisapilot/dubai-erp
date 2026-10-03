@@ -1,4 +1,5 @@
 "use client";
+import { planDeliveryStock } from "@/lib/deliveryStock";
 
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
@@ -257,6 +258,20 @@ export default function DeliveryNotesPage() {
     }
     setSaving(true);
     try {
+      const shouldDeductStock = form.status.toLowerCase() === "delivered" && editing?.status?.toLowerCase() !== "delivered";
+      let stockPlan: ReturnType<typeof planDeliveryStock> = [];
+      let stockCompanyId: string | null = null;
+      if (shouldDeductStock) {
+        const productIds = [...new Set(lines.filter(line => line.product_id && line.quantity > 0).map(line => line.product_id))];
+        if (productIds.length) {
+          stockCompanyId = await getCompanyId();
+          const { data: stockRows, error: stockReadError } = await supabase.from("products")
+            .select("id, current_stock").eq("company_id", stockCompanyId).in("id", productIds);
+          if (stockReadError) throw stockReadError;
+          stockPlan = planDeliveryStock(lines, stockRows || []);
+        }
+      }
+
       const payload = {
         customer_id: form.customer_id,
         project_id: form.project_id || null,
@@ -314,23 +329,20 @@ export default function DeliveryNotesPage() {
       );
       if (itemErr) throw itemErr;
 
-      // Stock deduction if Delivered
-      if (form.status === "delivered" && editing?.status?.toLowerCase() !== "delivered") {
-        for (const l of lines) {
-          if (!l.product_id || l.quantity <= 0) continue;
-          const prod = products.find(p => p.id === l.product_id);
-          if (!prod) continue;
-          const newStock = Math.max(0, (prod.current_stock || 0) - l.quantity);
-          const { error: stockErr } = await supabase.from("products").update({ current_stock: newStock, updated_at: new Date().toISOString() }).eq("id", l.product_id);
+      // Apply the preflight plan: repeated product lines use cumulative balances.
+      if (shouldDeductStock) {
+        for (const movement of stockPlan) {
+          const { error: stockErr } = await supabase.from("products")
+            .update({ current_stock: movement.newStock, updated_at: new Date().toISOString() })
+            .eq("id", movement.productId).eq("company_id", stockCompanyId!);
           if (stockErr) throw stockErr;
-          const cid = await getCompanyId();
           const { error: movementErr } = await supabase.from("stock_movements").insert({
-            company_id: cid,
-            product_id: l.product_id,
+            company_id: stockCompanyId!,
+            product_id: movement.productId,
             movement_type: "OUT",
-            quantity: l.quantity,
-            previous_stock: prod.current_stock, // DB: previous_stock (not before_stock)
-            new_stock: newStock, // DB: new_stock (not after_stock)
+            quantity: movement.quantity,
+            previous_stock: movement.previousStock,
+            new_stock: movement.newStock,
             reference_type: "delivery_note",
             reference_id: dnid,
             notes: `Delivery Note ${dnNumber}`,

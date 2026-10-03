@@ -53,4 +53,8 @@ for(const file of ['quotations','purchase-orders','proforma-invoices','tax-invoi
  const expressions=[...source.matchAll(/Number\(it\.vat_rate \?\? 5\)/g)];assert.ok(expressions.length>0);
  for(const expression of expressions) {const rate=new Function('it','return '+expression[0]);assert.equal(rate({vat_rate:0}),0);assert.equal(rate({vat_rate:5}),5);assert.equal(rate({vat_rate:null}),5);}
 }
+const stockExports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/deliveryStock.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports:stockExports});
+const planned=stockExports.planDeliveryStock([{product_id:'p',quantity:2},{product_id:'p',quantity:3}],[{id:'p',current_stock:10}]);
+assert.equal(planned[0].newStock,8);assert.equal(planned[1].previousStock,8);assert.equal(planned[1].newStock,5,'Repeated delivery lines deduct both quantities');
+assert.throws(()=>stockExports.planDeliveryStock([{product_id:'missing',quantity:2}],[]),/unavailable/);
 console.log('PASS ERP audit: account-isolated company cache, late-load rejection, compound status accents, reference-before-stock mutation, report loading/error/retry behavior');
