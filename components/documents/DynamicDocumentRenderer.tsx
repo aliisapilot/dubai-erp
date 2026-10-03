@@ -1177,6 +1177,10 @@ export default function DynamicDocumentRenderer({
               <>
                 <div className="font-semibold text-slate-800 text-[10px]">
                   Amount in Words (المبلغ بالحروف):
+                  {(layout.documentType === "receipt_voucher" || layout.documentType === "employee_payment_voucher") &&
+                    !effectiveGeometry.elements.some((element) => element.type === "totals" && element.visible && element.effectiveVisible !== false) && (
+                      <span className="float-right font-mono">{fmtAED(data.total_amount)}</span>
+                    )}
                 </div>
                 <div className={`italic text-slate-700 font-medium ${isDenseWords ? "text-[9.5px]" : "text-[11px]"} leading-tight`}>
                   {numberToWordsEnglish(data.total_amount)}
