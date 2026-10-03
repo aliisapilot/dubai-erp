@@ -1145,8 +1145,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     <p className="text-xs text-slate-500 line-clamp-2 mb-3">{w.scope || w.purpose || "Complete installation, safety & QA/QC checklist"}</p>
 
                     <div className="text-[11px] text-slate-600 space-y-0.5 border-t border-slate-100 pt-2">
-                      <div>Prepared: <span className="font-semibold">{w.prepared_by || "Site Engineer"}</span></div>
-                      <div>Approved: <span className="font-semibold">{w.approved_by || "Project Manager"}</span></div>
+                      <div>Prepared: <span className="font-semibold">{w.prepared_by || "Not recorded"}</span></div>
+                      <div>Approved: <span className="font-semibold">{w.approved_by || "Not recorded"}</span></div>
                     </div>
                   </div>
 

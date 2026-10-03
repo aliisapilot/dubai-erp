@@ -73,6 +73,7 @@ export default function WorkMethodStatementTemplate({
     project_name:wms.project_name,location:wms.location || '',scope_of_work:wms.scope || wms.title,
     notes:wms.purpose || '',items:[],subtotal:0,vat_amount:0,total_amount:0};
   const coverPages=getDocumentPageCount(design.layout,0,[],cover);
+  const revisionRows = wms.revision_history?.length ? wms.revision_history : [{rev:wms.revision,date:wms.date,description:"Current saved revision",prepared_by:wms.prepared_by || ""}];
   return (
     <DocumentContainer
       docTypeLabel="Method Statement"
@@ -370,13 +371,15 @@ export default function WorkMethodStatementTemplate({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              <tr className="font-mono">
-                <td className="py-1.5 px-3 font-bold text-slate-900">{wms.revision}</td>
-                <td className="py-1.5 px-3 text-slate-600">{new Date(wms.date).toLocaleDateString("en-GB")}</td>
-                <td className="py-1.5 px-3 font-sans text-slate-800">Current saved revision</td>
-                <td className="py-1.5 px-3 font-sans text-slate-700">{wms.prepared_by || "Not recorded"}</td>
-                <td className="py-1.5 px-3 font-sans text-slate-700">{wms.approved_by || "Not recorded"}</td>
-              </tr>
+              {revisionRows.map((entry, index) => (
+                <tr key={`${entry.rev}-${index}`} className="font-mono">
+                  <td className="py-1.5 px-3 font-bold text-slate-900">{entry.rev || "Not recorded"}</td>
+                  <td className="py-1.5 px-3 text-slate-600">{entry.date ? new Date(entry.date).toLocaleDateString("en-GB") : "Not recorded"}</td>
+                  <td className="py-1.5 px-3 font-sans text-slate-800">{entry.description || "Not recorded"}</td>
+                  <td className="py-1.5 px-3 font-sans text-slate-700">{entry.prepared_by || "Not recorded"}</td>
+                  <td className="py-1.5 px-3 font-sans text-slate-700">{entry.rev === wms.revision ? wms.approved_by || "Not recorded" : "Not recorded"}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
