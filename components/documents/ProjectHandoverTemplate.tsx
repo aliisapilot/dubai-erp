@@ -61,7 +61,7 @@ export default function ProjectHandoverTemplate({
     subtotal: 0,
     vat_amount: 0,
     total_amount: 0,
-    notes: handover.snags_remarks || "Works inspected and formally accepted.",
+    notes: handover.snags_remarks || "No snag remarks recorded.",
   };
   const totalPages = customLayout
     ? getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData)
@@ -114,7 +114,7 @@ export default function ProjectHandoverTemplate({
             </div>
             <div>
               <span className="text-slate-500 block text-[10px]">Project Location / Site:</span>
-              <span className="font-semibold text-slate-800">{handover.location || "Dubai, UAE"}</span>
+              <span className="font-semibold text-slate-800">{handover.location || "Not recorded"}</span>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200">
@@ -135,7 +135,7 @@ export default function ProjectHandoverTemplate({
             <CheckCircle size={15} /> Scope of Work Substantially Completed
           </div>
           <p className="text-slate-700 leading-relaxed text-[11px] whitespace-pre-line">
-            {handover.scope_completed || "The contractor has completed the scheduled installation, testing, and commissioning works in accordance with the contract requirements, approved shop drawings, and technical specifications."}
+            {handover.scope_completed || "No completed scope recorded."}
           </p>
         </div>
 
@@ -145,7 +145,7 @@ export default function ProjectHandoverTemplate({
             Minor Snags / Punch List / Remarks (قائمة الملاحظات والمتبقيات البسيطة)
           </div>
           <p className="text-slate-700 leading-relaxed text-[11px] whitespace-pre-line">
-            {handover.snags_remarks || "No major critical snags noted. All minor touch-ups and final cleaning items to be cleared within 14 calendar days from the date of this certificate."}
+            {handover.snags_remarks || "No snag remarks recorded."}
           </p>
         </div>
 

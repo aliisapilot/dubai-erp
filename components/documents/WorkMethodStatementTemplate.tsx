@@ -26,6 +26,7 @@ export type QAQCChecklistItem = {
 };
 
 export type WMSData = {
+  status?: string;
   wms_number: string;
   title: string;
   project_name: string;
@@ -68,7 +69,7 @@ export default function WorkMethodStatementTemplate({
 }: WMSProps) {
   const design=usePersistedDocumentDesign(company?.id,'work_method_statement');
   if(!design.ready)return <DesignLoadState error={design.error} retry={design.retry} />;
-  const cover: MockDocumentData={document_number:wms.wms_number,document_date:wms.date,customer_name:wms.main_contractor || '',
+  const cover: MockDocumentData={status:wms.status || "Draft",document_number:wms.wms_number,document_date:wms.date,customer_name:wms.main_contractor || '',
     project_name:wms.project_name,location:wms.location || '',scope_of_work:wms.scope || wms.title,
     notes:wms.purpose || '',items:[],subtotal:0,vat_amount:0,total_amount:0};
   const coverPages=getDocumentPageCount(design.layout,0,[],cover);
@@ -76,7 +77,7 @@ export default function WorkMethodStatementTemplate({
     <DocumentContainer
       docTypeLabel="Method Statement"
       docNumber={`${wms.wms_number} [${wms.revision}]`}
-      status="Approved"
+      status={wms.status || "Draft"}
       onClose={onClose}
       company={company ?? undefined}
       noPadding
@@ -107,11 +108,11 @@ export default function WorkMethodStatementTemplate({
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Project Location / Plot:</span>
-                <span className="font-semibold text-slate-800">{wms.location || "Dubai, UAE"}</span>
+                <span className="font-semibold text-slate-800">{wms.location || "Not recorded"}</span>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Main Contractor:</span>
-                <span className="font-semibold text-slate-800">{wms.main_contractor || "Main Contractor LLC"}</span>
+                <span className="font-semibold text-slate-800">{wms.main_contractor || "Not recorded"}</span>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Specialist Subcontractor:</span>
@@ -313,29 +314,7 @@ export default function WorkMethodStatementTemplate({
                   </tr>
                 ))
               ) : (
-                <>
-                  <tr className="bg-white">
-                    <td className="py-2 px-3 text-center font-mono">1</td>
-                    <td className="py-2 px-3 font-semibold">Material Handling & Offloading</td>
-                    <td className="py-2 px-3 text-rose-800">Back strain, falling items, pinch points</td>
-                    <td className="py-2 px-3 text-[11px]">Mechanical lifting for heavy loads; safety gloves; clear pathway.</td>
-                    <td className="py-2 px-3 text-center"><span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold text-[10px]">Medium</span></td>
-                  </tr>
-                  <tr className="bg-slate-50/70">
-                    <td className="py-2 px-3 text-center font-mono">2</td>
-                    <td className="py-2 px-3 font-semibold">Working at Height</td>
-                    <td className="py-2 px-3 text-rose-800">Falls from height, falling objects</td>
-                    <td className="py-2 px-3 text-[11px]">Tagged mobile tower scaffolding, safety harness clipped 100%, exclusion zone.</td>
-                    <td className="py-2 px-3 text-center"><span className="bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-bold text-[10px]">High</span></td>
-                  </tr>
-                  <tr className="bg-white">
-                    <td className="py-2 px-3 text-center font-mono">3</td>
-                    <td className="py-2 px-3 font-semibold">Operation of Power Tools</td>
-                    <td className="py-2 px-3 text-rose-800">Electric shock, flying debris, noise</td>
-                    <td className="py-2 px-3 text-[11px]">Inspected 110V/safe cables with ELCB, eye protection, ear defenders.</td>
-                    <td className="py-2 px-3 text-center"><span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold text-[10px]">Medium</span></td>
-                  </tr>
-                </>
+                <tr><td colSpan={5} className="py-3 px-3 text-slate-500">No saved risk assessments.</td></tr>
               )}
             </tbody>
           </table>
@@ -363,7 +342,7 @@ export default function WorkMethodStatementTemplate({
                   <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50/70"}>
                     <td className="py-2 px-3 text-center font-mono text-[11px]">{idx + 1}</td>
                     <td className="py-2 px-3 font-medium text-slate-900">{item.inspection_item}</td>
-                    <td className="py-2 px-3 text-slate-600 text-[11px]">{item.acceptance_criteria || "As per IFC drawing"}</td>
+                    <td className="py-2 px-3 text-slate-600 text-[11px]">{item.acceptance_criteria || "Not recorded"}</td>
                     <td className="py-2 px-3 text-center">
                       <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
                         item.status === "Pass" ? "bg-emerald-100 text-emerald-800" :
@@ -374,38 +353,13 @@ export default function WorkMethodStatementTemplate({
                       </span>
                     </td>
                     <td className="py-2 px-3 text-slate-600 text-[11px]">
-                      {item.inspector_name || "QA/QC Eng."} {item.inspection_date ? `(${item.inspection_date})` : ""}
+                      {item.inspector_name || "Not recorded"} {item.inspection_date ? `(${item.inspection_date})` : ""}
                     </td>
-                    <td className="py-2 px-3 text-slate-600 text-[11px]">{item.remarks || "Compliant"}</td>
+                    <td className="py-2 px-3 text-slate-600 text-[11px]">{item.remarks || "—"}</td>
                   </tr>
                 ))
               ) : (
-                <>
-                  <tr className="bg-white">
-                    <td className="py-2 px-3 text-center font-mono">1</td>
-                    <td className="py-2 px-3 font-medium">Material Receiving Verification</td>
-                    <td className="py-2 px-3 text-slate-600">Conforms to approved MAS</td>
-                    <td className="py-2 px-3 text-center"><span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold text-[10px]">Pass</span></td>
-                    <td className="py-2 px-3 text-slate-600">QA/QC Eng.</td>
-                    <td className="py-2 px-3 text-slate-600">Approved</td>
-                  </tr>
-                  <tr className="bg-slate-50/70">
-                    <td className="py-2 px-3 text-center font-mono">2</td>
-                    <td className="py-2 px-3 font-medium">Alignment & Level Verification</td>
-                    <td className="py-2 px-3 text-slate-600">Within +/- 2mm tolerance</td>
-                    <td className="py-2 px-3 text-center"><span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold text-[10px]">Pass</span></td>
-                    <td className="py-2 px-3 text-slate-600">Surveyor</td>
-                    <td className="py-2 px-3 text-slate-600">Checked</td>
-                  </tr>
-                  <tr className="bg-white">
-                    <td className="py-2 px-3 text-center font-mono">3</td>
-                    <td className="py-2 px-3 font-medium">Fastener Torque & Support Check</td>
-                    <td className="py-2 px-3 text-slate-600">Per manufacturer chart</td>
-                    <td className="py-2 px-3 text-center"><span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold text-[10px]">Pass</span></td>
-                    <td className="py-2 px-3 text-slate-600">Site Eng.</td>
-                    <td className="py-2 px-3 text-slate-600">Calibrated</td>
-                  </tr>
-                </>
+                <tr><td colSpan={6} className="py-3 px-3 text-slate-500">No saved inspection results.</td></tr>
               )}
             </tbody>
           </table>
@@ -456,13 +410,13 @@ export default function WorkMethodStatementTemplate({
             <div className="text-[10px] text-slate-500 uppercase font-semibold">Main Contractor / Consultant</div>
             <div className="font-bold text-slate-800 text-xs mt-1">Review & Sign-Off</div>
             <div className="h-12 border-b border-dashed border-slate-300 my-2"></div>
-            <div className="text-[10px] text-slate-400">Status: Approved as Noted</div>
+            <div className="text-[10px] text-slate-400">Status: {wms.status || "Draft"}</div>
           </div>
         </div>
 
         {/* Footer */}
         <DocFooter
-          customText="Dubai ERP Project Engineering Suite — Approved Construction Submittal."
+          customText="Dubai ERP Project Engineering Suite — Construction Submittal."
         />
       </div>
     </DocumentContainer>

@@ -14,6 +14,9 @@ import type {
   SmartFitSettings,
 } from "./documentDesigner";
 
+// Automatic fitting paginates before shrinking body text below approximately 8pt.
+export const AUTO_FIT_MIN_FONT_PX = 10.5;
+
 const FALLBACK_SMART_FIT: SmartFitSettings = {
   enabled: true,
   mode: "balanced",
@@ -347,7 +350,8 @@ export function computeIntelligentFitProfile(
 
   const smartFit: SmartFitSettings = layout.page?.smartFit || FALLBACK_SMART_FIT;
   const isSmartFitEnabled = smartFit.enabled !== false;
-  const configuredMinFont = Number.isFinite(smartFit.minFontSize) ? smartFit.minFontSize : 7.5;
+  const configuredMinFont = Math.max(isSmartFitEnabled ? AUTO_FIT_MIN_FONT_PX : 0,
+    Number.isFinite(smartFit.minFontSize) ? smartFit.minFontSize : AUTO_FIT_MIN_FONT_PX);
   const configuredMinRow = Number.isFinite(smartFit.minRowHeight) ? smartFit.minRowHeight : 4.8;
   const mode = smartFit.mode || "balanced";
 
@@ -729,8 +733,8 @@ export function computeEffectiveLayout(
         level: "multi_page",
         rowHeight: Math.max(layout.page.smartFit?.minRowHeight || 0, 7.5),
         headerHeight: 7,
-        fontSize: Math.max(layout.page.smartFit?.minFontSize || 0, 9.5),
-        headerFontSize: Math.max(layout.page.smartFit?.minFontSize || 0, 9.5),
+        fontSize: Math.max(layout.page.smartFit?.minFontSize || 0, layout.page.smartFit?.enabled !== false ? AUTO_FIT_MIN_FONT_PX : 9.5),
+        headerFontSize: Math.max(layout.page.smartFit?.minFontSize || 0, layout.page.smartFit?.enabled !== false ? AUTO_FIT_MIN_FONT_PX : 9.5),
         followerScale: 0.88,
         gap: 2.5,
       }

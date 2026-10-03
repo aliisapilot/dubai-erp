@@ -2,7 +2,7 @@
 
 export const runtime = 'edge';
 
-import React, { useEffect, useState, use } from "react";
+import React, { useEffect, useState, useRef, use } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import {
@@ -23,6 +23,8 @@ import {
 import { fmtAED, statusClass, todayISO, getCurrentCompany, generateDocNumber } from "@/lib/helpers";
 import WorkMethodStatementTemplate, { WMSData, RiskAssessmentRow, QAQCChecklistItem } from "@/components/documents/WorkMethodStatementTemplate";
 import ProjectHandoverTemplate, { HandoverData } from "@/components/documents/ProjectHandoverTemplate";
+import ReportLoadState from "@/components/ReportLoadState";
+import { readProjectResult, writeProjectResult, unsavedProjectExpenses, saveProjectWmsDraft, type ProjectWmsDraft } from "@/lib/projectPersistence";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
@@ -127,6 +129,13 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [browserDrafts, setBrowserDrafts] = useState<ProjectExpense[]>([]);
+  const [browserNotice, setBrowserNotice] = useState("");
+  const loadVersion = useRef(0);
+  const actionInFlight = useRef(false);
+  const pendingWms = useRef<ProjectWmsDraft | null>(null);
   const [activeTab, setActiveTab] = useState<"costing" | "manpower" | "equipment" | "wms" | "handover" | "documents">("costing");
 
   // Costing & Data Lists
@@ -190,10 +199,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   ]);
 
   const [wmsQAQC, setWmsQAQC] = useState<QAQCChecklistItem[]>([
-    { inspection_item: "Approved Material Verification (MIR)", acceptance_criteria: "Matches approved submittal & brand specs", status: "Pass", inspector_name: "QA/QC Engineer" },
-    { inspection_item: "Alignment, Plumb & Elevation Check", acceptance_criteria: "Within +/- 3mm tolerance of IFC drawing", status: "Pass", inspector_name: "Site Engineer" },
-    { inspection_item: "Fastener Torque & Structural Anchoring", acceptance_criteria: "Calibrated torque wrench verification", status: "Pass", inspector_name: "Site Engineer" },
-    { inspection_item: "Testing & Commissioning (WIR Witness)", acceptance_criteria: "Zero leaks & pressure holding 24 hours", status: "Pass", inspector_name: "Consultant Rep" },
+    { inspection_item: "Approved Material Verification (MIR)", acceptance_criteria: "Matches approved submittal & brand specs", status: "Pending", inspector_name: "QA/QC Engineer" },
+    { inspection_item: "Alignment, Plumb & Elevation Check", acceptance_criteria: "Within +/- 3mm tolerance of IFC drawing", status: "Pending", inspector_name: "Site Engineer" },
+    { inspection_item: "Fastener Torque & Structural Anchoring", acceptance_criteria: "Calibrated torque wrench verification", status: "Pending", inspector_name: "Site Engineer" },
+    { inspection_item: "Testing & Commissioning (WIR Witness)", acceptance_criteria: "Zero leaks & pressure holding 24 hours", status: "Pending", inspector_name: "Consultant Rep" },
   ]);
 
   const [wmsRevHistory, setWmsRevHistory] = useState([
@@ -208,290 +217,246 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [hoContractorRep, setHoContractorRep] = useState("");
 
   useEffect(() => {
-    loadProjectDetails();
+    let cancelled = false;
+    pendingWms.current = null;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      setPrintWms(null);
+      setPrintHandover(null);
+      setActionError("");
+      void loadProjectDetails();
+    });
+    return () => { cancelled = true; loadVersion.current += 1; };
   // Project identity is the complete refresh key.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   async function loadProjectDetails() {
+    const version = ++loadVersion.current;
     setLoading(true);
-    const { data: p } = await supabase.from("projects").select("*").eq("id", projectId).single();
-    if (!p) {
-      setLoading(false);
-      return;
-    }
-    setProject(p as Project);
-
-    const [{ data: c }, co, { data: mp }, { data: eq }, { data: exps }, { data: wms }, { data: ho }, { data: quotes }, { data: invs }, { data: dns }, { data: pos }] = await Promise.all([
-      p.customer_id ? supabase.from("customers").select("id, name").eq("id", p.customer_id).single() : { data: null },
-      getCurrentCompany(),
-      supabase.from("project_manpower").select("*").eq("project_id", projectId).order("created_at"),
-      supabase.from("project_equipment").select("*").eq("project_id", projectId).order("created_at"),
-      supabase.from("project_expenses").select("*").eq("project_id", projectId).order("expense_date"),
-      supabase.from("work_method_statements").select("*").eq("project_id", projectId).order("created_at"),
-      supabase.from("project_handovers").select("*").eq("project_id", projectId).order("created_at"),
-      supabase.from("quotations").select("id, quotation_number, quotation_date, total_amount, status").eq("project_id", projectId),
-      supabase.from("tax_invoices").select("id, invoice_number, invoice_date, total_amount, status").eq("project_id", projectId),
-      supabase.from("delivery_notes").select("id, delivery_note_number, delivery_date, status").eq("project_id", projectId),
-      supabase.from("purchase_orders").select("id, purchase_order_number, order_date, total_amount, status").eq("project_id", projectId),
-    ]);
-
-    if (c) setCustomer(c as Customer);
-    if (co) setCompany(co as CompanyDocInfo);
-    setManpower((mp || []) as Manpower[]);
-    setEquipment((eq || []) as Equipment[]);
-    if (exps && exps.length > 0) {
-      setExpenses(exps as ProjectExpense[]);
-    } else {
+    setLoadError("");
+    try {
+      const co = await getCurrentCompany();
+      if (!co?.id) throw new Error("No active company found.");
+      const p = await readProjectResult<Project>(supabase.from("projects").select("*").eq("id", projectId).eq("company_id", co.id).maybeSingle());
+      if (version !== loadVersion.current) return;
+      if (!p) { setProject(null); return; }
+      const [c, mp, eq, exps, wms, ho, quotes, invs, dns, pos] = await Promise.all([
+        p.customer_id ? readProjectResult(supabase.from("customers").select("id, name").eq("id", p.customer_id).eq("company_id", co.id).single()) : null,
+        readProjectResult(supabase.from("project_manpower").select("*").eq("project_id", projectId).eq("company_id", co.id).order("created_at")),
+        readProjectResult(supabase.from("project_equipment").select("*").eq("project_id", projectId).eq("company_id", co.id).order("created_at")),
+        readProjectResult(supabase.from("project_expenses").select("*").eq("project_id", projectId).eq("company_id", co.id).order("expense_date")),
+        readProjectResult(supabase.from("work_method_statements").select("*").eq("project_id", projectId).eq("company_id", co.id).order("created_at")),
+        readProjectResult(supabase.from("project_handovers").select("*").eq("project_id", projectId).eq("company_id", co.id).order("created_at")),
+        readProjectResult(supabase.from("quotations").select("id, quotation_number, quotation_date, total_amount, status").eq("project_id", projectId).eq("company_id", co.id)),
+        readProjectResult(supabase.from("tax_invoices").select("id, invoice_number, invoice_date, total_amount, status").eq("project_id", projectId).eq("company_id", co.id)),
+        readProjectResult(supabase.from("delivery_notes").select("id, delivery_note_number, delivery_date, status").eq("project_id", projectId).eq("company_id", co.id)),
+        readProjectResult(supabase.from("purchase_orders").select("id, purchase_order_number, order_date, total_amount, status").eq("project_id", projectId).eq("company_id", co.id)),
+      ]);
+      if (version !== loadVersion.current) return;
+      setProject(p as Project);
+      setCustomer(c as Customer | null);
+      setCompany(co as CompanyDocInfo);
+      setManpower((mp || []) as Manpower[]);
+      setEquipment((eq || []) as Equipment[]);
+      const savedExpenses = (exps || []) as ProjectExpense[];
+      setExpenses(savedExpenses);
+      setBrowserDrafts([]);
+      setBrowserNotice("");
       try {
-        const savedExp = localStorage.getItem(`dxb_project_expenses_${projectId}`);
-        if (savedExp) setExpenses(JSON.parse(savedExp));
-      } catch {}
+        const local = localStorage.getItem('dxb_project_expenses_' + projectId);
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (!Array.isArray(parsed) || parsed.some(row => !row || typeof row.id !== "string")) throw new Error("Invalid expense backup");
+          setBrowserDrafts(unsavedProjectExpenses(savedExpenses, parsed as ProjectExpense[]));
+        }
+        const unfinished = localStorage.getItem('dxb_wms_draft_' + co.id + '_' + projectId);
+        if (unfinished && !pendingWms.current) {
+          const draft = JSON.parse(unfinished) as ProjectWmsDraft;
+          if (draft.parent?.project_id === projectId && draft.parent.company_id === co.id && Array.isArray(draft.risks) && Array.isArray(draft.qaqc) && Array.isArray(draft.revHistory)) {
+            pendingWms.current = draft;
+            setWmsTitle(typeof draft.parent.title === "string" ? draft.parent.title : "");
+            setWmsRevision(typeof draft.parent.revision === "string" ? draft.parent.revision : "");
+            setWmsPreparedBy(typeof draft.parent.prepared_by === "string" ? draft.parent.prepared_by : "");
+            setWmsApprovedBy(typeof draft.parent.approved_by === "string" ? draft.parent.approved_by : "");
+            setWmsPurpose(typeof draft.parent.purpose === "string" ? draft.parent.purpose : "");
+            setWmsScope(typeof draft.parent.scope === "string" ? draft.parent.scope : "");
+            setWmsRefDocs(typeof draft.parent.reference_documents === "string" ? draft.parent.reference_documents : "");
+            setWmsResponsibilities(typeof draft.parent.responsibilities === "string" ? draft.parent.responsibilities : "");
+            setWmsMaterials(typeof draft.parent.materials === "string" ? draft.parent.materials : "");
+            setWmsTools(typeof draft.parent.tools_equipment === "string" ? draft.parent.tools_equipment : "");
+            setWmsPreInstallation(typeof draft.parent.pre_installation === "string" ? draft.parent.pre_installation : "");
+            setWmsProcedure(typeof draft.parent.installation_procedure === "string" ? draft.parent.installation_procedure : "");
+            setWmsQualityControl(typeof draft.parent.quality_control === "string" ? draft.parent.quality_control : "");
+            setWmsHealthSafety(typeof draft.parent.health_safety === "string" ? draft.parent.health_safety : "");
+            setWmsEnvironmental(typeof draft.parent.environmental === "string" ? draft.parent.environmental : "");
+            setWmsAcceptanceCriteria(typeof draft.parent.acceptance_criteria === "string" ? draft.parent.acceptance_criteria : "");
+            setWmsRisks(draft.risks as unknown as RiskAssessmentRow[]);
+            setWmsQAQC(draft.qaqc as unknown as QAQCChecklistItem[]);
+            setWmsRevHistory(draft.revHistory);
+          } else {
+            setBrowserNotice("An unfinished WMS backup has an incompatible format. It has been preserved for export.");
+          }
+        }
+      } catch {
+        setBrowserNotice("An existing browser backup could not be read. It has been preserved.");
+      }
+      setWmsList((wms || []) as WMS[]);
+      setHandovers((ho || []) as Handover[]);
+      const docs: LinkedDoc[] = [];
+      (quotes || []).forEach(q => docs.push({id:q.id,type:"Quotation",ref_number:q.quotation_number,date:q.quotation_date,amount:q.total_amount,status:q.status}));
+      (invs || []).forEach(i => docs.push({id:i.id,type:"Tax Invoice",ref_number:i.invoice_number,date:i.invoice_date,amount:i.total_amount,status:i.status}));
+      (dns || []).forEach(d => docs.push({id:d.id,type:"Delivery Note",ref_number:d.delivery_note_number,date:d.delivery_date,status:d.status}));
+      (pos || []).forEach(po => docs.push({id:po.id,type:"Purchase Order",ref_number:po.purchase_order_number,date:po.order_date,amount:po.total_amount,status:po.status}));
+      setLinkedDocs(docs);
+    } catch (error) {
+      if (version === loadVersion.current) setLoadError(error instanceof Error ? error.message : "Could not load saved project data.");
+    } finally {
+      if (version === loadVersion.current) setLoading(false);
     }
-    setWmsList((wms || []) as WMS[]);
-    setHandovers((ho || []) as Handover[]);
-
-    // Assemble linked docs
-    const lDocs: LinkedDoc[] = [];
-    (quotes || []).forEach(q => lDocs.push({ id: q.id, type: "Quotation", ref_number: q.quotation_number, date: q.quotation_date, amount: q.total_amount, status: q.status }));
-    (invs || []).forEach(i => lDocs.push({ id: i.id, type: "Tax Invoice", ref_number: i.invoice_number, date: i.invoice_date, amount: i.total_amount, status: i.status }));
-    (dns || []).forEach(d => lDocs.push({ id: d.id, type: "Delivery Note", ref_number: d.delivery_note_number, date: d.delivery_date, status: d.status }));
-    (pos || []).forEach(po => lDocs.push({ id: po.id, type: "Purchase Order", ref_number: po.purchase_order_number, date: po.order_date, amount: po.total_amount, status: po.status }));
-    setLinkedDocs(lDocs);
-
-    setLoading(false);
   }
 
-  // Add Manpower
+  async function runProjectAction(action: () => Promise<void>) {
+    if (actionInFlight.current) return;
+    actionInFlight.current = true;
+    setSavingItem(true);
+    setActionError("");
+    try { await action(); }
+    catch (error) { setActionError(error instanceof Error ? error.message : "The change could not be saved. Your entries have been kept."); }
+    finally { actionInFlight.current = false; setSavingItem(false); }
+  }
+
+  function exportBrowserBackup() {
+    if (!project) return;
+    const backup = {project_id: projectId, expenses: localStorage.getItem('dxb_project_expenses_' + projectId), unfinishedWms: pendingWms.current, unfinishedWmsBackup: localStorage.getItem("dxb_wms_draft_" + project.company_id + "_" + projectId),
+      wms: Object.fromEntries(wmsList.map(w => [w.id, localStorage.getItem('wms_extra_' + w.id)]))};
+    const url = URL.createObjectURL(new Blob([JSON.stringify(backup,null,2)], {type:"application/json"}));
+    const link = document.createElement("a");
+    link.href = url; link.download = project.project_number + "-browser-backup.json"; link.click(); URL.revokeObjectURL(url);
+  }
+
+  // Only acknowledged cloud writes change displayed rows or clear form fields.
   async function handleAddManpower(e: React.FormEvent) {
     e.preventDefault();
     if (!mpRole.trim() || !project) return;
-    setSavingItem(true);
-    const total = Number(mpQty) * Number(mpRate) * Number(mpDays);
-    const { error } = await supabase.from("project_manpower").insert({
-      project_id: projectId,
-      company_id: project.company_id,
-      role_name: mpRole.trim(),
-      quantity: Number(mpQty),
-      daily_rate: Number(mpRate),
-      total_days: Number(mpDays),
-      total_cost: total,
+    await runProjectAction(async () => {
+      await writeProjectResult(supabase.from("project_manpower").insert({project_id:projectId,company_id:project.company_id,
+        role_name:mpRole.trim(),quantity:Number(mpQty),daily_rate:Number(mpRate),total_days:Number(mpDays),total_cost:Number(mpQty)*Number(mpRate)*Number(mpDays)}).select("id").single());
+      setMpRole(""); await loadProjectDetails();
     });
-    if (!error) {
-      setMpRole("");
-      await loadProjectDetails();
-    }
-    setSavingItem(false);
   }
 
   async function handleDeleteManpower(id: string) {
-    await supabase.from("project_manpower").delete().eq("id", id);
-    setManpower(m => m.filter(item => item.id !== id));
+    if (!project) return;
+    await runProjectAction(async () => {
+      await writeProjectResult(supabase.from("project_manpower").delete().eq("id",id).eq("project_id",projectId).eq("company_id",project.company_id).select("id").single());
+      setManpower(rows => rows.filter(row => row.id !== id));
+    });
   }
 
-  // Add Equipment
   async function handleAddEquipment(e: React.FormEvent) {
     e.preventDefault();
     if (!eqName.trim() || !project) return;
-    setSavingItem(true);
-    const total = Number(eqQty) * Number(eqRate) * Number(eqDays);
-    const { error } = await supabase.from("project_equipment").insert({
-      project_id: projectId,
-      company_id: project.company_id,
-      equipment_name: eqName.trim(),
-      quantity: Number(eqQty),
-      rate_per_day: Number(eqRate),
-      total_days: Number(eqDays),
-      total_cost: total,
+    await runProjectAction(async () => {
+      await writeProjectResult(supabase.from("project_equipment").insert({project_id:projectId,company_id:project.company_id,
+        equipment_name:eqName.trim(),quantity:Number(eqQty),rate_per_day:Number(eqRate),total_days:Number(eqDays),total_cost:Number(eqQty)*Number(eqRate)*Number(eqDays)}).select("id").single());
+      setEqName(""); await loadProjectDetails();
     });
-    if (!error) {
-      setEqName("");
-      await loadProjectDetails();
-    }
-    setSavingItem(false);
   }
 
   async function handleDeleteEquipment(id: string) {
-    await supabase.from("project_equipment").delete().eq("id", id);
-    setEquipment(eq => eq.filter(item => item.id !== id));
+    if (!project) return;
+    await runProjectAction(async () => {
+      await writeProjectResult(supabase.from("project_equipment").delete().eq("id",id).eq("project_id",projectId).eq("company_id",project.company_id).select("id").single());
+      setEquipment(rows => rows.filter(row => row.id !== id));
+    });
   }
 
-  // Add Direct Project Expense
   async function handleAddExpense(e: React.FormEvent) {
     e.preventDefault();
     if (!expDesc.trim() || !project) return;
-    setSavingItem(true);
-    const newExp: ProjectExpense = {
-      id: crypto.randomUUID(),
-      description: expDesc.trim(),
-      category: expCat,
-      amount: Number(expAmount),
-      expense_date: expDate || todayISO(),
-      receipt_ref: expRef.trim() || null,
-    };
-    try {
-      await supabase.from("project_expenses").insert({
-        ...newExp,
-        project_id: projectId,
-        company_id: project.company_id,
-      });
-    } catch (err) {
-      console.warn("Direct expense fallback to localStorage:", err);
-    }
-    const updated = [...expenses, newExp];
-    setExpenses(updated);
-    try {
-      localStorage.setItem(`dxb_project_expenses_${projectId}`, JSON.stringify(updated));
-    } catch {}
-    setExpDesc("");
-    setExpRef("");
-    setSavingItem(false);
+    await runProjectAction(async () => {
+      const saved = await writeProjectResult<ProjectExpense>(supabase.from("project_expenses").insert({description:expDesc.trim(),category:expCat,
+        amount:Number(expAmount),expense_date:expDate || todayISO(),receipt_ref:expRef.trim() || null,project_id:projectId,company_id:project.company_id}).select("*").single());
+      setExpenses(rows => [...rows,saved as ProjectExpense]);
+      setExpDesc(""); setExpRef("");
+    });
   }
 
   async function handleDeleteExpense(id: string) {
-    try {
-      await supabase.from("project_expenses").delete().eq("id", id);
-    } catch {}
-    const updated = expenses.filter(e => e.id !== id);
-    setExpenses(updated);
-    try {
-      localStorage.setItem(`dxb_project_expenses_${projectId}`, JSON.stringify(updated));
-    } catch {}
+    if (!project) return;
+    await runProjectAction(async () => {
+      await writeProjectResult(supabase.from("project_expenses").delete().eq("id",id).eq("project_id",projectId).eq("company_id",project.company_id).select("id").single());
+      setExpenses(rows => rows.filter(row => row.id !== id));
+    });
   }
 
-  // Create WMS with 25+ fields, structured Risk Assessment and QA/QC inspection checklist
+  // Keep a stable, recoverable draft if any child write fails. Retry uses the same IDs.
   async function handleCreateWms(e: React.FormEvent) {
     e.preventDefault();
-    if (!wmsTitle.trim() || !project) return;
-    setSavingItem(true);
-    const wmsNo = await generateDocNumber(project.company_id, "WMS");
-    const payload = {
-      project_id: projectId,
-      company_id: project.company_id,
-      wms_number: wmsNo,
-      title: wmsTitle.trim(),
-      location: project.location,
-      main_contractor: project.main_contractor,
-      subcontractor: project.subcontractor,
-      prepared_by: wmsPreparedBy.trim(),
-      approved_by: wmsApprovedBy.trim(),
-      revision: wmsRevision,
-      purpose: wmsPurpose.trim() || null,
-      scope: wmsScope.trim() || null,
-      reference_documents: wmsRefDocs.trim() || null,
-      responsibilities: wmsResponsibilities.trim() || null,
-      materials: wmsMaterials.trim() || null,
-      tools_equipment: wmsTools.trim() || null,
-      pre_installation: wmsPreInstallation.trim() || null,
-      installation_procedure: wmsProcedure.trim() || null,
-      quality_control: wmsQualityControl.trim() || null,
-      health_safety: wmsHealthSafety.trim() || null,
-      environmental: wmsEnvironmental.trim() || null,
-      acceptance_criteria: wmsAcceptanceCriteria.trim() || null,
-      status: "Approved",
-    };
-
-    const { data: insWms, error } = await supabase.from("work_method_statements").insert(payload).select("id").single();
-    if (!error && insWms) {
-      const wmsId = insWms.id;
-      // Save risk rows if table exists
-      try {
-        if (wmsRisks.length > 0) {
-          await supabase.from("wms_risk_assessments").insert(
-            wmsRisks.map((r, i) => ({
-              wms_id: wmsId,
-              company_id: project.company_id,
-              activity: r.activity,
-              hazard: r.hazard,
-              control_measures: r.control_measures,
-              risk_level: r.risk_level || "Medium",
-              sequence_order: i + 1,
-            }))
-          );
-        }
-        if (wmsQAQC.length > 0) {
-          await supabase.from("wms_qaqc_checklists").insert(
-            wmsQAQC.map(q => ({
-              wms_id: wmsId,
-              company_id: project.company_id,
-              inspection_item: q.inspection_item,
-              acceptance_criteria: q.acceptance_criteria || null,
-              status: q.status || "Pending",
-              inspector_name: q.inspector_name || null,
-              remarks: q.remarks || null,
-            }))
-          );
-        }
-      } catch (childErr) {
-        console.warn("Child assessment tables insertion fallback:", childErr);
+    if (!project || (!wmsTitle.trim() && !pendingWms.current)) return;
+    await runProjectAction(async () => {
+      if (!pendingWms.current) {
+        const wmsNo = await generateDocNumber(project.company_id, "WMS");
+        const id = crypto.randomUUID();
+        pendingWms.current = {
+          parent: {id,project_id:projectId,company_id:project.company_id,wms_number:wmsNo,title:wmsTitle.trim(),
+            location:project.location,main_contractor:project.main_contractor,subcontractor:project.subcontractor,
+            prepared_by:wmsPreparedBy.trim() || null,approved_by:wmsApprovedBy.trim() || null,revision:wmsRevision,
+            purpose:wmsPurpose.trim() || null,scope:wmsScope.trim() || null,reference_documents:wmsRefDocs.trim() || null,
+            responsibilities:wmsResponsibilities.trim() || null,materials:wmsMaterials.trim() || null,tools_equipment:wmsTools.trim() || null,
+            pre_installation:wmsPreInstallation.trim() || null,installation_procedure:wmsProcedure.trim() || null,
+            quality_control:wmsQualityControl.trim() || null,health_safety:wmsHealthSafety.trim() || null,
+            environmental:wmsEnvironmental.trim() || null,acceptance_criteria:wmsAcceptanceCriteria.trim() || null,status:"Draft"},
+          risks:wmsRisks.map((r,i)=>({id:crypto.randomUUID(),wms_id:id,company_id:project.company_id,activity:r.activity,hazard:r.hazard,
+            control_measures:r.control_measures,risk_level:r.risk_level || "Medium",sequence_order:i+1})),
+          qaqc:wmsQAQC.map(q=>({id:crypto.randomUUID(),wms_id:id,company_id:project.company_id,inspection_item:q.inspection_item,
+            acceptance_criteria:q.acceptance_criteria || null,status:q.status || "Pending",inspector_name:q.inspector_name || null,remarks:q.remarks || null})),
+          revHistory:wmsRevHistory.map(row=>({...row})),
+        };
       }
-
-      // Persist full structured data in localStorage for instantaneous rendering
-      try {
-        localStorage.setItem(`wms_extra_${wmsId}`, JSON.stringify({
-          risks: wmsRisks,
-          qaqc: wmsQAQC,
-          revHistory: wmsRevHistory,
-        }));
-      } catch {}
-
-      setShowWmsModal(false);
-      setWmsTitle("");
+      const draft = pendingWms.current;
+      const key = 'dxb_wms_draft_' + project.company_id + '_' + projectId;
+      // Write recovery data before network requests. Never discard another saved design or record.
+      localStorage.setItem(key,JSON.stringify(draft));
+      try { await saveProjectWmsDraft(supabase,draft); }
+      catch (error) { throw new Error('WMS "' + draft.parent.title + '" is unfinished. Your draft is preserved; retry to complete it. ' + (error instanceof Error ? error.message : "Saving failed.")); }
+      localStorage.setItem('wms_extra_' + draft.parent.id,JSON.stringify({revHistory:draft.revHistory}));
+      localStorage.removeItem(key);
+      pendingWms.current = null;
+      setShowWmsModal(false); setWmsTitle("");
       await loadProjectDetails();
-    }
-    setSavingItem(false);
+      setBrowserNotice("WMS and assessments saved to cloud as a draft. Revision history is preserved in this browser only; export a backup for another device.");
+    });
   }
 
   // Print WMS submittal with real structured risks, QA/QC checklist and schedules
   async function handlePrintWmsDoc(w: WMS) {
     if (!project) return;
-    let risks: RiskAssessmentRow[] = [];
-    let qaqc: QAQCChecklistItem[] = [];
-    let revHistory = [
-      { rev: w.revision, date: w.document_date || todayISO(), description: "Technical Method Statement Submittal", prepared_by: w.prepared_by || "Site Engineer" }
-    ];
-
+    await runProjectAction(async () => {
+    const [rData,qData] = await Promise.all([
+      readProjectResult(supabase.from("wms_risk_assessments").select("*").eq("wms_id",w.id).eq("company_id",project.company_id).order("sequence_order")),
+      readProjectResult(supabase.from("wms_qaqc_checklists").select("*").eq("wms_id",w.id).eq("company_id",project.company_id).order("created_at")),
+    ]);
+    const risks: RiskAssessmentRow[] = (rData || []).map(r=>({activity:r.activity,hazard:r.hazard,control_measures:r.control_measures,risk_level:r.risk_level}));
+    const qaqc: QAQCChecklistItem[] = (qData || []).map(q=>({inspection_item:q.inspection_item,acceptance_criteria:q.acceptance_criteria,status:q.status,remarks:q.remarks,inspector_name:q.inspector_name}));
+    let revHistory = [{rev:w.revision,date:w.document_date || todayISO(),description:"Technical Method Statement Submittal",prepared_by:w.prepared_by || ""}];
     try {
-      const [{ data: rData }, { data: qData }] = await Promise.all([
-        supabase.from("wms_risk_assessments").select("*").eq("wms_id", w.id).order("sequence_order"),
-        supabase.from("wms_qaqc_checklists").select("*").eq("wms_id", w.id).order("created_at"),
-      ]);
-      if (rData && rData.length > 0) {
-        risks = rData.map(r => ({ activity: r.activity, hazard: r.hazard, control_measures: r.control_measures, risk_level: r.risk_level }));
-      }
-      if (qData && qData.length > 0) {
-        qaqc = qData.map(q => ({ inspection_item: q.inspection_item, acceptance_criteria: q.acceptance_criteria, status: q.status, remarks: q.remarks, inspector_name: q.inspector_name }));
-      }
-    } catch {}
-
-    if (risks.length === 0 || qaqc.length === 0) {
-      try {
-        const local = localStorage.getItem(`wms_extra_${w.id}`);
-        if (local) {
-          const parsed = JSON.parse(local);
-          if (parsed.risks?.length) risks = parsed.risks;
-          if (parsed.qaqc?.length) qaqc = parsed.qaqc;
-          if (parsed.revHistory?.length) revHistory = parsed.revHistory;
+      const local = localStorage.getItem('wms_extra_' + w.id);
+      if (local) {
+        const parsed = JSON.parse(local);
+        if (parsed.revHistory?.length) {
+          revHistory = parsed.revHistory;
+          setBrowserNotice("This WMS preview includes revision history saved only in this browser. Export a backup before switching devices.");
         }
-      } catch {}
-    }
-
-    if (risks.length === 0) {
-      risks = [
-        { activity: "Site Preparation & Scaffolding", hazard: "Falls from height, unstable ground", control_measures: "Scaffolding tag, full body harness clipped, ground compaction check", risk_level: "High" },
-        { activity: "Material Delivery & Lifting", hazard: "Pinch points, dropped objects", control_measures: "Rigging inspection, certified slinger, exclusion barricade", risk_level: "Medium" },
-        { activity: "Tool Installation & Testing", hazard: "Electrocution, flying debris", control_measures: "110V power with ELCB, safety goggles and heavy-duty gloves", risk_level: "Medium" },
-      ];
-    }
-    if (qaqc.length === 0) {
-      qaqc = [
-        { inspection_item: "Approved Material Verification", acceptance_criteria: "Matches approved MAS submittal", status: "Pass", inspector_name: "QA Engineer" },
-        { inspection_item: "Supports and Anchoring Check", acceptance_criteria: "Torque per structural calculations", status: "Pass", inspector_name: "Site Engineer" },
-        { inspection_item: "Final Operational Testing", acceptance_criteria: "Zero leaks & voltage tolerance compliance", status: "Pass", inspector_name: "Consultant" },
-      ];
-    }
+        if ((parsed.risks?.length && !risks.length) || (parsed.qaqc?.length && !qaqc.length)) {
+          setBrowserNotice("Older assessments exist only in this browser. The preview uses saved cloud assessments; export the browser backup to preserve older entries.");
+        }
+      }
+    } catch { setBrowserNotice("The browser revision backup could not be read. It has been preserved."); }
 
     const templateData: WMSData = {
+      status: w.status,
       wms_number: w.wms_number,
       title: w.title,
       project_name: project.name,
@@ -521,30 +486,20 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       revision_history: revHistory,
     };
     setPrintWms(templateData);
+    });
   }
 
-  // Create Handover
   async function handleCreateHandover(e: React.FormEvent) {
     e.preventDefault();
     if (!project) return;
-    setSavingItem(true);
-    const hoNo = await generateDocNumber(project.company_id, "HO");
-    const { error } = await supabase.from("project_handovers").insert({
-      project_id: projectId,
-      company_id: project.company_id,
-      handover_number: hoNo,
-      handover_date: todayISO(),
-      scope_completed: hoScope.trim() || "Complete MEP and fitout scope as per contract.",
-      snags_remarks: hoSnags.trim() || "No outstanding critical defects.",
-      client_representative: hoClientRep.trim() || "Client Consultant",
-      contractor_representative: hoContractorRep.trim() || "Project Manager",
-      status: "Completed",
+    if (!hoScope.trim()) {setActionError("Enter the actual scope completed before saving a handover draft.");return;}
+    await runProjectAction(async () => {
+      const hoNo = await generateDocNumber(project.company_id,"HO");
+      await writeProjectResult(supabase.from("project_handovers").insert({project_id:projectId,company_id:project.company_id,
+        handover_number:hoNo,handover_date:todayISO(),scope_completed:hoScope.trim(),snags_remarks:hoSnags.trim() || null,
+        client_representative:hoClientRep.trim() || null,contractor_representative:hoContractorRep.trim() || null,status:"Draft"}).select("id").single());
+      setShowHandoverModal(false); await loadProjectDetails();
     });
-    if (!error) {
-      setShowHandoverModal(false);
-      await loadProjectDetails();
-    }
-    setSavingItem(false);
   }
 
   // Financial Computations
@@ -565,6 +520,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     ? (grossProfit / (totalInvoiced > 0 ? totalInvoiced : contractValue)) * 100
     : 0;
 
+  if (loadError) return <ReportLoadState loading={loading} error={loadError} subject="project" unavailableMessage="Project totals and documents are unavailable until all saved data loads successfully." onRetry={() => void loadProjectDetails()} />;
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
@@ -581,12 +538,14 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     );
   }
 
+  const actionFeedback = actionError ? <p role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{actionError}</p> : null;
+
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="app-screen-content no-print">
         {/* Header */}
         <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
           <div className="flex items-center gap-3">
             <Link
               href="/projects"
@@ -621,7 +580,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         </div>
 
         {/* Tab Navigation */}
-        <div className="mx-auto flex max-w-7xl gap-6 px-6 text-xs font-semibold border-t border-slate-100">
+        <div className="mx-auto flex max-w-7xl shrink-0 gap-6 overflow-x-auto px-6 text-xs font-semibold border-t border-slate-100">
           <button
             onClick={() => setActiveTab("costing")}
             className={`py-3 border-b-2 transition flex items-center gap-1.5 ${
@@ -682,6 +641,13 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Main Container */}
       <div className="mx-auto max-w-7xl px-6 py-6">
+        {actionFeedback}
+        {(browserNotice || browserDrafts.length > 0 || pendingWms.current) && <section className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          {browserNotice && <p>{browserNotice}</p>}
+          {browserDrafts.length > 0 && <><p>{browserDrafts.length} older expenses are saved only in this browser. They are preserved below and excluded from cloud totals.</p><ul className="mt-2 space-y-1">{browserDrafts.map(row=><li key={row.id}>{row.description} — {fmtAED(row.amount)}</li>)}</ul></>}
+          {pendingWms.current && <p>An unfinished WMS draft, “{pendingWms.current.parent.title}”, is preserved. Open Create Method Statement to retry it.</p>}
+          <button type="button" onClick={exportBrowserBackup} className="mt-3 rounded-lg border border-amber-300 px-3 py-2 font-semibold">Export browser backup</button>
+        </section>}
         {/* TAB 1: Costing & Profitability */}
         {activeTab === "costing" && (
           <div className="space-y-6">
@@ -855,7 +821,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                 </form>
 
                 {/* Expenses Table */}
-                <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-slate-50 text-left font-semibold uppercase text-slate-500 border-b border-slate-100">
@@ -917,7 +883,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           <div className="space-y-6">
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <h3 className="font-bold text-slate-900 text-sm mb-3">Add Manpower Allocation</h3>
-              <form onSubmit={handleAddManpower} className="grid grid-cols-5 gap-3 text-xs">
+              <form onSubmit={handleAddManpower} className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2 lg:grid-cols-5">
                 <div>
                   <label className="mb-1 block font-medium text-slate-600">Role / Trade</label>
                   <input
@@ -978,7 +944,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             </div>
 
             {/* Manpower Table */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-slate-50 text-left font-semibold uppercase text-slate-500 border-b border-slate-100">
@@ -1033,7 +999,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           <div className="space-y-6">
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <h3 className="font-bold text-slate-900 text-sm mb-3">Add Equipment & Machinery</h3>
-              <form onSubmit={handleAddEquipment} className="grid grid-cols-5 gap-3 text-xs">
+              <form onSubmit={handleAddEquipment} className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2 lg:grid-cols-5">
                 <div>
                   <label className="mb-1 block font-medium text-slate-600">Equipment Name</label>
                   <input
@@ -1094,7 +1060,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             </div>
 
             {/* Equipment Table */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-slate-50 text-left font-semibold uppercase text-slate-500 border-b border-slate-100">
@@ -1293,7 +1259,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-slate-50 text-left font-semibold uppercase text-slate-500 border-b border-slate-100">
@@ -1372,7 +1338,11 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
               ))}
             </div>
 
-            <form onSubmit={handleCreateWms} className="flex-1 overflow-y-auto p-6 text-xs space-y-4">
+            <form onSubmit={handleCreateWms} className="min-h-0 flex-1 overflow-y-auto p-6 text-xs space-y-4">
+              {actionFeedback}
+              <p className="rounded-lg bg-amber-50 p-3 text-amber-800">Saved as a draft. Risk assessments and inspections save to cloud; revision history stays in this browser. Export a backup for another device.</p>
+              {pendingWms.current && <p role="status" className="text-amber-800">Retrying the preserved unfinished draft: {pendingWms.current.parent.title}. Its entries are locked until saving completes.</p>}
+              <fieldset disabled={savingItem || !!pendingWms.current} className="space-y-4">
               {/* TAB 1: General & Scope */}
               {wmsModalTab === "general" && (
                 <div className="space-y-4">
@@ -1929,12 +1899,13 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               )}
 
+              </fieldset>
               {/* Form Footer */}
-              <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-200">
                 <div className="text-[11px] text-slate-400">
                   Fill in all relevant tabs before saving. All technical parameters are printed on official company letterhead.
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => setShowWmsModal(false)}
@@ -1947,7 +1918,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     disabled={savingItem}
                     className="rounded-lg bg-slate-900 px-5 py-2 font-semibold text-white hover:bg-slate-800 transition disabled:opacity-50"
                   >
-                    {savingItem ? "Saving Submittal..." : "Save Technical WMS"}
+                    {savingItem ? "Saving Submittal..." : pendingWms.current ? "Retry Unfinished WMS" : "Save Technical WMS Draft"}
                   </button>
                 </div>
               </div>
@@ -1960,12 +1931,14 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       {showHandoverModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowHandoverModal(false)} />
-          <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden">
+          <div className="relative w-full max-w-lg max-h-[90vh] rounded-2xl bg-white shadow-2xl overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <h3 className="font-bold text-slate-900">Create Handover Record</h3>
               <button onClick={() => setShowHandoverModal(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">✕</button>
             </div>
             <form onSubmit={handleCreateHandover} className="p-6 space-y-3 text-xs">
+              {actionFeedback}
+              <p className="text-amber-700">Saved as a draft. Enter actual scope, snags and representatives; completion is not assumed.</p>
               <div>
                 <label className="mb-1 block font-semibold text-slate-700">Scope Substantially Completed</label>
                 <textarea

@@ -481,14 +481,14 @@ for (const count of TEST_COUNTS) {
   if (plan.isSinglePage) {
     // One-page plans must really print as one page.
     const fitsOnePage = printedPageCount === 1 && plan.totalPages === 1 && fit.fits === true;
-    const readable = fit.fontSize >= 7.0 && fit.rowHeight >= 4.5;
+    const readable = fit.fontSize >= 10.5 && fit.headerFontSize >= 10.5 && fit.rowHeight >= 4.5;
     const safeBounds = fit.totalContentBottom <= 273.0;
     result.passed = fitsOnePage && readable && safeBounds && isTopGold && isBottomNavy;
   } else {
     // Preserve readable text when a saved layout needs multiple pages.
     const cleanlyPaginated = plan.totalPages > 1 && printedPageCount === plan.totalPages && fit.fits === false;
     const hasWarning = Boolean(fit.warning || plan.warning);
-    result.passed = cleanlyPaginated && hasWarning && isTopGold && isBottomNavy;
+    result.passed = cleanlyPaginated && hasWarning && fit.fontSize >= 10.5 && fit.headerFontSize >= 10.5 && isTopGold && isBottomNavy;
   }
 
   results.push(result);

@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { readProjectResult } from "@/lib/projectPersistence";
+import ReportLoadState from "@/components/ReportLoadState";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getCompanyId, getCurrentCompany, todayISO } from "@/lib/helpers";
@@ -43,6 +45,10 @@ type WMSItem = {
 export default function WorkMethodStatementsPage() {
   const [wmsList, setWmsList] = useState<WMSItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [previewError, setPreviewError] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const previewVersion = useRef(0);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -53,9 +59,10 @@ export default function WorkMethodStatementsPage() {
   const [qaqc, setQaqc] = useState<QAQCChecklistItem[]>([]);
 
   async function loadWMS() {
+    setLoading(true); setLoadError("");
     try {
       const companyId = await getCompanyId();
-      if (!companyId) return;
+      if (!companyId) throw new Error("Select a company before loading method statements.");
 
       const { data, error } = await supabase
         .from("work_method_statements")
@@ -69,7 +76,7 @@ export default function WorkMethodStatementsPage() {
       const comp = await getCurrentCompany();
       if (comp) setCompanyDoc(comp);
     } catch (err) {
-      console.error("Error loading WMS documents:", err);
+      setLoadError(err instanceof Error ? err.message : "Could not load saved method statements.");
     } finally {
       setLoading(false);
     }
@@ -80,16 +87,21 @@ export default function WorkMethodStatementsPage() {
   }, []);
 
   async function handleOpenPreview(wms: WMSItem) {
-    setPreviewWms(wms);
+    const version = ++previewVersion.current;
+    setPreviewWms(null); setPreviewError(""); setPreviewLoading(true);
     try {
-      const [rRes, qRes] = await Promise.all([
-        supabase.from("wms_risk_assessments").select("*").eq("wms_id", wms.id).order("sequence_order", { ascending: true }),
-        supabase.from("wms_qaqc_checklists").select("*").eq("wms_id", wms.id).order("created_at", { ascending: true })
+      const companyId = await getCompanyId();
+      if (!companyId) throw new Error("Select a company before previewing a method statement.");
+      const [riskRows, checklistRows] = await Promise.all([
+        readProjectResult<RiskAssessmentRow[]>(supabase.from("wms_risk_assessments").select("*").eq("wms_id", wms.id).eq("company_id", companyId).order("sequence_order", {ascending:true})),
+        readProjectResult<QAQCChecklistItem[]>(supabase.from("wms_qaqc_checklists").select("*").eq("wms_id", wms.id).eq("company_id", companyId).order("created_at", {ascending:true})),
       ]);
-      setRisks(rRes.data || []);
-      setQaqc(qRes.data || []);
+      if (version !== previewVersion.current) return;
+      setRisks(riskRows || []); setQaqc(checklistRows || []); setPreviewWms(wms);
     } catch (err) {
-      console.error("Error loading WMS sub-items for preview:", err);
+      if (version === previewVersion.current) setPreviewError(err instanceof Error ? err.message : "Could not load saved assessments. Retry the preview.");
+    } finally {
+      if (version === previewVersion.current) setPreviewLoading(false);
     }
   }
 
@@ -104,8 +116,12 @@ export default function WorkMethodStatementsPage() {
     return matchStatus && matchSearch;
   });
 
+  if (loadError) return <ReportLoadState loading={loading} error={loadError} subject="method statements" onRetry={() => void loadWMS()} />;
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {previewError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-700">{previewError}</p>}
+      {previewLoading && <p role="status">Loading saved assessments before opening the preview…</p>}
       <div className="app-screen-content no-print space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
