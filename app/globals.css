@@ -785,6 +785,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     background: #ffffff !important;
   }
 
+  /* Restore report-bearing screen wrappers only for page printing.
+     Their controls remain hidden; dedicated A4 modals keep background isolation. */
+  body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)):not(:has(.mobile-pdf-modal)) [data-print-root] .app-screen-content {
+    display: block !important;
+    visibility: visible !important;
+    width: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
   body.module-printing [data-print-root] > *,
   body:not(:has(.print-document)):not(:has(.dynamic-document-page)):not(:has(.print-modal-container)) [data-print-root] > * {
     display: block !important;
