@@ -1026,3 +1026,49 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     break-after: auto !important;
   }
 }
+
+/* ==========================================================================
+   MOBILE / RESPONSIVE ERP UI UTILITIES
+   Applies globally to all ERP pages for a consistent mobile experience.
+   ========================================================================== */
+
+/* Ensure all data tables within ERP pages can scroll horizontally
+   on small screens without breaking the layout. */
+@media (max-width: 767px) {
+  /* Make any bare table inside the ERP content area scrollable */
+  [data-print-root] table:not(.no-scroll) {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Ensure full-screen modal forms don't overflow on mobile */
+  .fixed.inset-0 > div[class*="max-w"] {
+    max-width: 100vw !important;
+  }
+
+  /* Slide-in side panels: limit to full width on mobile */
+  .relative.ml-auto[class*="max-w-lg"],
+  .relative.ml-auto[class*="max-w-xl"],
+  .relative.ml-auto[class*="max-w-2xl"] {
+    max-width: 100vw !important;
+  }
+
+  /* Prevent overflow on modal content cards */
+  .fixed.inset-0 > div[class*="bg-white"] {
+    max-width: calc(100vw - 2rem) !important;
+    width: 100% !important;
+  }
+}
+
+/* Touch targets: ensure all icon action buttons meet minimum tap target size */
+@media (pointer: coarse) {
+  button[class*="p-1"],
+  button[class*="p-1.5"] {
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}

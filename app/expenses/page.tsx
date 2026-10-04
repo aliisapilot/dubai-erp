@@ -260,7 +260,7 @@ export default function ExpensesPage() {
   const projectLinked = filtered.filter(e => e.project_id).reduce((acc, e) => acc + (e.total_amount || 0), 0);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -545,7 +545,7 @@ export default function ExpensesPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Net Amount (AED) *</label>
                   <input
@@ -626,7 +626,7 @@ export default function ExpensesPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Link Project</label>
                   <select

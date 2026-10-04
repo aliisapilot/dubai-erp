@@ -177,29 +177,29 @@ function StockInForm() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <Link
             href="/inventory"
-            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors shrink-0"
           >
             <ArrowLeft size={16} />
           </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700">
-                <ArrowDownRight size={20} />
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700 shrink-0">
+                <ArrowDownRight size={18} />
               </span>
-              Stock In / Goods Receipt
+              <span className="truncate">Stock In / Goods Receipt</span>
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5">Receive physical inventory, update stock levels, and log purchase movements</p>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5 hidden sm:block">Receive physical inventory, update stock levels, and log purchase movements</p>
           </div>
         </div>
 
         <Link
           href="/inventory/movements"
-          className="text-sm text-slate-600 hover:text-slate-900 flex items-center gap-1.5"
+          className="text-sm text-slate-600 hover:text-slate-900 flex items-center gap-1.5 shrink-0"
         >
           <History size={16} /> View All Movements
         </Link>
