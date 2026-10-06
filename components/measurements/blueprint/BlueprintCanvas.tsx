@@ -111,18 +111,30 @@ export default function BlueprintCanvas({ blueprint, setBlueprint, activeTool, o
 
   const handleMouseUp = () => { setIsPanning(false); setDragged(null); };
 
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const factor = 1.1;
-    const nextZoom = e.deltaY < 0 ? Math.min(zoom * factor, 10) : Math.max(zoom / factor, 0.1);
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleWheelEvent = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const factor = 1.1;
+      const nextZoom = e.deltaY < 0 ? Math.min(zoom * factor, 10) : Math.max(zoom / factor, 0.1);
+      const rect = el.getBoundingClientRect();
       const mX = e.clientX - rect.left;
       const mY = e.clientY - rect.top;
-      setPan({ x: mX - (mX - pan.x) * (nextZoom / zoom), y: mY - (mY - pan.y) * (nextZoom / zoom) });
+      setPan({
+        x: mX - (mX - pan.x) * (nextZoom / zoom),
+        y: mY - (mY - pan.y) * (nextZoom / zoom),
+      });
       setZoom(nextZoom);
-    }
-  };
+    };
+
+    el.addEventListener("wheel", handleWheelEvent, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", handleWheelEvent);
+    };
+  }, [zoom, pan, setPan, setZoom]);
 
   const handleConfirm = () => {
     if (!inputValue) { setShowInput(false); setClickPoints([]); return; }
@@ -164,7 +176,8 @@ export default function BlueprintCanvas({ blueprint, setBlueprint, activeTool, o
     <div
       ref={containerRef}
       className="relative flex-1 h-[450px] md:h-[550px] w-full bg-slate-950 overflow-hidden cursor-crosshair border border-slate-800 rounded-xl select-none"
-      onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onWheel={handleWheel}
+      style={{ overscrollBehavior: "contain", touchAction: "none" }}
+      onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}
       onContextMenu={e => e.preventDefault()}
     >
       {blueprint.blueprint_file_path ? (
