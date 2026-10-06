@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { saveMeasurementRows } from "@/lib/measurementPersistence";
+import BlueprintTakeoffSection from "@/components/measurements/blueprint/BlueprintTakeoffSection";
 import { supabase } from "@/lib/supabase";
 import {
   Ruler,
@@ -317,6 +318,11 @@ export default function MeasurementsPage() {
     const backup = {sheet:activeSheet,rows:rawRows,openRowForm:showRowModal ? rowForm : null,includeVat,vatRate,pendingQuotation:pendingQuotation.current,pendingQuotationBackup:company?.id ? localStorage.getItem("dxb_measurement_quote_draft_"+company.id) : null};
     const url = URL.createObjectURL(new Blob([JSON.stringify(backup,null,2)],{type:"application/json"}));
     const link=document.createElement("a");link.href=url;link.download=(activeSheet?.sheet_number || "measurements")+"-backup.json";link.click();URL.revokeObjectURL(url);
+  }
+
+  // Sync takeoff rows from interactive Blueprint Canvas
+  async function handleSyncTakeoffRows(newTakeoffRows: MeasurementRowInput[]) {
+    await commitRows([...rawRows, ...newTakeoffRows]);
   }
 
   // Calculate live rows
@@ -690,6 +696,17 @@ export default function MeasurementsPage() {
 
       {/* Main Measurements Workspace */}
       <div className="space-y-6">
+        {/* Interactive Blueprint Takeoff Canvas Section */}
+        {activeSheet && (
+          <BlueprintTakeoffSection
+            key={activeSheet.id}
+            sheetId={activeSheet.id}
+            companyId={activeSheet.company_id || "offline"}
+            onSyncRows={handleSyncTakeoffRows}
+            disabled={saving || loading}
+          />
+        )}
+
         {/* Table Card */}
         <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/90 shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950/60 px-4 py-3">
