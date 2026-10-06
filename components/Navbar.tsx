@@ -32,6 +32,7 @@ import {
   FileSignature,
   ArrowDownRight,
   Printer,
+  Ruler,
   type LucideIcon,
 } from "lucide-react";
 import { getCurrentCompany } from "@/lib/helpers";
@@ -75,6 +76,7 @@ function getPageMeta(pathname: string): { title: string; icon: LucideIcon } {
   if (pathname.startsWith("/reports/cheques")) return { title: "Cheque Reports", icon: TrendingUp };
   if (pathname.startsWith("/reports")) return { title: "Reports & Analytics", icon: TrendingUp };
   if (pathname.startsWith("/mobile")) return { title: "Mobile Portal", icon: FileText };
+  if (pathname.startsWith("/measurements")) return { title: "Measurements & Takeoffs", icon: Ruler };
   if (pathname.startsWith("/settings/designer")) return { title: "PDF Designer", icon: FileText };
   if (pathname.startsWith("/settings")) return { title: "Company Settings", icon: Building2 };
 

@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     ".kilo/**",
     ".vercel/**",
     ".wrangler/**",
+    "test-output/**",
+    "test-results/**",
   ]),
 ]);
 
