@@ -1044,23 +1044,26 @@ export default function DynamicDocumentRenderer({
                     borderBottom: isPrinterFriendly ? `2px solid ${colors.primary}` : undefined,
                   }}
                 >
-                  {activeCols.map((col) => (
-                    <th
-                      key={col.key}
-                      className={`${cellPadding} font-semibold`}
-                      style={{
-                        ...customPaddingStyle,
-                        width: `${col.widthPct}%`,
-                        textAlign: col.align,
-                        borderRight: isPrinterFriendly
-                          ? `1px solid ${colors.border}`
-                          : `${tSettings.borderThickness}px solid rgba(255,255,255,0.15)`,
-                        lineHeight: 1.15,
-                      }}
-                    >
-                      {col.label}
-                    </th>
-                  ))}
+                  {activeCols.map((col) => {
+                    const labelContent = col.labelAr ? `${col.label}<br/><span dir="rtl" className="font-arabic text-[9px] text-slate-300">${col.labelAr}</span>` : col.label;
+                    return (
+                      <th
+                        key={col.key}
+                        className={`${cellPadding} font-semibold`}
+                        style={{
+                          ...customPaddingStyle,
+                          width: `${col.widthPct}%`,
+                          textAlign: col.align,
+                          borderRight: isPrinterFriendly
+                            ? `1px solid ${colors.border}`
+                            : `${tSettings.borderThickness}px solid rgba(255,255,255,0.15)`,
+                          lineHeight: 1.15,
+                        }}
+                      >
+                        <span dangerouslySetInnerHTML={{ __html: labelContent }} />
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody
@@ -1306,6 +1309,14 @@ export default function DynamicDocumentRenderer({
         const rowPx = isDenseTotals ? "px-2" : "px-2.5";
         const totalsFontSize = isDenseTotals ? (elem.height <= 30 ? 9.5 : 10) : (elem.fontSize || 11);
 
+        // Custom labels from layout, with defaults
+        const subtotalLabel = elem.totalsLabels?.subtotal || "Subtotal";
+        const subtotalLabelAr = elem.totalsLabels?.subtotalAr;
+        const vatLabel = elem.totalsLabels?.vat || "VAT Total (5%)";
+        const vatLabelAr = elem.totalsLabels?.vatAr;
+        const grandTotalLabel = elem.totalsLabels?.grandTotal || "Grand Total";
+        const grandTotalLabelAr = elem.totalsLabels?.grandTotalAr;
+
         return (
           <div
             className="w-full h-fit overflow-hidden rounded select-text flex flex-col justify-start"
@@ -1317,24 +1328,39 @@ export default function DynamicDocumentRenderer({
               ...elementAppearance(elem),
             }}
           >
-            <div className={`flex justify-between ${rowPy} ${rowPx} bg-slate-50 border-b`} style={{ borderColor: colors.border }}>
-              <span className="font-bold" style={{ color: colors.muted }}>Subtotal:</span>
+            <div className={`flex justify-between items-center ${rowPy} ${rowPx} bg-slate-50 border-b`} style={{ borderColor: colors.border }}>
+              <div className="flex flex-col">
+                <span className="font-bold" style={{ color: colors.muted }}>{subtotalLabel}:</span>
+                {subtotalLabelAr && (
+                  <span dir="rtl" className="font-arabic text-[9px] text-slate-400 font-normal leading-none mt-0.5">{subtotalLabelAr}</span>
+                )}
+              </div>
               <span className="font-mono font-bold">{fmtAED(data.subtotal)}</span>
             </div>
             {usesVat && (
-              <div className={`flex justify-between ${rowPy} ${rowPx} border-b`} style={{ borderColor: colors.border }}>
-                <span className="font-bold" style={{ color: colors.muted }}>VAT Total (5%):</span>
+              <div className={`flex justify-between items-center ${rowPy} ${rowPx} border-b`} style={{ borderColor: colors.border }}>
+                <div className="flex flex-col">
+                  <span className="font-bold" style={{ color: colors.muted }}>{vatLabel}:</span>
+                  {vatLabelAr && (
+                    <span dir="rtl" className="font-arabic text-[9px] text-slate-400 font-normal leading-none mt-0.5">{vatLabelAr}</span>
+                  )}
+                </div>
                 <span className="font-mono font-bold" style={{ color: colors.accent }}>{fmtAED(data.vat_amount)}</span>
               </div>
             )}
             <div
-              className={`flex justify-between ${rowPy} ${rowPx} font-bold text-slate-900 border-b`}
+              className={`flex justify-between items-center ${rowPy} ${rowPx} font-bold text-slate-900 border-b`}
               style={{
                 backgroundColor: colors.totalHighlight,
                 borderColor: colors.border,
               }}
             >
-              <span>Grand Total:</span>
+              <div className="flex flex-col">
+                <span>{grandTotalLabel}:</span>
+                {grandTotalLabelAr && (
+                  <span dir="rtl" className="font-arabic text-[9px] text-slate-500 font-normal leading-none mt-0.5">{grandTotalLabelAr}</span>
+                )}
+              </div>
               <span className="font-mono" style={{ color: colors.primary }}>{fmtAED(data.total_amount)}</span>
             </div>
             {advance > 0 && (

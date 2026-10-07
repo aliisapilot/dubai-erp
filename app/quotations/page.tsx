@@ -262,8 +262,34 @@ export default function QuotationsPage() {
         const { error: err } = await supabase.from("quotations").update(updatePayload).eq("id", editing.id);
         if (err) throw new Error(err.message);
         qid = editing.id;
-        const { error: delErr } = await supabase.from("quotation_items").delete().eq("quotation_id", qid);
-        if (delErr) throw new Error(delErr.message);
+        // Upsert line items: preserve existing IDs, insert new ones, delete removed ones
+        const { data: existingItems } = await supabase.from("quotation_items").select("id").eq("quotation_id", qid);
+        const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
+        const currentIds = new Set<string>();
+        for (const l of lines) {
+          const qty = Number(l.quantity) || 0;
+          const price = Number(l.unit_price) || 0;
+          const discPct = Number(l.discount_percent ?? l.discount_pct ?? 0);
+          const gross = qty * price;
+          const discAmt = gross * (discPct / 100);
+          const taxable = gross - discAmt;
+          const vatRate = Number(l.vat_rate) || 0;
+          const vatAmt = Number(l.vat_amount) || (taxable * (vatRate / 100));
+          const lineTot = Number(l.line_total) || (taxable + vatAmt);
+          if (l.id && existingIds.has(l.id)) {
+            const { error: updErr } = await supabase.from("quotation_items").update({ product_id: l.product_id||null, description: l.description, quantity: qty, unit: l.unit||"Nos", unit_price: price, discount_percent: discPct, discount_amount: discAmt, taxable_amount: taxable, vat_rate: vatRate, vat_amount: vatAmt, line_total: lineTot }).eq("id", l.id);
+            if (updErr) throw new Error(updErr.message);
+            currentIds.add(l.id);
+          } else {
+            const { error: insErr } = await supabase.from("quotation_items").insert({ quotation_id: qid, product_id: l.product_id||null, description: l.description, quantity: qty, unit: l.unit||"Nos", unit_price: price, discount_percent: discPct, discount_amount: discAmt, taxable_amount: taxable, vat_rate: vatRate, vat_amount: vatAmt, line_total: lineTot, sort_order: lines.indexOf(l) });
+            if (insErr) throw new Error(insErr.message);
+          }
+        }
+        const toDelete = [...existingIds].filter(id => !currentIds.has(id));
+        if (toDelete.length > 0) {
+          const { error: delErr } = await supabase.from("quotation_items").delete().in("id", toDelete);
+          if (delErr) throw new Error(delErr.message);
+        }
       } else {
         const cid = await getCompanyId();
         const qno = await generateDocNumber(cid, "QUO");
@@ -287,35 +313,6 @@ export default function QuotationsPage() {
         if (err) throw new Error(err.message);
         qid = ins.id;
       }
-      const itemPayload = lines.map((l, i) => {
-        const qty = Number(l.quantity) || 0;
-        const price = Number(l.unit_price) || 0;
-        const discPct = Number(l.discount_percent ?? l.discount_pct ?? 0);
-        const gross = qty * price;
-        const discAmt = gross * (discPct / 100);
-        const taxable = gross - discAmt;
-        const vatRate = Number(l.vat_rate) || 0;
-        const vatAmt = Number(l.vat_amount) || (taxable * (vatRate / 100));
-        const lineTot = Number(l.line_total) || (taxable + vatAmt);
-
-        return {
-          quotation_id: qid,
-          product_id: l.product_id || null,
-          description: l.description,
-          quantity: qty,
-          unit: l.unit || "Nos",
-          unit_price: price,
-          discount_percent: discPct,
-          discount_amount: discAmt,
-          taxable_amount: taxable,
-          vat_rate: vatRate,
-          vat_amount: vatAmt,
-          line_total: lineTot,
-          sort_order: i,
-        };
-      });
-      const { error: itemErr } = await supabase.from("quotation_items").insert(itemPayload);
-      if (itemErr) throw new Error(itemErr.message);
       setSuccess(editing ? "Quotation updated." : "Quotation created.");
       closeForm(); await loadAll();
     } catch (err: unknown) { setError(err instanceof Error ? err.message : "Error"); }

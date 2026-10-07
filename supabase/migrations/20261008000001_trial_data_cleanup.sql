@@ -304,4 +304,17 @@ GRANT EXECUTE ON FUNCTION public.trial_data_cleanup_execute(UUID, TEXT) TO authe
 
 NOTIFY pgrst, 'reload schema';
 
+-- ============================================================
+-- Dubai ERP — Fix Service Role & Anon Permissions
+-- ============================================================
 
+-- Grant full CRUD to service_role (required for server-side operations)
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
+
+-- Grant read-only to anon role (allows unauthenticated requests to get
+-- proper 403 instead of 42501; actual data access requires auth policies)
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon;
+
+NOTIFY pgrst, 'reload schema';

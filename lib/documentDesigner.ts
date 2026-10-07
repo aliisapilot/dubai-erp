@@ -250,6 +250,16 @@ export interface LayoutElement {
     columns: TableColumnConfig[];
   };
 
+  // Totals labels customization
+  totalsLabels?: {
+    subtotal?: string;
+    vat?: string;
+    grandTotal?: string;
+    subtotalAr?: string;
+    vatAr?: string;
+    grandTotalAr?: string;
+  };
+
   // Flow & Dynamic Spacing Controls
   flowMode?: "flow" | "fixed";
   flowAnchorId?: string;

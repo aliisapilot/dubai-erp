@@ -255,17 +255,31 @@ const ELEMENT_CONTENT_CONFIG: Partial<Record<ElementType, ElementContentConfig>>
     rows: 1,
   },
   totals: {
-    label: "Totals Section",
-    description: "Shows subtotal, VAT and grand total. Calculated automatically from line items.",
-    placeholder: "Auto-calculated from document items",
+    label: "Totals Section Labels",
+    description: "Customize the labels for Subtotal, VAT, and Grand Total. Calculated values come from document items.",
+    placeholder: "Leave blank for defaults: Subtotal, VAT Total (5%), Grand Total",
     isDynamic: true,
-    rows: 1,
+    tokens: [
+      { token: "{subtotal_label}", label: "Subtotal Label" },
+      { token: "{vat_label}", label: "VAT Label" },
+      { token: "{grand_total_label}", label: "Grand Total Label" },
+    ],
+    defaultTemplate: "Subtotal\nVAT Total (5%)\nGrand Total",
+    rows: 4,
   },
   line_items: {
     label: "Line Items Table",
-    description: "Populated from document items. Use Table Settings below to configure columns.",
+    description: "Populated from document items. Use Table Settings below to configure columns and headers.",
     placeholder: "Auto-populated from document line items",
     isDynamic: true,
+    rows: 1,
+  },
+  company_stamp: {
+    label: "Company Stamp Label",
+    description: "Text label displayed below the company stamp image.",
+    placeholder: "e.g. OFFICIAL COMPANY STAMP",
+    isDynamic: false,
+    defaultTemplate: "OFFICIAL COMPANY STAMP",
     rows: 1,
   },
 };
@@ -520,11 +534,15 @@ export default function RightInspector({
   const isTextElement = [
     "company_name_en", "company_name_ar", "company_address", "doc_title", "doc_meta",
     "customer_info", "supplier_info", "project_info", "custom_text", "footer",
-    "payment_terms", "company_trn", "company_signature", "amount_in_words", "bank_details"
+    "payment_terms", "company_trn", "company_signature", "amount_in_words", "bank_details",
+    "totals", "line_items", "company_stamp"
   ].includes(elem.type) || elem.customText !== undefined;
   // Elements where customText overrides content (editable in the Universal Text Editor)
-  const isContentEditable = contentConfig !== null && !["totals", "line_items"].includes(elem.type);
-  const isDataOnlyElement = contentConfig !== null && !isContentEditable;
+  const isContentEditable = contentConfig !== null && !["line_items"].includes(elem.type);
+  // For totals, we allow customText to override labels but it's handled specially
+  const isTotalsElement = elem.type === "totals";
+  const isLineItemsElement = elem.type === "line_items";
+  const isDataOnlyElement = contentConfig !== null && !isContentEditable && !isTotalsElement && !isLineItemsElement;
   const aspectRatio = elem.imageAspectRatio || elem.width / Math.max(1, elem.height);
 
   const updateWidth = (rawWidth: number) => {
@@ -1669,6 +1687,57 @@ export default function RightInspector({
                 ))}
               </div>
             </div>
+
+              {/* Column Header Labels Editor */}
+              <div className="pt-2 border-t border-slate-700">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2 flex items-center gap-1.5">
+                  <Type size={12} className="text-emerald-400" />
+                  <span>Column Header Labels</span>
+                </div>
+                <p className="text-[10px] text-slate-500 mb-2">Customize English and Arabic labels for each visible column.</p>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {elem.tableSettings.columns
+                    .filter((col) => col.visible)
+                    .map((col) => (
+                      <div key={col.key} className="p-2 bg-slate-800/50 rounded border border-slate-700">
+                        <div className="text-[9px] font-mono text-slate-500 mb-1">{col.key}</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[9px] text-slate-400 block mb-0.5">English Label</label>
+                            <input
+                              type="text"
+                              value={col.label}
+                              onChange={(e) => {
+                                const newColumns = elem.tableSettings!.columns.map((c) =>
+                                  c.key === col.key ? { ...c, label: e.target.value } : c
+                                );
+                                onUpdateElement(elem.id, { tableSettings: { ...elem.tableSettings!, columns: newColumns } });
+                              }}
+                              className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-emerald-400"
+                              placeholder="English label"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-slate-400 block mb-0.5">Arabic Label (optional)</label>
+                            <input
+                              type="text"
+                              value={col.labelAr || ""}
+                              onChange={(e) => {
+                                const newColumns = elem.tableSettings!.columns.map((c) =>
+                                  c.key === col.key ? { ...c, labelAr: e.target.value || undefined } : c
+                                );
+                                onUpdateElement(elem.id, { tableSettings: { ...elem.tableSettings!, columns: newColumns } });
+                              }}
+                              className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-emerald-400"
+                              placeholder="Arabic label"
+                              dir="rtl"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1708,6 +1777,82 @@ export default function RightInspector({
             )}
           </div>
         )}
+
+        {/* Totals Labels Editor (for non-measurement document types) */}
+        {elem.type === "totals" && layout.documentType !== "measurement_sheet" && (
+          <div className="pt-2 border-t border-slate-700">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2 flex items-center gap-1.5">
+              <Type size={12} className="text-amber-400" />
+              <span>Totals Row Labels</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mb-2">Customize English &amp; Arabic labels for totals rows.</p>
+            <div className="space-y-2.5">
+              <div className="p-2 bg-slate-800/50 rounded border border-slate-700">
+                <div className="text-[9px] font-bold text-slate-400 mb-1">Subtotal</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={elem.totalsLabels?.subtotal || "Subtotal"}
+                    onChange={(e) => onUpdateElement(elem.id, { totalsLabels: { ...elem.totalsLabels, subtotal: e.target.value } })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-amber-400"
+                    placeholder="English"
+                  />
+                  <input
+                    type="text"
+                    value={elem.totalsLabels?.subtotalAr || ""}
+                    onChange={(e) => onUpdateElement(elem.id, { totalsLabels: { ...elem.totalsLabels, subtotalAr: e.target.value || undefined } })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-amber-400"
+                    placeholder="العربية"
+                    dir="rtl"
+                  />
+                </div>
+              </div>
+
+              <div className="p-2 bg-slate-800/50 rounded border border-slate-700">
+                <div className="text-[9px] font-bold text-slate-400 mb-1">VAT Total</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={elem.totalsLabels?.vat || "VAT Total (5%)"}
+                    onChange={(e) => onUpdateElement(elem.id, { totalsLabels: { ...elem.totalsLabels, vat: e.target.value } })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-amber-400"
+                    placeholder="English"
+                  />
+                  <input
+                    type="text"
+                    value={elem.totalsLabels?.vatAr || ""}
+                    onChange={(e) => onUpdateElement(elem.id, { totalsLabels: { ...elem.totalsLabels, vatAr: e.target.value || undefined } })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-amber-400"
+                    placeholder="العربية"
+                    dir="rtl"
+                  />
+                </div>
+              </div>
+
+              <div className="p-2 bg-slate-800/50 rounded border border-slate-700">
+                <div className="text-[9px] font-bold text-slate-400 mb-1">Grand Total</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={elem.totalsLabels?.grandTotal || "Grand Total"}
+                    onChange={(e) => onUpdateElement(elem.id, { totalsLabels: { ...elem.totalsLabels, grandTotal: e.target.value } })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-amber-400"
+                    placeholder="English"
+                  />
+                  <input
+                    type="text"
+                    value={elem.totalsLabels?.grandTotalAr || ""}
+                    onChange={(e) => onUpdateElement(elem.id, { totalsLabels: { ...elem.totalsLabels, grandTotalAr: e.target.value || undefined } })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-amber-400"
+                    placeholder="العربية"
+                    dir="rtl"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Actions Group ───────────────────────────────────── */}
         <div className="pt-4 border-t border-slate-800 space-y-2">
           {onDuplicateElement && (

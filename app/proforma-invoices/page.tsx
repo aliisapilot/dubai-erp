@@ -142,18 +142,33 @@ function PIContent() {
         const { error: updateErr } = await supabase.from("proforma_invoices").update(payload).eq("id", editing.id);
         if (updateErr) throw updateErr;
         pid = editing.id;
-        const { error: deleteItemsErr } = await supabase.from("proforma_invoice_items").delete().eq("proforma_invoice_id", pid);
-        if (deleteItemsErr) throw deleteItemsErr;
+        // Upsert line items: preserve existing IDs, insert new ones, delete removed ones
+        const { data: existingItems } = await supabase.from("proforma_invoice_items").select("id").eq("proforma_invoice_id", pid);
+        const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
+        const currentIds = new Set<string>();
+        for (const l of lines) {
+          if (l.id && existingIds.has(l.id)) {
+            const { error: updErr } = await supabase.from("proforma_invoice_items").update({ product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, line_total: l.line_total, vat_amount: l.vat_amount }).eq("id", l.id);
+            if (updErr) throw updErr;
+            currentIds.add(l.id);
+          } else {
+            const { error: insErr } = await supabase.from("proforma_invoice_items").insert({ proforma_invoice_id: pid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, line_total: l.line_total, vat_amount: l.vat_amount, sort_order: lines.indexOf(l) });
+            if (insErr) throw insErr;
+          }
+        }
+        // Delete items no longer in the form
+        const toDelete = [...existingIds].filter(id => !currentIds.has(id));
+        if (toDelete.length > 0) {
+          const { error: delErr } = await supabase.from("proforma_invoice_items").delete().in("id", toDelete);
+          if (delErr) throw delErr;
+        }
       } else {
         const cid = await getCompanyId(); const pno = await generateDocNumber(cid, "PRO");
         const { data: ins, error: err } = await supabase.from("proforma_invoices").insert({ ...payload, company_id: cid, proforma_number: pno }).select("id").single();
         if (err) throw new Error(err.message);
         pid = ins.id;
       }
-      // DB columns: proforma_invoice_id (FK), discount_percent (not discount_pct), no vat_category
-      const { error: itemErr } = await supabase.from("proforma_invoice_items").insert(lines.map((l,i)=>({ proforma_invoice_id: pid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, line_total: l.line_total, vat_amount: l.vat_amount, sort_order: i })));
-      if (itemErr) throw itemErr;
-      setSuccess(editing?"Proforma updated.":"Proforma invoice created."); closeForm(); await loadAll();
+           setSuccess(editing?"Proforma updated.":"Proforma invoice created."); closeForm(); await loadAll();
     } catch (err: unknown) { setError(err instanceof Error ? err.message : "Error"); }
     finally { setSaving(false); }
   }
@@ -195,7 +210,7 @@ function PIContent() {
       <div className="mx-auto max-w-7xl px-6 py-8">
         {success && <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
         {error && !showForm && <div className="mb-5 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button onClick={()=>setError("")}><X size={16}/></button></div>}
-        <div className="mb-6 flex gap-3"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search proformas…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/></div><select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm appearance-none focus:outline-none"><option value="">All Status</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="invoiced">Invoiced</option><option value="cancelled">Cancelled</option></select></div>
+        <div className="mb-6 flex gap-3"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search proformasâ€¦" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/></div><select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm appearance-none focus:outline-none"><option value="">All Status</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="invoiced">Invoiced</option><option value="cancelled">Cancelled</option></select></div>
         {loading ? <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-slate-400"/></div> : filtered.length===0 ? (
           <div className="rounded-xl border border-slate-200 bg-white py-20 text-center"><FileSpreadsheet size={40} className="mx-auto mb-3 text-slate-300"/><p className="text-sm text-slate-500">No proforma invoices.</p></div>
         ) : (
@@ -204,9 +219,9 @@ function PIContent() {
               <thead><tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><th className="px-4 py-3">No.</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Valid Until</th><th className="px-4 py-3 text-right">Total (AED)</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Actions</th></tr></thead>
               <tbody className="divide-y divide-slate-100">{filtered.map(pi=>(
                 <tr key={pi.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{pi.proforma_number||"—"}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{pi.proforma_number||"â€”"}</td>
                   <td className="px-4 py-3">
-                    <div className="font-semibold text-slate-900">{custMap[pi.customer_id||""]?.name||"—"}</div>
+                    <div className="font-semibold text-slate-900">{custMap[pi.customer_id||""]?.name||"â€”"}</div>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{fmtDate(pi.proforma_date)}</td>
                   <td className="px-4 py-3 text-slate-600">{fmtDate(pi.valid_until)}</td>
@@ -247,7 +262,7 @@ function PIContent() {
               <form id="pi-form" onSubmit={save} className="p-6 space-y-5">
                 {error&&<div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Customer <span className="text-red-500">*</span></label><select value={form.customer_id} onChange={e=>ff("customer_id",e.target.value)} required className={sel}><option value="">— Select —</option>{selectableCustomers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Customer <span className="text-red-500">*</span></label><select value={form.customer_id} onChange={e=>ff("customer_id",e.target.value)} required className={sel}><option value="">â€” Select â€”</option>{selectableCustomers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Status</label><select value={form.status} onChange={e=>ff("status",e.target.value)} className={sel}><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="invoiced">Invoiced</option><option value="cancelled">Cancelled</option></select></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Proforma Date</label><input type="date" value={form.proforma_date} onChange={e=>ff("proforma_date",e.target.value)} className={inp}/></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Valid Until</label><input type="date" value={form.valid_until} onChange={e=>ff("valid_until",e.target.value)} className={inp}/></div>
@@ -258,7 +273,7 @@ function PIContent() {
                     <table className="w-full text-sm"><thead><tr className="bg-slate-50 text-xs font-semibold uppercase text-slate-500"><th className="px-3 py-2 text-left w-48">Product</th><th className="px-3 py-2 text-left">Description</th><th className="px-3 py-2 w-16 text-center">Qty</th><th className="px-3 py-2 w-24 text-right">Price</th><th className="px-3 py-2 w-16 text-center">Disc%</th><th className="px-3 py-2 w-16 text-center">VAT%</th><th className="px-3 py-2 w-28 text-right">Total</th><th className="px-3 py-2 w-10"></th></tr></thead>
                     <tbody>{lines.map((l,i)=>(
                       <tr key={i} className="border-t border-slate-100">
-                        <td className="px-2 py-1"><select value={l.product_id} onChange={e=>onProductSelect(i,e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"><option value="">— Select —</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></td>
+                        <td className="px-2 py-1"><select value={l.product_id} onChange={e=>onProductSelect(i,e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"><option value="">â€” Select â€”</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></td>
                         <td className="px-2 py-1"><input type="text" value={l.description} onChange={e=>updateLine(i,{description:e.target.value})} placeholder="Description" className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none" required/></td>
                         <td className="px-2 py-1"><input type="number" min="1" step="1" value={l.quantity} onChange={e=>updateLine(i,{quantity:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-center focus:outline-none"/></td>
                         <td className="px-2 py-1"><input type="number" min="0" step="0.01" value={l.unit_price} onChange={e=>updateLine(i,{unit_price:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none"/></td>
@@ -282,7 +297,7 @@ function PIContent() {
             <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
               <button type="button" onClick={closeForm} disabled={saving} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
               <button type="submit" form="pi-form" disabled={saving} className="flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
-                {saving?<Loader2 size={16} className="animate-spin"/>:<Save size={16}/>}{saving?"Saving…":editing?"Save Changes":"Create Proforma"}
+                {saving?<Loader2 size={16} className="animate-spin"/>:<Save size={16}/>}{saving?"Savingâ€¦":editing?"Save Changes":"Create Proforma"}
               </button>
             </div>
           </div>
