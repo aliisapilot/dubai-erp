@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { DEFAULT_BRAND_COLORS } from "@/lib/brandConfig";
 import { getCurrentCompany, clearCompanyCache } from "@/lib/helpers";
+import TrialDataManagement from "@/components/settings/TrialDataManagement";
 
 type Company = {
   id: string;
@@ -155,6 +156,7 @@ const DEFAULT_COLORS: Record<ColorKey, string> = {
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const [companyId, setCompanyId] = useState("");
+  const [isOwner, setIsOwner] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
   const [loading, setLoading] = useState(true);
@@ -187,6 +189,13 @@ export default function SettingsPage() {
 
     const company = data as Company;
     setCompanyId(company.id);
+    // Check ownership for admin features
+    (async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const { data: comp } = await supabase.from("companies").select("owner_id").eq("id", company.id).single();
+      setIsOwner(userData.user?.id === comp?.owner_id);
+    })();
+
 
     setForm({
       name: company.name || "",
@@ -1245,6 +1254,8 @@ export default function SettingsPage() {
               })}
             </div>
           </section>
+          {isOwner && companyId && <TrialDataManagement companyId={companyId} />}
+
 
           {/* ── Save ───────────────────────────────────────────────────────── */}
           <div className="flex justify-end pb-10">
