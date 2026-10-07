@@ -5,13 +5,31 @@ import { Loader2, Trash2, ShieldAlert, CheckCircle2, AlertTriangle } from "lucid
 
 type CountsMap = Record<string, number>;
 
-const TABLES = [
-  { key: "projects", label: "Projects" },
-  { key: "timesheets", label: "Timesheets" },
-  { key: "invoices", label: "Invoices" },
+const CONFIRMATION_PHRASE = "DELETE 4dbb309a-f31c-4615-8bb5-59df7a6326e3";
+
+const CLEANUP_TABLES = [
+  { key: "measurement_items", label: "Measurement Items" },
+  { key: "quotation_items", label: "Quotation Items" },
+  { key: "tax_invoice_items", label: "Tax Invoice Items" },
+  { key: "delivery_note_items", label: "Delivery Note Items" },
+  { key: "purchase_order_items", label: "Purchase Order Items" },
+  { key: "supplier_bill_items", label: "Supplier Bill Items" },
+  { key: "cheque_status_history", label: "Cheque Status History" },
+  { key: "proforma_invoice_items", label: "Proforma Invoice Items" },
   { key: "quotations", label: "Quotations" },
-  { key: "purchase_orders", label: "Purchase Orders" },
+  { key: "tax_invoices", label: "Tax Invoices" },
   { key: "delivery_notes", label: "Delivery Notes" },
+  { key: "purchase_orders", label: "Purchase Orders" },
+  { key: "supplier_bills", label: "Supplier Bills" },
+  { key: "expenses", label: "Expenses" },
+  { key: "payments", label: "Payments" },
+  { key: "petty_cash_transactions", label: "Petty Cash Transactions" },
+  { key: "receipt_vouchers", label: "Receipt Vouchers" },
+  { key: "employee_payment_vouchers", label: "Employee Payment Vouchers" },
+  { key: "cheques", label: "Cheques" },
+  { key: "measurement_projects", label: "Measurement Projects" },
+  { key: "proforma_invoices", label: "Proforma Invoices" },
+  { key: "projects", label: "Projects" },
 ];
 
 export default function TrialDataManagement({ companyId }: { companyId: string }) {
@@ -37,7 +55,7 @@ export default function TrialDataManagement({ companyId }: { companyId: string }
     setError(null);
     const result: CountsMap = {};
     try {
-      for (const t of TABLES) {
+      for (const t of CLEANUP_TABLES) {
         const { count, error } = await supabase
           .from(t.key as any)
           .select("*", { count: "exact", head: true })
@@ -153,7 +171,7 @@ export default function TrialDataManagement({ companyId }: { companyId: string }
               </tr>
             </thead>
             <tbody>
-              {TABLES.map(t => (
+              {CLEANUP_TABLES.map(t => (
                 <tr key={t.key} className="border-b border-slate-200">
                   <td className="py-2">{t.label}</td>
                   <td className="py-2 text-right font-mono">{counts[t.key] ?? 0}</td>
