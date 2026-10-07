@@ -52,3 +52,6 @@ supabase/.temp/
 backups/
 dump/
 test-output/
+fix-pvc.js
+scripts/debug.js
+scripts/edit-page.js

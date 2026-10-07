@@ -5,6 +5,10 @@ import {
   MeasurementSheetSummary,
   ResultUnit,
 } from "./measurementTypes";
+import {
+  calculatePvcTankLiner,
+  fmtFixed as pvcFmtFixed,
+} from "./pvcTankLinerCalculations";
 
 /**
  * Normalizes dimension input (mm, cm, m) into metres (m).
@@ -198,6 +202,21 @@ export function calculateMeasurementRow(input: MeasurementRowInput): Measurement
       break;
     }
 
+    case "pvc_tank_liner": {
+      resultUnit = "m";
+      rateUnitLabel = "AED / m (RM) or AED / m²";
+      const pvcInputs = input.pvc_tank_liner_inputs || {};
+      const pvcCalc = calculatePvcTankLiner(pvcInputs);
+      const pvcResults = pvcCalc.results;
+      perPiece = pvcResults.runningMeter ?? 0;
+      total = perPiece * qty;
+      formulaDisplay = `PVC Tank Liner: Ø${pvcFmtFixed(pvcInputs.tankDiameter || 0, 2)} x H${pvcFmtFixed(pvcInputs.tankHeight || 0, 2)} -> ${pvcFmtFixed(pvcResults.runningMeter ?? 0, 2)} RM`;
+      formulaExpression = `PI x (${pvcInputs.tankDiameter} + ${pvcInputs.diameterAllowance}) x ${pvcResults.fullFabricWidths} = ${pvcFmtFixed(perPiece, 2)} RM`;
+      explanationSteps.push(...pvcCalc.explanationSteps);
+      // Store PVC results in custom_components for persistence
+      break;
+    }
+
     case "custom": {
       resultUnit = "m";
       rateUnitLabel = "AED / m";
@@ -250,6 +269,24 @@ export function calculateMeasurementRow(input: MeasurementRowInput): Measurement
     }
   }
 
+  // Store PVC tank liner results in custom_components for persistence
+  let customComponents = input.custom_components;
+  if (input.calc_type === "pvc_tank_liner" && input.pvc_tank_liner_inputs) {
+    const pvcInputs = input.pvc_tank_liner_inputs;
+    const pvcCalc = calculatePvcTankLiner(pvcInputs);
+    customComponents = [
+      ...(customComponents || []),
+      {
+        id: "pvc_tank_liner_results",
+        name: "PVC Tank Liner Results",
+        dimensionBasis: "custom_dim",
+        multiplier: 1,
+        customDimValue: pvcCalc.results.runningMeter ?? 0,
+        customDimUnit: "m",
+      },
+    ];
+  }
+
   // Rounded results for precision
   const roundedPerPiece = roundToDecimals(perPiece, 3);
   const roundedTotal = roundToDecimals(total, 3);
@@ -275,6 +312,7 @@ export function calculateMeasurementRow(input: MeasurementRowInput): Measurement
     rate_unit_label: rateUnitLabel,
     total_cost: totalCost,
     explanation_steps: explanationSteps,
+    custom_components: customComponents,
   };
 }
 

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { saveMeasurementRows } from "@/lib/measurementPersistence";
@@ -44,6 +44,7 @@ import {
   MeasurementRowInput,
   MeasurementSheet,
   CALC_TYPE_DEFINITIONS,
+  PvcTankLinerInputs,
 } from "@/lib/measurementTypes";
 import {
   calculateMeasurementRow,
@@ -52,6 +53,12 @@ import {
   normalizeToMetres,
   REAL_PROJECT_PARKING_SHADE_TEST_ROWS,
 } from "@/lib/measurementCalculations";
+import {
+  calculatePvcTankLiner,
+  fmtFixed as pvcFmtFixed,
+  buildPvcTankLinerDescription,
+  type PvcTankLinerCalculation,
+} from "@/lib/pvcTankLinerCalculations";
 import NumericInput from "@/components/NumericInput";
 import PrintModal from "@/components/documents/PrintModal";
 import MeasurementSheetTemplate, {
@@ -130,6 +137,26 @@ export default function MeasurementsPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [transferringToQuote, setTransferringToQuote] = useState(false);
+
+  // State: PVC Tank Liner Calculator
+  const [pvcCalcInputs, setPvcCalcInputs] = useState<PvcTankLinerInputs>({
+    tankDiameter: 7.19,
+    tankHeight: 6.05,
+    diameterAllowance: 0.20,
+    heightAllowance: 0.60,
+    fabricWidth: 3.00,
+    weldingSizeMm: 40,
+    numberOfSeams: 3,
+    eyeletSizeMm: 14,
+    costingMethod: "rm",
+    ratePerRm: 0,
+    ratePerM2: 0,
+    fabricationCost: 0,
+    otherCost: 0,
+    markupPercent: 0,
+  });
+  const [pvcCalcResult, setPvcCalcResult] = useState<PvcTankLinerCalculation | null>(null);
+  const [showPvcCalculator, setShowPvcCalculator] = useState(false);
 
   // Load Initial Data
   const loadData = useCallback(async () => {
@@ -599,6 +626,38 @@ export default function MeasurementsPage() {
     }
   }
 
+  // PVC Tank Liner Calculator Handler
+  function handlePvcCalculate() {
+    try {
+      const result = calculatePvcTankLiner(pvcCalcInputs);
+      setPvcCalcResult(result);
+    } catch (e) {
+      console.error('PVC calculation error:', e);
+    }
+  }
+
+  function addPvcRowToSheet() {
+    if (!pvcCalcResult || !activeSheet) return;
+    const row: MeasurementRowInput = {
+      area_name: 'PVC Tank Liner',
+      description: buildPvcTankLinerDescription(pvcCalcInputs, pvcCalcResult.results),
+      calc_type: 'pvc_tank_liner',
+      dim_unit: 'mm',
+      length_entered: 0,
+      width_entered: 0,
+      quantity: 1,
+      rate: 0,
+      pvc_length_edges: 1,
+      pvc_width_edges: 1,
+      pvc_centre_joints: 0,
+      notes: `Tank Diameter: ${pvcCalcInputs?.tankDiameter?.toFixed(2) ?? 0}m | Height: ${pvcCalcInputs?.tankHeight?.toFixed(2) ?? 0}m | Fabric Width: ${pvcCalcInputs?.fabricWidth?.toFixed(2) ?? 0}m`,
+      pvc_tank_liner_inputs: { ...pvcCalcInputs },
+    };
+    setRawRows(prev => [...prev, row]);
+    setShowPvcCalculator(false);
+    setSuccess('PVC Tank Liner added to sheet!');
+  }
+
   // Print Doc Data
   const printDocData: MeasurementSheetDocData = {
     sheet_number: activeSheet?.sheet_number || "MS-2026-0001",
@@ -692,6 +751,19 @@ export default function MeasurementsPage() {
             <FileText size={15} />
             <span>Send to Quotation</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setShowPvcCalculator(!showPvcCalculator)}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors shadow-sm ${
+              showPvcCalculator
+                ? 'border-purple-500/60 bg-purple-950/50 text-purple-200 hover:bg-purple-900/60'
+                : 'border-purple-500/40 bg-purple-950/40 text-purple-200 hover:bg-purple-900/60'
+            }`}
+          >
+            <Calculator size={14} className="text-purple-400" />
+            <span>PVC Tank Liner</span>
+          </button>
         </div>
       </div>
 
@@ -775,6 +847,314 @@ export default function MeasurementsPage() {
             <button type="button" disabled={saving} onClick={() => setShowNewSheetForm(false)} className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200">Cancel</button>
           </div>
         </form>
+      )}
+
+      {/* PVC Tank Liner Calculator Panel */}
+      {showPvcCalculator && (
+        <div className="mb-6 rounded-xl border border-purple-500/30 bg-slate-900/90 p-5 shadow-xl">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-bold text-white text-base flex items-center gap-2">
+                <Calculator size={18} className="text-purple-400" />
+                PVC Tank Liner Calculator
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Calculate fabric requirements for cylindrical tank liners
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPvcCalculator(false)}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Input Section */}
+            <div className="space-y-4">
+              <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-4 space-y-3">
+                <h4 className="text-xs font-semibold text-purple-300 uppercase tracking-wider">Tank Dimensions</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Tank Diameter (m)</label>
+                    <NumericInput
+                      value={pvcCalcInputs.tankDiameter}
+                      onChange={(v) => setPvcCalcInputs(prev => ({ ...prev, tankDiameter: v }))}
+                      min={0}
+                      step={0.01}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Tank Height (m)</label>
+                    <NumericInput
+                      value={pvcCalcInputs.tankHeight}
+                      onChange={(v) => setPvcCalcInputs(prev => ({ ...prev, tankHeight: v }))}
+                      min={0}
+                      step={0.01}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Diameter Allowance (m)</label>
+                    <NumericInput
+                      value={pvcCalcInputs.diameterAllowance}
+                      onChange={(v) => setPvcCalcInputs(prev => ({ ...prev, diameterAllowance: v }))}
+                      min={0}
+                      step={0.01}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Height Allowance (m)</label>
+                    <NumericInput
+                      value={pvcCalcInputs.heightAllowance}
+                      onChange={(v) => setPvcCalcInputs(prev => ({ ...prev, heightAllowance: v }))}
+                      min={0}
+                      step={0.01}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-4 space-y-3">
+                <h4 className="text-xs font-semibold text-purple-300 uppercase tracking-wider">Fabric & Welding</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Fabric Width (m)</label>
+                    <NumericInput
+                      value={pvcCalcInputs.fabricWidth}
+                      onChange={(v) => setPvcCalcInputs(prev => ({ ...prev, fabricWidth: v }))}
+                      min={0}
+                      step={0.01}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Number of Seams</label>
+                    <NumericInput
+                      value={pvcCalcInputs.numberOfSeams}
+                      onChange={(v) => setPvcCalcInputs(prev => ({ ...prev, numberOfSeams: Math.max(0, Math.floor(v)) }))}
+                      min={0}
+                      step={1}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Welding Size on Seam (mm)</label>
+                    <NumericInput
+                      value={pvcCalcInputs.weldingSizeMm}
+                      onChange={(v) => setPvcCalcInputs(prev => ({ ...prev, weldingSizeMm: Math.max(0, v) }))}
+                      min={0}
+                      step={1}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Eyelet Size (mm)</label>
+                    <NumericInput
+                      value={pvcCalcInputs.eyeletSizeMm}
+                      onChange={(v) => setPvcCalcInputs(prev => ({ ...prev, eyeletSizeMm: Math.max(0, v) }))}
+                      min={0}
+                      step={1}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-4 space-y-3">
+                <h4 className="text-xs font-semibold text-purple-300 uppercase tracking-wider">Costing (Optional)</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Costing Method</label>
+                    <select
+                      value={pvcCalcInputs.costingMethod}
+                      onChange={(e) => setPvcCalcInputs(prev => ({ ...prev, costingMethod: e.target.value as 'rm' | 'm2' }))}
+                      className="w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1.5 text-xs text-slate-200 focus:outline-none"
+                    >
+                      <option value="rm">Per Running Meter (RM)</option>
+                      <option value="m2">Per Square Meter (M²)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Markup %</label>
+                    <NumericInput
+                      value={pvcCalcInputs.markupPercent}
+                      onChange={(v) => setPvcCalcInputs(prev => ({ ...prev, markupPercent: v }))}
+                      min={0}
+                      step={1}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Rate per RM (AED)</label>
+                    <NumericInput
+                      value={pvcCalcInputs.ratePerRm}
+                      onChange={(v) => setPvcCalcInputs(prev => ({ ...prev, ratePerRm: v }))}
+                      min={0}
+                      step={0.01}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Rate per M² (AED)</label>
+                    <NumericInput
+                      value={pvcCalcInputs.ratePerM2}
+                      onChange={(v) => setPvcCalcInputs(prev => ({ ...prev, ratePerM2: v }))}
+                      min={0}
+                      step={0.01}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handlePvcCalculate}
+                  className="flex-1 rounded-lg bg-purple-600 hover:bg-purple-500 px-4 py-2 text-xs font-semibold text-white transition-colors shadow"
+                >
+                  Calculate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPvcCalcInputs({
+                    tankDiameter: 7.19,
+                    tankHeight: 6.05,
+                    diameterAllowance: 0.20,
+                    heightAllowance: 0.60,
+                    fabricWidth: 3.00,
+                    weldingSizeMm: 40,
+                    numberOfSeams: 3,
+                    eyeletSizeMm: 14,
+                    costingMethod: "rm",
+                    ratePerRm: 0,
+                    ratePerM2: 0,
+                    fabricationCost: 0,
+                    otherCost: 0,
+                    markupPercent: 0,
+                  })}
+                  className="rounded-lg border border-slate-600 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-800 transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            {/* Results Section */}
+            <div className="space-y-4">
+              {pvcCalcResult ? (
+                <>
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-4">
+                    <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-3">
+                      MATERIAL REQUIRED
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="text-center p-3 rounded-lg bg-emerald-950/40 border border-emerald-500/20">
+                        <div className="text-2xl font-black text-emerald-400 font-mono">
+                          {pvcFmtFixed(pvcCalcResult.results.runningMeter || 0, 2)}
+                        </div>
+                        <div className="text-[11px] text-emerald-300/70 font-semibold mt-1">RUNNING METER (RM)</div>
+                      </div>
+                      <div className="text-center p-3 rounded-lg bg-emerald-950/40 border border-emerald-500/20">
+                        <div className="text-2xl font-black text-emerald-400 font-mono">
+                          {pvcFmtFixed(pvcCalcResult.results.squareMeter || 0, 2)}
+                        </div>
+                        <div className="text-[11px] text-emerald-300/70 font-semibold mt-1">SQUARE METER (M²)</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-4 space-y-2 text-xs">
+                    <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Calculation Details</h4>
+                    <div className="flex justify-between text-slate-300">
+                      <span>Effective Diameter:</span>
+                      <span className="font-mono text-white">{pvcFmtFixed(pvcCalcResult.results.effectiveDiameter || 0, 3)} m</span>
+                    </div>
+                    <div className="flex justify-between text-slate-300">
+                      <span>Effective Height:</span>
+                      <span className="font-mono text-white">{pvcFmtFixed(pvcCalcResult.results.effectiveHeight || 0, 3)} m</span>
+                    </div>
+                    <div className="flex justify-between text-slate-300">
+                      <span>Base Cylinder Area:</span>
+                      <span className="font-mono text-white">{pvcFmtFixed(pvcCalcResult.results.cylinderArea || 0, 3)} m²</span>
+                    </div>
+                    <div className="flex justify-between text-slate-300">
+                      <span>Seam Area ({pvcCalcInputs.numberOfSeams} seams):</span>
+                      <span className="font-mono text-white">{pvcFmtFixed(pvcCalcResult.results.seamArea || 0, 3)} m²</span>
+                    </div>
+                    <div className="flex justify-between text-slate-300">
+                      <span>Total Area:</span>
+                      <span className="font-mono text-white">{pvcFmtFixed(pvcCalcResult.results.totalArea || 0, 3)} m²</span>
+                    </div>
+                    <div className="flex justify-between text-slate-300">
+                      <span>Number of Layers:</span>
+                      <span className="font-mono text-white">{pvcCalcResult.results.numberOfLayers}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-300">
+                      <span>Running Meter:</span>
+                      <span className="font-mono text-white">{pvcFmtFixed(pvcCalcResult.results.runningMeter || 0, 3)} m</span>
+                    </div>
+                    <div className="flex justify-between text-slate-300">
+                      <span>Wastage (20%):</span>
+                      <span className="font-mono text-slate-400">{pvcFmtFixed(pvcCalcResult.results.wastage || 0, 3)} m²</span>
+                    </div>
+                    <div className="pt-2 border-t border-slate-700 flex justify-between font-semibold text-white">
+                      <span>Final Square Meter:</span>
+                      <span className="font-mono">{pvcFmtFixed(pvcCalcResult.results.squareMeter || 0, 2)} m²</span>
+                    </div>
+                  </div>
+
+                  {pvcCalcResult.results.costBreakdown && (
+                    <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-4 space-y-2 text-xs">
+                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Cost Breakdown</h4>
+                      <div className="flex justify-between text-slate-300">
+                        <span>Material Cost:</span>
+                        <span className="font-mono text-white">AED {pvcFmtFixed(pvcCalcResult.results.costBreakdown.materialCost, 2)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-300">
+                        <span>Fabrication Cost:</span>
+                        <span className="font-mono text-white">AED {pvcFmtFixed(pvcCalcResult.results.costBreakdown.fabricationCost, 2)}</span>
+                      </div>
+                      {pvcCalcResult.results.costBreakdown.otherCost > 0 && (
+                        <div className="flex justify-between text-slate-300">
+                          <span>Other Costs:</span>
+                          <span className="font-mono text-white">AED {pvcFmtFixed(pvcCalcResult.results.costBreakdown.otherCost, 2)}</span>
+                        </div>
+                      )}
+                      {pvcCalcResult.results.costBreakdown.markupAmount > 0 && (
+                        <div className="flex justify-between text-slate-300">
+                          <span>Markup ({pvcCalcInputs.markupPercent}%):</span>
+                          <span className="font-mono text-white">AED {pvcFmtFixed(pvcCalcResult.results.costBreakdown.markupAmount, 2)}</span>
+                        </div>
+                      )}
+                      <div className="pt-2 border-t border-slate-700 flex justify-between font-semibold text-emerald-400">
+                        <span>Estimated Total:</span>
+                        <span className="font-mono">AED {pvcFmtFixed(pvcCalcResult.results.costBreakdown.total, 2)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={addPvcRowToSheet}
+                    className="w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white transition-colors shadow flex items-center justify-center gap-2"
+                  >
+                    <Plus size={16} />
+                    Add to Measurement Sheet
+                  </button>
+                </>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center rounded-lg border border-slate-700 bg-slate-950/40 p-8 text-center">
+                  <Calculator size={40} className="text-slate-600 mb-3" />
+                  <h4 className="font-semibold text-slate-300 text-sm">No Calculation Yet</h4>
+                  <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                    Fill in the tank dimensions and click Calculate to see results
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Main Measurements Workspace */}

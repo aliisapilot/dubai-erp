@@ -5,6 +5,7 @@ export type CalculationType =
   | "area"
   | "perimeter"
   | "pvc_edge_joint"
+  | "pvc_tank_liner"
   | "quantity_only"
   | "custom";
 
@@ -38,6 +39,93 @@ export interface MeasurementRowInput {
   rate: number;
   notes?: string;
   sort_order?: number;
+  /** PVC Tank Liner specific inputs */
+  pvc_tank_liner_inputs?: PvcTankLinerInputs;
+}
+
+export interface PvcTankLinerInputs {
+  /** Tank diameter in metres */
+  tankDiameter?: number;
+  /** Tank height in metres */
+  tankHeight?: number;
+  /** Diameter allowance in metres */
+  diameterAllowance?: number;
+  /** Height allowance in metres */
+  heightAllowance?: number;
+  /** PVC fabric width in metres */
+  fabricWidth?: number;
+  /** Welding size on seam in millimetres */
+  weldingSizeMm?: number;
+  /** Number of seams */
+  numberOfSeams?: number;
+  /** Eyelet size in millimetres */
+  eyeletSizeMm?: number;
+  /** Costing method: "rm" per running meter or "m2" per square meter */
+  costingMethod?: "rm" | "m2";
+  /** Rate per running meter (AED) */
+  ratePerRm?: number;
+  /** Rate per square meter (AED) */
+  ratePerM2?: number;
+  /** Fabrication cost (AED) */
+  fabricationCost?: number;
+  /** Other costs (AED) */
+  otherCost?: number;
+  /** Markup percentage */
+  markupPercent?: number;
+}
+
+export interface PvcTankLinerCostBreakdown {
+  materialCost: number;
+  fabricationCost: number;
+  otherCost: number;
+  markupAmount: number;
+  total: number;
+}
+
+/** PVC Tank Liner calculated results stored in custom_components */
+export interface PvcTankLinerResults {
+  /** Calculated liner diameter in metres */
+  linerDiameter?: number;
+  /** Calculated liner height in metres */
+  linerHeight?: number;
+  /** Developed length / circumference in metres */
+  developedLength?: number;
+  /** Welding size in metres */
+  weldingSizeM?: number;
+  /** Total welding allowance in metres */
+  totalWeldingAllowance?: number;
+  /** Required fabric width in metres */
+  requiredFabricWidth?: number;
+  /** Number of full fabric widths (ceiling) */
+  fullFabricWidths?: number;
+  /** Gross fabric width in metres */
+  grossFabricWidth?: number;
+  /** Unused / wastage width in metres */
+  unusedWastageWidth?: number;
+  /** Running meter (primary material requirement) */
+  runningMeter?: number;
+  /** Square meter (actual purchased material) */
+  squareMeter?: number;
+  /** Material cost */
+  materialCost?: number;
+  /** Selling price */
+  sellingPrice?: number;
+  /** Cost breakdown */
+  costBreakdown?: PvcTankLinerCostBreakdown;
+  /** Effective diameter (same as linerDiameter) */
+  effectiveDiameter?: number;
+  /** Effective height (same as linerHeight) */
+  effectiveHeight?: number;
+  /** Base cylinder area (PI * D * H) */
+  cylinderArea?: number;
+  /** Seam area */
+  seamArea?: number;
+  /** Total area */
+  totalArea?: number;
+  /** Number of fabric layers */
+  numberOfLayers?: number;
+  /** Total wastage */
+  wastage?: number;
 }
 
 export interface MeasurementRowCalculated extends MeasurementRowInput {
