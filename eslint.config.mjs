@@ -17,10 +17,8 @@ const eslintConfig = defineConfig([
     ".wrangler/**",
     "test-output/**",
     "test-results/**",
-    // Helper scripts using CommonJS require()
-    "fix-pvc.js",
-    "scripts/debug.js",
-    "scripts/edit-page.js",
+    "dubai-erp.worktrees/**",
+    "Expense-Tracker/**",
   ]),
 ]);
 

@@ -75,7 +75,9 @@ export default function MeasurementSheetTemplate({
       title: data.title || "Fabrication & Takeoff Sheet",
       items: data.items.map((item, idx) => {
         const dimStr =
-          item.calc_type === "quantity_only"
+          item.calc_type === "pvc_tank_liner" && item.tank_liner_result
+            ? `Tank: Ø${item.tank_liner_result.tankDiameter.toFixed(2)} × H${item.tank_liner_result.tankHeight.toFixed(2)} M\nLiner: Ø${item.tank_liner_result.linerDiameter.toFixed(2)} × H${item.tank_liner_result.linerHeight.toFixed(2)} M`
+            : item.calc_type === "quantity_only"
             ? "—"
             : item.calc_type === "linear"
             ? `L: ${item.length_entered} ${item.dim_unit} (${item.length_m.toFixed(3)}m)`
@@ -84,7 +86,9 @@ export default function MeasurementSheetTemplate({
             : `L: ${item.length_entered} ${item.dim_unit} (${item.length_m.toFixed(3)}m)\nW: ${item.width_entered} ${item.dim_unit}`;
 
         const calcTypeLabel =
-          item.calc_type === "pvc_edge_joint"
+          item.calc_type === "pvc_tank_liner"
+            ? "PVC Tank Liner"
+            : item.calc_type === "pvc_edge_joint"
             ? "PVC Edge + Centre Joint"
             : item.calc_type === "linear"
             ? "Linear Length"
@@ -100,7 +104,9 @@ export default function MeasurementSheetTemplate({
         const resultDisplay = formatResultWithUnit(item.calculated_total, item.result_unit);
 
         return {
-          description: item.notes ? `${item.description}\n${item.notes}` : (item.description || "Measurement item"),
+          description: item.calc_type === "pvc_tank_liner" && item.tank_liner_result
+            ? `${item.description || "PVC TANK LINER"}\nWelding Size on Seam: ${item.tank_liner_result.weldingSizeMm.toFixed(0)} MM\nMaterial: ${item.tank_liner_result.runningMeter.toFixed(2)} RM / ${item.tank_liner_result.squareMeter.toFixed(2)} M²${item.notes ? `\n${item.notes}` : ""}`
+            : item.notes ? `${item.description}\n${item.notes}` : (item.description || "Measurement item"),
           quantity: item.quantity,
           unit: "pcs",
           unit_price: item.rate,
@@ -292,7 +298,12 @@ export default function MeasurementSheetTemplate({
                       {item.notes && <div className="text-[8px] text-slate-500 italic leading-snug mt-0.5">{item.notes}</div>}
                     </td>
                     <td className={`${density.tableCellClass} text-center text-slate-600 font-mono text-[8px] leading-snug align-top`}>
-                      {item.calc_type === "quantity_only" ? (
+                      {item.calc_type === "pvc_tank_liner" && item.tank_liner_result ? (
+                        <div>
+                          <div>Tank: Ø{item.tank_liner_result.tankDiameter.toFixed(2)} × H{item.tank_liner_result.tankHeight.toFixed(2)} M</div>
+                          <div>Liner: Ø{item.tank_liner_result.linerDiameter.toFixed(2)} × H{item.tank_liner_result.linerHeight.toFixed(2)} M</div>
+                        </div>
+                      ) : item.calc_type === "quantity_only" ? (
                         "—"
                       ) : (
                         <div>
@@ -313,7 +324,9 @@ export default function MeasurementSheetTemplate({
                     {showFormulaCol && (
                       <td className={`${density.tableCellClass} text-slate-600 align-top`}>
                         <div className="font-semibold text-slate-800 text-[9px] leading-snug">
-                          {item.calc_type === "pvc_edge_joint"
+                          {item.calc_type === "pvc_tank_liner"
+                            ? "PVC Tank Liner"
+                            : item.calc_type === "pvc_edge_joint"
                             ? "PVC Edge + Centre Joint"
                             : item.calc_type === "linear"
                             ? "Linear Length"
@@ -379,6 +392,15 @@ export default function MeasurementSheetTemplate({
                   <span className="text-slate-700 font-semibold">Total Linear Metres:</span>
                   <span className="font-bold font-mono text-slate-900 text-xs">
                     {summary.totalLinearM.toFixed(3)} m
+                  </span>
+                </div>
+              )}
+
+              {summary.totalRunningM > 0 && (
+                <div className="flex justify-between items-center text-[10px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  <span className="text-emerald-900 font-semibold">Total Running Metres:</span>
+                  <span className="font-bold font-mono text-emerald-950 text-xs">
+                    {summary.totalRunningM.toFixed(2)} RM
                   </span>
                 </div>
               )}

@@ -3,12 +3,93 @@ import {
   MeasurementRowCalculated,
   MeasurementRowInput,
   MeasurementSheetSummary,
+  PvcTankLinerInput,
+  PvcTankLinerResult,
   ResultUnit,
 } from "./measurementTypes";
-import {
-  calculatePvcTankLiner,
-  fmtFixed as pvcFmtFixed,
-} from "./pvcTankLinerCalculations";
+
+export const DEFAULT_PVC_TANK_LINER_INPUT: PvcTankLinerInput = {
+  tankDiameter: 7.19,
+  tankHeight: 6.05,
+  fabricWidth: 3,
+  weldingSizeMm: 40,
+  numberOfSeams: 3,
+  diameterAllowance: 0.2,
+  heightAllowance: 0.6,
+  eyeletSizeMm: 14,
+  costingMethod: "rm",
+  ratePerRm: 0,
+  ratePerM2: 0,
+  fabricationCost: 0,
+  otherCost: 0,
+  markupPercent: 0,
+  showMaterialRequirementOnQuotation: true,
+};
+
+function nonNegative(value: number | string | null | undefined): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+/** Pure PVC tank-liner calculation. Values retain full precision until display. */
+export function calculatePvcTankLiner(input: Partial<PvcTankLinerInput>): PvcTankLinerResult {
+  const normalized: PvcTankLinerInput = {
+    ...DEFAULT_PVC_TANK_LINER_INPUT,
+    ...input,
+    tankDiameter: nonNegative(input.tankDiameter ?? DEFAULT_PVC_TANK_LINER_INPUT.tankDiameter),
+    tankHeight: nonNegative(input.tankHeight ?? DEFAULT_PVC_TANK_LINER_INPUT.tankHeight),
+    fabricWidth: nonNegative(input.fabricWidth ?? DEFAULT_PVC_TANK_LINER_INPUT.fabricWidth),
+    weldingSizeMm: nonNegative(input.weldingSizeMm ?? DEFAULT_PVC_TANK_LINER_INPUT.weldingSizeMm),
+    numberOfSeams: Math.max(0, Math.ceil(nonNegative(input.numberOfSeams ?? DEFAULT_PVC_TANK_LINER_INPUT.numberOfSeams))),
+    diameterAllowance: nonNegative(input.diameterAllowance ?? DEFAULT_PVC_TANK_LINER_INPUT.diameterAllowance),
+    heightAllowance: nonNegative(input.heightAllowance ?? DEFAULT_PVC_TANK_LINER_INPUT.heightAllowance),
+    eyeletSizeMm: nonNegative(input.eyeletSizeMm ?? DEFAULT_PVC_TANK_LINER_INPUT.eyeletSizeMm),
+    ratePerRm: nonNegative(input.ratePerRm),
+    ratePerM2: nonNegative(input.ratePerM2),
+    fabricationCost: nonNegative(input.fabricationCost),
+    otherCost: nonNegative(input.otherCost),
+    markupPercent: nonNegative(input.markupPercent),
+    costingMethod: input.costingMethod === "m2" ? "m2" : "rm",
+    showMaterialRequirementOnQuotation: input.showMaterialRequirementOnQuotation !== false,
+  };
+
+  const linerDiameter = normalized.tankDiameter + normalized.diameterAllowance;
+  const linerHeight = normalized.tankHeight + normalized.heightAllowance;
+  const developedLength = Math.PI * linerDiameter;
+  const totalWeldingAllowance = (normalized.numberOfSeams * normalized.weldingSizeMm) / 1000;
+  const requiredFabricWidth = linerHeight + totalWeldingAllowance;
+  const fullFabricWidths = normalized.fabricWidth > 0 && requiredFabricWidth > 0
+    ? Math.ceil(requiredFabricWidth / normalized.fabricWidth)
+    : 0;
+  const grossFabricWidth = fullFabricWidths * normalized.fabricWidth;
+  const wastageWidth = Math.max(0, grossFabricWidth - requiredFabricWidth);
+  const runningMeter = developedLength * fullFabricWidths;
+  const squareMeter = runningMeter * normalized.fabricWidth;
+  const materialCost = normalized.costingMethod === "m2"
+    ? squareMeter * normalized.ratePerM2
+    : runningMeter * normalized.ratePerRm;
+  const costBeforeMarkup = materialCost + normalized.fabricationCost + normalized.otherCost;
+  const markupAmount = costBeforeMarkup * normalized.markupPercent / 100;
+  const sellingPrice = costBeforeMarkup + markupAmount;
+
+  return {
+    ...normalized,
+    linerDiameter,
+    linerHeight,
+    developedLength,
+    totalWeldingAllowance,
+    requiredFabricWidth,
+    fullFabricWidths,
+    grossFabricWidth,
+    wastageWidth,
+    runningMeter,
+    squareMeter,
+    materialCost,
+    costBeforeMarkup,
+    markupAmount,
+    sellingPrice,
+  };
+}
 
 /**
  * Normalizes dimension input (mm, cm, m) into metres (m).
@@ -47,6 +128,7 @@ export function formatDimM(valInM: number): string {
  */
 export function formatResultWithUnit(val: number, unit: ResultUnit): string {
   const n = Number(val) || 0;
+  if (unit === "RM") return `${n.toFixed(2)} RM`;
   if (unit === "pcs") {
     return `${Number.isInteger(n) ? n.toString() : n.toFixed(2)} pcs`;
   }
@@ -80,6 +162,8 @@ export function calculateMeasurementRow(input: MeasurementRowInput): Measurement
   let rateUnitLabel = "AED / m";
   let formulaDisplay = "";
   let formulaExpression = "";
+  let tankLinerResult: PvcTankLinerResult | undefined;
+  let calculatedCostOverride: number | undefined;
   const explanationSteps: string[] = [];
 
   // Common explanation header
@@ -87,7 +171,7 @@ export function calculateMeasurementRow(input: MeasurementRowInput): Measurement
   explanationSteps.push(
     `Entered Dimensions: Length = ${input.length_entered ?? 0} ${dimUnitText} (Normalized: ${lengthM.toFixed(3)} m)`
   );
-  if (input.calc_type !== "linear" && input.calc_type !== "quantity_only") {
+  if (input.calc_type !== "linear" && input.calc_type !== "quantity_only" && input.calc_type !== "pvc_tank_liner") {
     if (isVarWidth && width2M !== undefined) {
       explanationSteps.push(
         `Variable Width: Width 1 = ${input.width_entered ?? 0} ${dimUnitText} (${widthM.toFixed(3)} m), Width 2 = ${input.width2_entered ?? 0} ${dimUnitText} (${width2M.toFixed(3)} m)`
@@ -189,6 +273,27 @@ export function calculateMeasurementRow(input: MeasurementRowInput): Measurement
       break;
     }
 
+    case "pvc_tank_liner": {
+      tankLinerResult = calculatePvcTankLiner(input.tank_liner_data || DEFAULT_PVC_TANK_LINER_INPUT);
+      resultUnit = "RM";
+      rateUnitLabel = tankLinerResult.costingMethod === "m2" ? "AED / m²" : "AED / RM";
+      perPiece = tankLinerResult.runningMeter;
+      total = tankLinerResult.runningMeter;
+      calculatedCostOverride = tankLinerResult.sellingPrice;
+      formulaDisplay = "π × Liner Diameter × Full Fabric Widths";
+      formulaExpression = `π × ${tankLinerResult.linerDiameter.toFixed(3)} m × ${tankLinerResult.fullFabricWidths}`;
+      explanationSteps.length = 0;
+      explanationSteps.push(`Tank Size: Ø${tankLinerResult.tankDiameter.toFixed(3)} m × H${tankLinerResult.tankHeight.toFixed(3)} m`);
+      explanationSteps.push(`Liner Diameter: ${tankLinerResult.tankDiameter.toFixed(3)} + ${tankLinerResult.diameterAllowance.toFixed(3)} = ${tankLinerResult.linerDiameter.toFixed(3)} m`);
+      explanationSteps.push(`Liner Height: ${tankLinerResult.tankHeight.toFixed(3)} + ${tankLinerResult.heightAllowance.toFixed(3)} = ${tankLinerResult.linerHeight.toFixed(3)} m`);
+      explanationSteps.push(`Developed Length: π × ${tankLinerResult.linerDiameter.toFixed(3)} = ${tankLinerResult.developedLength.toFixed(4)} m`);
+      explanationSteps.push(`Welding Allowance: ${tankLinerResult.numberOfSeams} × ${tankLinerResult.weldingSizeMm.toFixed(0)} mm = ${tankLinerResult.totalWeldingAllowance.toFixed(3)} m`);
+      explanationSteps.push(`Required Fabric Width: ${tankLinerResult.requiredFabricWidth.toFixed(3)} m; Full ${tankLinerResult.fabricWidth.toFixed(3)} m Widths: ${tankLinerResult.fullFabricWidths}`);
+      explanationSteps.push(`Running Meter: ${tankLinerResult.developedLength.toFixed(4)} × ${tankLinerResult.fullFabricWidths} = ${tankLinerResult.runningMeter.toFixed(2)} RM`);
+      explanationSteps.push(`Square Meter: ${tankLinerResult.runningMeter.toFixed(4)} × ${tankLinerResult.fabricWidth.toFixed(3)} = ${tankLinerResult.squareMeter.toFixed(2)} m²`);
+      break;
+    }
+
     case "quantity_only": {
       resultUnit = "pcs";
       rateUnitLabel = "AED / pc";
@@ -199,21 +304,6 @@ export function calculateMeasurementRow(input: MeasurementRowInput): Measurement
 
       explanationSteps.push(`Quantity Only: Item count`);
       explanationSteps.push(`Total Pieces: ${qty} pcs`);
-      break;
-    }
-
-    case "pvc_tank_liner": {
-      resultUnit = "m";
-      rateUnitLabel = "AED / m (RM) or AED / m²";
-      const pvcInputs = input.pvc_tank_liner_inputs || {};
-      const pvcCalc = calculatePvcTankLiner(pvcInputs);
-      const pvcResults = pvcCalc.results;
-      perPiece = pvcResults.runningMeter ?? 0;
-      total = perPiece * qty;
-      formulaDisplay = `PVC Tank Liner: Ø${pvcFmtFixed(pvcInputs.tankDiameter || 0, 2)} x H${pvcFmtFixed(pvcInputs.tankHeight || 0, 2)} -> ${pvcFmtFixed(pvcResults.runningMeter ?? 0, 2)} RM`;
-      formulaExpression = `PI x (${pvcInputs.tankDiameter} + ${pvcInputs.diameterAllowance}) x ${pvcResults.fullFabricWidths} = ${pvcFmtFixed(perPiece, 2)} RM`;
-      explanationSteps.push(...pvcCalc.explanationSteps);
-      // Store PVC results in custom_components for persistence
       break;
     }
 
@@ -269,30 +359,12 @@ export function calculateMeasurementRow(input: MeasurementRowInput): Measurement
     }
   }
 
-  // Store PVC tank liner results in custom_components for persistence
-  let customComponents = input.custom_components;
-  if (input.calc_type === "pvc_tank_liner" && input.pvc_tank_liner_inputs) {
-    const pvcInputs = input.pvc_tank_liner_inputs;
-    const pvcCalc = calculatePvcTankLiner(pvcInputs);
-    customComponents = [
-      ...(customComponents || []),
-      {
-        id: "pvc_tank_liner_results",
-        name: "PVC Tank Liner Results",
-        dimensionBasis: "custom_dim",
-        multiplier: 1,
-        customDimValue: pvcCalc.results.runningMeter ?? 0,
-        customDimUnit: "m",
-      },
-    ];
-  }
-
   // Rounded results for precision
   const roundedPerPiece = roundToDecimals(perPiece, 3);
   const roundedTotal = roundToDecimals(total, 3);
-  const totalCost = roundToDecimals(roundedTotal * rate, 2);
+  const totalCost = roundToDecimals(calculatedCostOverride ?? roundedTotal * rate, 2);
 
-  if (rate > 0) {
+  if (rate > 0 && input.calc_type !== "pvc_tank_liner") {
     explanationSteps.push(
       `Costing: Rate = AED ${rate.toFixed(2)} / ${resultUnit}; Amount = ${roundedTotal.toFixed(3)} × ${rate.toFixed(2)} = AED ${totalCost.toFixed(2)}`
     );
@@ -300,8 +372,8 @@ export function calculateMeasurementRow(input: MeasurementRowInput): Measurement
 
   return {
     ...input,
-    length_m: roundToDecimals(lengthM, 3),
-    width_m: roundToDecimals(widthM, 3),
+    length_m: roundToDecimals(tankLinerResult?.tankDiameter ?? lengthM, 3),
+    width_m: roundToDecimals(tankLinerResult?.tankHeight ?? widthM, 3),
     width2_m: width2M !== undefined ? roundToDecimals(width2M, 3) : undefined,
     average_width_m: roundToDecimals(avgWidthM, 3),
     formula_expression: formulaExpression,
@@ -312,7 +384,7 @@ export function calculateMeasurementRow(input: MeasurementRowInput): Measurement
     rate_unit_label: rateUnitLabel,
     total_cost: totalCost,
     explanation_steps: explanationSteps,
-    custom_components: customComponents,
+    tank_liner_result: tankLinerResult,
   };
 }
 
@@ -327,6 +399,7 @@ export function calculateSheetSummary(
 ): MeasurementSheetSummary {
   let totalPieces = 0;
   let totalLinearM = 0;
+  let totalRunningM = 0;
   let totalAreaM2 = 0;
   let totalQuantityOnlyPcs = 0;
   let totalVolumeM3 = 0;
@@ -334,6 +407,7 @@ export function calculateSheetSummary(
 
   const unitMap: Record<ResultUnit, { total: number; rowCount: number }> = {
     m: { total: 0, rowCount: 0 },
+    RM: { total: 0, rowCount: 0 },
     "m²": { total: 0, rowCount: 0 },
     pcs: { total: 0, rowCount: 0 },
     "m³": { total: 0, rowCount: 0 },
@@ -349,7 +423,11 @@ export function calculateSheetSummary(
     totalPieces += qty;
     totalCostAED += cost;
 
-    if (row.result_unit === "m") {
+    if (row.result_unit === "RM") {
+      totalRunningM += calcTotal;
+      unitMap.RM.total += calcTotal;
+      unitMap.RM.rowCount += 1;
+    } else if (row.result_unit === "m") {
       totalLinearM += calcTotal;
       unitMap.m.total += calcTotal;
       unitMap.m.rowCount += 1;
@@ -385,6 +463,7 @@ export function calculateSheetSummary(
 
   const unitLabels: Record<ResultUnit, string> = {
     m: "Linear Metres",
+    RM: "Running Metres",
     "m²": "Square Metres",
     pcs: "Pieces",
     "m³": "Cubic Metres (Volume)",
@@ -404,6 +483,7 @@ export function calculateSheetSummary(
     return {
       totalPieces: Math.round(totalPieces),
       totalLinearM: roundToDecimals(totalLinearM, 3),
+      totalRunningM: roundToDecimals(totalRunningM, 3),
       totalAreaM2: roundToDecimals(totalAreaM2, 3),
       totalQuantityOnlyPcs: Math.round(totalQuantityOnlyPcs),
       totalVolumeM3: roundToDecimals(totalVolumeM3, 3),

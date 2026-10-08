@@ -11,6 +11,7 @@ export interface MeasurementSummaryDocument {
 export function measurementSummary(data: MeasurementSummaryDocument, vatDisabled = false) {
   const pieces = data.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
   const linear = data.items.reduce((sum, item) => item.result_unit === 'm' || (!item.result_unit && item.dimensions) ? sum + (Number(item.calculated_total) || 0) : sum, 0);
+  const running = data.items.reduce((sum, item) => item.result_unit === 'RM' ? sum + (Number(item.calculated_total) || 0) : sum, 0);
   const area = data.items.reduce((sum, item) => item.result_unit === 'm²' ? sum + (Number(item.calculated_total) || 0) : sum, 0);
   // Respect supplied zero values; a zero VAT amount must never turn into 5% VAT.
   const net = data.subtotal ?? data.total_amount;
@@ -20,6 +21,7 @@ export function measurementSummary(data: MeasurementSummaryDocument, vatDisabled
   const number = (value: number, digits: number) => value.toLocaleString('en-AE', {minimumFractionDigits: digits, maximumFractionDigits: digits});
   const money = (value: number) => `AED ${number(value, 2)}`;
   const rows = [{label: 'Total Pieces:', value: `${number(pieces, Number.isInteger(pieces) ? 0 : 3)} pcs`, kind: 'quantity'}];
+  if (running > 0) rows.push({label: 'Total Running Metres:', value: `${number(running, 2)} RM`, kind: 'quantity'});
   if (linear > 0) rows.push({label: 'Total Linear Metres:', value: `${number(linear, 3)} m`, kind: 'quantity'});
   if (area > 0) rows.push({label: 'Total Square Metres:', value: `${number(area, 3)} m²`, kind: 'quantity'});
   if (!vatDisabled) rows.push({label: 'Net Amount:', value: money(net), kind: 'money'}, {label: `VAT (${number(vatRate, Number.isInteger(vatRate) ? 0 : 2)}%):`, value: money(vat), kind: 'vat'});

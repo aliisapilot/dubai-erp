@@ -13,6 +13,7 @@ export interface NumericInputProps
   emptyOnZero?: boolean;
   clearOnZeroFocus?: boolean;
   formatOnBlur?: boolean;
+  decimalPlaces?: number;
 }
 
 /**
@@ -37,6 +38,7 @@ export default function NumericInput({
   emptyOnZero,
   clearOnZeroFocus,
   formatOnBlur,
+  decimalPlaces,
   placeholder,
   min,
   max,
@@ -71,8 +73,8 @@ export default function NumericInput({
     const num = Number(val);
     if (isNaN(num)) return "";
     if (shouldEmptyOnZero && num === 0) return "";
-    if (shouldFormatOnBlur && isCurrency) {
-      return num.toFixed(2);
+    if (shouldFormatOnBlur) {
+      return num.toFixed(decimalPlaces ?? (isCurrency ? 2 : 3));
     }
     return String(val);
   };
@@ -153,8 +155,8 @@ export default function NumericInput({
       if (shouldEmptyOnZero && parsed === 0) {
         onChange(0, "0");
         setInternalText("");
-      } else if (shouldFormatOnBlur && isCurrency) {
-        const formatted = parsed.toFixed(2);
+      } else if (shouldFormatOnBlur) {
+        const formatted = parsed.toFixed(decimalPlaces ?? (isCurrency ? 2 : 3));
         onChange(parsed, formatted);
         setInternalText(formatted);
       } else {

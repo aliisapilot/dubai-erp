@@ -8,7 +8,16 @@ export async function saveMeasurementRows(client: SaveClient, sheet: Measurement
   const expectedUpdatedAt = sheet.updated_at || sheet.created_at || new Date().toISOString();
   const payload = rows.map((row, index) => {
     const c = calculateMeasurementRow(row);
-    return {...c, id: undefined, sheet_id: undefined, company_id: undefined, formula_text: c.formula_display, sort_order: index};
+    return {
+      ...c,
+      id: undefined,
+      sheet_id: undefined,
+      company_id: undefined,
+      tank_liner_data: c.tank_liner_result || c.tank_liner_data,
+      tank_liner_result: undefined,
+      formula_text: c.formula_display,
+      sort_order: index,
+    };
   });
   const {data,error} = await client.rpc("save_measurement_rows", {p_company_id:sheet.company_id,p_sheet_id:sheet.id,p_expected_updated_at:expectedUpdatedAt,p_rows:payload});
   if (error) throw new Error(error.message);
