@@ -89,9 +89,17 @@ export default function PurchaseOrderTemplate({
     notes: po.notes || po.terms_conditions || undefined,
   };
   const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
+  const effectiveTitle =
+    customLayout?.numberingConfig?.customTitle ||
+    customLayout?.elements?.find((e) => e.type === "doc_title")?.customText ||
+    "PURCHASE ORDER";
+  const effectiveTitleAr =
+    customLayout?.numberingConfig?.customTitleAr ||
+    "أمر شراء رسمي";
+
   return (
     <DocumentContainer
-      docTypeLabel="Purchase Order"
+      docTypeLabel={effectiveTitle}
       docNumber={po.po_number}
       status={po.status}
       onClose={onClose}
@@ -119,8 +127,8 @@ export default function PurchaseOrderTemplate({
         <>
       <DocHeader
           company={company}
-          docTitle="PURCHASE ORDER"
-          arabicTitle="أمر شراء رسمي"
+          docTitle={effectiveTitle}
+          arabicTitle={effectiveTitleAr}
           docNumber={po.po_number}
           docDate={po.po_date}
           subTitle="Official Vendor Purchase Order & Supply Agreement"

@@ -29,6 +29,34 @@ export interface PvcTankLinerInput {
   otherCost: number;
   markupPercent: number;
   showMaterialRequirementOnQuotation: boolean;
+
+  // Tank Quantity (Multi-Tank support)
+  tankQuantity?: number;
+
+  // Full 3D Tank Liner (Wall + Base Disc) & Allowance Settings
+  includeBottomBase?: boolean;
+  baseFabricAllowanceRm?: number;
+  weldingReinforcementRm?: number;
+
+  // Manual Quantity Overrides (Per Tank)
+  overrideFabricSqm?: number;
+  overrideWeldingRm?: number;
+  overrideEyeletsPcs?: number;
+
+  // Enhanced Internal Costing fields (Purchase / Cost)
+  fabricPurchaseRate?: number;
+  fabricPurchaseUnit?: "rm" | "sqm";
+  weldingCost?: number;
+  eyeletPurchaseRate?: number;
+  eyeletCount?: number;
+  transportCost?: number;
+  otherExpenses?: number;
+
+  // Separate Customer Selling Price Section
+  sellingRateFabric?: number;
+  sellingRateFabricUnit?: "sqm" | "rm";
+  sellingRateWelding?: number;
+  sellingRateEyelet?: number;
 }
 
 export interface PvcTankLinerResult extends PvcTankLinerInput {
@@ -46,6 +74,63 @@ export interface PvcTankLinerResult extends PvcTankLinerInput {
   costBeforeMarkup: number;
   markupAmount: number;
   sellingPrice: number;
+
+  // Multi-Tank Support
+  tankQuantity: number;
+
+  // Fabric Breakdown (Per Tank & All Tanks)
+  wallFabricRm: number;
+  wallFabricSqm: number;
+  baseFabricRm: number;
+  baseFabricSqm: number;
+  allowanceFabricRm: number;
+  totalCalculatedFabricSqm: number;
+  approvedFabricSqmPerTank: number;
+  approvedFabricSqmAllTanks: number;
+
+  // Welding Seams Breakdown (Separating overlap mm from running metres RM)
+  weldingOverlapMm: number;
+  weldingBaseSeamsRm: number;
+  weldingWallHorizontalRm: number;
+  weldingWallVerticalRm: number;
+  weldingCornerRimRm: number;
+  weldingReinforcementRm: number;
+  totalCalculatedWeldingRm: number;
+  approvedWeldingRmPerTank: number;
+  approvedWeldingRmAllTanks: number;
+
+  // Eyelets Breakdown
+  eyeletsTopRim: number;
+  eyeletsBottom: number;
+  totalCalculatedEyelets: number;
+  approvedEyeletsPerTank: number;
+  approvedEyeletsAllTanks: number;
+
+  // Enhanced Costing Breakdown
+  fabricPurchaseRate: number;
+  fabricPurchaseUnit: "rm" | "sqm";
+  fabricPurchaseCost: number;
+  weldingCost: number;
+  eyeletPurchaseRate: number;
+  eyeletCount: number;
+  eyeletPurchaseCost: number;
+  transportCost: number;
+  otherExpenses: number;
+  totalInternalCost: number;
+
+  // Customer Selling Breakdown (Based on Approved Quantities)
+  sellingRateFabric: number;
+  sellingRateFabricUnit: "sqm" | "rm";
+  sellingRateWelding: number;
+  sellingRateEyelet: number;
+  fabricSellingTotal: number;
+  weldingSellingTotal: number;
+  eyeletSellingTotal: number;
+  quotationSellingValue: number;
+
+  // Financial Analysis
+  estimatedProfit: number;
+  profitMarginPercent: number;
 }
 
 export interface CustomFormulaComponent {

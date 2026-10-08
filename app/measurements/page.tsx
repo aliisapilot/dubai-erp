@@ -44,6 +44,7 @@ import {
   MeasurementRowInput,
   MeasurementSheet,
   CALC_TYPE_DEFINITIONS,
+  PvcTankLinerResult,
 } from "@/lib/measurementTypes";
 import {
   calculateMeasurementRow,
@@ -56,6 +57,7 @@ import {
 } from "@/lib/measurementCalculations";
 import NumericInput from "@/components/NumericInput";
 import PvcTankLinerCalculator from "@/components/measurements/PvcTankLinerCalculator";
+import PvcTankLinerQuotationModal, { CustomerSummary } from "@/components/measurements/PvcTankLinerQuotationModal";
 import PrintModal from "@/components/documents/PrintModal";
 import MeasurementSheetTemplate, {
   MeasurementSheetDocData,
@@ -63,7 +65,7 @@ import MeasurementSheetTemplate, {
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { useRouter } from "next/navigation";
 
-type Customer = { id: string; name: string | null };
+type Customer = CustomerSummary;
 type Project = { id: string; name: string | null; project_number: string | null };
 
 const DEFAULT_NEW_ROW: MeasurementRowInput = {
@@ -127,6 +129,9 @@ export default function MeasurementsPage() {
   const [includeVat, setIncludeVat] = useState(true);
   const [vatRate, setVatRate] = useState<number>(5);
   const [showQuotationModal, setShowQuotationModal] = useState(false);
+  const [showPvcQuotationModal, setShowPvcQuotationModal] = useState(false);
+  const [pvcQuotationLinerData, setPvcQuotationLinerData] = useState<PvcTankLinerResult | null>(null);
+  const [pvcQuotationTankQty, setPvcQuotationTankQty] = useState<number>(1);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [isVerifying] = useState(false);
   const [hasVerified, setHasVerified] = useState(false);
@@ -144,7 +149,7 @@ export default function MeasurementsPage() {
       if (co) setCompany(co as CompanyDocInfo);
 
       const [customerResult, projectResult, sheetResult] = await Promise.all([
-        supabase.from("customers").select("id, name").eq("company_id", companyId).eq("active", true).order("name"),
+        supabase.from("customers").select("id, name, customer_code, trn, address, contact_person, phone, mobile, email, active").eq("company_id", companyId).eq("active", true).order("name"),
         supabase.from("projects").select("id, name, project_number").eq("company_id", companyId).order("created_at", { ascending: false }),
         supabase
           .from("measurement_projects")
@@ -448,6 +453,38 @@ export default function MeasurementsPage() {
     setShowRowModal(true);
   }
 
+  // Open modal directly configured for PVC Tank Liner
+  function handleOpenPvcTankLiner() {
+    const nextIndex = rawRows.length + 1;
+    setRowForm({
+      ...DEFAULT_NEW_ROW,
+      area_name: `Tank ${nextIndex}`,
+      description: "PVC TANK LINER",
+      calc_type: "pvc_tank_liner",
+      dim_unit: "m",
+      quantity: 1,
+      tank_liner_data: DEFAULT_PVC_TANK_LINER_INPUT,
+    });
+    setEditingRowIndex(null);
+    setShowRowModal(true);
+  }
+
+  // Switch calculation type safely
+  function handleSelectCalcType(calcType: CalculationType) {
+    setRowForm({
+      ...rowForm,
+      calc_type: calcType,
+      ...(calcType === "pvc_tank_liner"
+        ? {
+            description: rowForm.calc_type === "pvc_tank_liner" ? rowForm.description : "PVC TANK LINER",
+            dim_unit: "m" as DimensionUnit,
+            quantity: 1,
+            tank_liner_data: rowForm.tank_liner_data || DEFAULT_PVC_TANK_LINER_INPUT,
+          }
+        : {}),
+    });
+  }
+
   // Open modal to edit existing row
   function handleEditRow(index: number) {
     setRowForm({ ...rawRows[index] });
@@ -470,11 +507,28 @@ export default function MeasurementsPage() {
       setError("Tank diameter, tank height and fabric width must be greater than zero.");
       return false;
     }
+    const finalRowForm = rowForm.calc_type === "pvc_tank_liner"
+      ? {
+          ...rowForm,
+          tank_liner_data: liveTankLinerResult,
+          rate: liveTankLinerResult.costingMethod === "m2" ? liveTankLinerResult.ratePerM2 : liveTankLinerResult.ratePerRm,
+        }
+      : rowForm;
     const updated = [...rawRows];
-    if (editingRowIndex !== null) updated[editingRowIndex] = rowForm;
-    else updated.push(rowForm);
+    if (editingRowIndex !== null) updated[editingRowIndex] = finalRowForm;
+    else updated.push(finalRowForm);
     const saved = await commitRows(updated);
-    if (saved) setShowRowModal(false);
+    if (saved) {
+      setShowRowModal(false);
+      setSuccess(
+        editingRowIndex !== null
+          ? "Measurement row updated successfully."
+          : rowForm.calc_type === "pvc_tank_liner"
+          ? "PVC Tank Liner added to sheet!"
+          : "Measurement row added to sheet!"
+      );
+      setTimeout(() => setSuccess(null), 3500);
+    }
     return saved;
   }
 
@@ -483,8 +537,18 @@ export default function MeasurementsPage() {
     await saveCurrentRow();
   }
 
+  function handleOpenPvcQuotation(linerData?: PvcTankLinerResult, qty?: number) {
+    const dataToUse = linerData || liveTankLinerResult;
+    const qtyToUse = qty || dataToUse.tankQuantity || rowForm.quantity || 1;
+    setPvcQuotationLinerData(dataToUse);
+    setPvcQuotationTankQty(qtyToUse);
+    setShowRowModal(false);
+    setShowPvcQuotationModal(true);
+  }
+
   async function handleAddTankLinerToQuotation() {
-    if (await saveCurrentRow()) setShowQuotationModal(true);
+    await saveCurrentRow();
+    handleOpenPvcQuotation(liveTankLinerResult, liveTankLinerResult.tankQuantity || rowForm.quantity || 1);
   }
 
   // Samples are a separate local preview; they never replace saved sheet rows.
@@ -706,6 +770,16 @@ export default function MeasurementsPage() {
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
+            onClick={handleOpenPvcTankLiner}
+            className="flex items-center gap-1.5 rounded-lg border border-emerald-500/50 bg-emerald-950/60 hover:bg-emerald-900/60 px-3 py-2 text-xs font-bold text-emerald-300 transition-colors shadow-sm"
+            title="Open PVC Tank Liner Calculator"
+          >
+            <Layers size={14} className="text-emerald-400" />
+            <span>PVC Tank Liner</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setShowHelpModal(true)}
             className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
             title="Open Formula Guide & Beginner Help"
@@ -849,14 +923,25 @@ export default function MeasurementsPage() {
               </span>
             </div>
 
-            <button
-              type="button"
-              onClick={handleAddNewRow}
-              className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors shadow"
-            >
-              <Plus size={15} />
-              <span>Add Measurement Row</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleOpenPvcTankLiner}
+                className="flex items-center gap-1.5 rounded-lg border border-emerald-500/60 bg-emerald-950/70 hover:bg-emerald-900/80 px-3 py-1.5 text-xs font-bold text-emerald-300 transition-colors shadow"
+                title="Directly open PVC Tank Liner calculator"
+              >
+                <Layers size={14} className="text-emerald-400" />
+                <span>PVC Tank Liner</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleAddNewRow}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors shadow"
+              >
+                <Plus size={15} />
+                <span>Add Measurement Row</span>
+              </button>
+            </div>
           </div>
 
           {calculatedRows.length === 0 ? (
@@ -864,9 +949,17 @@ export default function MeasurementsPage() {
               <Ruler size={40} className="mx-auto text-slate-600 mb-3" />
               <h3 className="font-medium text-slate-300 text-sm">No measurements recorded yet</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                Add your first measurement item or load our real parking shade project test data.
+                Add your first measurement item or calculate a complete PVC Tank Liner.
               </p>
-              <div className="mt-4 flex justify-center gap-3">
+              <div className="mt-4 flex flex-wrap justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleOpenPvcTankLiner}
+                  className="flex items-center gap-1.5 rounded-lg border border-emerald-500/50 bg-emerald-950/70 hover:bg-emerald-900/80 px-4 py-2 text-xs font-bold text-emerald-300 shadow transition-colors"
+                >
+                  <Layers size={14} className="text-emerald-400" />
+                  <span>PVC Tank Liner</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleAddNewRow}
@@ -988,6 +1081,16 @@ export default function MeasurementsPage() {
                           </td>
                           <td className="py-2.5 px-2 text-center sticky right-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-sm">
                             <div className="flex items-center justify-center gap-1">
+                              {row.calc_type === "pvc_tank_liner" && row.tank_liner_result && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPvcQuotation(row.tank_liner_result, row.quantity || 1)}
+                                  title="Create Quotation for PVC Tank Liner"
+                                  className="rounded p-1 text-emerald-400 hover:text-white hover:bg-emerald-600 transition-colors"
+                                >
+                                  <FileText size={13} />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => handleEditRow(idx)}
@@ -1376,7 +1479,7 @@ export default function MeasurementsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3.5">
                     {/* Calculation Type Selector */}
                     <div className="md:col-span-2">
-                      <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center justify-between mb-1.5">
                         <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
                           <span>Calculation Type</span>
                           <button
@@ -1393,23 +1496,51 @@ export default function MeasurementsPage() {
                         </span>
                       </div>
 
+                      {/* Visible Calculation Type Option Pills / Selector */}
+                      <div className="mb-2.5 flex flex-wrap gap-1.5" role="tablist" aria-label="Measurement Calculation Type">
+                        {CALC_TYPE_DEFINITIONS.map((def) => {
+                          const isSelected = rowForm.calc_type === def.value;
+                          const isLiner = def.value === "pvc_tank_liner";
+                          const label = isLiner ? "PVC Tank Liner" : def.label.replace(/ \([^)]+\)/, "");
+                          return (
+                            <button
+                              key={def.value}
+                              type="button"
+                              role="tab"
+                              aria-selected={isSelected}
+                              onClick={() => handleSelectCalcType(def.value)}
+                              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all ${
+                                isSelected
+                                  ? isLiner
+                                    ? "bg-emerald-500 text-slate-950 font-black shadow-md ring-2 ring-emerald-300"
+                                    : "bg-emerald-600 text-white shadow ring-1 ring-emerald-400"
+                                  : isLiner
+                                  ? "border border-emerald-500/50 bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900/80 font-bold"
+                                  : "border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white"
+                              }`}
+                            >
+                              {isLiner && <Layers size={13} className={isSelected ? "text-slate-950" : "text-emerald-400"} />}
+                              <span>{label}</span>
+                              <span
+                                className={`rounded px-1 py-0.5 font-mono text-[10px] ${
+                                  isSelected
+                                    ? isLiner
+                                      ? "bg-slate-950/20 text-slate-950 font-bold"
+                                      : "bg-black/30 text-emerald-200"
+                                    : "bg-slate-800 text-slate-400"
+                                }`}
+                              >
+                                {def.resultUnit}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
                       <select
+                        id="calculation-type-select"
                         value={rowForm.calc_type}
-                        onChange={(e) => {
-                          const calcType = e.target.value as CalculationType;
-                          setRowForm({
-                            ...rowForm,
-                            calc_type: calcType,
-                            ...(calcType === "pvc_tank_liner"
-                              ? {
-                                  description: rowForm.calc_type === "pvc_tank_liner" ? rowForm.description : "PVC TANK LINER",
-                                  dim_unit: "m" as DimensionUnit,
-                                  quantity: 1,
-                                  tank_liner_data: rowForm.tank_liner_data || DEFAULT_PVC_TANK_LINER_INPUT,
-                                }
-                              : {}),
-                          });
-                        }}
+                        onChange={(e) => handleSelectCalcType(e.target.value as CalculationType)}
                         className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-white focus:border-emerald-500 focus:outline-none"
                       >
                         {CALC_TYPE_DEFINITIONS.map((def) => (
@@ -1458,7 +1589,10 @@ export default function MeasurementsPage() {
                       result={liveTankLinerResult}
                       onChange={(tank_liner_data) => setRowForm({ ...rowForm, tank_liner_data })}
                       onSave={() => void saveCurrentRow()}
+                      onCancel={() => setShowRowModal(false)}
+                      saveLabel={editingRowIndex !== null ? "Update Measurement" : "Add to Sheet"}
                       onAddToQuotation={() => void handleAddTankLinerToQuotation()}
+                      onCreateQuotation={() => void handleAddTankLinerToQuotation()}
                       saving={saving}
                     />
                   )}
@@ -2299,6 +2433,26 @@ export default function MeasurementsPage() {
             showVat={includeVat}
           />
         </PrintModal>
+      )}
+
+      {/* PVC Tank Liner Quotation Modal */}
+      {showPvcQuotationModal && pvcQuotationLinerData && (
+        <PvcTankLinerQuotationModal
+          isOpen={showPvcQuotationModal}
+          onClose={() => setShowPvcQuotationModal(false)}
+          linerResult={pvcQuotationLinerData}
+          initialTankQuantity={pvcQuotationTankQty}
+          customers={customers}
+          company={company}
+          activeSheetNumber={activeSheet?.sheet_number}
+          onCustomerCreated={(newCust) => {
+            setCustomers((prev) => [newCust, ...prev]);
+          }}
+          onQuotationCreated={(_qid, qnum) => {
+            setSuccess(`Quotation ${qnum} created successfully!`);
+            setTimeout(() => setSuccess(null), 4000);
+          }}
+        />
       )}
       </div>
     </div>

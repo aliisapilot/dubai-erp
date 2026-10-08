@@ -88,9 +88,17 @@ export default function ProformaInvoiceTemplate({
     notes: proforma.notes || undefined,
   };
   const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
+  const effectiveTitle =
+    customLayout?.numberingConfig?.customTitle ||
+    customLayout?.elements?.find((e) => e.type === "doc_title")?.customText ||
+    "PROFORMA INVOICE";
+  const effectiveTitleAr =
+    customLayout?.numberingConfig?.customTitleAr ||
+    "فاتورة مبدئية";
+
   return (
     <DocumentContainer
-      docTypeLabel="Proforma Invoice"
+      docTypeLabel={effectiveTitle}
       docNumber={proforma.proforma_number}
       status={proforma.status}
       onClose={onClose}
@@ -118,8 +126,8 @@ export default function ProformaInvoiceTemplate({
         <>
       <DocHeader
           company={company}
-          docTitle="PROFORMA INVOICE"
-          arabicTitle="فاتورة مبدئية"
+          docTitle={effectiveTitle}
+          arabicTitle={effectiveTitleAr}
           docNumber={proforma.proforma_number}
           docDate={proforma.proforma_date}
           subTitle="Advance Payment Request & Estimated Tax Breakdown"

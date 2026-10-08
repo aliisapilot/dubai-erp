@@ -104,10 +104,17 @@ export default function TaxInvoiceTemplate({
     notes: invoice.notes || undefined,
   };
   const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
+  const effectiveTitle =
+    customLayout?.numberingConfig?.customTitle ||
+    customLayout?.elements?.find((e) => e.type === "doc_title")?.customText ||
+    "TAX INVOICE";
+  const effectiveTitleAr =
+    customLayout?.numberingConfig?.customTitleAr ||
+    "فاتورة ضريبية";
 
   return (
     <DocumentContainer
-      docTypeLabel="Tax Invoice"
+      docTypeLabel={effectiveTitle}
       docNumber={invoice.invoice_number}
       status={invoice.status}
       onClose={onClose}
@@ -135,8 +142,8 @@ export default function TaxInvoiceTemplate({
         <>
           <DocHeader
           company={company}
-          docTitle="TAX INVOICE"
-          arabicTitle="فاتورة ضريبية"
+          docTitle={effectiveTitle}
+          arabicTitle={effectiveTitleAr}
           docNumber={invoice.invoice_number}
           docDate={invoice.invoice_date}
           subTitle="Original Tax Invoice Issued Under UAE Federal Decree-Law on Value Added Tax"

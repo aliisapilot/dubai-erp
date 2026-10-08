@@ -55,3 +55,7 @@ test-output/
 fix-pvc.js
 scripts/debug.js
 scripts/edit-page.js
+.chrome-test-profile*
+.chrome-verify-profile*
+test-results/
+*.audit-tmp

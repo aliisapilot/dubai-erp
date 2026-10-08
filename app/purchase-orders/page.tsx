@@ -5,6 +5,7 @@ import { Plus, Search, X, Save, Loader2, Pencil, Eye, Printer, Trash2, FileSigna
 import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, calcLineItem } from "@/lib/helpers";
 import PurchaseOrderTemplate, { PurchaseOrderData, POLineItem } from "@/components/documents/PurchaseOrderTemplate";
 import PrintModal from "@/components/documents/PrintModal";
+import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import {
   PurchaseOrderStatus,
@@ -46,6 +47,7 @@ export default function PurchaseOrdersPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showRenameModal, setShowRenameModal] = useState(false);
 
   useEffect(() => { loadAll(); }, []);
   async function loadAll() {
@@ -312,9 +314,20 @@ export default function PurchaseOrdersPage() {
                     PO #: Auto-generated on save
                   </span>
                 ) : (
-                  <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
-                    PO #: {editing.purchase_order_number} (Read-only)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
+                      PO #: {editing.purchase_order_number}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowRenameModal(true)}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
+                      title="Safely rename purchase order reference number with collision check"
+                    >
+                      <Pencil size={11} />
+                      <span>Edit #</span>
+                    </button>
+                  </div>
                 )}
               </div>
               <button onClick={closeForm} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={20}/></button>
@@ -439,6 +452,22 @@ export default function PurchaseOrdersPage() {
           />
         )}
       </PrintModal>
+
+      {showRenameModal && editing && (company?.id || editing.company_id) && (
+        <EditDocumentReferenceModal
+          isOpen={showRenameModal}
+          onClose={() => setShowRenameModal(false)}
+          companyId={company?.id || editing.company_id}
+          docType="purchase_order"
+          documentId={editing.id}
+          currentReferenceNumber={editing.purchase_order_number || ""}
+          onSuccess={(newNum) => {
+            setEditing((prev) => (prev ? { ...prev, purchase_order_number: newNum } : prev));
+            loadAll();
+            setSuccess(`Purchase order reference updated to ${newNum}`);
+          }}
+        />
+      )}
     </main>
   );
 }

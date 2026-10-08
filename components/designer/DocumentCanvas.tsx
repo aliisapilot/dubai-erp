@@ -391,7 +391,7 @@ export default function DocumentCanvas({
           <DynamicDocumentRenderer
             layout={layout}
             company={company}
-            data={getSampleDocumentData(layout.documentType)}
+            data={getSampleDocumentData(layout.documentType, layout.numberingConfig)}
             isDesignerPreview={true}
             scale={1}
             pageNumber={pageNumber}

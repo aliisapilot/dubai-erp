@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import TaxInvoiceTemplate from "@/components/documents/TaxInvoiceTemplate";
 import PrintModal from "@/components/documents/PrintModal";
+import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
 
@@ -38,6 +39,7 @@ function TIContent() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
   const [editing, setEditing] = useState<TI | null>(null);
   const [printRec, setPrintRec] = useState<{ti: TI; lines: LineItem[]} | null>(null);
   const [loading, setLoading] = useState(true);
@@ -315,9 +317,20 @@ function TIContent() {
                     Invoice #: Auto-generated on save
                   </span>
                 ) : (
-                  <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
-                    Invoice #: {editing.invoice_number} (Read-only)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
+                      Invoice #: {editing.invoice_number}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowRenameModal(true)}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
+                      title="Safely rename invoice reference number with collision check"
+                    >
+                      <Pencil size={11} />
+                      <span>Edit #</span>
+                    </button>
+                  </div>
                 )}
               </div>
               <button onClick={closeForm} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={20}/></button>
@@ -419,6 +432,24 @@ function TIContent() {
           />
         )}
       </PrintModal>
+
+      {showRenameModal && editing && (company?.id || editing.company_id) && (
+        <EditDocumentReferenceModal
+          isOpen={showRenameModal}
+          onClose={() => setShowRenameModal(false)}
+          companyId={company?.id || editing.company_id}
+          docType="tax_invoice"
+          documentId={editing.id}
+          currentReferenceNumber={editing.invoice_number || ""}
+          onSuccess={(newNum) => {
+            setEditing((prev) => (prev ? { ...prev, invoice_number: newNum } : prev));
+            setInvoices((prev) =>
+              prev.map((i) => (i.id === editing.id ? { ...i, invoice_number: newNum } : i))
+            );
+            setSuccess(`Tax invoice reference updated to ${newNum}`);
+          }}
+        />
+      )}
     </main>
   );
 }

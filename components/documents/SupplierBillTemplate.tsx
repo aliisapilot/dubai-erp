@@ -85,12 +85,19 @@ export default function SupplierBillTemplate({
     notes: bill.notes || undefined,
   };
   const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
+  const effectiveTitle =
+    customLayout?.numberingConfig?.customTitle ||
+    customLayout?.elements?.find((e) => e.type === "doc_title")?.customText ||
+    "SUPPLIER BILL";
+  const effectiveTitleAr =
+    customLayout?.numberingConfig?.customTitleAr ||
+    "فاتورة مورد";
   const paid = Number(bill.paid_amount) || 0;
   const balance = Math.max(0, bill.total_amount - paid);
 
   return (
     <DocumentContainer
-      docTypeLabel="Supplier Bill"
+      docTypeLabel={effectiveTitle}
       docNumber={bill.bill_number}
       status={bill.status}
       onClose={onClose}
@@ -118,8 +125,8 @@ export default function SupplierBillTemplate({
         <>
       <DocHeader
           company={company}
-          docTitle="SUPPLIER BILL"
-          arabicTitle="فاتورة مورد"
+          docTitle={effectiveTitle}
+          arabicTitle={effectiveTitleAr}
           docNumber={bill.bill_number}
           docDate={bill.bill_date}
         />

@@ -10,6 +10,14 @@
 import { supabase } from "./supabase";
 import { createDocumentCloud, revisionOf, cloudError, type CloudRevision } from './documentCloud';
 import { preserveDesignDraft } from './documentDesignBackup';
+import {
+  type DocNumberingConfig,
+  DEFAULT_NUMBERING_CONFIGS,
+  getCachedDocNumberingConfig,
+} from "./documentNumbering";
+
+export type { DocNumberingConfig } from "./documentNumbering";
+export { DEFAULT_NUMBERING_CONFIGS, formatDocNumber, getCachedDocNumberingConfig } from "./documentNumbering";
 export const documentCloud = createDocumentCloud(supabase);
 if (typeof window !== 'undefined') {
   supabase.auth.onAuthStateChange(() => documentCloud.clearPreviewCache());
@@ -193,6 +201,7 @@ export interface TableColumnConfig {
   visible: boolean;
   widthPct: number;
   align: "left" | "center" | "right";
+  fontSize?: number; // per-column font size in PT
 }
 
 export interface LayoutElement {
@@ -211,9 +220,10 @@ export interface LayoutElement {
   pageNumber?: number; // 1 for first page, or applies to all
 
   // Typography & Appearance
-  fontSize?: number; // px
+  fontSize?: number; // in PT (e.g. 8 to 48 pt, decimal supported)
   fontWeight?: "normal" | "medium" | "semibold" | "bold" | "extrabold";
   fontStyle?: "normal" | "italic";
+  textDecoration?: "none" | "underline";
   fontFamily?: string;
   textAlign?: "left" | "center" | "right" | "justify";
   color?: string;
@@ -223,8 +233,11 @@ export interface LayoutElement {
   borderRadius?: number; // px
   padding?: number; // mm
   lineHeight?: number;
-  letterSpacing?: number; // px
+  letterSpacing?: number; // px / pt
   opacity?: number; // 0 to 1
+  textWrapping?: "wrap" | "nowrap" | "clip";
+  autoFitText?: boolean;
+  minFontSize?: number; // in PT, default 6
 
   // Text contents / bindings
   customText?: string;
@@ -241,9 +254,16 @@ export interface LayoutElement {
   tableSettings?: {
     headerBg: string;
     headerTextColor: string;
-    fontSize: number;
-    headerFontSize: number;
-    rowHeight: number;
+    fontSize: number; // general body font size in PT
+    headerFontSize?: number; // header font size in PT
+    descriptionFontSize?: number; // description column font size in PT
+    qtyFontSize?: number; // qty column font size in PT
+    unitFontSize?: number; // unit column font size in PT
+    rateFontSize?: number; // rate column font size in PT
+    amountFontSize?: number; // amount column font size in PT
+    rowHeight: number; // mm
+    headerHeight?: number; // mm
+    cellPadding?: number; // mm
     borderThickness: number;
     borderColor: string;
     bodyTextColor: string;
@@ -439,6 +459,9 @@ export interface DocumentLayout {
   version: number;
   documentType: DocumentTypeId;
   templateName: string;
+  documentTitle?: string;
+  documentTitleAr?: string;
+  numberingConfig?: DocNumberingConfig;
   page: {
     paper: "A4";
     orientation: "portrait" | "landscape";
@@ -468,7 +491,7 @@ export interface DocumentLayout {
   elements: LayoutElement[];
 }
 
-export const CURRENT_LAYOUT_VERSION = 7;
+export const CURRENT_LAYOUT_VERSION = 8;
 
 const VAT_DOCUMENT_TYPES = new Set<DocumentTypeId>([
   "tax_invoice",
@@ -818,7 +841,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       visible: true,
       locked: false,
       zIndex: 11,
-      fontSize: 13.5,
+      fontSize: 11.5,
       fontWeight: "bold",
       textAlign: "center",
       color: documentStyle.primaryColor,
@@ -836,7 +859,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       visible: true,
       locked: false,
       zIndex: 12,
-      fontSize: 20,
+      fontSize: 13.5,
       fontWeight: "bold",
       textAlign: "center",
       color: documentStyle.accentColor,
@@ -854,7 +877,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       visible: true,
       locked: false,
       zIndex: 13,
-      fontSize: 9.5,
+      fontSize: 7.8,
       textAlign: "center",
       color: "#64748B",
     },
@@ -871,7 +894,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       visible: true,
       locked: false,
       zIndex: 14,
-      fontSize: 13.5,
+      fontSize: 12,
       fontWeight: "extrabold",
       textAlign: "left",
       color: "#FFFFFF",
@@ -893,7 +916,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       visible: true,
       locked: false,
       zIndex: 15,
-      fontSize: 10.5,
+      fontSize: 8,
       backgroundColor: "#F8FAFC",
       borderColor: "#CBD5E1",
       borderWidth: 1,
@@ -913,7 +936,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       visible: true,
       locked: false,
       zIndex: 16,
-      fontSize: 10.5,
+      fontSize: 8,
       backgroundColor: "#F8FAFC",
       borderColor: "#CBD5E1",
       borderWidth: 1,
@@ -936,9 +959,9 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       tableSettings: {
         headerBg: documentStyle.tableHeaderColor,
         headerTextColor: "#FFFFFF",
-        fontSize: 10.5,
-        headerFontSize: 10.5,
-        rowHeight: 9.5,
+        fontSize: 8,
+        headerFontSize: 8,
+        rowHeight: 8.5,
         borderThickness: 1,
         borderColor: documentStyle.borderColor,
         bodyTextColor: documentStyle.textColor,
@@ -969,7 +992,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
             visible: true,
             locked: false,
             zIndex: 18,
-            fontSize: 9.5,
+            fontSize: 8,
             color: "#64748B",
             customText: "Goods received in good condition and order specifications.",
           },
@@ -985,6 +1008,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
             locked: false,
             lockAspectRatio: true,
             zIndex: 19,
+            fontSize: 7.5,
             customText: "DISPATCHED BY / DRIVER",
           },
           {
@@ -999,6 +1023,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
             locked: false,
             lockAspectRatio: true,
             zIndex: 20,
+            fontSize: 7.5,
             imageFit: "contain" as const,
           },
         ]
@@ -1187,7 +1212,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
             visible: true,
             locked: false,
             zIndex: 18,
-            fontSize: 10.5,
+            fontSize: 8,
             backgroundColor: "#F8FAFC",
             borderColor: "#CBD5E1",
             borderWidth: 1,
@@ -1207,7 +1232,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
             visible: true,
             locked: false,
             zIndex: 19,
-            fontSize: 10.5,
+            fontSize: 8.5,
             borderColor: "#CBD5E1",
             borderWidth: 1,
             borderRadius: 4,
@@ -1226,7 +1251,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
             visible: true,
             locked: false,
             zIndex: 20,
-            fontSize: 9.5,
+            fontSize: 8,
             backgroundColor: "#F8FAFC",
             borderColor: "#CBD5E1",
             borderWidth: 1,
@@ -1246,7 +1271,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
             visible: true,
             locked: false,
             zIndex: 21,
-            fontSize: 9.5,
+            fontSize: 8,
             color: "#64748B",
           },
 
@@ -1263,6 +1288,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
             locked: false,
             lockAspectRatio: true,
             zIndex: 22,
+            fontSize: 7.5,
             customText: "COMPANY AUTHORIZED SIGNATURE",
           },
 
@@ -1279,6 +1305,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
             locked: false,
             lockAspectRatio: true,
             zIndex: 23,
+            fontSize: 7.5,
             imageFit: "contain" as const,
           },
         ]),
@@ -1295,7 +1322,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       visible: true,
       locked: false,
       zIndex: 24,
-      fontSize: 9.5,
+      fontSize: 7.5,
       textAlign: "center",
       color: "#64748B",
       borderColor: "#CBD5E1",
@@ -1320,6 +1347,14 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       printSettings: JSON.parse(JSON.stringify(DEFAULT_PRINT_SETTINGS)),
     },
     branding: documentStyle,
+    documentTitle: docConfig.defaultTitle,
+    documentTitleAr: docConfig.defaultTitleAr,
+    numberingConfig:
+      typeof window !== "undefined"
+        ? getCachedDocNumberingConfig("", docType)
+        : JSON.parse(
+            JSON.stringify(DEFAULT_NUMBERING_CONFIGS[docType] || DEFAULT_NUMBERING_CONFIGS.quotation)
+          ),
     elements: applyDocumentBusinessProfile(elements, docType),
   };
 }
@@ -1375,12 +1410,99 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
       el = { ...el, height: 16, y: 262, fontSize: 9.5 };
     }
 
+    if (sourceVersion < 8) {
+      if (el.type === "company_name_ar") {
+        el.fontSize = el.fontSize && el.fontSize > 16 ? Math.min(14, Math.round(el.fontSize * 0.65 * 10) / 10) : (el.fontSize ?? 13.5);
+      } else if (el.type === "company_name_en") {
+        el.fontSize = el.fontSize && el.fontSize > 14 ? Math.min(12.5, Math.round(el.fontSize * 0.75 * 10) / 10) : (el.fontSize ?? 11.5);
+      } else if (el.type === "company_address") {
+        el.fontSize = el.fontSize && el.fontSize > 9 ? Math.min(8.5, Math.round(el.fontSize * 0.75 * 10) / 10) : (el.fontSize ?? 7.8);
+      } else if (el.type === "doc_title") {
+        el.fontSize = el.fontSize && el.fontSize > 15 ? Math.min(13, Math.round(el.fontSize * 0.75 * 10) / 10) : (el.fontSize ?? 12);
+      } else if (["customer_info", "supplier_info", "project_info", "doc_meta"].includes(el.type)) {
+        el.fontSize = el.fontSize && el.fontSize > 10.5 ? Math.min(9, Math.round(el.fontSize * 0.75 * 10) / 10) : (el.fontSize ?? 8);
+      } else if (["totals", "amount_in_words", "bank_details", "payment_terms", "footer"].includes(el.type)) {
+        el.fontSize = el.fontSize && el.fontSize > 10.5 ? Math.min(9, Math.round(el.fontSize * 0.75 * 10) / 10) : (el.fontSize ?? 8);
+      }
+
+      if (el.tableSettings) {
+        if (el.tableSettings.fontSize && el.tableSettings.fontSize > 10) {
+          el.tableSettings.fontSize = Math.min(8.5, Math.round(el.tableSettings.fontSize * 0.75 * 10) / 10);
+        }
+        if (el.tableSettings.headerFontSize && el.tableSettings.headerFontSize > 11) {
+          el.tableSettings.headerFontSize = Math.min(9, Math.round(el.tableSettings.headerFontSize * 0.75 * 10) / 10);
+        }
+        if (Array.isArray(el.tableSettings.columns)) {
+          el.tableSettings.columns = el.tableSettings.columns.map((col) => ({
+            ...col,
+            fontSize: col.fontSize && col.fontSize > 10 ? Math.min(8.5, Math.round(col.fontSize * 0.75 * 10) / 10) : col.fontSize,
+          }));
+        }
+      }
+    }
+
+    if (el.type === "watermark") {
+      el.opacity = Math.min(el.opacity ?? 0.045, 0.05);
+      el.lockAspectRatio = true;
+    }
+
     const width = Math.max(1, Math.min(pageWidth, Number.isFinite(el.width) ? el.width : 20));
     const height = Math.max(1, Math.min(pageHeight, Number.isFinite(el.height) ? el.height : 10));
     const x = Math.max(0, Math.min(pageWidth - width, Number.isFinite(el.x) ? el.x : 0));
     const y = Math.max(0, Math.min(pageHeight - height, Number.isFinite(el.y) ? el.y : 0));
     return { ...el, x, y, width, height };
   });
+
+  // Header collision detection and self-healing:
+  // Detect if header elements (logo, en name, ar name, address, title) overlap or collide vertically.
+  const logoEl = elements.find((e) => e.id === "logo" && e.visible);
+  const enEl = elements.find((e) => e.id === "company_name_en" && e.visible);
+  const arEl = elements.find((e) => e.id === "company_name_ar" && e.visible);
+  const addrEl = elements.find((e) => e.id === "company_address" && e.visible);
+  const titleEl = elements.find((e) => e.id === "doc_title" && e.visible);
+
+  const hasHeaderCollision = (() => {
+    if (logoEl && enEl) {
+      const horizontalOverlap = !(logoEl.x + logoEl.width <= enEl.x || enEl.x + enEl.width <= logoEl.x);
+      if (horizontalOverlap && logoEl.y + logoEl.height > enEl.y - 0.5) return true;
+      if (enEl.y < 20 && logoEl.y < 20) return true;
+    }
+    if (enEl && arEl && (enEl.y + enEl.height > arEl.y - 0.5 || arEl.y <= enEl.y)) return true;
+    if (arEl && addrEl && (arEl.y + arEl.height > addrEl.y - 0.5 || addrEl.y <= arEl.y)) return true;
+    if (addrEl && titleEl && (addrEl.y + addrEl.height > titleEl.y - 0.5 || titleEl.y <= addrEl.y)) return true;
+    return false;
+  })();
+
+  if (hasHeaderCollision) {
+    const healed = elements.map((el) => {
+      if (el.id === "logo") {
+        return { ...el, x: 85, y: 10, width: 40, height: 12, lockAspectRatio: true };
+      }
+      if (el.id === "company_name_en") {
+        return { ...el, x: 12, y: 24.5, width: 186, height: 5.5, fontSize: Math.min(el.fontSize || 11.5, 12.5) };
+      }
+      if (el.id === "company_name_ar") {
+        return { ...el, x: 12, y: 31.0, width: 186, height: 6.5, fontSize: Math.min(el.fontSize || 13.5, 14.5) };
+      }
+      if (el.id === "company_address") {
+        return { ...el, x: 12, y: 38.5, width: 186, height: 5.5, fontSize: Math.min(el.fontSize || 7.8, 8.5) };
+      }
+      if (el.id === "doc_title") {
+        return { ...el, x: 12, y: 46.0, width: 186, height: 10.0, fontSize: Math.min(el.fontSize || 12, 13) };
+      }
+      if (["customer_info", "supplier_info", "project_info"].includes(el.type) && el.y < 57) {
+        return { ...el, y: 58, height: Math.min(el.height, 26) };
+      }
+      if (el.id === "doc_meta" && el.y < 57) {
+        return { ...el, y: 58, height: Math.min(el.height, 26) };
+      }
+      if (el.id === "line_items" && el.y < 86) {
+        return { ...el, y: 88 };
+      }
+      return el;
+    });
+    elements.splice(0, elements.length, ...healed);
+  }
 
   return {
     ...layout,
@@ -1396,6 +1518,16 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
       printSettings: normalizePrintSettings(layout.page?.printSettings),
     },
     branding: sourceVersion < 7 ? DOCUMENT_STYLES[layout.documentType] : layout.branding,
+    numberingConfig:
+      layout.numberingConfig ||
+      (typeof window !== "undefined"
+        ? getCachedDocNumberingConfig("", layout.documentType)
+        : JSON.parse(
+            JSON.stringify(
+              DEFAULT_NUMBERING_CONFIGS[layout.documentType] ||
+                DEFAULT_NUMBERING_CONFIGS.quotation
+            )
+          )),
     elements,
   };
 }

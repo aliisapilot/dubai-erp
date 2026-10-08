@@ -17,6 +17,11 @@ import {
   getLocalStorageKey,
   DOCUMENT_TYPE_OPTIONS,
 } from "@/lib/documentDesigner";
+import {
+  type DocNumberingConfig,
+  DEFAULT_NUMBERING_CONFIGS,
+  saveDocNumberingConfig,
+} from "@/lib/documentNumbering";
 import TopToolbar from "./TopToolbar";
 import LeftSidebar from "./LeftSidebar";
 import RightInspector from "./RightInspector";
@@ -113,7 +118,7 @@ export default function DocumentDesigner() {
   const [snapGrid, setSnapGrid] = useState<boolean>(true);
   const [snapMargins, setSnapMargins] = useState<boolean>(true);
   const [pageNumber, setPageNumber] = useState<number>(1);
-  const sampleData = getSampleDocumentData(selectedDocType);
+  const sampleData = getSampleDocumentData(selectedDocType, layout.numberingConfig);
   const totalPages = getDocumentPageCount(layout, sampleData.items.length, sampleData.items, sampleData);
   const displayedPageNumber = Math.min(pageNumber, totalPages);
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
@@ -439,6 +444,41 @@ export default function DocumentDesigner() {
     [layout, pushHistory]
   );
 
+  const handleUpdateNumberingConfig = useCallback(
+    (patch: Partial<DocNumberingConfig>) => {
+      const currentConfig =
+        layout.numberingConfig ||
+        DEFAULT_NUMBERING_CONFIGS[layout.documentType] ||
+        DEFAULT_NUMBERING_CONFIGS.quotation;
+      const updatedConfig: DocNumberingConfig = { ...currentConfig, ...patch };
+
+      let nextElements = layout.elements;
+      if (patch.customTitle !== undefined) {
+        const titleElem = layout.elements.find((e) => e.type === "doc_title");
+        if (titleElem) {
+          nextElements = layout.elements.map((e) =>
+            e.id === titleElem.id
+              ? { ...e, customText: patch.customTitle || undefined }
+              : e
+          );
+        }
+      }
+
+      const updated: DocumentLayout = {
+        ...layout,
+        documentTitle: updatedConfig.customTitle,
+        documentTitleAr: updatedConfig.customTitleAr,
+        numberingConfig: updatedConfig,
+        elements: nextElements,
+      };
+
+      void saveDocNumberingConfig(companyId || "", layout.documentType, updatedConfig);
+
+      pushHistory(updated);
+    },
+    [companyId, layout, pushHistory]
+  );
+
   // ── 6. Alignment Actions ───────────────────────────────────────────────────
   const handleAlign = useCallback(
     (alignment: "left" | "center" | "right" | "top" | "middle" | "bottom" | "center-h" | "center-v") => {
@@ -713,6 +753,9 @@ export default function DocumentDesigner() {
       if (!result.success) { setCloudConflict(Boolean(result.conflict)); throw new Error(result.error); }
       setCloudRevision(result.revision); setEditingRevision(result.revision); setCloudUpdatedAt(result.updatedAt);
       setPersistedLayout(snapshot); setBaseline(JSON.stringify(snapshot)); setLayout(snapshot);
+      if (snapshot.numberingConfig) {
+        void saveDocNumberingConfig(companyId || "", selectedDocType, snapshot.numberingConfig);
+      }
       setCloudErrorMessage(null); setCloudConflict(false);
       setSelectedStylePresetId(result.revision?.templateId || null); setAutoFixMode('saved');
       await refreshStylePresets(selectedDocType,companyId,result.revision?.templateId);
@@ -896,6 +939,80 @@ export default function DocumentDesigner() {
       window.removeEventListener("resize", handleResize);
     };
   }, []);
+
+  // ── Keyboard Shortcut and Arrow-Key Nudging Listener ───────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      // Undo: Ctrl+Z / Cmd+Z
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // Redo: Ctrl+Y / Cmd+Y or Ctrl+Shift+Z / Cmd+Shift+Z
+      if (
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") ||
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && e.shiftKey)
+      ) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+
+      // Escape: Deselect current element
+      if (e.key === "Escape") {
+        setSelectedElementId(null);
+        return;
+      }
+
+      if (selectedElementId) {
+        const elem = layout.elements.find((el) => el.id === selectedElementId);
+        if (!elem || elem.locked) return;
+
+        // Delete / Backspace: delete or hide element
+        if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          handleDeleteSelected();
+          return;
+        }
+
+        // Arrow keys nudging: 1mm step, 5mm with Shift
+        const step = e.shiftKey ? 5 : 1;
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          const newX = Math.max(0, Math.round((elem.x - step) * 10) / 10);
+          handleUpdateElement(elem.id, { x: newX }, true);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          const newX = Math.min(layout.page.widthMm - elem.width, Math.round((elem.x + step) * 10) / 10);
+          handleUpdateElement(elem.id, { x: newX }, true);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          const newY = Math.max(0, Math.round((elem.y - step) * 10) / 10);
+          handleUpdateElement(elem.id, { y: newY }, true);
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          const newY = Math.min(layout.page.heightMm - elem.height, Math.round((elem.y + step) * 10) / 10);
+          handleUpdateElement(elem.id, { y: newY }, true);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedElementId, layout, handleUndo, handleRedo, handleDeleteSelected, handleUpdateElement]);
 
   useEffect(() => {
     const container = canvasContainerRef.current;
@@ -1138,6 +1255,7 @@ export default function DocumentDesigner() {
                 onReplaceImage={handleReplaceImage}
                 onPreviewActualSize={() => setShowPreviewModal(true)}
                 onOpenTestSheet={() => setShowTestSheetModal(true)}
+                onUpdateNumberingConfig={handleUpdateNumberingConfig}
               />
             </div>
           )}

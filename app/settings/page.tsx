@@ -15,9 +15,17 @@ import {
   Plus,
   FileText,
   Sliders,
+  Hash,
+  ExternalLink,
 } from "lucide-react";
 import { DEFAULT_BRAND_COLORS } from "@/lib/brandConfig";
 import { getCurrentCompany, clearCompanyCache } from "@/lib/helpers";
+import {
+  DEFAULT_NUMBERING_CONFIGS,
+  formatDocNumber,
+  getCachedDocNumberingConfig,
+} from "@/lib/documentNumbering";
+import { type DocumentTypeId } from "@/lib/documentDesigner";
 
 type Company = {
   id: string;
@@ -466,6 +474,74 @@ export default function SettingsPage() {
             <Sliders size={18} />
             <span>Launch PDF Designer</span>
           </a>
+        </div>
+
+        {/* ── Document Titles & Document Numbering Section ─────────────────── */}
+        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4 pb-4 border-b border-slate-100">
+            <div>
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200 mb-1">
+                <Hash size={12} />
+                <span>Custom Document Titles &amp; Serial Formats</span>
+              </div>
+              <h2 className="text-lg font-bold text-slate-900">
+                Document Titles &amp; Document Numbering
+              </h2>
+              <p className="text-xs text-slate-500">
+                Fully customize visible titles (e.g. Quotation &rarr; QTN) and serial number patterns (prefixes, years, separators, digit padding) per document type.
+              </p>
+            </div>
+            <a
+              href="/settings/designer?tab=numbering"
+              className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 transition shrink-0"
+            >
+              <Sliders size={14} />
+              <span>Configure in PDF Designer</span>
+            </a>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {(
+              [
+                { id: "quotation", label: "Quotation" },
+                { id: "tax_invoice", label: "Tax Invoice" },
+                { id: "proforma_invoice", label: "Proforma Invoice" },
+                { id: "delivery_note", label: "Delivery Note" },
+                { id: "purchase_order", label: "Purchase Order" },
+                { id: "supplier_bill", label: "Supplier Bill" },
+                { id: "receipt_voucher", label: "Receipt Voucher" },
+                { id: "credit_note", label: "Credit Note" },
+              ] as const
+            ).map((doc) => {
+              const cfg = companyId ? getCachedDocNumberingConfig(companyId, doc.id as DocumentTypeId) : DEFAULT_NUMBERING_CONFIGS[doc.id as DocumentTypeId];
+              const sample = formatDocNumber(cfg, cfg.nextSequence ?? 1);
+              return (
+                <div key={doc.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 flex flex-col justify-between hover:border-slate-300 transition">
+                  <div className="space-y-1.5 mb-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800">{doc.label}</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">
+                        {cfg.customTitle || doc.label.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 flex items-center justify-between">
+                      <span>Live Sample:</span>
+                      <span className="font-mono font-bold text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded">
+                        {sample}
+                      </span>
+                    </div>
+                  </div>
+                  <a
+                    href={`/settings/designer?docType=${doc.id}&tab=numbering`}
+                    className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/60 rounded-lg py-1.5 transition"
+                  >
+                    <span>Customize Format</span>
+                    <ExternalLink size={12} />
+                  </a>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <form onSubmit={saveCompany} className="space-y-6">

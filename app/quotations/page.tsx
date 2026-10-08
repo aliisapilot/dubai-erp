@@ -6,6 +6,7 @@ import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO
 import { useRouter } from "next/navigation";
 import QuotationTemplate from "@/components/documents/QuotationTemplate";
 import PrintModal from "@/components/documents/PrintModal";
+import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
 
@@ -85,6 +86,7 @@ export default function QuotationsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showRenameModal, setShowRenameModal] = useState(false);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -498,9 +500,20 @@ export default function QuotationsPage() {
                     Quotation #: Auto-generated on save
                   </span>
                 ) : (
-                  <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
-                    Quotation #: {editing.quotation_number} (Read-only)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
+                      Quotation #: {editing.quotation_number}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowRenameModal(true)}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
+                      title="Safely rename quotation reference number with collision check"
+                    >
+                      <Pencil size={11} />
+                      <span>Edit #</span>
+                    </button>
+                  </div>
                 )}
               </div>
               <button onClick={closeForm} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={20} /></button>
@@ -694,6 +707,24 @@ export default function QuotationsPage() {
           />
         )}
       </PrintModal>
+
+      {showRenameModal && editing && (company?.id || editing.company_id) && (
+        <EditDocumentReferenceModal
+          isOpen={showRenameModal}
+          onClose={() => setShowRenameModal(false)}
+          companyId={company?.id || editing.company_id}
+          docType="quotation"
+          documentId={editing.id}
+          currentReferenceNumber={editing.quotation_number || ""}
+          onSuccess={(newNum) => {
+            setEditing((prev) => (prev ? { ...prev, quotation_number: newNum } : prev));
+            setQuotations((prev) =>
+              prev.map((q) => (q.id === editing.id ? { ...q, quotation_number: newNum } : q))
+            );
+            setSuccess(`Quotation reference updated to ${newNum}`);
+          }}
+        />
+      )}
     </main>
   );
 }

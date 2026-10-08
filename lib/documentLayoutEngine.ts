@@ -827,6 +827,60 @@ export function computeEffectiveLayout(
     }
   }
 
+  // Header positioning map for elements above the table:
+  // Replaces blind linear position scaling with clearance-aware sequential stacking
+  // ensuring header elements never lose minimum heights or collide into each other.
+  const headerLayoutMap = new Map<string, { y: number; height: number }>();
+  if (tableShift > 0 && elementsAbove.length > 0) {
+    const sortedAbove = [...elementsAbove].sort((a, b) => a.y - b.y);
+    const rows: LayoutElement[][] = [];
+    for (const el of sortedAbove) {
+      const existingRow = rows.find((r) => Math.abs(r[0].y - el.y) <= 4.0);
+      if (existingRow) {
+        existingRow.push(el);
+      } else {
+        rows.push([el]);
+      }
+    }
+
+    const rowSpecs = rows.map((row) => {
+      const hasLogo = row.some((e) => e.type === "logo");
+      const hasEn = row.some((e) => e.type === "company_name_en");
+      const hasAr = row.some((e) => e.type === "company_name_ar");
+      const hasAddr = row.some((e) => e.type === "company_address");
+      const hasTitle = row.some((e) => e.type === "doc_title");
+      const hasParty = row.some((e) => ["customer_info", "supplier_info", "project_info", "doc_meta"].includes(e.type));
+
+      let minHeight = 4.0;
+      if (hasLogo) minHeight = 10.0;
+      else if (hasEn) minHeight = 4.8;
+      else if (hasAr) minHeight = 5.8;
+      else if (hasAddr) minHeight = 4.8;
+      else if (hasTitle) minHeight = 8.5;
+      else if (hasParty) minHeight = 18.0;
+      else minHeight = Math.max(...row.map((e) => e.height * 0.7));
+
+      const origMaxHeight = Math.max(...row.map((e) => e.height));
+      const targetHeight = Math.max(minHeight, Math.min(origMaxHeight, Math.round(origMaxHeight * headerScale * 10) / 10));
+      return { row, height: targetHeight, minHeight };
+    });
+
+    const totalTargetRowHeight = rowSpecs.reduce((sum, r) => sum + r.height, 0);
+    const availableHeaderSpan = Math.max(15, effectiveTableY - fitProfile.gap - minHeaderY);
+    const availableSlack = availableHeaderSpan - totalTargetRowHeight;
+    const rowGap = rowSpecs.length > 1
+      ? Math.max(0.6, Math.min(2.0, availableSlack / (rowSpecs.length - 1)))
+      : 0;
+
+    let currentY = minHeaderY;
+    for (const spec of rowSpecs) {
+      for (const el of spec.row) {
+        headerLayoutMap.set(el.id, { y: currentY, height: spec.height });
+      }
+      currentY += spec.height + rowGap;
+    }
+  }
+
   const elements: EffectiveLayoutElement[] = layout.elements.map((el) => {
     const pageMatches = el.pageNumber === undefined || el.pageNumber === pageNumber;
 
@@ -917,6 +971,7 @@ export function computeEffectiveLayout(
 
     // 5. Customer info & Document Meta: synchronized horizontal alignment and equal visual heights
     if (
+      !headerLayoutMap.has(el.id) &&
       partyMetaAlignedY !== null &&
       partyMetaEqualHeight !== null &&
       (el.id === partyElement?.id || el.id === metaElement?.id)
@@ -935,10 +990,14 @@ export function computeEffectiveLayout(
 
     // 6. Fixed header/info elements above the table
     const isPartyInfo = ["customer_info", "supplier_info", "project_info"].includes(el.type);
+    const mappedHeader = headerLayoutMap.get(el.id);
     let effectiveY = el.y;
     let effectiveHeight = isPartyInfo ? Math.max(el.height, fitProfile.partyInfoHeight || 0) : el.height;
 
-    if (tableShift > 0 && el.y + el.height <= originalTableY + 2) {
+    if (mappedHeader) {
+      effectiveY = mappedHeader.y;
+      effectiveHeight = mappedHeader.height;
+    } else if (tableShift > 0 && el.y + el.height <= originalTableY + 2) {
       effectiveY = minHeaderY + (el.y - minHeaderY) * headerScale;
       effectiveHeight = Math.max(3.5, Math.round(el.height * headerScale * 10) / 10);
     }

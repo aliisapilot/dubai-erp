@@ -101,9 +101,17 @@ export default function QuotationTemplate({
     notes: quotation.notes || quotation.terms_conditions || undefined,
   };
   const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
+  const effectiveTitle =
+    customLayout?.numberingConfig?.customTitle ||
+    customLayout?.elements?.find((e) => e.type === "doc_title")?.customText ||
+    "QUOTATION";
+  const effectiveTitleAr =
+    customLayout?.numberingConfig?.customTitleAr ||
+    "عرض أسعار";
+
   return (
     <DocumentContainer
-      docTypeLabel="Quotation"
+      docTypeLabel={effectiveTitle}
       docNumber={quotation.quotation_number}
       status={quotation.status}
       onClose={onClose}
@@ -131,8 +139,8 @@ export default function QuotationTemplate({
         <>
       <DocHeader
           company={company}
-          docTitle="QUOTATION"
-          arabicTitle="عرض أسعار"
+          docTitle={effectiveTitle}
+          arabicTitle={effectiveTitleAr}
           docNumber={quotation.quotation_number}
           docDate={quotation.quotation_date}
         />

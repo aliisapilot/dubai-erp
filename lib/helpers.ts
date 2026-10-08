@@ -1,4 +1,8 @@
 import { supabase } from "@/lib/supabase";
+import { generateNextDocumentNumber } from "@/lib/documentNumbering";
+
+export { generateNextDocumentNumber } from "@/lib/documentNumbering";
+export type { DocNumberingConfig } from "@/lib/documentNumbering";
 
 export type CompanyDocDetails = {
   id: string;
@@ -146,18 +150,9 @@ export async function getCurrentCompany(): Promise<CompanyDocDetails | null> {
   return pending;
 }
 
-/** Generate next sequential document number via DB function */
+/** Generate next sequential document number via DB function and custom formatting rules */
 export async function generateDocNumber(companyId: string, prefix: string): Promise<string> {
-  const { data, error } = await supabase.rpc("next_doc_number", {
-    p_company_id: companyId,
-    p_prefix: prefix,
-  });
-  if (error) {
-    // Numbering must be atomic and database-side only.
-    // Never fall back to timestamps/random values here.
-    throw new Error(`Could not generate the next ${prefix} number: ${error.message}`);
-  }
-  return data as string;
+  return generateNextDocumentNumber(companyId, prefix);
 }
 
 /** Format AED currency */

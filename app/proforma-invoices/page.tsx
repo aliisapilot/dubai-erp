@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import ProformaInvoiceTemplate from "@/components/documents/ProformaInvoiceTemplate";
 import PrintModal from "@/components/documents/PrintModal";
+import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
 
@@ -44,6 +45,7 @@ function PIContent() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showRenameModal, setShowRenameModal] = useState(false);
 
   useEffect(() => {
     loadAll().then(() => {
@@ -236,9 +238,20 @@ function PIContent() {
                     Proforma #: Auto-generated on save
                   </span>
                 ) : (
-                  <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
-                    Proforma #: {editing.proforma_number} (Read-only)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
+                      Proforma #: {editing.proforma_number}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowRenameModal(true)}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
+                      title="Safely rename proforma reference number with collision check"
+                    >
+                      <Pencil size={11} />
+                      <span>Edit #</span>
+                    </button>
+                  </div>
                 )}
               </div>
               <button onClick={closeForm} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={20}/></button>
@@ -364,6 +377,22 @@ function PIContent() {
             onClose={() => setPrintRec(null)}
           />
         </PrintModal>
+      )}
+
+      {showRenameModal && editing && (company?.id || editing.company_id) && (
+        <EditDocumentReferenceModal
+          isOpen={showRenameModal}
+          onClose={() => setShowRenameModal(false)}
+          companyId={company?.id || editing.company_id}
+          docType="proforma_invoice"
+          documentId={editing.id}
+          currentReferenceNumber={editing.proforma_number || ""}
+          onSuccess={(newNum) => {
+            setEditing((prev) => (prev ? { ...prev, proforma_number: newNum } : prev));
+            loadAll();
+            setSuccess(`Proforma reference updated to ${newNum}`);
+          }}
+        />
       )}
     </main>
   );

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Printer, X, ZoomIn, ZoomOut, Maximize2, FileText, ChevronLeft } from "lucide-react";
-import { DocumentLayout } from "@/lib/documentDesigner";
+import { DocumentLayout, formatDocNumber } from "@/lib/documentDesigner";
 import DynamicDocumentRenderer, {
   SAMPLE_DOCUMENT_DATA,
   getDocumentPageCount,
@@ -149,8 +149,13 @@ export default function DocumentPreviewModal({
 
   const activeDataset =
     layout.documentType === "tax_invoice"
-      ? TEST_DATASETS[selectedDatasetKey]?.data || SAMPLE_DOCUMENT_DATA
-      : getSampleDocumentData(layout.documentType);
+      ? (layout.numberingConfig
+          ? {
+              ...(TEST_DATASETS[selectedDatasetKey]?.data || SAMPLE_DOCUMENT_DATA),
+              document_number: formatDocNumber(layout.numberingConfig, layout.numberingConfig.nextSequence || 1),
+            }
+          : TEST_DATASETS[selectedDatasetKey]?.data || SAMPLE_DOCUMENT_DATA)
+      : getSampleDocumentData(layout.documentType, layout.numberingConfig);
   const computedTotalPages = getDocumentPageCount(layout, activeDataset.items.length, activeDataset.items, activeDataset);
 
   useEffect(() => {

@@ -85,9 +85,17 @@ export default function DeliveryNoteTemplate({
   const totalPages = customLayout
     ? getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData)
     : 1;
+  const effectiveTitle =
+    customLayout?.numberingConfig?.customTitle ||
+    customLayout?.elements?.find((e) => e.type === "doc_title")?.customText ||
+    "DELIVERY NOTE";
+  const effectiveTitleAr =
+    customLayout?.numberingConfig?.customTitleAr ||
+    "سند تسليم بضاعة";
+
   return (
     <DocumentContainer
-      docTypeLabel="Delivery Note"
+      docTypeLabel={effectiveTitle}
       docNumber={deliveryNote.delivery_number}
       onClose={onClose}
       company={company ?? undefined}
@@ -115,8 +123,8 @@ export default function DeliveryNoteTemplate({
       {/* Letterhead Header */}
       <DocHeader
           company={company}
-          docTitle="DELIVERY NOTE"
-          arabicTitle="سند تسليم بضاعة"
+          docTitle={effectiveTitle}
+          arabicTitle={effectiveTitleAr}
           docNumber={deliveryNote.delivery_number}
           docDate={deliveryNote.dispatch_date || deliveryNote.delivery_date}
           subTitle="Goods Delivery & Site Dispatch Acknowledgement"

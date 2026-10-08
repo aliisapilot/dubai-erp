@@ -11,7 +11,9 @@ import {
   LayoutElement,
   TableColumnConfig,
   normalizePrintSettings,
+  DOCUMENT_TYPE_OPTIONS,
 } from "@/lib/documentDesigner";
+import { formatDocNumber, type DocNumberingConfig } from "@/lib/documentNumbering";
 import { CompanyDocInfo } from "./DocHeader";
 import { numberToWordsArabic, numberToWordsEnglish } from "@/lib/amountInWords";
 import { fmtAED, fmtDate } from "@/lib/helpers";
@@ -152,10 +154,17 @@ const SAMPLE_NUMBERS: Record<DocumentTypeId, string> = {
   measurement_sheet: "MS-2026-0001",
 };
 
-export function getSampleDocumentData(docType: DocumentTypeId): MockDocumentData {
+export function getSampleDocumentData(
+  docType: DocumentTypeId,
+  numberingConfig?: DocNumberingConfig
+): MockDocumentData {
+  const sampleDocNum = numberingConfig
+    ? formatDocNumber(numberingConfig, numberingConfig.nextSequence || 1)
+    : SAMPLE_NUMBERS[docType];
+
   const base: MockDocumentData = {
     ...SAMPLE_DOCUMENT_DATA,
-    document_number: SAMPLE_NUMBERS[docType],
+    document_number: sampleDocNum,
     items: SAMPLE_DOCUMENT_DATA.items.map((item) => ({ ...item })),
   };
 
@@ -362,7 +371,13 @@ export default function DynamicDocumentRenderer({
   pageNumber = 1,
   totalPages,
 }: DynamicDocumentRendererProps) {
-  const data = providedData || getSampleDocumentData(savedLayout.documentType);
+  const rawData = providedData || getSampleDocumentData(savedLayout.documentType, savedLayout.numberingConfig);
+  const effectiveDocNumber = savedLayout.numberingConfig
+    ? (isDesignerPreview || !providedData || Object.values(SAMPLE_NUMBERS).includes(rawData.document_number)
+        ? formatDocNumber(savedLayout.numberingConfig, savedLayout.numberingConfig.nextSequence || 1)
+        : rawData.document_number)
+    : rawData.document_number;
+  const data = { ...rawData, document_number: effectiveDocNumber };
   const layout = fitMeasurementSummaryLayout(savedLayout, data);
   const brand = getBrandConfig(company);
   const [logoFailed, setLogoFailed] = useState(false);
@@ -430,10 +445,16 @@ export default function DynamicDocumentRenderer({
     return weight === "normal" ? 400 : undefined;
   };
 
+  const resolvePt = (customPt: number | undefined, fallbackPt: number, maxPt: number = 28): number => {
+    if (customPt === undefined || !Number.isFinite(customPt)) return fallbackPt;
+    return Math.max(5, Math.min(maxPt, customPt));
+  };
+
   const elementAppearance = (elem: LayoutElement): CSSProperties => ({
-    ...(elem.fontSize !== undefined ? { fontSize: `${elem.fontSize}px` } : {}),
+    ...(elem.fontSize !== undefined ? { fontSize: `${elem.fontSize}pt` } : {}),
     ...(elem.fontWeight ? { fontWeight: fontWeight(elem.fontWeight) } : {}),
     ...(elem.fontStyle ? { fontStyle: elem.fontStyle } : {}),
+    ...(elem.textDecoration ? { textDecoration: elem.textDecoration } : {}),
     ...(elem.fontFamily ? { fontFamily: elem.fontFamily } : {}),
     ...(elem.textAlign ? { textAlign: elem.textAlign } : {}),
     ...(elem.color ? { color: elem.color } : {}),
@@ -445,6 +466,11 @@ export default function DynamicDocumentRenderer({
     ...(elem.padding !== undefined ? { padding: `${elem.padding}mm` } : {}),
     ...(elem.lineHeight !== undefined ? { lineHeight: elem.lineHeight } : {}),
     ...(elem.letterSpacing !== undefined ? { letterSpacing: `${elem.letterSpacing}px` } : {}),
+    ...(elem.textWrapping === "nowrap"
+      ? { whiteSpace: "nowrap" }
+      : elem.textWrapping === "clip"
+      ? { overflow: "hidden", textOverflow: "clip", whiteSpace: "nowrap" }
+      : {}),
     opacity: elem.opacity ?? 1,
   });
 
@@ -526,7 +552,7 @@ export default function DynamicDocumentRenderer({
               src={bgImg}
               alt=""
               className="w-full h-full object-contain"
-              style={{ opacity: elem.opacity ?? 0.045 }}
+              style={{ opacity: Math.min(elem.opacity ?? 0.045, 0.05) }}
             />
           </div>
         );
@@ -570,9 +596,10 @@ export default function DynamicDocumentRenderer({
       }
 
       case "company_name_en": {
+        const enPt = resolvePt(elem.fontSize, 11.5, 14.5);
         return (
           <div
-            className="w-full h-full flex items-center uppercase tracking-wider select-text"
+            className="w-full h-full flex items-center uppercase tracking-wider select-text overflow-hidden"
             style={{
               justifyContent:
                 elem.textAlign === "center"
@@ -580,18 +607,20 @@ export default function DynamicDocumentRenderer({
                   : elem.textAlign === "right"
                   ? "flex-end"
                   : "flex-start",
-              fontSize: `${elem.fontSize || 15}px`,
               fontWeight: elem.fontWeight === "extrabold" ? 800 : elem.fontWeight === "bold" ? 700 : 600,
               fontStyle: elem.fontStyle || "normal",
               fontFamily: elem.fontFamily || "inherit",
               letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : "0.05em",
-              lineHeight: elem.lineHeight ? elem.lineHeight : undefined,
+              lineHeight: elem.lineHeight ? elem.lineHeight : 1.15,
               color: elem.color || colors.primary,
               backgroundColor: elem.backgroundColor,
               border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
               borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
               opacity: elem.opacity ?? 1,
+              whiteSpace: "nowrap",
+              textOverflow: "ellipsis",
               ...elementAppearance(elem),
+              fontSize: `${enPt}pt`,
             }}
           >
             {elem.customText || brand.legal_name || brand.name}
@@ -600,9 +629,10 @@ export default function DynamicDocumentRenderer({
       }
 
       case "company_name_ar": {
+        const arPt = resolvePt(elem.fontSize, 13.5, 16.5);
         return (
           <div
-            className="w-full h-full flex items-center font-arabic select-text"
+            className="w-full h-full flex items-center font-arabic select-text overflow-hidden"
             dir="rtl"
             style={{
               justifyContent:
@@ -611,7 +641,6 @@ export default function DynamicDocumentRenderer({
                   : elem.textAlign === "left"
                   ? "flex-start"
                   : "flex-end",
-              fontSize: `${elem.fontSize || 26}px`,
               fontWeight: elem.fontWeight === "bold" ? 700 : elem.fontWeight === "semibold" ? 600 : 700,
               fontStyle: elem.fontStyle || "normal",
               color: elem.color || colors.accent,
@@ -624,7 +653,10 @@ export default function DynamicDocumentRenderer({
               border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
               borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
               opacity: elem.opacity ?? 1,
+              whiteSpace: "nowrap",
+              textOverflow: "ellipsis",
               ...elementAppearance(elem),
+              fontSize: `${arPt}pt`,
             }}
           >
             {elem.customText || brand.arabic_name}
@@ -633,30 +665,31 @@ export default function DynamicDocumentRenderer({
       }
 
       case "company_address": {
+        const addrPt = resolvePt(elem.fontSize, 7.8, 9.5);
         return (
           <div
-            className="w-full h-full flex flex-col justify-center text-[10px] leading-tight select-text"
+            className="w-full h-full flex flex-col justify-center leading-tight select-text overflow-hidden"
             style={{
               textAlign: elem.textAlign || "center",
               color: elem.color || colors.muted,
-              fontSize: `${elem.fontSize || 10}px`,
               fontStyle: elem.fontStyle || "normal",
               fontFamily: elem.fontFamily || "inherit",
               letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
-              lineHeight: elem.lineHeight ? elem.lineHeight : undefined,
+              lineHeight: elem.lineHeight ? elem.lineHeight : 1.25,
               backgroundColor: elem.backgroundColor,
               border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
               borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
               opacity: elem.opacity ?? 1,
               ...elementAppearance(elem),
+              fontSize: `${addrPt}pt`,
             }}
           >
             {elem.customText ? (
-              <div>{replaceCompanyTokens(elem.customText)}</div>
+              <div className="truncate">{replaceCompanyTokens(elem.customText)}</div>
             ) : (
               <>
-                <div>{brand.address}</div>
-                <div className="font-semibold text-slate-800">
+                <div className="truncate">{brand.address}</div>
+                <div className="font-semibold text-slate-800 truncate" style={{ fontSize: `${addrPt}pt` }}>
                   TRN: <span className="font-mono font-bold" style={{ color: colors.primary }}>{brand.trn}</span>
                   {brand.phone ? ` | Tel: ${brand.phone}` : ""}
                   {brand.email ? ` | Email: ${brand.email}` : ""}
@@ -675,10 +708,11 @@ export default function DynamicDocumentRenderer({
           : elem.borderWidth
           ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}`
           : undefined;
+        const titlePt = resolvePt(elem.fontSize, 12, 14.5);
 
         return (
           <div
-            className="w-full h-full flex items-center justify-between px-3 select-text"
+            className="w-full h-full flex items-center justify-between px-3 select-text overflow-hidden"
             style={{
               backgroundColor: titleBg,
               color: titleColor,
@@ -687,22 +721,30 @@ export default function DynamicDocumentRenderer({
               opacity: elem.opacity ?? 1,
               padding: elem.padding !== undefined ? `${elem.padding}mm` : undefined,
               ...elementAppearance(elem),
+              fontSize: `${titlePt}pt`,
             }}
           >
             <div className="flex items-center gap-3">
               <span
                 className="font-extrabold uppercase tracking-wider"
                 style={{
-                  fontSize: `${elem.fontSize || 15}px`,
+                  fontSize: `${titlePt}pt`,
                   fontStyle: elem.fontStyle || "normal",
                   fontFamily: elem.fontFamily || "inherit",
                   letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
                 }}
               >
-                {elem.customText || (layout.documentType === "measurement_sheet" ? "MEASUREMENT & TAKEOFF SHEET" : "TAX INVOICE")}
+                {elem.customText ||
+                  (layout.numberingConfig?.customTitle && layout.numberingConfig?.customTitleAr
+                    ? `${layout.numberingConfig.customTitle} — ${layout.numberingConfig.customTitleAr}`
+                    : layout.numberingConfig?.customTitle ||
+                      DOCUMENT_TYPE_OPTIONS.find((d) => d.id === layout.documentType)?.defaultTitle ||
+                      (layout.documentType === "measurement_sheet"
+                        ? "MEASUREMENT & TAKEOFF SHEET"
+                        : "TAX INVOICE"))}
               </span>
             </div>
-            <div className="text-right font-mono font-bold text-xs" style={{ color: colors.accent }}>
+            <div className="text-right font-mono font-bold" style={{ color: colors.accent, fontSize: `${Math.max(6, titlePt * 0.75)}pt` }}>
               REF: {data.document_number}
             </div>
           </div>
@@ -734,8 +776,7 @@ export default function DynamicDocumentRenderer({
         const isUltraCompact = elem.height <= 22;
         const isCompactPartyCard = elem.height <= 28;
         const padMm = isUltraCompact ? Math.min(configuredPaddingMm, 1.8) : isCompactPartyCard ? Math.min(configuredPaddingMm, 2.2) : configuredPaddingMm;
-        const detailFontSize = isCompactPartyCard ? 9 : 9.5;
-        const effectiveFontSize = isUltraCompact ? 8.5 : detailFontSize;
+        const cardPt = resolvePt(elem.fontSize, isUltraCompact ? 7 : isCompactPartyCard ? 7.5 : 8.5);
         return (
           <div
             className="w-full h-full min-h-0 overflow-hidden flex flex-col justify-start select-text"
@@ -745,16 +786,16 @@ export default function DynamicDocumentRenderer({
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
               padding: `${padMm}mm`,
-              fontSize: `${effectiveFontSize}px`,
               color: colors.text,
               ...elementAppearance(elem),
+              fontSize: `${cardPt}pt`,
             }}
           >
             <div
               className="flex shrink-0 justify-between items-center border-b font-bold uppercase"
               style={{
                 borderColor: colors.border,
-                fontSize: isUltraCompact ? "8.5px" : isCompactPartyCard ? "9px" : "10px",
+                fontSize: `${Math.max(6, cardPt * 0.95)}pt`,
                 paddingBottom: isUltraCompact ? "1.5px" : isCompactPartyCard ? "2px" : "4px",
                 lineHeight: 1.15,
               }}
@@ -767,7 +808,7 @@ export default function DynamicDocumentRenderer({
                 className="min-h-0 overflow-auto whitespace-pre-line select-text"
                 style={{
                   marginTop: isUltraCompact ? "2px" : isCompactPartyCard ? "3px" : "6px",
-                  fontSize: `${effectiveFontSize}px`,
+                  fontSize: `${cardPt}pt`,
                   lineHeight: isUltraCompact ? 1.1 : isCompactPartyCard ? 1.15 : 1.25,
                 }}
               >
@@ -778,23 +819,23 @@ export default function DynamicDocumentRenderer({
                 className="min-h-0 overflow-hidden select-text"
                 style={{
                   marginTop: isUltraCompact ? "2px" : isCompactPartyCard ? "3px" : "6px",
-                  fontSize: `${effectiveFontSize}px`,
+                  fontSize: `${cardPt}pt`,
                   lineHeight: isUltraCompact ? 1.1 : isCompactPartyCard ? 1.15 : 1.25,
                 }}
               >
                 {layout.documentType === "measurement_sheet" ? (
                   <>
-                    <div className="font-bold text-slate-900 break-words leading-tight" style={{ overflowWrap: "anywhere" }}>
+                    <div className="font-bold text-slate-900 break-words leading-tight" style={{ overflowWrap: "anywhere", fontSize: `${cardPt}pt` }}>
                       {data.title || "Fabrication & Takeoff Sheet"}
                     </div>
                     {data.project_name && (
-                      <div className="text-[10px] mt-0.5">
+                      <div className="mt-0.5" style={{ fontSize: `${Math.max(6, cardPt * 0.9)}pt` }}>
                         <span style={{ color: colors.muted }}>Project: </span>
                         <span className="font-semibold text-slate-900">{data.project_name} {data.project_number ? `(${data.project_number})` : ""}</span>
                       </div>
                     )}
                     {data.customer_name && (
-                      <div className="text-[10px] mt-0.5">
+                      <div className="mt-0.5" style={{ fontSize: `${Math.max(6, cardPt * 0.9)}pt` }}>
                         <span style={{ color: colors.muted }}>Client: </span>
                         <span className="font-bold text-slate-900">{data.customer_name}</span>
                       </div>
@@ -802,28 +843,28 @@ export default function DynamicDocumentRenderer({
                   </>
                 ) : (
                   <>
-                    <div className="font-bold text-slate-900 break-words leading-tight" style={{ overflowWrap: "anywhere" }}>{data.customer_name}</div>
+                    <div className="font-bold text-slate-900 break-words leading-tight" style={{ overflowWrap: "anywhere", fontSize: `${cardPt}pt` }}>{data.customer_name}</div>
                     {data.customer_trn && (
-                      <div>
+                      <div style={{ fontSize: `${Math.max(6, cardPt * 0.92)}pt` }}>
                         <span style={{ color: colors.muted }}>TRN: </span>
                         <span className="font-mono font-bold text-slate-900">{data.customer_trn}</span>
                       </div>
                     )}
                     {data.customer_address && (
-                      <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>
+                      <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${Math.max(6, cardPt * 0.92)}pt`, overflowWrap: "anywhere" }}>
                         {data.customer_address}
                       </div>
                     )}
                     {data.contact_person && (
-                      <div className="break-words" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>
+                      <div className="break-words" style={{ color: colors.muted, fontSize: `${Math.max(6, cardPt * 0.92)}pt`, overflowWrap: "anywhere" }}>
                         Attn: {data.contact_person}
                       </div>
                     )}
                     {data.contact_number && (
-                      <div className="break-words" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>Tel/Mob: {data.contact_number}</div>
+                      <div className="break-words" style={{ color: colors.muted, fontSize: `${Math.max(6, cardPt * 0.92)}pt`, overflowWrap: "anywhere" }}>Tel/Mob: {data.contact_number}</div>
                     )}
                     {data.contact_email && (
-                      <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${detailFontSize}px`, overflowWrap: "anywhere" }}>Email: {data.contact_email}</div>
+                      <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${Math.max(6, cardPt * 0.92)}pt`, overflowWrap: "anywhere" }}>Email: {data.contact_email}</div>
                     )}
                   </>
                 )}
@@ -835,37 +876,38 @@ export default function DynamicDocumentRenderer({
 
       case "supplier_info": {
         const padMm = elem.padding !== undefined ? elem.padding : 3.2;
+        const suppPt = resolvePt(elem.fontSize, 8.5);
         return (
           <div
-            className="w-full h-full flex flex-col justify-start select-text"
+            className="w-full h-full flex flex-col justify-start select-text overflow-hidden"
             style={{
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
               padding: `${padMm}mm`,
-              fontSize: `${elem.fontSize || 10.5}px`,
               color: colors.text,
               ...elementAppearance(elem),
+              fontSize: `${suppPt}pt`,
             }}
           >
-            <div className="flex justify-between items-center border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
+            <div className="flex justify-between items-center border-b pb-1 font-bold uppercase" style={{ borderColor: colors.border, fontSize: `${Math.max(6, suppPt * 0.95)}pt` }}>
               <span style={{ color: colors.primary }}>Supplier / Vendor Details (بيانات المورد):</span>
               <span style={{ color: colors.muted }}>Vendor</span>
             </div>
             {elem.customText ? (
-              <div className="space-y-0.5 mt-1.5 whitespace-pre-line leading-tight select-text" style={{ fontSize: `${elem.fontSize || 10.5}px` }}>
+              <div className="space-y-0.5 mt-1.5 whitespace-pre-line leading-tight select-text" style={{ fontSize: `${suppPt}pt` }}>
                 {replaceDocumentTokens(elem.customText)}
               </div>
             ) : (
-              <div className="space-y-0.5 mt-1.5 text-[10.5px] leading-tight select-text">
+              <div className="space-y-0.5 mt-1.5 leading-tight select-text" style={{ fontSize: `${suppPt}pt` }}>
                 <div className="font-bold text-slate-900 break-words leading-tight">{data.supplier_name || data.customer_name || "Supplier Name"}</div>
                 {data.contact_person && (
-                  <div className="break-words text-[10px]" style={{ color: colors.muted }}>
+                  <div className="break-words" style={{ color: colors.muted, fontSize: `${Math.max(6, suppPt * 0.92)}pt` }}>
                     Attn: {data.contact_person} {data.contact_number ? `(${data.contact_number})` : ""}
                   </div>
                 )}
                 {data.customer_address && (
-                  <div className="break-words text-[10px]" style={{ color: colors.muted, overflowWrap: "anywhere" }}>
+                  <div className="break-words" style={{ color: colors.muted, overflowWrap: "anywhere", fontSize: `${Math.max(6, suppPt * 0.92)}pt` }}>
                     {data.customer_address}
                   </div>
                 )}
@@ -877,37 +919,38 @@ export default function DynamicDocumentRenderer({
 
       case "project_info": {
         const padMm = elem.padding !== undefined ? elem.padding : 3.2;
+        const prjPt = resolvePt(elem.fontSize, 8.5);
         return (
           <div
-            className="w-full h-full flex flex-col justify-start select-text"
+            className="w-full h-full flex flex-col justify-start select-text overflow-hidden"
             style={{
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
               padding: `${padMm}mm`,
-              fontSize: `${elem.fontSize || 10.5}px`,
               color: colors.text,
               ...elementAppearance(elem),
+              fontSize: `${prjPt}pt`,
             }}
           >
-            <div className="flex justify-between items-center border-b pb-1 font-bold uppercase text-[10px]" style={{ borderColor: colors.border }}>
+            <div className="flex justify-between items-center border-b pb-1 font-bold uppercase" style={{ borderColor: colors.border, fontSize: `${Math.max(6, prjPt * 0.95)}pt` }}>
               <span style={{ color: colors.primary }}>Project Details (بيانات المشروع):</span>
               <span className="font-mono font-bold" style={{ color: colors.accent }}>{data.project_number || "PRJ"}</span>
             </div>
             {elem.customText ? (
-              <div className="space-y-0.5 mt-1.5 whitespace-pre-line leading-tight select-text" style={{ fontSize: `${elem.fontSize || 10.5}px` }}>
+              <div className="space-y-0.5 mt-1.5 whitespace-pre-line leading-tight select-text" style={{ fontSize: `${prjPt}pt` }}>
                 {replaceDocumentTokens(elem.customText)}
               </div>
             ) : (
-              <div className="space-y-0.5 mt-1.5 text-[10.5px] leading-tight select-text">
+              <div className="space-y-0.5 mt-1.5 leading-tight select-text" style={{ fontSize: `${prjPt}pt` }}>
                 <div className="font-bold text-slate-900 break-words leading-tight">{data.project_name || "Project Name"}</div>
                 {data.location && (
-                  <div className="text-[10px]" style={{ color: colors.muted }}>
+                  <div style={{ color: colors.muted, fontSize: `${Math.max(6, prjPt * 0.92)}pt` }}>
                     Location: <span className="font-semibold text-slate-800">{data.location}</span>
                   </div>
                 )}
                 {data.scope_of_work && (
-                  <div className="text-[10px] break-words" style={{ color: colors.muted, overflowWrap: "anywhere" }}>
+                  <div className="break-words" style={{ color: colors.muted, overflowWrap: "anywhere", fontSize: `${Math.max(6, prjPt * 0.92)}pt` }}>
                     Scope: {data.scope_of_work}
                   </div>
                 )}
@@ -925,22 +968,22 @@ export default function DynamicDocumentRenderer({
         const isUltraCompact = elem.height <= 22;
         const isCompactMetaCard = elem.height <= 28;
         const padMm = isUltraCompact ? Math.min(configuredPaddingMm, 1.8) : isCompactMetaCard ? Math.min(configuredPaddingMm, 2.2) : configuredPaddingMm;
-        const metaFontSize = isUltraCompact ? 8.5 : isCompactMetaCard ? 9.2 : (elem.fontSize || 10.5);
+        const metaPt = resolvePt(elem.fontSize, isUltraCompact ? 7 : isCompactMetaCard ? 7.5 : 8.5);
         return (
           <div
-            className="w-full h-full flex flex-col justify-start select-text"
+            className="w-full h-full flex flex-col justify-start select-text overflow-hidden"
             style={{
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
               padding: `${padMm}mm`,
-              fontSize: `${metaFontSize}px`,
               color: colors.text,
               ...elementAppearance(elem),
+              fontSize: `${metaPt}pt`,
             }}
           >
             {elem.customText ? (
-              <div className="w-full h-full min-h-0 overflow-auto whitespace-pre-line leading-relaxed select-text" style={{ fontSize: `${metaFontSize}px` }}>
+              <div className="w-full h-full min-h-0 overflow-auto whitespace-pre-line leading-relaxed select-text" style={{ fontSize: `${metaPt}pt` }}>
                 {replaceDocumentTokens(elem.customText)}
               </div>
             ) : (
@@ -949,7 +992,7 @@ export default function DynamicDocumentRenderer({
                   className="flex justify-between items-center border-b font-bold uppercase"
                   style={{
                     borderColor: colors.border,
-                    fontSize: isUltraCompact ? "8.5px" : "10px",
+                    fontSize: `${Math.max(6, metaPt * 0.95)}pt`,
                     paddingBottom: isUltraCompact ? "1px" : "4px",
                     lineHeight: 1.15,
                   }}
@@ -959,7 +1002,7 @@ export default function DynamicDocumentRenderer({
                 </div>
                 <div
                   className={`grid grid-cols-2 ${isUltraCompact ? "gap-x-1.5 gap-y-0.5 mt-1" : "gap-x-2 gap-y-1 mt-1.5"} leading-tight select-text`}
-                  style={{ fontSize: `${metaFontSize}px` }}
+                  style={{ fontSize: `${metaPt}pt` }}
                 >
                   <div>
                     <span style={{ color: colors.muted }}>Date: </span>
@@ -1000,8 +1043,8 @@ export default function DynamicDocumentRenderer({
         const tSettings = elem.tableSettings || {
           headerBg: colors.tableHeader,
           headerTextColor: "#FFFFFF",
-          fontSize: 11,
-          headerFontSize: 11,
+          fontSize: 8.5,
+          headerFontSize: 8.5,
           rowHeight: 8,
           borderThickness: 1,
           borderColor: colors.border,
@@ -1021,14 +1064,23 @@ export default function DynamicDocumentRenderer({
         const dynamicCellPadding = effectiveGeometry.fitProfile?.cellPadding;
         const isCompact = (tSettings.rowHeight || 8.5) < 7.5;
         const cellPadding = dynamicCellPadding ? "" : isCompact ? "py-0.5 px-1.5" : "py-1 px-2";
-        const customPaddingStyle = dynamicCellPadding ? { padding: dynamicCellPadding } : {};
+        const customPaddingStyle: CSSProperties = tSettings.cellPadding !== undefined
+          ? { padding: `${tSettings.cellPadding}mm` }
+          : dynamicCellPadding
+          ? { padding: dynamicCellPadding }
+          : {};
+
+        const headerHeightMm = Math.max(4.0, tSettings.headerHeight || tSettings.rowHeight || 8.5);
+        const rowHeightMm = Math.max(4.0, tSettings.rowHeight || 8.5);
+        const tableBaseFontSizePt = resolvePt(tSettings.fontSize, 8.5);
+        const tableHeaderFontSizePt = resolvePt(tSettings.headerFontSize, 8.5);
 
         return (
           <div
             className="w-full rounded select-text"
             style={{
               border: `${tSettings.borderThickness}px solid ${tSettings.borderColor}`,
-              fontSize: `${tSettings.fontSize}px`,
+              fontSize: `${tableBaseFontSizePt}pt`,
               minHeight: isDesignerPreview ? `${elem.height}mm` : undefined,
             }}
           >
@@ -1038,29 +1090,32 @@ export default function DynamicDocumentRenderer({
                   style={{
                     backgroundColor: isPrinterFriendly ? "#FFFFFF" : tSettings.headerBg,
                     color: isPrinterFriendly ? colors.primary : tSettings.headerTextColor,
-                    fontSize: `${tSettings.headerFontSize}px`,
-                    height: `${Math.max(5.0, tSettings.rowHeight)}mm`,
+                    height: `${headerHeightMm}mm`,
                     borderTop: isPrinterFriendly ? `2px solid ${colors.primary}` : undefined,
                     borderBottom: isPrinterFriendly ? `2px solid ${colors.primary}` : undefined,
                   }}
                 >
-                  {activeCols.map((col) => (
-                    <th
-                      key={col.key}
-                      className={`${cellPadding} font-semibold`}
-                      style={{
-                        ...customPaddingStyle,
-                        width: `${col.widthPct}%`,
-                        textAlign: col.align,
-                        borderRight: isPrinterFriendly
-                          ? `1px solid ${colors.border}`
-                          : `${tSettings.borderThickness}px solid rgba(255,255,255,0.15)`,
-                        lineHeight: 1.15,
-                      }}
-                    >
-                      {col.label}
-                    </th>
-                  ))}
+                  {activeCols.map((col) => {
+                    const colHeaderPt = col.fontSize !== undefined ? col.fontSize : tableHeaderFontSizePt;
+                    return (
+                      <th
+                        key={col.key}
+                        className={`${cellPadding} font-semibold`}
+                        style={{
+                          ...customPaddingStyle,
+                          width: `${col.widthPct}%`,
+                          fontSize: `${colHeaderPt}pt`,
+                          textAlign: col.align,
+                          borderRight: isPrinterFriendly
+                            ? `1px solid ${colors.border}`
+                            : `${tSettings.borderThickness}px solid rgba(255,255,255,0.15)`,
+                          lineHeight: 1.15,
+                        }}
+                      >
+                        {col.label}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody
@@ -1071,7 +1126,7 @@ export default function DynamicDocumentRenderer({
                 }}
               >
                 {pageItems.length === 0 ? (
-                  <tr style={{ height: `${tSettings.rowHeight || 8.5}mm` }}>
+                  <tr style={{ height: `${rowHeightMm}mm` }}>
                     <td
                       colSpan={activeCols.length}
                       className="text-center text-slate-400 italic text-[10px] py-2"
@@ -1081,7 +1136,7 @@ export default function DynamicDocumentRenderer({
                   </tr>
                 ) : (
                   pageItems.map((item, idx) => (
-                    <tr key={firstItemIndex + idx} className="hover:bg-slate-50/50" style={{ height: `${tSettings.rowHeight}mm` }}>
+                    <tr key={firstItemIndex + idx} className="hover:bg-slate-50/50" style={{ height: `${rowHeightMm}mm` }}>
                       {activeCols.map((col) => {
                         let val: React.ReactNode = "";
                         if (col.key === "index") val = firstItemIndex + idx + 1;
@@ -1106,12 +1161,30 @@ export default function DynamicDocumentRenderer({
 
                         const isMonetary = ["unit_price", "discount", "vat_amount", "line_total", "debit", "credit", "balance", "rate", "result"].includes(col.key);
 
+                        let colBodyPt = col.fontSize;
+                        if (colBodyPt === undefined) {
+                          if (col.key === "description" && tSettings.descriptionFontSize !== undefined) {
+                            colBodyPt = tSettings.descriptionFontSize;
+                          } else if (col.key === "quantity" && tSettings.qtyFontSize !== undefined) {
+                            colBodyPt = tSettings.qtyFontSize;
+                          } else if (col.key === "unit" && tSettings.unitFontSize !== undefined) {
+                            colBodyPt = tSettings.unitFontSize;
+                          } else if (col.key === "unit_price" && tSettings.rateFontSize !== undefined) {
+                            colBodyPt = tSettings.rateFontSize;
+                          } else if (col.key === "line_total" && tSettings.amountFontSize !== undefined) {
+                            colBodyPt = tSettings.amountFontSize;
+                          } else {
+                            colBodyPt = tableBaseFontSizePt;
+                          }
+                        }
+
                         return (
                           <td
                             key={col.key}
                             className={`${cellPadding} break-words ${col.key === "dimensions" || col.key === "calc_type" || col.key === "description" ? "whitespace-pre-line" : ""}`}
                             style={{
                               ...customPaddingStyle,
+                              fontSize: `${colBodyPt}pt`,
                               textAlign: col.align,
                               fontFamily: isMonetary ? "monospace" : "inherit",
                               fontWeight: col.key === "line_total" ? 700 : 400,
@@ -1133,6 +1206,7 @@ export default function DynamicDocumentRenderer({
 
       case "amount_in_words": {
         if ((layout.documentType === "delivery_note" || layout.documentType === "project_handover") && data.total_amount === 0) {
+          const wordsPt = resolvePt(elem.fontSize, 8.5);
           return (
             <div
               className="w-full h-full p-2.5 flex flex-col justify-center select-text"
@@ -1140,14 +1214,14 @@ export default function DynamicDocumentRenderer({
                 backgroundColor: elem.backgroundColor || "#F8FAFC",
                 border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
                 borderRadius: `${elem.borderRadius || 4}px`,
-                fontSize: `${elem.fontSize || 10}px`,
+                fontSize: `${wordsPt}pt`,
                 ...elementAppearance(elem),
               }}
             >
-              <div className="font-semibold text-slate-800 text-[10px]">
+              <div className="font-semibold text-slate-800" style={{ fontSize: `${Math.max(6, wordsPt * 0.95)}pt` }}>
                 {layout.documentType === "delivery_note" ? "Delivery Verification:" : "Handover Verification:"}
               </div>
-              <div className="italic text-slate-600 text-[10px] mt-0.5">
+              <div className="italic text-slate-600 mt-0.5" style={{ fontSize: `${Math.max(6, wordsPt * 0.9)}pt` }}>
                 Official document issued for physical inspection, handover, and site delivery verification.
               </div>
             </div>
@@ -1156,7 +1230,7 @@ export default function DynamicDocumentRenderer({
 
         const isDenseWords = elem.height <= 20;
         const wordsPadding = isDenseWords ? "p-1.5" : "p-2.5";
-        const wordsFontSize = isDenseWords ? 9.0 : (elem.fontSize || 10);
+        const wordsPt = resolvePt(elem.fontSize, isDenseWords ? 8.5 : 9.5);
 
         return (
           <div
@@ -1165,32 +1239,33 @@ export default function DynamicDocumentRenderer({
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
-              fontSize: `${wordsFontSize}px`,
               ...elementAppearance(elem),
+              fontSize: `${wordsPt}pt`,
             }}
           >
             {elem.customText ? (
-              <div className="w-full h-full min-h-0 overflow-auto whitespace-pre-line leading-relaxed select-text" style={{ fontSize: `${wordsFontSize}px` }}>
+              <div className="w-full h-full min-h-0 overflow-auto whitespace-pre-line leading-relaxed select-text" style={{ fontSize: `${wordsPt}pt` }}>
                 {replaceDocumentTokens(elem.customText)}
               </div>
             ) : (
               <>
-                <div className="font-semibold text-slate-800 text-[10px]">
+                <div className="font-semibold text-slate-800" style={{ fontSize: `${Math.max(6, wordsPt * 0.95)}pt` }}>
                   Amount in Words (المبلغ بالحروف):
                   {(layout.documentType === "receipt_voucher" || layout.documentType === "employee_payment_voucher") &&
                     !effectiveGeometry.elements.some((element) => element.type === "totals" && element.visible && element.effectiveVisible !== false) && (
                       <span className="float-right font-mono font-bold">{fmtAED(data.total_amount)}</span>
                     )}
                 </div>
-                <div className={`italic text-slate-700 font-medium ${isDenseWords ? "text-[9.5px]" : "text-[11px]"} leading-tight`}>
+                <div className="italic text-slate-700 font-medium leading-tight" style={{ fontSize: `${wordsPt}pt` }}>
                   {numberToWordsEnglish(data.total_amount)}
                 </div>
                 <div
-                  className={`text-right font-arabic font-semibold ${isDenseWords ? "text-[9.5px]" : "text-[11px]"} pt-0.5 border-t leading-tight select-text`}
+                  className="text-right font-arabic font-semibold pt-0.5 border-t leading-tight select-text"
                   dir="rtl"
                   style={{
                     borderColor: colors.border,
                     color: colors.accent,
+                    fontSize: `${wordsPt}pt`,
                     fontFamily: "'Segoe UI Arabic', 'Amiri', 'Noto Naskh Arabic', sans-serif",
                   }}
                 >
@@ -1207,6 +1282,8 @@ export default function DynamicDocumentRenderer({
           return <MeasurementTotals element={elem} data={data} appearance={elementAppearance(elem)} colors={colors} />;
         }
 
+        const totalsPt = resolvePt(elem.fontSize, 9.5);
+
         if (layout.documentType === "receipt_voucher" || layout.documentType === "employee_payment_voucher") {
           const isReceipt = layout.documentType === "receipt_voucher";
           return (
@@ -1216,12 +1293,13 @@ export default function DynamicDocumentRenderer({
                 border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
                 borderRadius: `${elem.borderRadius || 4}px`,
                 ...elementAppearance(elem),
+                fontSize: `${totalsPt}pt`,
               }}
             >
-              <div className="px-2.5 py-1 text-[10px] font-bold uppercase" style={{ color: colors.muted }}>
+              <div className="px-2.5 py-1 font-bold uppercase" style={{ color: colors.muted, fontSize: `${Math.max(6, totalsPt * 0.9)}pt` }}>
                 {isReceipt ? "Amount Received" : "Amount Paid"}
               </div>
-              <div className="px-2.5 py-1.5 text-right font-mono text-base font-bold" style={{ backgroundColor: colors.totalHighlight, color: colors.primary }}>
+              <div className="px-2.5 py-1.5 text-right font-mono font-bold" style={{ backgroundColor: colors.totalHighlight, color: colors.primary, fontSize: `${totalsPt * 1.3}pt` }}>
                 {fmtAED(data.total_amount)}
               </div>
             </div>
@@ -1231,12 +1309,12 @@ export default function DynamicDocumentRenderer({
         if (layout.documentType === "customer_statement") {
           return (
             <div
-              className="w-full h-fit overflow-hidden text-xs rounded select-text flex flex-col justify-start"
+              className="w-full h-fit overflow-hidden rounded select-text flex flex-col justify-start"
               style={{
                 border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
                 borderRadius: `${elem.borderRadius || 4}px`,
-                fontSize: `${elem.fontSize || 11}px`,
                 ...elementAppearance(elem),
+                fontSize: `${totalsPt}pt`,
               }}
             >
               <div className="flex justify-between py-1 px-2.5 bg-slate-50 border-b" style={{ borderColor: colors.border }}>
@@ -1245,7 +1323,7 @@ export default function DynamicDocumentRenderer({
               </div>
               <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
                 <span className="font-bold" style={{ color: colors.muted }}>Total Paid (Credits):</span>
-                <span className="font-mono font-bold" style={{ color: colors.accent }}>{fmtAED(totalCredits)}</span>
+                <span className="font-mono font-bold">{fmtAED(totalCredits)}</span>
               </div>
               <div
                 className="flex justify-between py-1.5 px-2.5 font-bold text-slate-900 border-b"
@@ -1263,7 +1341,7 @@ export default function DynamicDocumentRenderer({
 
         if (layout.documentType === "salary_statement") {
           return (
-            <div className="w-full h-fit overflow-hidden rounded border text-[10px]" style={{ borderColor: elem.borderColor || colors.border }}>
+            <div className="w-full h-fit overflow-hidden rounded border" style={{ borderColor: elem.borderColor || colors.border, ...elementAppearance(elem), fontSize: `${totalsPt}pt` }}>
               <div className="flex justify-between border-b px-2.5 py-1" style={{ borderColor: colors.border }}>
                 <span className="font-bold" style={{ color: colors.muted }}>Gross Earnings:</span>
                 <span className="font-mono font-bold">{fmtAED(data.subtotal)}</span>
@@ -1283,16 +1361,17 @@ export default function DynamicDocumentRenderer({
         if ((layout.documentType === "delivery_note" || layout.documentType === "project_handover") && data.total_amount === 0) {
           return (
             <div
-              className="w-full h-fit p-2.5 rounded text-xs select-text flex flex-col justify-center bg-slate-50 border"
+              className="w-full h-fit p-2.5 rounded select-text flex flex-col justify-center bg-slate-50 border"
               style={{
                 borderColor: elem.borderColor || colors.border,
                 ...elementAppearance(elem),
+                fontSize: `${totalsPt}pt`,
               }}
             >
-              <div className="font-bold text-slate-800 text-[11px] mb-1">
+              <div className="font-bold text-slate-800 mb-1" style={{ fontSize: `${totalsPt * 1.05}pt` }}>
                 {layout.documentType === "delivery_note" ? "Goods Receipt Status:" : "Handover Status:"}
               </div>
-              <div className="text-[10px] text-slate-600">
+              <div className="text-slate-600" style={{ fontSize: `${totalsPt * 0.92}pt` }}>
                 {layout.documentType === "delivery_note"
                   ? "All dispatch quantities verified and accepted at site."
                   : "Works inspected and formally accepted with snag list acknowledged."}
@@ -1304,7 +1383,6 @@ export default function DynamicDocumentRenderer({
         const isDenseTotals = elem.height <= 36;
         const rowPy = isDenseTotals ? (elem.height <= 30 ? "py-0.5" : "py-1") : "py-1";
         const rowPx = isDenseTotals ? "px-2" : "px-2.5";
-        const totalsFontSize = isDenseTotals ? (elem.height <= 30 ? 9.5 : 10) : (elem.fontSize || 11);
 
         return (
           <div
@@ -1312,9 +1390,9 @@ export default function DynamicDocumentRenderer({
             style={{
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
-              fontSize: `${totalsFontSize}px`,
               lineHeight: 1.15,
               ...elementAppearance(elem),
+              fontSize: `${totalsPt}pt`,
             }}
           >
             <div className={`flex justify-between ${rowPy} ${rowPx} bg-slate-50 border-b`} style={{ borderColor: colors.border }}>
@@ -1338,7 +1416,7 @@ export default function DynamicDocumentRenderer({
               <span className="font-mono" style={{ color: colors.primary }}>{fmtAED(data.total_amount)}</span>
             </div>
             {advance > 0 && (
-              <div className={`flex justify-between ${rowPy} ${rowPx} bg-slate-50 text-[9.5px]`}>
+              <div className={`flex justify-between ${rowPy} ${rowPx} bg-slate-50`} style={{ fontSize: `${Math.max(6, totalsPt * 0.9)}pt` }}>
                 <span className="font-bold" style={{ color: colors.muted }}>Balance Due:</span>
                 <span className="font-mono font-bold text-slate-900">{fmtAED(balanceDue)}</span>
               </div>
@@ -1350,7 +1428,7 @@ export default function DynamicDocumentRenderer({
       case "bank_details": {
         const isDenseBank = elem.height <= 20;
         const bankPadding = isDenseBank ? "p-1.5" : "p-2";
-        const bankFontSize = isDenseBank ? 8.8 : (elem.fontSize || 10);
+        const bankPt = resolvePt(elem.fontSize, isDenseBank ? 8 : 8.8);
         return (
           <div
             className={`w-full h-full ${bankPadding} flex flex-col justify-center leading-tight select-text`}
@@ -1358,18 +1436,18 @@ export default function DynamicDocumentRenderer({
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderRadius: `${elem.borderRadius || 4}px`,
-              fontSize: `${bankFontSize}px`,
               ...elementAppearance(elem),
+              fontSize: `${bankPt}pt`,
               color: elem.color || colors.text || "#334155",
             }}
           >
             {elem.customText ? (
-              <div className="whitespace-pre-line leading-snug select-text" style={{ fontSize: `${bankFontSize}px` }}>
+              <div className="whitespace-pre-line leading-snug select-text" style={{ fontSize: `${bankPt}pt` }}>
                 {replaceDocumentTokens(elem.customText)}
               </div>
             ) : (
               <>
-                <div className="font-bold text-slate-800 text-[9.5px] mb-0.5" style={{ color: colors.primary }}>
+                <div className="font-bold text-slate-800 mb-0.5" style={{ color: colors.primary, fontSize: `${Math.max(6, bankPt * 0.95)}pt` }}>
                   Bank Transfer Information (بيانات التحويل):
                 </div>
                 <div>Bank: <span className="font-semibold">{brand.bank_name}</span></div>
@@ -1385,7 +1463,7 @@ export default function DynamicDocumentRenderer({
       case "payment_terms": {
         const isDenseTerms = elem.height <= 22;
         const termsPadding = isDenseTerms ? "p-1" : "p-1.5";
-        const termsFontSize = isDenseTerms ? 8.8 : (elem.fontSize || 10);
+        const termsPt = resolvePt(elem.fontSize, isDenseTerms ? 8 : 8.8);
         const sectionHeading =
           layout.documentType === "delivery_note"
             ? "Delivery Notes & Condition:"
@@ -1406,18 +1484,18 @@ export default function DynamicDocumentRenderer({
           <div
             className={`w-full h-full leading-snug select-text ${termsPadding}`}
             style={{
-              fontSize: `${termsFontSize}px`,
               color: elem.color || colors.muted,
               ...elementAppearance(elem),
+              fontSize: `${termsPt}pt`,
             }}
           >
             {elem.customText ? (
-              <div className="whitespace-pre-line leading-snug select-text" style={{ fontSize: `${termsFontSize}px` }}>
+              <div className="whitespace-pre-line leading-snug select-text" style={{ fontSize: `${termsPt}pt` }}>
                 {replaceDocumentTokens(elem.customText)}
               </div>
             ) : (
               <>
-                <div className="font-bold text-slate-800 mb-0.5">{sectionHeading}</div>
+                <div className="font-bold text-slate-800 mb-0.5" style={{ fontSize: `${Math.max(6, termsPt * 0.95)}pt` }}>{sectionHeading}</div>
                 <div>{data.notes || "No additional remarks."}</div>
                 {data.payment_terms && <div className="mt-0.5 italic">{data.payment_terms}</div>}
               </>
@@ -1428,6 +1506,7 @@ export default function DynamicDocumentRenderer({
 
       case "company_signature": {
         const sigSrc = elem.imageSrc || brand.assets.signature;
+        const sigPt = resolvePt(elem.fontSize, 8);
         return (
           <div
             className="w-full h-full flex flex-col items-center justify-between text-center select-none overflow-hidden"
@@ -1439,7 +1518,7 @@ export default function DynamicDocumentRenderer({
               ...elementAppearance(elem),
             }}
           >
-            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-800" style={{ color: colors.primary }}>
+            <div className="font-bold uppercase tracking-wider text-slate-800" style={{ color: colors.primary, fontSize: `${sigPt}pt` }}>
               {elem.customText || "COMPANY AUTHORIZED SIGNATURE"}
             </div>
             {/* Real uploaded signature only */}
@@ -1458,7 +1537,7 @@ export default function DynamicDocumentRenderer({
                 <div className="w-24 h-7 border-b border-dashed border-slate-300" />
               )}
             </div>
-            <div className="w-full border-t border-slate-400 pt-0.5 text-[8px] text-slate-500">
+            <div className="w-full border-t border-slate-400 pt-0.5 text-slate-500" style={{ fontSize: `${Math.max(5.5, sigPt * 0.9)}pt` }}>
               For {brand.legal_name || brand.name}
             </div>
           </div>
@@ -1467,6 +1546,7 @@ export default function DynamicDocumentRenderer({
 
       case "company_stamp": {
         const stampSrc = elem.imageSrc || brand.assets.stamp;
+        const stampPt = resolvePt(elem.fontSize, 8);
         return (
           <div
             className={`w-full h-full flex flex-col items-center justify-between text-center select-none overflow-hidden ${elem.padding !== undefined ? "" : "p-1.5"}`}
@@ -1480,7 +1560,7 @@ export default function DynamicDocumentRenderer({
             }}
           >
             {elem.customText && (
-              <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: colors.primary }}>
+              <div className="font-bold uppercase tracking-wider" style={{ color: colors.primary, fontSize: `${stampPt}pt` }}>
                 {elem.customText}
               </div>
             )}
@@ -1502,7 +1582,7 @@ export default function DynamicDocumentRenderer({
               )}
             </div>
             {elem.customText && (
-              <div className="w-full border-t border-slate-300 pt-0.5 text-[8px] text-slate-500">
+              <div className="w-full border-t border-slate-300 pt-0.5 text-slate-500" style={{ fontSize: `${Math.max(5.5, stampPt * 0.9)}pt` }}>
                 Official Stamp / Seal
               </div>
             )}
@@ -1543,9 +1623,10 @@ export default function DynamicDocumentRenderer({
       }
 
       case "company_trn": {
+        const trnPt = resolvePt(elem.fontSize, 9);
         return (
           <div
-            className="w-full h-full flex items-center text-[11px] select-text"
+            className="w-full h-full flex items-center select-text"
             style={{
               justifyContent:
                 elem.textAlign === "center"
@@ -1553,6 +1634,7 @@ export default function DynamicDocumentRenderer({
                   : elem.textAlign === "right"
                   ? "flex-end"
                   : "flex-start",
+              fontSize: `${trnPt}pt`,
               color: elem.color || colors.primary,
               backgroundColor: elem.backgroundColor,
               border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
@@ -1573,15 +1655,15 @@ export default function DynamicDocumentRenderer({
         );
       }
 
-
       case "footer": {
+        const footerPt = resolvePt(elem.fontSize, 8);
         return (
           <div
-            className="w-full h-full flex flex-col items-center justify-center text-[9px] select-text"
+            className="w-full h-full flex flex-col items-center justify-center select-text"
             style={{
               textAlign: elem.textAlign || "center",
               color: elem.color || colors.muted,
-              fontSize: `${elem.fontSize || 9}px`,
+              fontSize: `${footerPt}pt`,
               fontStyle: elem.fontStyle || "normal",
               fontFamily: elem.fontFamily || "inherit",
               letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
@@ -1595,13 +1677,13 @@ export default function DynamicDocumentRenderer({
             }}
           >
             <div>{elem.customText || `${brand.legal_name} | Tel: ${brand.phone} | Email: ${brand.email} | Web: ${brand.website}`}</div>
-            <div className="text-[8px] text-slate-400 mt-0.5">
+            <div className="text-slate-400 mt-0.5" style={{ fontSize: `${Math.max(5.5, footerPt * 0.9)}pt` }}>
               {usesVat
                 ? "This is a computer generated document issued in accordance with UAE VAT regulations."
                 : "This is a computer generated business document and does not require a physical signature unless stated."}
             </div>
             {resolvedTotalPages > 1 && (
-              <div className="mt-0.5 font-mono text-[8px] text-slate-400">
+              <div className="mt-0.5 font-mono text-slate-400" style={{ fontSize: `${Math.max(5.5, footerPt * 0.9)}pt` }}>
                 Page {pageNumber} of {resolvedTotalPages}
               </div>
             )}
@@ -1610,6 +1692,7 @@ export default function DynamicDocumentRenderer({
       }
 
       case "custom_text": {
+        const textPt = resolvePt(elem.fontSize, 11);
         return (
           <div
             className="w-full h-full flex items-center select-text p-1"
@@ -1620,7 +1703,7 @@ export default function DynamicDocumentRenderer({
                   : elem.textAlign === "right"
                   ? "flex-end"
                   : "flex-start",
-              fontSize: `${elem.fontSize || 12}px`,
+              fontSize: `${textPt}pt`,
               fontWeight: elem.fontWeight === "bold" ? 700 : elem.fontWeight === "semibold" ? 600 : elem.fontWeight === "extrabold" ? 800 : 400,
               fontStyle: elem.fontStyle || "normal",
               fontFamily: elem.fontFamily || "inherit",

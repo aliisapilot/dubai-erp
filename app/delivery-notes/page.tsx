@@ -7,6 +7,7 @@ import { Plus, Search, X, Save, Loader2, Pencil, Printer, Trash2, ClipboardList 
 import { getCompanyId, getCurrentCompany, statusClass, fmtDate, todayISO, generateDocNumber } from "@/lib/helpers";
 import DeliveryNoteTemplate, { DeliveryNoteData } from "@/components/documents/DeliveryNoteTemplate";
 import PrintModal from "@/components/documents/PrintModal";
+import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { parseDatabaseError } from "@/lib/paymentTypes";
 import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
@@ -97,6 +98,7 @@ export default function DeliveryNotesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showRenameModal, setShowRenameModal] = useState(false);
 
   // Print Modal State
   const [printDoc, setPrintDoc] = useState<DeliveryNoteData | null>(null);
@@ -541,9 +543,20 @@ export default function DeliveryNotesPage() {
                     DN #: Auto-generated on save
                   </span>
                 ) : (
-                  <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
-                    DN #: {editing.delivery_note_number} (Read-only)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
+                      DN #: {editing.delivery_note_number}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowRenameModal(true)}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
+                      title="Safely rename delivery note reference number with collision check"
+                    >
+                      <Pencil size={11} />
+                      <span>Edit #</span>
+                    </button>
+                  </div>
                 )}
               </div>
               <button onClick={closeForm} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={20} /></button>
@@ -733,6 +746,22 @@ export default function DeliveryNotesPage() {
           />
         )}
       </PrintModal>
+
+      {showRenameModal && editing && (company?.id || editing.company_id) && (
+        <EditDocumentReferenceModal
+          isOpen={showRenameModal}
+          onClose={() => setShowRenameModal(false)}
+          companyId={company?.id || editing.company_id}
+          docType="delivery_note"
+          documentId={editing.id}
+          currentReferenceNumber={editing.delivery_note_number || ""}
+          onSuccess={(newNum) => {
+            setEditing((prev) => (prev ? { ...prev, delivery_note_number: newNum } : prev));
+            loadAll();
+            setSuccess(`Delivery note reference updated to ${newNum}`);
+          }}
+        />
+      )}
     </main>
   );
 }

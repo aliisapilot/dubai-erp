@@ -37,7 +37,8 @@ export default function ERPLayout({ children }: { children: ReactNode }) {
     pathname === "/login" ||
     pathname.startsWith("/mobile") ||
     pathname.startsWith("/print-test-sheet") ||
-    pathname.startsWith("/settings/designer");
+    pathname.startsWith("/settings/designer") ||
+    pathname.startsWith("/measurements");
 
   useEffect(() => {
     let isMounted = true;

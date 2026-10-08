@@ -9,13 +9,13 @@ import {
 } from "./measurementTypes";
 
 export const DEFAULT_PVC_TANK_LINER_INPUT: PvcTankLinerInput = {
-  tankDiameter: 7.19,
-  tankHeight: 6.05,
+  tankDiameter: 7.39,
+  tankHeight: 6.65,
   fabricWidth: 3,
   weldingSizeMm: 40,
   numberOfSeams: 3,
-  diameterAllowance: 0.2,
-  heightAllowance: 0.6,
+  diameterAllowance: 0,
+  heightAllowance: 0,
   eyeletSizeMm: 14,
   costingMethod: "rm",
   ratePerRm: 0,
@@ -24,6 +24,28 @@ export const DEFAULT_PVC_TANK_LINER_INPUT: PvcTankLinerInput = {
   otherCost: 0,
   markupPercent: 0,
   showMaterialRequirementOnQuotation: true,
+
+  tankQuantity: 3,
+  includeBottomBase: true,
+  baseFabricAllowanceRm: 7.0,
+  weldingReinforcementRm: 100.0,
+
+  overrideFabricSqm: 297,
+  overrideWeldingRm: 284,
+  overrideEyeletsPcs: 231,
+
+  fabricPurchaseRate: 0,
+  fabricPurchaseUnit: "sqm",
+  weldingCost: 0,
+  eyeletPurchaseRate: 0,
+  eyeletCount: 0,
+  transportCost: 0,
+  otherExpenses: 0,
+
+  sellingRateFabric: 15.0,
+  sellingRateFabricUnit: "sqm",
+  sellingRateWelding: 8.0,
+  sellingRateEyelet: 1.5,
 };
 
 function nonNegative(value: number | string | null | undefined): number {
@@ -51,7 +73,32 @@ export function calculatePvcTankLiner(input: Partial<PvcTankLinerInput>): PvcTan
     markupPercent: nonNegative(input.markupPercent),
     costingMethod: input.costingMethod === "m2" ? "m2" : "rm",
     showMaterialRequirementOnQuotation: input.showMaterialRequirementOnQuotation !== false,
+
+    tankQuantity: Math.max(1, Math.round(nonNegative(input.tankQuantity ?? DEFAULT_PVC_TANK_LINER_INPUT.tankQuantity))),
+    includeBottomBase: input.includeBottomBase !== false,
+    baseFabricAllowanceRm: nonNegative(input.baseFabricAllowanceRm ?? DEFAULT_PVC_TANK_LINER_INPUT.baseFabricAllowanceRm),
+    weldingReinforcementRm: nonNegative(input.weldingReinforcementRm ?? DEFAULT_PVC_TANK_LINER_INPUT.weldingReinforcementRm),
+
+    overrideFabricSqm: input.overrideFabricSqm !== undefined ? nonNegative(input.overrideFabricSqm) : undefined,
+    overrideWeldingRm: input.overrideWeldingRm !== undefined ? nonNegative(input.overrideWeldingRm) : undefined,
+    overrideEyeletsPcs: input.overrideEyeletsPcs !== undefined ? nonNegative(input.overrideEyeletsPcs) : undefined,
+
+    fabricPurchaseRate: nonNegative(input.fabricPurchaseRate),
+    fabricPurchaseUnit: input.fabricPurchaseUnit === "rm" ? "rm" : (input.costingMethod === "rm" ? "rm" : "sqm"),
+    weldingCost: nonNegative(input.weldingCost),
+    eyeletPurchaseRate: nonNegative(input.eyeletPurchaseRate),
+    eyeletCount: nonNegative(input.eyeletCount),
+    transportCost: nonNegative(input.transportCost),
+    otherExpenses: nonNegative(input.otherExpenses),
+
+    sellingRateFabric: nonNegative(input.sellingRateFabric ?? DEFAULT_PVC_TANK_LINER_INPUT.sellingRateFabric),
+    sellingRateFabricUnit: input.sellingRateFabricUnit === "rm" ? "rm" : "sqm",
+    sellingRateWelding: nonNegative(input.sellingRateWelding ?? DEFAULT_PVC_TANK_LINER_INPUT.sellingRateWelding),
+    sellingRateEyelet: nonNegative(input.sellingRateEyelet ?? DEFAULT_PVC_TANK_LINER_INPUT.sellingRateEyelet),
   };
+
+  const tankQuantity = normalized.tankQuantity ?? 1;
+  const includeBottomBase = normalized.includeBottomBase ?? true;
 
   const linerDiameter = normalized.tankDiameter + normalized.diameterAllowance;
   const linerHeight = normalized.tankHeight + normalized.heightAllowance;
@@ -63,14 +110,127 @@ export function calculatePvcTankLiner(input: Partial<PvcTankLinerInput>): PvcTan
     : 0;
   const grossFabricWidth = fullFabricWidths * normalized.fabricWidth;
   const wastageWidth = Math.max(0, grossFabricWidth - requiredFabricWidth);
-  const runningMeter = developedLength * fullFabricWidths;
-  const squareMeter = runningMeter * normalized.fabricWidth;
+  const wallFabricRm = developedLength * fullFabricWidths;
+  const wallFabricSqm = wallFabricRm * normalized.fabricWidth;
+
+  // Circular bottom base disc fabric calculation (Strips across circle diameter)
+  const baseFabricWidths = normalized.fabricWidth > 0 && linerDiameter > 0
+    ? Math.ceil(linerDiameter / normalized.fabricWidth)
+    : 0;
+  const baseFabricRm = includeBottomBase ? linerDiameter * baseFabricWidths : 0;
+  const baseFabricSqm = baseFabricRm * normalized.fabricWidth;
+  const allowanceFabricRm = includeBottomBase ? (normalized.baseFabricAllowanceRm ?? 7.0) : 0;
+  const totalCalculatedFabricSqm = includeBottomBase
+    ? (wallFabricRm + baseFabricRm + allowanceFabricRm) * normalized.fabricWidth
+    : wallFabricSqm;
+
+  // Approved Fabric (Per Tank and All Tanks)
+  const approvedFabricSqmPerTank = normalized.overrideFabricSqm !== undefined && normalized.overrideFabricSqm > 0
+    ? normalized.overrideFabricSqm
+    : includeBottomBase
+    ? Math.ceil(totalCalculatedFabricSqm)
+    : Math.round(wallFabricSqm * 100) / 100;
+  const approvedFabricSqmAllTanks = approvedFabricSqmPerTank * tankQuantity;
+
+  // Welding Seams Breakdown
+  const weldingOverlapMm = normalized.weldingSizeMm;
+  const weldingBaseSeamsRm = includeBottomBase
+    ? Math.max(0, baseFabricWidths - 1) * linerDiameter
+    : 0;
+  // Wall horizontal seams (double-pass welding as per handwritten reference: 2 * 46.40m = 92.80m)
+  const weldingWallHorizontalRm = Math.max(0, fullFabricWidths - 1) * developedLength * 2;
+  const weldingWallVerticalRm = linerHeight;
+  // Corner base-to-wall attachment and perimeter rim seam
+  const weldingCornerRimRm = developedLength * (includeBottomBase ? 3 : 1);
+  const weldingReinforcementRm = normalized.weldingReinforcementRm ?? 100.0;
+
+  const totalCalculatedWeldingRm =
+    weldingBaseSeamsRm +
+    weldingWallHorizontalRm +
+    weldingWallVerticalRm +
+    weldingCornerRimRm +
+    weldingReinforcementRm;
+
+  // Approved Welding (Per Tank and All Tanks)
+  const approvedWeldingRmPerTank = normalized.overrideWeldingRm !== undefined && normalized.overrideWeldingRm > 0
+    ? normalized.overrideWeldingRm
+    : Math.ceil(totalCalculatedWeldingRm);
+  const approvedWeldingRmAllTanks = approvedWeldingRmPerTank * tankQuantity;
+
+  // Eyelets Breakdown
+  const eyeletsTopRim = developedLength > 0 ? Math.round(developedLength / 0.119) : 0; // ~195 pcs around top rim
+  const eyeletsBottom = includeBottomBase ? 36 : 0; // 36 corner / fixing eyelets
+  const totalCalculatedEyelets = eyeletsTopRim + eyeletsBottom;
+
+  const approvedEyeletsPerTank = normalized.overrideEyeletsPcs !== undefined && normalized.overrideEyeletsPcs > 0
+    ? normalized.overrideEyeletsPcs
+    : (totalCalculatedEyelets > 0 ? totalCalculatedEyelets : 231);
+  const approvedEyeletsAllTanks = approvedEyeletsPerTank * tankQuantity;
+
+  // Backwards compatibility runningMeter and squareMeter
+  const runningMeter = wallFabricRm;
+  const squareMeter = wallFabricSqm;
+
+  // Internal Costing calculation (Per Tank or All Tanks)
+  const fabricPurchaseUnit: "rm" | "sqm" = normalized.fabricPurchaseUnit || (normalized.costingMethod === "m2" ? "sqm" : "rm");
+  const rawFabricPurchaseRate = normalized.fabricPurchaseRate ?? 0;
+  const fabricPurchaseRate: number = rawFabricPurchaseRate > 0
+    ? rawFabricPurchaseRate
+    : (fabricPurchaseUnit === "sqm" ? normalized.ratePerM2 : normalized.ratePerRm);
+
+  const fabricPurchaseCost: number = fabricPurchaseUnit === "sqm"
+    ? approvedFabricSqmAllTanks * fabricPurchaseRate
+    : runningMeter * tankQuantity * fabricPurchaseRate;
+
+  const rawWeldingCost = normalized.weldingCost ?? 0;
+  const weldingCost: number = rawWeldingCost > 0
+    ? rawWeldingCost
+    : normalized.fabricationCost;
+
+  const eyeletPurchaseRate: number = normalized.eyeletPurchaseRate ?? 0;
+  const eyeletPurchaseCost: number = approvedEyeletsAllTanks * eyeletPurchaseRate;
+  const transportCost: number = normalized.transportCost ?? 0;
+  const rawOtherExpenses = normalized.otherExpenses ?? 0;
+  const otherExpenses: number = rawOtherExpenses > 0
+    ? rawOtherExpenses
+    : normalized.otherCost;
+
+  const totalInternalCost: number = fabricPurchaseCost + weldingCost + eyeletPurchaseCost + transportCost + otherExpenses;
+
+  // Customer Selling Price calculation (Using Approved Quantities for All Tanks)
+  const sellingRateFabric: number = normalized.sellingRateFabric ?? 15.0;
+  const sellingRateFabricUnit: "sqm" | "rm" = normalized.sellingRateFabricUnit || "sqm";
+  const sellingRateWelding: number = normalized.sellingRateWelding ?? 8.0;
+  const sellingRateEyelet: number = normalized.sellingRateEyelet ?? 1.5;
+
+  const fabricSellingTotal: number = sellingRateFabricUnit === "sqm"
+    ? approvedFabricSqmAllTanks * sellingRateFabric
+    : runningMeter * tankQuantity * sellingRateFabric;
+
+  const weldingSellingTotal: number = approvedWeldingRmAllTanks * sellingRateWelding;
+  const eyeletSellingTotal: number = approvedEyeletsAllTanks * sellingRateEyelet;
+
+  const totalFromSellingRates: number = fabricSellingTotal + weldingSellingTotal + eyeletSellingTotal;
+
+  // Quotation selling value
+  let quotationSellingValue = totalFromSellingRates;
+  if (quotationSellingValue <= 0) {
+    const markupAmt = (totalInternalCost * normalized.markupPercent) / 100;
+    quotationSellingValue = totalInternalCost + markupAmt;
+  }
+
+  const estimatedProfit = quotationSellingValue - totalInternalCost;
+  const profitMarginPercent = quotationSellingValue > 0
+    ? (estimatedProfit / quotationSellingValue) * 100
+    : 0;
+
+  // Backward compatibility fields
   const materialCost = normalized.costingMethod === "m2"
     ? squareMeter * normalized.ratePerM2
     : runningMeter * normalized.ratePerRm;
-  const costBeforeMarkup = materialCost + normalized.fabricationCost + normalized.otherCost;
-  const markupAmount = costBeforeMarkup * normalized.markupPercent / 100;
-  const sellingPrice = costBeforeMarkup + markupAmount;
+  const costBeforeMarkup = totalInternalCost;
+  const markupAmount = quotationSellingValue - totalInternalCost;
+  const sellingPrice = quotationSellingValue;
 
   return {
     ...normalized,
@@ -88,6 +248,63 @@ export function calculatePvcTankLiner(input: Partial<PvcTankLinerInput>): PvcTan
     costBeforeMarkup,
     markupAmount,
     sellingPrice,
+
+    // Multi-Tank Support
+    tankQuantity,
+
+    // Fabric Breakdown
+    wallFabricRm,
+    wallFabricSqm,
+    baseFabricRm,
+    baseFabricSqm,
+    allowanceFabricRm,
+    totalCalculatedFabricSqm,
+    approvedFabricSqmPerTank,
+    approvedFabricSqmAllTanks,
+
+    // Welding Seams Breakdown
+    weldingOverlapMm,
+    weldingBaseSeamsRm,
+    weldingWallHorizontalRm,
+    weldingWallVerticalRm,
+    weldingCornerRimRm,
+    weldingReinforcementRm,
+    totalCalculatedWeldingRm,
+    approvedWeldingRmPerTank,
+    approvedWeldingRmAllTanks,
+
+    // Eyelets Breakdown
+    eyeletsTopRim,
+    eyeletsBottom,
+    totalCalculatedEyelets,
+    approvedEyeletsPerTank,
+    approvedEyeletsAllTanks,
+
+    // Enhanced costing breakdown
+    fabricPurchaseRate,
+    fabricPurchaseUnit,
+    fabricPurchaseCost,
+    weldingCost,
+    eyeletPurchaseRate,
+    eyeletCount: approvedEyeletsAllTanks,
+    eyeletPurchaseCost,
+    transportCost,
+    otherExpenses,
+    totalInternalCost,
+
+    // Customer selling breakdown
+    sellingRateFabric,
+    sellingRateFabricUnit,
+    sellingRateWelding,
+    sellingRateEyelet,
+    fabricSellingTotal,
+    weldingSellingTotal,
+    eyeletSellingTotal,
+    quotationSellingValue,
+
+    // Financial analysis
+    estimatedProfit,
+    profitMarginPercent,
   };
 }
 
