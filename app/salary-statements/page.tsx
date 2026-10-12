@@ -291,6 +291,38 @@ export default function SalaryStatementsPage() {
     }
 
     if (res.error) {
+      const errMsg = (res.error.message || "").toLowerCase();
+      const errDetails = ((res.error as { details?: string }).details || "").toLowerCase();
+      const isMissingColumnError =
+        errMsg.includes("column") ||
+        errMsg.includes("schema cache") ||
+        errDetails.includes("column") ||
+        (res.error as { code?: string }).code === "PGRST204";
+
+      if (isMissingColumnError) {
+        // Fallback for environments where salary statement breakdown columns are pending schema cache sync
+        const fallbackPayload: Record<string, unknown> = { ...payload };
+        fallbackPayload.other_deductions =
+          (Number(payload.other_deductions) || 0) + (Number(payload.leave_deduction) || 0);
+
+        delete fallbackPayload.payroll_year;
+        delete fallbackPayload.housing_allowance;
+        delete fallbackPayload.transport_allowance;
+        delete fallbackPayload.other_allowances;
+        delete fallbackPayload.leave_deduction;
+        delete fallbackPayload.notes;
+
+        if (editing) {
+          const fallbackUpdate = { ...fallbackPayload };
+          delete fallbackUpdate.company_id;
+          res = await supabase.from("salary_statements").update(fallbackUpdate).eq("id", editing.id);
+        } else {
+          res = await supabase.from("salary_statements").insert(fallbackPayload);
+        }
+      }
+    }
+
+    if (res.error) {
       setError(parseSalaryStatementError(res.error));
     } else {
       setSuccess(editing ? "Statement updated successfully." : "Statement created successfully.");

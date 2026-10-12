@@ -75,9 +75,15 @@ ALTER TABLE public.employees
   ADD COLUMN IF NOT EXISTS account_number TEXT;
 
 ALTER TABLE public.salary_statements
+  ADD COLUMN IF NOT EXISTS housing_allowance NUMERIC(12,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS transport_allowance NUMERIC(12,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS other_allowances NUMERIC(12,2) DEFAULT 0,
   ADD COLUMN IF NOT EXISTS absence_deduction NUMERIC(12,2) DEFAULT 0,
   ADD COLUMN IF NOT EXISTS insurance_deduction NUMERIC(12,2) DEFAULT 0,
   ADD COLUMN IF NOT EXISTS friday_pay NUMERIC(12,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS leave_deduction NUMERIC(12,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS payroll_year INTEGER,
+  ADD COLUMN IF NOT EXISTS notes TEXT,
   ADD COLUMN IF NOT EXISTS payment_voucher_id UUID;
 
 -- 5. Create Projects Table

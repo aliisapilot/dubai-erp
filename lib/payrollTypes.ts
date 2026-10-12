@@ -78,6 +78,9 @@ export function parseSalaryStatementError(error: unknown): string {
   if (msg.includes("salary_statements_payroll_month_check") || (msg.includes("payroll_month") && msg.includes("check constraint"))) {
     return "Invalid payroll month. Please provide a valid date in YYYY-MM-01 format.";
   }
+  if (msg.includes("schema cache") || (msg.includes("Could not find the") && msg.includes("column"))) {
+    return "Database schema column missing or schema cache syncing. Please execute the latest database migration.";
+  }
   if (msg.includes("check constraint")) {
     return "Validation error: one or more fields violated database integrity constraints.";
   }
