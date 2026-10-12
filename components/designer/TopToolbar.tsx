@@ -31,6 +31,7 @@ import {
   PanelRight,
   ShieldCheck,
   MoreHorizontal,
+  Upload,
 } from "lucide-react";
 import { DocumentTypeId, DOCUMENT_TYPE_OPTIONS } from "@/lib/documentDesigner";
 import type { DocumentStylePreset } from "@/lib/documentStylePresetModel";
@@ -75,6 +76,7 @@ interface TopToolbarProps {
   onCheckLayout?: () => void;
   templateName: string;
   onOpenApplyModal: () => void;
+  onImportDesign?: () => void;
   onPrint?: () => void;
   onAddImage?: (file: File) => void;
   onAddText?: () => void;
@@ -122,6 +124,7 @@ export default function TopToolbar({
   onCheckLayout,
   templateName,
   onOpenApplyModal,
+  onImportDesign,
   onPrint,
   onAddImage,
   onAddText,
@@ -392,6 +395,23 @@ export default function TopToolbar({
                 <div className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-800">
                   Document Tools
                 </div>
+                {onImportDesign && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      onImportDesign();
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left font-medium text-slate-200 hover:bg-slate-800 transition"
+                  >
+                    <Upload size={15} className="text-indigo-400 shrink-0" />
+                    <div>
+                      <div className="font-semibold text-slate-100">Import Template Design</div>
+                      <div className="text-[11px] text-slate-400">Reconstruct layout from Word, Excel, or PDF</div>
+                    </div>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {
@@ -446,6 +466,19 @@ export default function TopToolbar({
 
           {/* Primary Final Actions: Preview, Print, and Save (ALWAYS VISIBLE, FULLY ALIGNED & PINNED) */}
           <div className="flex shrink-0 items-center gap-1 border-l border-slate-800 pl-1.5">
+            {onImportDesign && (
+              <button
+                type="button"
+                onClick={onImportDesign}
+                className="flex items-center gap-1.5 rounded-lg border border-indigo-500/40 bg-indigo-950/40 px-2.5 py-1.5 text-xs font-semibold text-indigo-200 transition hover:bg-indigo-900/60 hover:text-white cursor-pointer shadow-sm"
+                title="Import DOCX, XLSX, or PDF template design"
+                aria-label="Import Design"
+              >
+                <Upload size={14} className="text-indigo-400" />
+                <span className="hidden sm:inline">Import Design</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onPreview}

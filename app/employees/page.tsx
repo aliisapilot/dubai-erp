@@ -2,20 +2,34 @@
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, Users2, X, Save, Loader2, Pencil, Power, Trash2 } from "lucide-react";
-import { getCompanyId, statusClass, generateDocNumber } from "@/lib/helpers";
+import { getCompanyId, statusClass, formatEmployeeCode } from "@/lib/helpers";
+
+import {
+  getEmployeeSalarySettings,
+  saveEmployeeSalarySettings,
+  OvertimeCostingMethod,
+} from "@/lib/payrollWorkflowService";
 
 // DB verified: employees columns: id, first_name, employee_number, designation, department, phone, email,
 // joining_date, employee_code, account_number, basic_salary, bank_name, iban, payment_method, status, company_id
-// NO: name, nationality, housing_allowance, transport_allowance, other_allowances, bank_account, active
+// Optional columns: housing_allowance, transport_allowance, other_allowances, overtime_rate, overtime_costing_method, working_days_divisor, overtime_multiplier, salary_effective_date
 type Employee = {
   id: string; company_id: string; employee_number: string | null;
   first_name: string | null; // DB: first_name (not name)
   designation: string | null; department: string | null;
   joining_date: string | null; basic_salary: number | null;
+  housing_allowance?: number | null;
+  transport_allowance?: number | null;
+  other_allowances?: number | null;
+  overtime_rate?: number | null;
+  overtime_costing_method?: string | null;
+  working_days_divisor?: number | null;
+  overtime_multiplier?: number | null;
+  salary_effective_date?: string | null;
   payment_method: string | null;
-  bank_name: string | null; account_number: string | null; iban: string | null; // DB: account_number (not bank_account)
+  bank_name: string | null; account_number: string | null; iban: string | null;
   email: string | null; phone: string | null;
-  status: string | null; // Stored canonically as lowercase values; labels are formatted for display.
+  status: string | null;
 };
 
 export type EmployeeStatus = "active" | "inactive" | "on_leave" | "terminated";
@@ -53,8 +67,54 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-type EmpForm = { employee_number: string; first_name: string; designation: string; department: string; joining_date: string; basic_salary: string; payment_method: string; bank_name: string; account_number: string; iban: string; email: string; phone: string; status: EmployeeStatus; };
-const empty: EmpForm = { employee_number:"", first_name:"", designation:"", department:"", joining_date:"", basic_salary:"0", payment_method:"Bank Transfer", bank_name:"", account_number:"", iban:"", email:"", phone:"", status:"active" };
+type EmpForm = {
+  employee_number: string;
+  first_name: string;
+  designation: string;
+  department: string;
+  joining_date: string;
+  basic_salary: string;
+  housing_allowance: string;
+  transport_allowance: string;
+  other_allowances: string;
+  overtime_rate: string;
+  overtime_costing_method: OvertimeCostingMethod;
+  working_days_divisor: string;
+  overtime_multiplier: string;
+  salary_effective_date: string;
+  payment_method: string;
+  bank_name: string;
+  account_number: string;
+  iban: string;
+  email: string;
+  phone: string;
+  status: EmployeeStatus;
+};
+
+const empty: EmpForm = {
+  employee_number: "",
+  first_name: "",
+  designation: "",
+  department: "",
+  joining_date: "",
+  basic_salary: "0",
+  housing_allowance: "0",
+  transport_allowance: "0",
+  other_allowances: "0",
+  overtime_rate: "",
+  overtime_costing_method: "auto",
+  working_days_divisor: "30",
+  overtime_multiplier: "1.25",
+  salary_effective_date: "",
+  payment_method: "Bank Transfer",
+  bank_name: "",
+  account_number: "",
+  iban: "",
+  email: "",
+  phone: "",
+  status: "active",
+};
+
 const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none";
 const sel = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none appearance-none";
 
@@ -82,15 +142,26 @@ export default function EmployeesPage() {
   const f = <K extends keyof EmpForm>(k: K, v: EmpForm[K]) => setForm(c => ({ ...c, [k]: v }));
 
   function openAdd() { setError(""); setSuccess(""); setEditing(null); setForm(empty); setShowForm(true); }
-  function openEdit(e: Employee) {
+
+  async function openEdit(e: Employee) {
     setError(""); setSuccess(""); setEditing(e);
+    // Load persisted payroll settings
+    const settings = await getEmployeeSalarySettings(e.id);
     setForm({
-      employee_number: e.employee_number||"",
+      employee_number: formatEmployeeCode(e.employee_number),
       first_name: e.first_name||"",
       designation: e.designation||"",
       department: e.department||"",
       joining_date: e.joining_date||"",
-      basic_salary: String(e.basic_salary??0),
+      basic_salary: String(e.basic_salary ?? settings.basic_salary ?? 0),
+      housing_allowance: String(e.housing_allowance ?? settings.housing_allowance ?? 0),
+      transport_allowance: String(e.transport_allowance ?? settings.transport_allowance ?? 0),
+      other_allowances: String(e.other_allowances ?? settings.other_allowances ?? 0),
+      overtime_rate: settings.overtime_rate != null ? String(settings.overtime_rate) : (e.overtime_rate != null ? String(e.overtime_rate) : ""),
+      overtime_costing_method: (e.overtime_costing_method as OvertimeCostingMethod) || settings.overtime_costing_method || "auto",
+      working_days_divisor: String(e.working_days_divisor || settings.working_days_divisor || 30),
+      overtime_multiplier: String(e.overtime_multiplier || settings.overtime_multiplier || 1.25),
+      salary_effective_date: e.salary_effective_date || settings.effective_date || "",
       payment_method: e.payment_method||"Bank Transfer",
       bank_name: e.bank_name||"",
       account_number: e.account_number||"",
@@ -101,6 +172,7 @@ export default function EmployeesPage() {
     });
     setShowForm(true);
   }
+
   function closeForm() { if (saving) return; setShowForm(false); setEditing(null); setError(""); }
 
   async function save(e: FormEvent) {
@@ -109,9 +181,17 @@ export default function EmployeesPage() {
     setSaving(true);
     try {
       const cid = await getCompanyId();
-      // Automatic sequential number via existing generateDocNumber -> next_doc_number RPC
-      const empNum = form.employee_number.trim() || (!editing ? await generateDocNumber(cid, "EMP") : null);
-      // DB columns: first_name, designation, department, joining_date, basic_salary, payment_method, bank_name, account_number, iban, email, phone, status, employee_number, employee_code
+      // Calculate next sequential code EMP-01, EMP-02, EMP-03...
+      const maxNum = employees.reduce((max, e) => {
+        const digits = (e.employee_number || "").replace(/\D/g, "");
+        const n = parseInt(digits, 10);
+        return !isNaN(n) && n > max ? n : max;
+      }, 0);
+      const autoCode = `EMP-${String(maxNum + 1).padStart(2, "0")}`;
+      const empNum = form.employee_number.trim()
+        ? formatEmployeeCode(form.employee_number.trim())
+        : (!editing ? autoCode : formatEmployeeCode(editing.employee_number));
+
       const validStatus = normalizeEmployeeStatus(form.status);
       const payload: Record<string, unknown> = {
         employee_number: empNum,
@@ -121,6 +201,14 @@ export default function EmployeesPage() {
         department: form.department.trim() || null,
         joining_date: form.joining_date || null,
         basic_salary: Number(form.basic_salary) || 0,
+        housing_allowance: Number(form.housing_allowance) || 0,
+        transport_allowance: Number(form.transport_allowance) || 0,
+        other_allowances: Number(form.other_allowances) || 0,
+        overtime_rate: form.overtime_rate ? Number(form.overtime_rate) : null,
+        overtime_costing_method: form.overtime_costing_method,
+        working_days_divisor: Number(form.working_days_divisor) || 30,
+        overtime_multiplier: Number(form.overtime_multiplier) || 1.25,
+        salary_effective_date: form.salary_effective_date || null,
         payment_method: form.payment_method || null,
         bank_name: form.bank_name.trim() || null,
         account_number: form.account_number.trim() || null,
@@ -130,15 +218,68 @@ export default function EmployeesPage() {
         status: toDbStatus(validStatus),
       };
 
+      let savedId = editing?.id;
+
       if (editing) {
         const { error: err } = await supabase.from("employees").update(payload).eq("id", editing.id);
-        if (err) throw err;
+        if (err) {
+          // If schema has not migrated extra columns yet, fallback to core payload
+          delete payload.housing_allowance;
+          delete payload.transport_allowance;
+          delete payload.other_allowances;
+          delete payload.overtime_rate;
+          delete payload.overtime_costing_method;
+          delete payload.working_days_divisor;
+          delete payload.overtime_multiplier;
+          delete payload.salary_effective_date;
+          const { error: fbErr } = await supabase.from("employees").update(payload).eq("id", editing.id);
+          if (fbErr) throw fbErr;
+        }
         setSuccess("Employee record updated successfully.");
       } else {
-        const { error: err } = await supabase.from("employees").insert({ ...payload, company_id: cid });
-        if (err) throw err;
+        const { data: newEmp, error: err } = await supabase
+          .from("employees")
+          .insert({ ...payload, company_id: cid })
+          .select("id")
+          .single();
+
+        if (err) {
+          delete payload.housing_allowance;
+          delete payload.transport_allowance;
+          delete payload.other_allowances;
+          delete payload.overtime_rate;
+          delete payload.overtime_costing_method;
+          delete payload.working_days_divisor;
+          delete payload.overtime_multiplier;
+          delete payload.salary_effective_date;
+          const { data: fbEmp, error: fbErr } = await supabase
+            .from("employees")
+            .insert({ ...payload, company_id: cid })
+            .select("id")
+            .single();
+          if (fbErr) throw fbErr;
+          savedId = fbEmp?.id;
+        } else {
+          savedId = newEmp?.id;
+        }
         setSuccess("Employee added successfully.");
       }
+
+      // Persist extended salary & overtime settings safely
+      if (savedId) {
+        await saveEmployeeSalarySettings(savedId, {
+          basic_salary: Number(form.basic_salary) || 0,
+          housing_allowance: Number(form.housing_allowance) || 0,
+          transport_allowance: Number(form.transport_allowance) || 0,
+          other_allowances: Number(form.other_allowances) || 0,
+          overtime_rate: form.overtime_rate ? Number(form.overtime_rate) : null,
+          overtime_costing_method: form.overtime_costing_method,
+          working_days_divisor: Number(form.working_days_divisor) || 30,
+          overtime_multiplier: Number(form.overtime_multiplier) || 1.25,
+          effective_date: form.salary_effective_date || null,
+        });
+      }
+
       setShowForm(false);
       setEditing(null);
       setForm(empty);
@@ -155,6 +296,7 @@ export default function EmployeesPage() {
       setSaving(false);
     }
   }
+
 
   async function deleteEmployee(id: string, name: string) {
     if (!confirm(`Are you sure you want to delete employee "${name}"? This action cannot be undone.`)) return;
@@ -184,7 +326,12 @@ export default function EmployeesPage() {
     await load();
   }
 
-  const filtered = employees.filter(e => [e.employee_number, e.first_name, e.designation, e.department, e.email, e.phone].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase()));
+  const filtered = employees.filter((e, idx) => {
+    const q = search.toLowerCase();
+    const code = formatEmployeeCode(e.employee_number, idx).toLowerCase();
+    const searchTarget = [code, e.employee_number, e.first_name, e.designation, e.department, e.email, e.phone].filter(Boolean).join(" ").toLowerCase();
+    return searchTarget.includes(q);
+  });
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -222,20 +369,33 @@ export default function EmployeesPage() {
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-3">No.</th><th className="px-4 py-3">Name</th><th className="px-4 py-3">Designation</th><th className="px-4 py-3">Department</th><th className="px-4 py-3 text-right">Basic Salary</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Actions</th>
+                <th className="px-4 py-3">No.</th><th className="px-4 py-3">Name</th><th className="px-4 py-3">Designation</th><th className="px-4 py-3">Department</th><th className="px-4 py-3 text-right">Monthly Package</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Actions</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map(emp => {
                   const norm = normalizeEmployeeStatus(emp.status);
                   const label = formatEmployeeStatus(emp.status);
+                  const totalPackage =
+                    (Number(emp.basic_salary) || 0) +
+                    (Number(emp.housing_allowance) || 0) +
+                    (Number(emp.transport_allowance) || 0) +
+                    (Number(emp.other_allowances) || 0);
+                  const hasAllowances = (emp.housing_allowance || emp.transport_allowance || emp.other_allowances);
+
                   return (
                     <tr key={emp.id} className={`hover:bg-slate-50 ${norm !== "active" ? "opacity-60" : ""}`}>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{emp.employee_number || "—"}</td>
+                      <td className="px-4 py-3 font-mono font-bold text-xs text-slate-700">{formatEmployeeCode(emp.employee_number, employees.indexOf(emp))}</td>
                       <td className="px-4 py-3"><div className="font-semibold text-slate-900">{emp.first_name}</div><div className="text-xs text-slate-400">{emp.email || ""}</div></td>
                       <td className="px-4 py-3 text-slate-600">{emp.designation || "—"}</td>
                       <td className="px-4 py-3 text-slate-600">{emp.department || "—"}</td>
-                      <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-900">AED {(emp.basic_salary || 0).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        <div className="font-semibold text-slate-900">AED {totalPackage.toFixed(2)}</div>
+                        {hasAllowances ? (
+                          <div className="text-[11px] text-slate-400">Basic: AED {(emp.basic_salary || 0).toFixed(2)}</div>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(label)}`}>{label}</span></td>
+
                       <td className="px-4 py-3"><div className="flex justify-center gap-2">
                         <button onClick={() => openEdit(emp)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Edit"><Pencil size={14} /></button>
                         <button onClick={() => toggleActive(emp)} className={`rounded-lg p-1.5 ${norm === "active" ? "text-slate-400 hover:bg-red-50 hover:text-red-500" : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"}`} title={norm === "active" ? "Deactivate" : "Activate"}><Power size={14} /></button>
@@ -264,7 +424,7 @@ export default function EmployeesPage() {
                 {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
                 <div><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Basic Info</p>
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="mb-1 block text-sm font-medium text-slate-700">Employee No.</label><input type="text" value={form.employee_number} onChange={e => f("employee_number", e.target.value)} placeholder="Auto-generated on save (EMP-…)" className={inp} /></div>
+                    <div><label className="mb-1 block text-sm font-medium text-slate-700">Employee No.</label><input type="text" value={form.employee_number} onChange={e => f("employee_number", e.target.value)} placeholder="Auto-generated (EMP-01, EMP-02…)" className={inp} /></div>
                     <div><label className="mb-1 block text-sm font-medium text-slate-700">Full Name <span className="text-red-500">*</span></label><input type="text" value={form.first_name} onChange={e => f("first_name", e.target.value)} required className={inp} /></div>
                     <div><label className="mb-1 block text-sm font-medium text-slate-700">Designation</label><input type="text" value={form.designation} onChange={e => f("designation", e.target.value)} className={inp} /></div>
                     <div><label className="mb-1 block text-sm font-medium text-slate-700">Department</label><input type="text" value={form.department} onChange={e => f("department", e.target.value)} className={inp} /></div>
@@ -279,9 +439,59 @@ export default function EmployeesPage() {
                     </div>
                   </div>
                 </div>
-                <div><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Salary</p>
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Payroll & Salary Settings (UAE)</p>
+                    <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                      Total Monthly Package: AED {(
+                        (Number(form.basic_salary) || 0) +
+                        (Number(form.housing_allowance) || 0) +
+                        (Number(form.transport_allowance) || 0) +
+                        (Number(form.other_allowances) || 0)
+                      ).toFixed(2)}
+                    </span>
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="mb-1 block text-sm font-medium text-slate-700">Basic Salary (AED)</label><input type="number" min="0" step="0.01" value={form.basic_salary} onChange={e=>f("basic_salary",e.target.value)} className={inp} /></div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Basic Salary (AED) <span className="text-red-500">*</span></label>
+                      <input type="number" min="0" step="0.01" value={form.basic_salary} onChange={e=>f("basic_salary",e.target.value)} required className={inp} />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Housing Allowance (AED)</label>
+                      <input type="number" min="0" step="0.01" value={form.housing_allowance} onChange={e=>f("housing_allowance",e.target.value)} className={inp} />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Transport Allowance (AED)</label>
+                      <input type="number" min="0" step="0.01" value={form.transport_allowance} onChange={e=>f("transport_allowance",e.target.value)} className={inp} />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Other Allowances (AED)</label>
+                      <input type="number" min="0" step="0.01" value={form.other_allowances} onChange={e=>f("other_allowances",e.target.value)} className={inp} />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Working Days Divisor Policy</label>
+                      <select value={form.working_days_divisor} onChange={e=>f("working_days_divisor",e.target.value)} className={sel}>
+                        <option value="30">30 Days (UAE Standard Calendar)</option>
+                        <option value="26">26 Days (Excluding Fridays)</option>
+                        <option value="28">28 Days</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Salary Calculation Method</label>
+                      <select value={form.overtime_costing_method} onChange={e=>f("overtime_costing_method",e.target.value as OvertimeCostingMethod)} className={sel}>
+                        <option value="auto">Method A: Auto UAE Rule (1.25x Basic)</option>
+                        <option value="hourly_rate">Method B: Manual Hourly Overtime Rate</option>
+                        <option value="manual_fixed">Method C: Manual Flat Charge</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Default Overtime Rate (AED/hr)</label>
+                      <input type="number" min="0" step="0.01" value={form.overtime_rate} onChange={e=>f("overtime_rate",e.target.value)} placeholder="e.g. 25.00 (Optional override)" className={inp} />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Rate Effective Date</label>
+                      <input type="date" value={form.salary_effective_date} onChange={e=>f("salary_effective_date",e.target.value)} className={inp} />
+                    </div>
                   </div>
                 </div>
                 <div><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Payment & Bank Info</p>

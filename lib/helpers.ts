@@ -241,6 +241,49 @@ export function statusClass(status: string): string {
   return map[status] ?? map[normalized] ?? map[status.replace(/_/g, " ")] ?? "bg-slate-100 text-slate-600";
 }
 
+/**
+ * Canonical employee number formatter.
+ * Strictly formats employee codes to standard EMP-01, EMP-02, EMP-03... sequence.
+ */
+export function formatEmployeeCode(rawCode: string | null | undefined, index?: number): string {
+  // When row index is provided, strictly enforce sequential EMP-01, EMP-02, EMP-03...
+  if (typeof index === "number" && !isNaN(index) && index >= 0) {
+    return `EMP-${String(index + 1).padStart(2, "0")}`;
+  }
+
+  if (rawCode) {
+    const trimmed = String(rawCode).trim();
+    // Check if raw code has year embedded, e.g. EMP-202601, EMP-2026-02, EMP-20260027
+    const yearMatch = trimmed.match(/(?:20\d\d[-_]?)0*(\d+)$/);
+    if (yearMatch) {
+      const n = parseInt(yearMatch[1], 10);
+      if (!isNaN(n) && n > 0) {
+        return `EMP-${String(n).padStart(2, "0")}`;
+      }
+    }
+
+    const match = trimmed.match(/^EMP-(\d+)$/i);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (!isNaN(n) && n > 0) {
+        const finalNum = n > 200000 ? (n % 1000) : n;
+        return `EMP-${String(finalNum).padStart(2, "0")}`;
+      }
+    }
+
+    const digits = trimmed.replace(/\D/g, "");
+    if (digits) {
+      const n = parseInt(digits, 10);
+      if (!isNaN(n) && n > 0) {
+        const finalNum = n > 200000 ? (n % 1000) : n;
+        return `EMP-${String(finalNum).padStart(2, "0")}`;
+      }
+    }
+  }
+
+  return "EMP-01";
+}
+
 export const UAE_EMIRATES = [
   "Abu Dhabi", "Dubai", "Sharjah", "Ajman",
   "Umm Al Quwain", "Ras Al Khaimah", "Fujairah",

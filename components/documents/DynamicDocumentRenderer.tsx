@@ -362,6 +362,100 @@ export function getDocumentPageCount(
   return computePaginationPlan(fitMeasurementSummaryLayout(layout, documentText), itemCount, itemsData, documentText).totalPages;
 }
 
+export function replaceDocumentTokens(
+  value: string,
+  providedData?: MockDocumentData,
+  layout?: Partial<DocumentLayout>,
+  company?: CompanyDocInfo | null
+): string {
+  if (!value) return "";
+  const brand = getBrandConfig(company);
+  const data = providedData || getSampleDocumentData(layout?.documentType || "tax_invoice");
+  const hr = data as unknown as Record<string, unknown>;
+  const getNum = (v: unknown): number | undefined => typeof v === "number" ? v : typeof v === "string" && !isNaN(Number(v)) ? Number(v) : undefined;
+  let str = value;
+
+  const tokens: Record<string, string | number | undefined> = {
+    company_name: brand.legal_name || brand.name || "",
+    "company.name": brand.name || "",
+    "company.legal_name": brand.legal_name || brand.name || "",
+    company_short: brand.name || "",
+    company_name_ar: brand.arabic_name || "",
+    "company.arabic_name": brand.arabic_name || "",
+    trn: brand.trn || "",
+    company_trn: brand.trn || "",
+    "company.trn": brand.trn || "",
+    address: brand.address || "",
+    company_address: brand.address || "",
+    "company.address": brand.address || "",
+    phone: brand.phone || "",
+    company_phone: brand.phone || "",
+    "company.phone": brand.phone || "",
+    email: brand.email || "",
+    company_email: brand.email || "",
+    "company.email": brand.email || "",
+    website: brand.website || "",
+    company_website: brand.website || "",
+    "company.website": brand.website || "",
+    bank_name: brand.bank_name || "",
+    iban: brand.iban || "",
+    swift: brand.swift_bic || "",
+    bank_account: brand.bank_account_name || brand.legal_name || "",
+
+    doc_number: data.document_number || "",
+    document_number: data.document_number || "",
+    doc_date: fmtDate(data.document_date) || "",
+    document_date: fmtDate(data.document_date) || "",
+    due_date: data.due_date ? fmtDate(data.due_date) : "",
+    supply_date: data.supply_date ? fmtDate(data.supply_date) : fmtDate(data.document_date) || "",
+    payment_terms: data.payment_terms || "",
+    project_name: data.project_name || "",
+    project_number: data.project_number || "",
+    site_location: data.location || "",
+    notes: data.notes || "",
+
+    customer_name: data.customer_name || "",
+    customer_trn: data.customer_trn || "",
+    customer_address: data.customer_address || "",
+    contact_person: data.contact_person || "",
+    contact_number: data.contact_number || "",
+    contact_email: data.contact_email || "",
+
+    supplier_name: data.supplier_name || data.customer_name || "",
+    supplier_trn: data.customer_trn || "",
+    supplier_address: data.customer_address || "",
+
+    subtotal: data.subtotal ? fmtAED(data.subtotal) : "0.00",
+    vat: data.vat_amount ? fmtAED(data.vat_amount) : "0.00",
+    vat_amount: data.vat_amount ? fmtAED(data.vat_amount) : "0.00",
+    vat_rate: data.vat_rate ? `${data.vat_rate}%` : "5%",
+    grand_total: data.total_amount ? fmtAED(data.total_amount) : "0.00",
+    total_amount: data.total_amount ? fmtAED(data.total_amount) : "0.00",
+    balance_due: fmtAED((data.total_amount || 0) - (data.advance_amount || 0)),
+    advance_amount: data.advance_amount ? fmtAED(data.advance_amount) : "0.00",
+    amount_in_words: numberToWordsEnglish(data.total_amount),
+
+    // HR & Payroll tokens
+    employee_name: typeof hr.employee_name === "string" ? hr.employee_name : data.customer_name || "",
+    employee_number: typeof hr.employee_number === "string" ? hr.employee_number : "",
+    designation: typeof hr.designation === "string" ? hr.designation : "",
+    department: typeof hr.department === "string" ? hr.department : "",
+    basic_salary: getNum(hr.basic_salary) !== undefined ? fmtAED(getNum(hr.basic_salary)!) : data.subtotal ? fmtAED(Number(data.subtotal) * 0.7) : "0.00",
+    allowances: getNum(hr.allowances) !== undefined ? fmtAED(getNum(hr.allowances)!) : "0.00",
+    gross_salary: data.subtotal ? fmtAED(data.subtotal) : "0.00",
+    overtime_hours: String(hr.overtime_hours || 0),
+    overtime_amount: getNum(hr.overtime_amount) !== undefined ? fmtAED(getNum(hr.overtime_amount)!) : "0.00",
+    deductions: getNum(hr.deductions) !== undefined ? fmtAED(getNum(hr.deductions)!) : "0.00",
+    net_salary: getNum(hr.net_salary) !== undefined ? fmtAED(getNum(hr.net_salary)!) : data.total_amount ? fmtAED(data.total_amount) : "0.00",
+  };
+
+  for (const [k, v] of Object.entries(tokens)) {
+    const val = v !== undefined && v !== null ? String(v) : "";
+    str = str.replaceAll(`{{${k}}}`, val).replaceAll(`{${k}}`, val);
+  }
+  return str;
+}
+
 export default function DynamicDocumentRenderer({
   layout: savedLayout,
   company,
@@ -474,71 +568,11 @@ export default function DynamicDocumentRenderer({
     opacity: elem.opacity ?? 1,
   });
 
-  const replaceDocumentTokens = (value: string): string => {
-    if (!value) return "";
-    let str = value;
-    const tokens: Record<string, string | number | undefined> = {
-      company_name: brand.legal_name || brand.name || "",
-      "company.name": brand.name || "",
-      "company.legal_name": brand.legal_name || brand.name || "",
-      company_short: brand.name || "",
-      company_name_ar: brand.arabic_name || "",
-      "company.arabic_name": brand.arabic_name || "",
-      trn: brand.trn || "",
-      company_trn: brand.trn || "",
-      "company.trn": brand.trn || "",
-      address: brand.address || "",
-      company_address: brand.address || "",
-      "company.address": brand.address || "",
-      phone: brand.phone || "",
-      company_phone: brand.phone || "",
-      "company.phone": brand.phone || "",
-      email: brand.email || "",
-      company_email: brand.email || "",
-      "company.email": brand.email || "",
-      website: brand.website || "",
-      company_website: brand.website || "",
-      "company.website": brand.website || "",
-      bank_name: brand.bank_name || "",
-      iban: brand.iban || "",
-      swift: brand.swift_bic || "",
-      bank_account: brand.bank_account_name || brand.legal_name || "",
-
-      doc_number: data.document_number || "",
-      document_number: data.document_number || "",
-      doc_date: fmtDate(data.document_date) || "",
-      document_date: fmtDate(data.document_date) || "",
-      due_date: data.due_date ? fmtDate(data.due_date) : "",
-      supply_date: data.supply_date ? fmtDate(data.supply_date) : fmtDate(data.document_date) || "",
-      payment_terms: data.payment_terms || "",
-      project_name: data.project_name || "",
-      project_number: data.project_number || "",
-      site_location: data.location || "",
-      notes: data.notes || "",
-
-      customer_name: data.customer_name || "",
-      customer_trn: data.customer_trn || "",
-      customer_address: data.customer_address || "",
-      contact_person: data.contact_person || "",
-      contact_number: data.contact_number || "",
-      contact_email: data.contact_email || "",
-
-      supplier_name: data.supplier_name || data.customer_name || "",
-      supplier_trn: data.customer_trn || "",
-      supplier_address: data.customer_address || "",
-
-      total_amount: data.total_amount ? String(data.total_amount) : "0.00",
-      amount_in_words: numberToWordsEnglish(data.total_amount),
-    };
-
-    for (const [k, v] of Object.entries(tokens)) {
-      const val = v !== undefined && v !== null ? String(v) : "";
-      str = str.replaceAll(`{{${k}}}`, val).replaceAll(`{${k}}`, val);
-    }
-    return str;
+  const replaceTokens = (value: string): string => {
+    return replaceDocumentTokens(value, data, layout, company);
   };
 
-  const replaceCompanyTokens = replaceDocumentTokens;
+  const replaceCompanyTokens = replaceTokens;
 
   // Render individual element content based on its type
   function renderElementContent(elem: LayoutElement) {
@@ -984,7 +1018,7 @@ export default function DynamicDocumentRenderer({
           >
             {elem.customText ? (
               <div className="w-full h-full min-h-0 overflow-auto whitespace-pre-line leading-relaxed select-text" style={{ fontSize: `${metaPt}pt` }}>
-                {replaceDocumentTokens(elem.customText)}
+                {replaceTokens(elem.customText)}
               </div>
             ) : (
               <>
@@ -1717,7 +1751,7 @@ export default function DynamicDocumentRenderer({
               ...elementAppearance(elem),
             }}
           >
-            {elem.customText || "Custom Text Element"}
+            {elem.customText ? replaceTokens(elem.customText) : "Custom Text Element"}
           </div>
         );
       }

@@ -2,7 +2,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, Clock, X, Save, Loader2, Pencil, CheckCircle2, Trash2 } from "lucide-react";
-import { getCompanyId, statusClass, todayISO } from "@/lib/helpers";
+import { getCompanyId, statusClass, todayISO, formatEmployeeCode } from "@/lib/helpers";
 
 type Employee = { id: string; first_name: string | null; employee_number: string | null; basic_salary: number | null };
 type OT = { id: string; company_id: string; employee_id: string | null; overtime_date: string | null; hours: number | null; approval_status: string | null; approved_by: string | null; created_at: string | null };
@@ -29,7 +29,11 @@ function formatApprovalStatus(status: unknown): string {
   return APPROVAL_OPTIONS.find(option => option.value === normalized)?.label || "Pending";
 }
 
+import MonthlyAttendanceOvertimeSheet from "@/components/attendance/MonthlyAttendanceOvertimeSheet";
+import { FileSpreadsheet } from "lucide-react";
+
 export default function OvertimePage() {
+  const [viewMode, setViewMode] = useState<"monthly" | "list">("monthly");
   const [records, setRecords] = useState<OT[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [form, setForm] = useState<OTForm>(empty);
@@ -160,6 +164,10 @@ export default function OvertimePage() {
   const pending = records.filter(r => normalizeApprovalStatus(r.approval_status) === "pending").length;
   const approvedCount = records.filter(r => normalizeApprovalStatus(r.approval_status) === "approved").length;
 
+  if (viewMode === "monthly") {
+    return <MonthlyAttendanceOvertimeSheet initialTab="overtime" onSwitchToLegacy={() => setViewMode("list")} />;
+  }
+
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
@@ -168,7 +176,18 @@ export default function OvertimePage() {
             <div className="rounded-xl bg-slate-900 p-2.5 text-white"><Clock size={22} /></div>
             <div><h1 className="text-2xl font-bold text-slate-900">Overtime</h1><p className="text-sm text-slate-500">Track and approve employee overtime</p></div>
           </div>
-          <button onClick={openAdd} className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"><Plus size={18} />Add OT Record</button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setViewMode("monthly")}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-2xs"
+            >
+              <FileSpreadsheet size={16} className="text-emerald-600" />
+              <span>Monthly Workbook View</span>
+            </button>
+            <button onClick={openAdd} className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
+              <Plus size={18} />Add OT Record
+            </button>
+          </div>
         </div>
       </header>
       <div className="mx-auto max-w-7xl px-6 py-8">
@@ -183,7 +202,7 @@ export default function OvertimePage() {
           <div className="relative flex-1 min-w-[200px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none" /></div>
           <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none appearance-none">
             <option value="">All Employees</option>
-            {employees.map(e => <option key={e.id} value={e.id}>{e.employee_number ? `${e.employee_number} - ` : ""}{e.first_name}</option>)}
+            {employees.map((e, idx) => <option key={e.id} value={e.id}>{formatEmployeeCode(e.employee_number, idx)} - {e.first_name}</option>)}
           </select>
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none appearance-none">
             <option value="">All Status</option>{APPROVAL_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -200,7 +219,7 @@ export default function OvertimePage() {
               <tbody className="divide-y divide-slate-100">
                 {filtered.map(r => (
                   <tr key={r.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3"><div className="font-semibold text-slate-900">{empMap[r.employee_id || ""]?.first_name || "—"}</div></td>
+                    <td className="px-4 py-3"><div className="font-semibold text-slate-900">{empMap[r.employee_id || ""]?.first_name || "—"}</div><div className="font-mono text-xs text-slate-400 font-bold">{formatEmployeeCode(empMap[r.employee_id || ""]?.employee_number)}</div></td>
                     <td className="px-4 py-3 text-slate-600">{r.overtime_date || "—"}</td>
                     <td className="px-4 py-3 text-center text-slate-600 font-bold">{r.hours ?? 0} hrs</td>
                     <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(formatApprovalStatus(r.approval_status))}`}>{formatApprovalStatus(r.approval_status)}</span></td>
@@ -232,7 +251,7 @@ export default function OvertimePage() {
                 <div><label className="mb-1 block text-sm font-medium text-slate-700">Employee <span className="text-red-500">*</span></label>
                   <select value={form.employee_id} onChange={e => f("employee_id", e.target.value)} required className={sel}>
                     <option value="">— Select Employee —</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.employee_number ? `${e.employee_number} - ` : ""}{e.first_name}</option>)}
+                    {employees.map((e, idx) => <option key={e.id} value={e.id}>{formatEmployeeCode(e.employee_number, idx)} - {e.first_name}</option>)}
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">

@@ -48,6 +48,7 @@ export default function EmployeePaymentVouchersPage() {
 
   // Print voucher modal
   const [activeVoucher, setActiveVoucher] = useState<PaymentVoucherData | null>(null);
+  const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
 
   async function loadData() {
     try {
@@ -82,6 +83,24 @@ export default function EmployeePaymentVouchersPage() {
   useEffect(() => {
     void Promise.resolve().then(loadData);
   }, []);
+
+  async function handleMarkPaid(ssId: string) {
+    if (!window.confirm("Confirm marking this salary payment voucher as Paid / Disbursed? This finalizes the statement and prevents duplicate disbursements.")) return;
+    setMarkingPaidId(ssId);
+    try {
+      const { error } = await supabase
+        .from("salary_statements")
+        .update({ status: "paid", payment_date: todayISO() })
+        .eq("id", ssId);
+      if (error) throw error;
+      await loadData();
+    } catch (err) {
+      console.error("Error marking voucher as paid:", err);
+      alert("Failed to update voucher status: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setMarkingPaidId(null);
+    }
+  }
 
   function handleOpenVoucher(ss: SalaryStatement, idx: number) {
     const emp = ss.employee_id ? empMap[ss.employee_id] : null;
@@ -257,22 +276,36 @@ export default function EmployeePaymentVouchersPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          ss.status === "Paid"
+                          (ss.status || "").toLowerCase() === "paid"
                             ? "bg-emerald-100 text-emerald-800"
                             : "bg-blue-100 text-blue-800"
                         }`}>
-                          {ss.status || "Finalized"}
+                          {(ss.status || "").toLowerCase() === "paid" ? "Paid & Disbursed" : ss.status || "Finalized"}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenVoucher(ss, idx)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold transition-colors"
-                        >
-                          <Printer size={13} /> Print Voucher
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          {(ss.status || "").toLowerCase() !== "paid" && (
+                            <button
+                              type="button"
+                              onClick={() => handleMarkPaid(ss.id)}
+                              disabled={markingPaidId === ss.id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50 text-xs font-semibold transition-colors disabled:opacity-50"
+                              title="Mark as paid and lock statement"
+                            >
+                              <FileCheck2 size={12} /> {markingPaidId === ss.id ? "Marking..." : "Mark Paid"}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenVoucher(ss, idx)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-semibold transition-colors"
+                          >
+                            <Printer size={13} /> Print
+                          </button>
+                        </div>
                       </td>
+
                     </tr>
                   );
                 })

@@ -440,6 +440,128 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     position: static !important;
   }
 
+  /* Attendance & Overtime Dedicated Landscape Sheet Overrides */
+  html:has(.print-attendance-sheet),
+  body:has(.print-attendance-sheet) {
+    width: 297mm !important;
+    min-width: 297mm !important;
+    max-width: 297mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    overflow: visible !important;
+  }
+
+  body:has(.print-attendance-sheet) .app-screen-content,
+  body:has(.print-attendance-sheet) .no-print,
+  body:has(.print-attendance-sheet) > *:not(:has(.print-attendance-sheet)) {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    overflow: hidden !important;
+  }
+
+  body:has(.print-attendance-sheet) .print-sheet-modal-backdrop {
+    position: static !important;
+    display: block !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  body:has(.print-attendance-sheet) .print-sheet-modal-dialog {
+    position: static !important;
+    display: block !important;
+    max-width: none !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    overflow: visible !important;
+  }
+
+  .print-attendance-sheet {
+    width: 287mm !important;
+    max-width: 287mm !important;
+    box-sizing: border-box !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    overflow: hidden !important;
+  }
+
+  .print-attendance-sheet table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    break-inside: avoid !important;
+  }
+
+  /* Density tiers ensuring 1-page fit across 10, 20, and 30 employees */
+  .print-attendance-sheet.density-spacious table th,
+  .print-attendance-sheet.density-spacious table td {
+    padding: 3px 2px !important;
+    font-size: 8.5pt !important;
+    line-height: 1.25 !important;
+  }
+
+  .print-attendance-sheet.density-compact table th,
+  .print-attendance-sheet.density-compact table td {
+    padding: 2px 1.5px !important;
+    font-size: 8pt !important;
+    line-height: 1.2 !important;
+  }
+
+  .print-attendance-sheet.density-tight table th,
+  .print-attendance-sheet.density-tight table td {
+    padding: 1px 1px !important;
+    font-size: 7.2pt !important;
+    line-height: 1.15 !important;
+  }
+
+  .attendance-print-signatures {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .attendance-print-signatures > div {
+    flex: 1 1 0% !important;
+    text-align: center !important;
+    padding: 0 12px !important;
+  }
+
+  .attendance-print-page-break {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
   /* Preserve URLs, identifiers and bank coordinates without letting a single
      long token widen or clip an A4 page. */
   .print-document,
@@ -555,6 +677,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     transform: none !important;
     float: none !important;
     inset: auto !important;
+  }
+
+  main:has(.print-attendance-sheet),
+  div:has(> .print-sheet-modal-backdrop),
+  div:has(.print-attendance-sheet) {
+    width: 297mm !important;
+    max-width: 297mm !important;
   }
 
   /* Mobile preview uses a dark padded canvas and an inline scale transform on

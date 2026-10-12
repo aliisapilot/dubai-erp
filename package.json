@@ -17,16 +17,19 @@
   "dependencies": {
     "@supabase/server": "^1.8.0",
     "@supabase/supabase-js": "^2.116.0",
+    "jszip": "^3.10.2",
     "lucide-react": "^1.47.0",
     "next": "16.3.5",
     "pdfjs-dist": "^4.10.38",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@cloudflare/next-on-pages": "^1.13.16",
     "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/postcss": "^4",
+    "@types/jszip": "^3.4.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

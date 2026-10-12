@@ -10,6 +10,15 @@ import {
   formatSalaryStatementStatus,
   parseSalaryStatementError,
 } from "@/lib/payrollTypes";
+import {
+  getEmployeeSalarySettings,
+  getMonthlyAdjustmentsForPeriod,
+  calculateAttendanceTotals,
+  calculateOvertimeCharge,
+  calculateCompletePayrollBreakdown,
+  AttendanceStatus,
+  DEFAULT_MONTHLY_ADJUSTMENT,
+} from "@/lib/payrollWorkflowService";
 import SalarySlipTemplate, { SalarySlipData } from "@/components/documents/SalarySlipTemplate";
 import EmployeePaymentVoucherTemplate, { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -125,7 +134,7 @@ function calcTotals(f: SSForm) {
     (Number(f.leave_deduction) || 0) +
     (Number(f.other_deductions) || 0);
 
-  return { gross, deductions, net: gross - deductions };
+  return { gross, deductions, net: Math.max(0, gross - deductions) };
 }
 
 export default function SalaryStatementsPage() {
@@ -141,6 +150,16 @@ export default function SalaryStatementsPage() {
   const [viewRec, setViewRec] = useState<SS | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [syncingWorkbook, setSyncingWorkbook] = useState(false);
+  const [workbookInsight, setWorkbookInsight] = useState<{
+    presentDays: number;
+    payableDays: number;
+    overtimeHours: number;
+    overtimeCharge: number;
+    method: string;
+    explanation: string;
+    isApproved: boolean;
+  } | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -165,26 +184,123 @@ export default function SalaryStatementsPage() {
 
   const ff = (k: keyof SSForm, v: string) => setForm(c => ({ ...c, [k]: v }));
 
-  function onEmpChange(empId: string) {
-    const emp = employees.find(e => e.id === empId);
-    if (!emp) { setForm(c => ({ ...c, employee_id: empId })); return; }
-    // Load OT for selected month
-    const yr = Number(form.payroll_year) || now.getFullYear();
-    const mo = Number(form.payroll_month) || now.getMonth()+1;
-    const period = `${yr}-${String(mo).padStart(2,"0")}`;
-    supabase.from("overtime").select("hours").eq("employee_id", empId).in("approval_status",["approved", "Approved"]).gte("overtime_date", `${period}-01`).lte("overtime_date", `${period}-31`)
-      .then(({data}) => {
-        const totalHours = (data||[]).reduce((s,r) => s + (Number(r.hours)||0), 0);
-        const hourly = (Number(emp.basic_salary) || 0) / 30 / 8;
-        const otTotal = Math.round(totalHours * hourly * 1.25);
-        setForm(c => ({
-          ...c,
-          employee_id: empId,
-          basic_salary: String(emp.basic_salary??0),
-          overtime_amount: String(otTotal),
-        }));
+  async function syncFromWorkbook(empId: string, yrVal: string, moVal: string) {
+    if (!empId) return;
+    setSyncingWorkbook(true);
+    try {
+      const yr = Number(yrVal) || now.getFullYear();
+      const mo = Number(moVal) || (now.getMonth() + 1);
+      const period = `${yr}-${String(mo).padStart(2, "0")}`;
+      const daysInMonth = new Date(yr, mo, 0).getDate();
+      const cid = await getCompanyId();
+
+      // 1. Employee salary settings
+      const empSettings = await getEmployeeSalarySettings(empId);
+      const basicSalary = empSettings.basic_salary || 0;
+      const divisor = empSettings.working_days_divisor || 30;
+
+      // 2. Fetch monthly adjustments (Method A, B, C, overtime rate, manual charge, adjustments)
+      const adjustments = await getMonthlyAdjustmentsForPeriod(cid, period);
+      const adj = adjustments[empId] || DEFAULT_MONTHLY_ADJUSTMENT;
+
+      // 3. Fetch attendance
+      const { data: attData } = await supabase
+        .from("attendance")
+        .select("attendance_date, status")
+        .eq("employee_id", empId)
+        .gte("attendance_date", `${period}-01`)
+        .lte("attendance_date", `${period}-${String(daysInMonth).padStart(2, "0")}`);
+
+      const statusList: (AttendanceStatus | "HD" | "")[] = (attData || []).map((r) => {
+        const s = (r.status || "").toLowerCase();
+        if (s === "present") return "present";
+        if (s === "absent") return "absent";
+        if (s === "half_day" || s === "hd") return "HD";
+        if (s === "leave") return "leave";
+        if (s === "holiday") return "holiday";
+        return "";
       });
+
+      const attCalc = calculateAttendanceTotals(statusList, daysInMonth, divisor, {
+        presentAdj: adj.present_days_adjustment,
+        payableAdj: adj.payable_days_adjustment,
+      });
+
+      // 4. Fetch overtime hours for this month
+      const { data: otData } = await supabase
+        .from("overtime")
+        .select("hours, approval_status")
+        .eq("employee_id", empId)
+        .gte("overtime_date", `${period}-01`)
+        .lte("overtime_date", `${period}-${String(daysInMonth).padStart(2, "0")}`);
+
+      const approvedOtRows = (otData || []).filter(
+        (r) => (r.approval_status || "").toLowerCase() === "approved"
+      );
+      const totalOtHours = approvedOtRows.reduce((sum, r) => sum + (Number(r.hours) || 0), 0);
+
+      const otCalc = calculateOvertimeCharge(
+        basicSalary,
+        totalOtHours,
+        adj,
+        {
+          workingDaysDivisor: divisor,
+          regularOtMultiplier: empSettings.overtime_multiplier || 1.25,
+          nightWeekendOtMultiplier: 1.50,
+        }
+      );
+
+
+      // 5. Complete breakdown
+      const breakdown = calculateCompletePayrollBreakdown({
+        basicSalary: basicSalary,
+        housingAllowance: empSettings.housing_allowance,
+        transportAllowance: empSettings.transport_allowance,
+        otherAllowances: empSettings.other_allowances,
+        standardDays: divisor,
+        payableDays: attCalc.payableDays,
+        overtimeCharge: otCalc.totalCharge,
+        advanceDeduction: Number(form.advance_deduction) || 0,
+        otherDeductions: Number(form.other_deductions) || 0,
+      });
+
+      // Update form
+      setForm((c) => ({
+        ...c,
+        employee_id: empId,
+        basic_salary: String(breakdown.basicSalary),
+        housing_allowance: String(breakdown.housingAllowance),
+        transport_allowance: String(breakdown.transportAllowance),
+        other_allowances: String(breakdown.otherAllowances),
+        overtime_amount: String(breakdown.overtimeCharge),
+        absence_deduction: String(breakdown.absenceDeduction),
+      }));
+
+      setWorkbookInsight({
+        presentDays: attCalc.actualAttendanceDays,
+        payableDays: attCalc.payableDays,
+        overtimeHours: otCalc.effectiveHours,
+        overtimeCharge: otCalc.totalCharge,
+        method: otCalc.method,
+        explanation: otCalc.explanation,
+        isApproved: otCalc.isApproved,
+      });
+    } catch (err) {
+      console.error("Error syncing from workbook:", err);
+    } finally {
+      setSyncingWorkbook(false);
+    }
   }
+
+  function onEmpChange(empId: string) {
+    setForm((c) => ({ ...c, employee_id: empId }));
+    if (empId) {
+      void syncFromWorkbook(empId, form.payroll_year, form.payroll_month);
+    } else {
+      setWorkbookInsight(null);
+    }
+  }
+
 
   const { gross: fGross, deductions: fDed, net: fNet } = calcTotals(form);
   const empMap = Object.fromEntries(employees.map(e => [e.id, e]));
@@ -247,12 +363,49 @@ export default function SalaryStatementsPage() {
     setError("");
     setSuccess("");
 
+    if (editing && normalizeSalaryStatementStatus(editing.status) === "paid") {
+      setError("This salary statement is marked as Paid and finalized. It cannot be modified.");
+      setSaving(false);
+      return;
+    }
+
     const { gross, deductions, net } = calcTotals(form);
     const yr = Number(form.payroll_year) || now.getFullYear();
     const mo = Number(form.payroll_month) || (now.getMonth() + 1);
     const payrollDate = `${yr}-${String(mo).padStart(2, "0")}-01`;
 
     const cid = await getCompanyId();
+
+    // Check if new statement duplicates an existing paid statement
+    if (!editing) {
+      const { data: existingCheck } = await supabase
+        .from("salary_statements")
+        .select("id, status")
+        .eq("company_id", cid)
+        .eq("employee_id", form.employee_id)
+        .gte("payroll_month", payrollDate)
+        .lte("payroll_month", `${yr}-${String(mo).padStart(2, "0")}-31`)
+        .maybeSingle();
+
+      if (existingCheck && normalizeSalaryStatementStatus(existingCheck.status) === "paid") {
+        setError("A paid salary statement already exists for this employee and period. Cannot create a duplicate.");
+        setSaving(false);
+        return;
+      }
+    }
+
+    // Append manual audit note if values were manually altered
+    let finalNotes = form.notes || "";
+    if (editing) {
+      const wasModified =
+        Number(form.basic_salary) !== (editing.basic_salary ?? 0) ||
+        Number(form.overtime_amount) !== (editing.overtime_amount ?? 0) ||
+        Number(form.absence_deduction) !== (editing.absence_deduction ?? 0);
+      if (wasModified && !finalNotes.includes("[Manual Adjustment]")) {
+        const auditEntry = `[Manual Adjustment ${new Date().toISOString().slice(0, 10)}]: Basic=${form.basic_salary}, OT=${form.overtime_amount}, AbsDeduct=${form.absence_deduction}`;
+        finalNotes = finalNotes ? `${finalNotes}\n${auditEntry}` : auditEntry;
+      }
+    }
 
     const payload = {
       company_id: cid,
@@ -278,7 +431,7 @@ export default function SalaryStatementsPage() {
       payment_method: form.payment_method,
       payment_date: form.payment_date || null,
       status: normalizeSalaryStatementStatus(form.status),
-      notes: form.notes || null,
+      notes: finalNotes || null,
     };
 
     let res;
@@ -289,6 +442,7 @@ export default function SalaryStatementsPage() {
     } else {
       res = await supabase.from("salary_statements").insert(payload);
     }
+
 
     if (res.error) {
       const errMsg = (res.error.message || "").toLowerCase();
@@ -499,9 +653,49 @@ export default function SalaryStatementsPage() {
                   <div className="col-span-1"><label className="mb-1 block text-sm font-medium text-slate-700">Employee <span className="text-red-500">*</span></label>
                     <select value={form.employee_id} onChange={e=>onEmpChange(e.target.value)} required className={sel}><option value="">— Select —</option>{employees.map(e=><option key={e.id} value={e.id}>{e.first_name || e.employee_number || "Unnamed employee"}</option>)}</select>
                   </div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Year</label><input type="number" step="1" min="2020" max="2099" value={form.payroll_year} onChange={e=>ff("payroll_year",e.target.value)} className={inp} /></div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Month</label><select value={form.payroll_month} onChange={e=>ff("payroll_month",e.target.value)} className={sel}>{MONTHS.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Year</label><input type="number" step="1" min="2020" max="2099" value={form.payroll_year} onChange={e=>{ ff("payroll_year",e.target.value); if(form.employee_id) void syncFromWorkbook(form.employee_id, e.target.value, form.payroll_month); }} className={inp} /></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Month</label><select value={form.payroll_month} onChange={e=>{ ff("payroll_month",e.target.value); if(form.employee_id) void syncFromWorkbook(form.employee_id, form.payroll_year, e.target.value); }} className={sel}>{MONTHS.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select></div>
                 </div>
+
+                {/* Workbook Attendance & Overtime Insights Card */}
+                {workbookInsight && (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3.5 text-xs text-blue-900 space-y-1.5">
+                    <div className="flex items-center justify-between font-semibold">
+                      <span className="flex items-center gap-1.5">
+                        <span className="inline-block w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                        Integrated Workbook Data for {MONTHS[Number(form.payroll_month) - 1]} {form.payroll_year}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void syncFromWorkbook(form.employee_id, form.payroll_year, form.payroll_month)}
+                        disabled={syncingWorkbook}
+                        className="text-blue-700 underline hover:text-blue-900 text-[11px] font-medium"
+                      >
+                        {syncingWorkbook ? "Syncing..." : "Re-sync from Workbook"}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-blue-200/60">
+                      <div>
+                        <span className="text-blue-600 block text-[11px]">Actual Present</span>
+                        <span className="font-bold">{workbookInsight.presentDays} days</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-600 block text-[11px]">Payable Days</span>
+                        <span className="font-bold">{workbookInsight.payableDays} / 30</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-600 block text-[11px]">Approved OT</span>
+                        <span className="font-bold">{workbookInsight.overtimeHours} hrs ({fmtAED(workbookInsight.overtimeCharge)})</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-600 block text-[11px]">Costing Method</span>
+                        <span className="font-medium truncate block">{workbookInsight.method.toUpperCase()}</span>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-blue-700/80 italic">{workbookInsight.explanation}</p>
+                  </div>
+                )}
+
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Earnings (AED)</p>
                 <div className="grid grid-cols-2 gap-4">
                   {([["basic_salary","Basic Salary Pay"],["housing_allowance","Housing Allowance"],["transport_allowance","Transport Allowance"],["other_allowances","Other Allowances"],["friday_pay","Friday / Weekend Pay"],["overtime_amount","Overtime Amount"],["bonus","Bonus"]] as [keyof SSForm, string][]).map(([k,l]) => (
@@ -533,9 +727,10 @@ export default function SalaryStatementsPage() {
                     </select>
                   </div>
                 </div>
-                <div><label className="mb-1 block text-sm font-medium text-slate-700">Notes</label><textarea value={form.notes} onChange={e=>ff("notes",e.target.value)} rows={2} className={inp} /></div>
+                <div><label className="mb-1 block text-sm font-medium text-slate-700">Notes / Audit Remarks</label><textarea value={form.notes} onChange={e=>ff("notes",e.target.value)} rows={2} placeholder="Optional adjustment remarks or audit log details" className={inp} /></div>
               </form>
             </div>
+
             <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
               <button type="button" onClick={closeForm} disabled={saving} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
               <button type="submit" form="ss-form" disabled={saving} className="flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">

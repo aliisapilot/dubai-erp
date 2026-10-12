@@ -2,7 +2,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, CalendarCheck, X, Save, Loader2, Pencil, Trash2 } from "lucide-react";
-import { getCompanyId, statusClass, todayISO } from "@/lib/helpers";
+import { getCompanyId, statusClass, todayISO, formatEmployeeCode } from "@/lib/helpers";
 
 type Employee = { id: string; first_name: string | null; employee_number: string | null };
 type Att = { id: string; company_id: string; employee_id: string | null; attendance_date: string | null; check_in: string | null; check_out: string | null; total_hours: number | null; regular_hours: number | null; overtime_hours: number | null; status: string | null; remarks: string | null };
@@ -32,7 +32,11 @@ function formatAttendanceStatus(status: unknown): string {
   return STATUS_OPTIONS.find(option => option.value === normalized)?.label || "Present";
 }
 
+import MonthlyAttendanceOvertimeSheet from "@/components/attendance/MonthlyAttendanceOvertimeSheet";
+import { FileSpreadsheet } from "lucide-react";
+
 export default function AttendancePage() {
+  const [viewMode, setViewMode] = useState<"monthly" | "list">("monthly");
   const [records, setRecords] = useState<Att[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [form, setForm] = useState<AttForm>(empty);
@@ -139,6 +143,10 @@ export default function AttendancePage() {
   const presentToday = records.filter(r => r.attendance_date === todayISO() && normalizeAttendanceStatus(r.status) === "present").length;
   const absentToday = records.filter(r => r.attendance_date === todayISO() && normalizeAttendanceStatus(r.status) === "absent").length;
 
+  if (viewMode === "monthly") {
+    return <MonthlyAttendanceOvertimeSheet initialTab="attendance" onSwitchToLegacy={() => setViewMode("list")} />;
+  }
+
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
@@ -150,7 +158,18 @@ export default function AttendancePage() {
               <p className="text-xs sm:text-sm text-slate-500 hidden sm:block">Track daily employee attendance</p>
             </div>
           </div>
-          <button onClick={openAdd} className="flex items-center gap-2 rounded-lg bg-slate-900 px-3 sm:px-4 py-2 sm:py-2.5 text-sm font-semibold text-white hover:bg-slate-800 shrink-0"><Plus size={16} /><span className="hidden sm:inline">Add Record</span><span className="sm:hidden">Add</span></button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setViewMode("monthly")}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-2xs"
+            >
+              <FileSpreadsheet size={16} className="text-emerald-600" />
+              <span>Monthly Workbook View</span>
+            </button>
+            <button onClick={openAdd} className="flex items-center gap-2 rounded-lg bg-slate-900 px-3 sm:px-4 py-2 sm:py-2.5 text-sm font-semibold text-white hover:bg-slate-800 shrink-0">
+              <Plus size={16} /><span className="hidden sm:inline">Add Record</span><span className="sm:hidden">Add</span>
+            </button>
+          </div>
         </div>
       </header>
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-4 sm:py-8">
@@ -184,7 +203,7 @@ export default function AttendancePage() {
                 <tbody className="divide-y divide-slate-100">
                   {filtered.map(r => (
                     <tr key={r.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3"><div className="font-semibold text-slate-900 whitespace-nowrap">{empMap[r.employee_id||""]?.first_name||"—"}</div><div className="text-xs text-slate-400">{empMap[r.employee_id||""]?.employee_number||""}</div></td>
+                      <td className="px-4 py-3"><div className="font-semibold text-slate-900 whitespace-nowrap">{empMap[r.employee_id||""]?.first_name||"—"}</div><div className="font-mono text-xs text-slate-400 font-bold">{formatEmployeeCode(empMap[r.employee_id||""]?.employee_number)}</div></td>
                       <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{r.attendance_date||"—"}</td>
                       <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{r.check_in||"—"}</td>
                       <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{r.check_out||"—"}</td>
@@ -225,7 +244,7 @@ export default function AttendancePage() {
                 <div><label className="mb-1 block text-sm font-medium text-slate-700">Employee <span className="text-red-500">*</span></label>
                   <select value={form.employee_id} onChange={e=>f("employee_id",e.target.value)} required className={sel}>
                     <option value="">— Select Employee —</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.employee_number ? `${e.employee_number} - ` : ""}{e.first_name}</option>)}
+                    {employees.map((e, idx) => <option key={e.id} value={e.id}>{formatEmployeeCode(e.employee_number, idx)} - {e.first_name}</option>)}
                   </select>
                 </div>
                 <div><label className="mb-1 block text-sm font-medium text-slate-700">Date <span className="text-red-500">*</span></label><input type="date" value={form.attendance_date} onChange={e=>f("attendance_date",e.target.value)} required className={inp} /></div>

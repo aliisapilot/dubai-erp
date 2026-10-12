@@ -1820,6 +1820,30 @@ export async function saveDocumentLayout(
 }
 
 /**
+ * Saves an imported template as a brand-new template in Supabase document_templates.
+ * If isDefault is true, also activates it as the default selection for this document type.
+ */
+export async function saveImportedDocumentLayout(
+  companyId: string | null | undefined,
+  docType: DocumentTypeId,
+  layout: DocumentLayout,
+  selectionVersion = 0,
+  templateName = layout.templateName,
+  isDefault = true
+): Promise<{ success: boolean; error?: string; target: 'database' | 'local'; revision?: CloudRevision; updatedAt?: string }> {
+  preserveDesignDraft(companyId, docType, layout);
+  try {
+    if (!companyId) throw new Error('No active company selected.');
+    const token: CloudRevision = { templateId: null, version: 0, selectionVersion };
+    const saved = await documentCloud.save(companyId, docType, layout, token, templateName, isDefault);
+    return { success: true, target: 'database', revision: revisionOf(saved), updatedAt: saved.template?.updated_at };
+  } catch (failure) {
+    const error = cloudError(failure);
+    return { success: false, target: 'local', error: error.message };
+  }
+}
+
+/**
  * Resets the layout of a document type back to the professional default.
  */
 export async function resetDocumentLayout(

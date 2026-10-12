@@ -8,6 +8,7 @@ import {
   LayoutElement,
   loadDocumentLayout,
   saveDocumentLayout,
+  saveImportedDocumentLayout,
   documentCloud,
   createDefaultLayout,
   applyVisualSettingsToLayout,
@@ -26,6 +27,7 @@ import TopToolbar from "./TopToolbar";
 import LeftSidebar from "./LeftSidebar";
 import RightInspector from "./RightInspector";
 import ApplyToOthersModal from "./ApplyToOthersModal";
+import ImportDesignModal from "./ImportDesignModal";
 import DocumentCanvas from "./DocumentCanvas";
 import { CompanyDocInfo } from "../documents/DocHeader";
 import DocumentPreviewModal from "./DocumentPreviewModal";
@@ -143,6 +145,7 @@ export default function DocumentDesigner() {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showTestSheetModal, setShowTestSheetModal] = useState(false);
   const [showValidatorModal, setShowValidatorModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [styleModalMode, setStyleModalMode] = useState<"save" | "manage" | null>(null);
   const [styleSaveAsNew, setStyleSaveAsNew] = useState(false);
   const [styleModalBusy, setStyleModalBusy] = useState(false);
@@ -877,6 +880,69 @@ export default function DocumentDesigner() {
     } catch(error) { const failure=cloudError(error);setCloudErrorMessage(failure.message);setCloudConflict(failure.code==='CONFLICT'); }
   }, [companyId,persistedLayout,cloudRevision,selectedDocType,loadingCloud]);
 
+  // ── Import Template Handlers ───────────────────────────────────────────────
+  const handleApplyImportedLayout = useCallback((importedLayout: DocumentLayout, makeDefault: boolean) => {
+    if (importedLayout.documentType !== selectedDocType) {
+      setSelectedDocType(importedLayout.documentType);
+    }
+    pushHistory(importedLayout);
+    setSelectedElementId(null);
+    setShowImportModal(false);
+    setNotification({
+      message: `Imported template "${importedLayout.templateName}" loaded. Click "Save" to save to cloud.${makeDefault ? ' (Marked for default on save)' : ''}`,
+      type: "success",
+    });
+    setTimeout(() => setNotification(null), 4000);
+  }, [pushHistory, selectedDocType]);
+
+  const handleSaveImportedToCloud = useCallback(async (importedLayout: DocumentLayout, name: string, makeDefault: boolean) => {
+    if (!companyId) {
+      setNotification({ message: "Please select an active company first.", type: "error" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await saveImportedDocumentLayout(
+        companyId,
+        importedLayout.documentType,
+        { ...importedLayout, templateName: name },
+        cloudRevision?.selectionVersion || 0,
+        name,
+        makeDefault
+      );
+      if (!res.success) {
+        throw new Error(res.error || "Failed to save imported template to Supabase.");
+      }
+
+      if (importedLayout.documentType === selectedDocType) {
+        if (makeDefault) {
+          setCloudRevision(res.revision);
+          setEditingRevision(res.revision);
+          setPersistedLayout(importedLayout);
+          setBaseline(JSON.stringify(importedLayout));
+          setLayout(importedLayout);
+          setSelectedStylePresetId(res.revision?.templateId || null);
+        }
+        await refreshStylePresets(selectedDocType, companyId, res.revision?.templateId);
+      }
+
+      setShowImportModal(false);
+      setNotification({
+        message: `Template "${name}" saved to cloud${makeDefault ? " and set as active default" : ""}!`,
+        type: "success",
+      });
+      setTimeout(() => setNotification(null), 4000);
+    } catch (err) {
+      setNotification({
+        message: err instanceof Error ? err.message : "Failed to save imported template.",
+        type: "error",
+      });
+      setTimeout(() => setNotification(null), 5000);
+    } finally {
+      setSaving(false);
+    }
+  }, [companyId, cloudRevision, selectedDocType, refreshStylePresets]);
+
   // ── 12. Zoom Fitting Actions ───────────────────────────────────────────────
   const handleFitWidth = useCallback(() => {
     if (canvasContainerRef.current) {
@@ -1198,6 +1264,7 @@ export default function DocumentDesigner() {
           onAddImage={handleAddImage}
           onAddText={() => handleAddCustomElement("custom_text")}
           onOpenApplyModal={() => handleOpenApplyModal(null)}
+          onImportDesign={() => setShowImportModal(true)}
           onToggleLeftSidebar={() => setLeftSidebarOpen(!leftSidebarOpen)}
           onToggleRightInspector={() => setRightInspectorOpen(!rightInspectorOpen)}
           leftSidebarOpen={leftSidebarOpen}
@@ -1435,6 +1502,17 @@ export default function DocumentDesigner() {
           setTimeout(() => setNotification(null), 4000);
         }}
       />
+
+      {showImportModal && (
+        <ImportDesignModal
+          isOpen={showImportModal}
+          currentDocType={selectedDocType}
+          companyId={companyId}
+          onClose={() => setShowImportModal(false)}
+          onApplyLayoutToDesigner={handleApplyImportedLayout}
+          onSaveToCloud={handleSaveImportedToCloud}
+        />
+      )}
     </div>
   );
 }

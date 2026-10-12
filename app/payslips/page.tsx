@@ -62,32 +62,34 @@ export default function PayslipsPage() {
   const [activeVoucher, setActiveVoucher] = useState<PaymentVoucherData | null>(null);
 
   async function load() {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData?.user) {
-      setLoading(false);
-      return;
-    }
-    const [{ data: ss }, { data: emps }, co] = await Promise.all([
-      supabase
-        .from("salary_statements")
-        .select("*")
-        .in("status", ["approved", "paid"])
-        .order("payroll_month", { ascending: false }),
-      supabase
-        .from("employees")
-        .select("id, first_name, employee_number, designation, department, bank_name, iban, joining_date, account_number"),
-      getCurrentCompany(),
-    ]);
+    setLoading(true);
+    try {
+      const [{ data: ss }, { data: emps }, co] = await Promise.all([
+        supabase
+          .from("salary_statements")
+          .select("*")
+          .in("status", ["approved", "paid", "Approved", "Paid"])
+          .order("payroll_month", { ascending: false }),
+        supabase
+          .from("employees")
+          .select("id, first_name, employee_number, designation, department, bank_name, iban, joining_date, account_number"),
+        getCurrentCompany().catch(() => null),
+      ]);
 
-    setRecords((ss || []) as SS[]);
-    const em: Record<string, Employee> = {};
-    (emps || []).forEach((e: Employee) => {
-      em[e.id] = e;
-    });
-    setEmpMap(em);
-    if (co) setCompany(co as CompanyDocInfo);
-    setLoading(false);
+      setRecords((ss || []) as SS[]);
+      const em: Record<string, Employee> = {};
+      (emps || []).forEach((e: Employee) => {
+        em[e.id] = e;
+      });
+      setEmpMap(em);
+      if (co) setCompany(co as CompanyDocInfo);
+    } catch (err) {
+      console.error("Error loading payslips:", err);
+    } finally {
+      setLoading(false);
+    }
   }
+
 
   useEffect(() => {
     void Promise.resolve().then(load);
