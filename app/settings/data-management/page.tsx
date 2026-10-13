@@ -20,6 +20,8 @@ import {
   Square,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
+  UploadCloud,
 } from "lucide-react";
 
 interface DatabaseSummary {
@@ -318,8 +320,33 @@ export default function DataManagementPage() {
         <span>/</span>
         <span className="text-slate-200">Data Management</span>
         <span>/</span>
-        <span className="text-emerald-400 font-semibold">Reset ERP Data</span>
+        <span className="text-emerald-400 font-semibold">Data Operations</span>
       </nav>
+
+      {/* ── SMART IMPORT & EXPORT CALLOUT BANNER ───────────────────────────── */}
+      <div className="rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-950 p-5 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shrink-0">
+            <UploadCloud className="h-6 w-6" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              Smart Import & Export Engine
+              <span className="text-[10px] font-mono uppercase bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30">New</span>
+            </h2>
+            <p className="text-xs text-slate-300 mt-0.5">
+              Import Word (.docx), Excel (.xlsx, .csv), and PDF documents with automated entity extraction, math verification, and full-screen destination preview before saving.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/settings/data-management/import"
+          className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-950 transition"
+        >
+          <span>Open Smart Import & Export</span>
+          <ChevronRight className="h-4 w-4" />
+        </Link>
+      </div>
 
       {/* ── HEADER BANNER ─────────────────────────────────────────────────── */}
       <div className="relative overflow-hidden rounded-2xl border border-slate-700 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-6 md:p-8 shadow-2xl">
