@@ -172,7 +172,7 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="sticky top-0 z-40 h-14 bg-white border-b border-slate-200 text-slate-800 select-none shrink-0 m-0 p-0 shadow-2xs">
+    <nav className="sticky top-0 z-40 h-14 bg-slate-900 border-b border-slate-800 text-white select-none shrink-0 m-0 p-0">
       <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
         {/* Left Section: Mobile Menu Trigger + Brand (Mobile only) + Dynamic Page Title */}
         <div className="flex items-center gap-3 shrink-0">
@@ -180,7 +180,7 @@ export default function Navbar() {
           <button
             type="button"
             onClick={() => window.dispatchEvent(new CustomEvent("toggle-erp-sidebar"))}
-            className="md:hidden flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+            className="md:hidden flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
             aria-label="Toggle Navigation"
           >
             <Menu size={18} />
@@ -188,21 +188,21 @@ export default function Navbar() {
 
           {/* Mobile DXB Brand Icon */}
           <Link href="/" className="md:hidden flex items-center gap-2 shrink-0">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-black text-xs shadow-sm">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-xs shadow-sm">
               DXB
             </div>
           </Link>
 
           {/* Active Page Indicator */}
           <div className="flex items-center gap-2.5 shrink-0">
-            <div className="hidden sm:flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/80 shrink-0">
+            <div className="hidden sm:flex h-7 w-7 items-center justify-center rounded-lg bg-slate-800 text-emerald-400 border border-slate-700/60 shrink-0">
               <PageIcon size={15} />
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <h1 className="text-sm font-bold tracking-tight text-slate-900 whitespace-nowrap">
+              <h1 className="text-sm font-bold tracking-tight text-white whitespace-nowrap">
                 {pageMeta.title}
               </h1>
-              <span className="hidden sm:inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+              <span className="hidden sm:inline-flex items-center text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
                 UAE VAT 5%
               </span>
             </div>
@@ -214,7 +214,7 @@ export default function Navbar() {
           <button
             type="button"
             onClick={() => void printCurrentDocument()}
-            className="no-print flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 whitespace-nowrap"
+            className="no-print flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-500/20 hover:text-blue-200 whitespace-nowrap"
             title={`Print ${pageMeta.title}`}
             aria-label={`Print ${pageMeta.title}`}
           >
@@ -225,7 +225,7 @@ export default function Navbar() {
           {/* PDF Designer Shortcut Action Button */}
           <Link
             href="/settings/designer"
-            className="hidden sm:flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors whitespace-nowrap"
+            className="hidden sm:flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 transition-colors whitespace-nowrap"
             title="Open PDF Document Designer"
           >
             <FileText size={13} />
@@ -233,8 +233,8 @@ export default function Navbar() {
           </Link>
 
           {/* UAE Region & Currency Badge */}
-          <div className="hidden xl:flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 whitespace-nowrap">
-            <Globe size={13} className="text-emerald-600" />
+          <div className="hidden xl:flex items-center gap-1.5 rounded-lg border border-slate-700/80 bg-slate-800/80 px-2.5 py-1 text-xs font-medium text-slate-300 whitespace-nowrap">
+            <Globe size={13} className="text-emerald-400" />
             <span>UAE (AED)</span>
           </div>
 
@@ -246,13 +246,13 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() => setDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors whitespace-nowrap"
+              className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700/80 transition-colors whitespace-nowrap"
               aria-expanded={dropdownOpen}
             >
-              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold shrink-0">
+              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold shrink-0">
                 {profile?.email ? profile.email.charAt(0).toUpperCase() : <UserIcon size={12} />}
               </div>
-              <span className="max-w-[120px] truncate hidden md:inline text-slate-800">
+              <span className="max-w-[120px] truncate hidden md:inline text-slate-200">
                 {profile?.email || "Account"}
               </span>
               <ChevronDown
@@ -265,17 +265,17 @@ export default function Navbar() {
 
             {/* Dropdown Menu */}
             {dropdownOpen && (
-              <div className="absolute right-0 mt-2 w-60 rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl z-50 ring-1 ring-black/5 text-slate-800">
+              <div className="absolute right-0 mt-2 w-60 rounded-xl border border-slate-700 bg-slate-800 py-1.5 shadow-2xl z-50 ring-1 ring-black/40 text-slate-200">
                 {/* User Info Header */}
-                <div className="border-b border-slate-100 px-3.5 py-2.5">
-                  <p className="text-xs font-bold text-slate-900 truncate">
+                <div className="border-b border-slate-700/80 px-3.5 py-2.5">
+                  <p className="text-xs font-bold text-white truncate">
                     {profile?.companyName || "Dubai ERP"}
                   </p>
-                  <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                  <p className="text-[11px] text-slate-400 truncate mt-0.5">
                     {profile?.email || ""}
                   </p>
                   {profile?.trn && (
-                    <p className="text-[10px] text-emerald-700 font-mono font-medium mt-1">
+                    <p className="text-[10px] text-emerald-400 font-mono mt-1">
                       TRN: {profile.trn}
                     </p>
                   )}
@@ -286,28 +286,28 @@ export default function Navbar() {
                   <Link
                     href="/settings"
                     onClick={() => setDropdownOpen(false)}
-                    className="flex items-center gap-2.5 px-3.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                    className="flex items-center gap-2.5 px-3.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700/70 hover:text-white transition-colors"
                   >
-                    <Building2 size={14} className="text-slate-500" />
+                    <Building2 size={14} className="text-slate-400" />
                     Company Settings
                   </Link>
                   <Link
                     href="/settings/designer"
                     onClick={() => setDropdownOpen(false)}
-                    className="flex items-center gap-2.5 px-3.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                    className="flex items-center gap-2.5 px-3.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700/70 hover:text-white transition-colors"
                   >
-                    <FileText size={14} className="text-emerald-600" />
+                    <FileText size={14} className="text-emerald-400" />
                     PDF Designer
                   </Link>
                 </div>
 
                 {/* Sign Out Action */}
-                <div className="border-t border-slate-100 pt-1">
+                <div className="border-t border-slate-700/80 pt-1">
                   <button
                     type="button"
                     onClick={handleSignOut}
                     disabled={loggingOut}
-                    className="flex w-full items-center gap-2.5 px-3.5 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-colors disabled:opacity-50"
+                    className="flex w-full items-center gap-2.5 px-3.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-950/40 hover:text-red-300 transition-colors disabled:opacity-50"
                   >
                     <LogOut size={14} />
                     <span>{loggingOut ? "Signing out..." : "Sign Out"}</span>

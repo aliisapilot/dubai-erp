@@ -17,21 +17,21 @@ body,
 }
 
 :root {
-  --background: #F8FAFC;
-  --foreground: #0F172A;
+  --background: #0B0F19;
+  --foreground: #F8FAFC;
 
-  /* ── Dubai ERP Clean Light Business UI Design System ─────────────────────── */
-  --erp-bg-app: #F8FAFC;        /* Clean light slate/gray background */
-  --erp-bg-sidebar: #FFFFFF;    /* Clean crisp white sidebar */
-  --erp-bg-card: #FFFFFF;       /* Pure white card surface */
-  --erp-bg-card-hover: #F1F5F9; /* Card hover state */
-  --erp-bg-input: #FFFFFF;      /* Clean white input surface */
-  --erp-border-input: #CBD5E1;  /* Slate-300 input border */
-  --erp-border-card: #E2E8F0;   /* Slate-200 card outline */
-  --erp-accent-gold: #D97706;   /* UAE Gold brand accent */
-  --erp-accent-teal: #0D9488;   /* Secondary teal accent */
-  --erp-text-main: #0F172A;     /* Slate-900 high-contrast text */
-  --erp-text-muted: #64748B;    /* Slate-500 secondary text */
+  /* ── Dubai ERP Dark Business UI Design System ───────────────────────────── */
+  --erp-bg-app: #0B0F19;        /* Deep navy/charcoal main surface */
+  --erp-bg-sidebar: #070B14;    /* Slightly darker navy sidebar */
+  --erp-bg-card: #111827;       /* Elevated dark card/panel surface */
+  --erp-bg-card-hover: #162035; /* Card hover state */
+  --erp-bg-input: #0D1526;      /* Dark input surface */
+  --erp-border-input: #243047;  /* High-contrast visible input border */
+  --erp-border-card: #1E293B;   /* Card divider/outline */
+  --erp-accent-gold: #E0AC23;   /* Corporate UAE Gold brand accent */
+  --erp-accent-teal: #14B8A6;   /* Secondary teal accent */
+  --erp-text-main: #F8FAFC;     /* High-contrast off-white text */
+  --erp-text-muted: #94A3B8;    /* Muted cool gray secondary text */
   --erp-status-success: #10B981;
   --erp-status-warning: #F59E0B;
   --erp-status-danger: #EF4444;
@@ -90,12 +90,12 @@ body {
 }
 
 /* ==========================================================================
-   UNIVERSAL SLEEK ERP SCROLLBARS (LIGHT THEME)
+   UNIVERSAL SLEEK ERP SCROLLBARS (DARK & LIGHT THEMES)
    Applied globally via standalone pseudo-elements and explicit element targets
    ========================================================================== */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #CBD5E1 #F8FAFC;
+  scrollbar-color: #475569 #0f172a;
 }
 
 html,
@@ -103,7 +103,7 @@ body,
 main,
 [data-print-root] {
   scrollbar-width: thin;
-  scrollbar-color: #CBD5E1 #F8FAFC;
+  scrollbar-color: #475569 #0f172a;
 }
 
 /* Chrome, Edge, Safari (Chromium/WebKit) - Standalone Global */
@@ -113,21 +113,21 @@ main,
 }
 
 ::-webkit-scrollbar-track {
-  background: #F8FAFC;
+  background: #0f172a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: #CBD5E1;
+  background-color: #475569;
   border-radius: 9999px;
-  border: 1px solid #F8FAFC;
+  border: 1px solid #0f172a;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #94A3B8;
+  background-color: #64748b;
 }
 
 ::-webkit-scrollbar-corner {
-  background: #F8FAFC;
+  background: #0f172a;
 }
 
 /* Chrome, Edge, Safari - Explicit Main & Document Container Rules */
@@ -143,23 +143,23 @@ main::-webkit-scrollbar-track,
 body::-webkit-scrollbar-track,
 html::-webkit-scrollbar-track,
 div::-webkit-scrollbar-track {
-  background: #F8FAFC;
+  background: #0f172a;
 }
 
 main::-webkit-scrollbar-thumb,
 body::-webkit-scrollbar-thumb,
 html::-webkit-scrollbar-thumb,
 div::-webkit-scrollbar-thumb {
-  background-color: #CBD5E1;
+  background-color: #475569;
   border-radius: 9999px;
-  border: 1px solid #F8FAFC;
+  border: 1px solid #0f172a;
 }
 
 main::-webkit-scrollbar-thumb:hover,
 body::-webkit-scrollbar-thumb:hover,
 html::-webkit-scrollbar-thumb:hover,
 div::-webkit-scrollbar-thumb:hover {
-  background-color: #94A3B8;
+  background-color: #64748b;
 }
 
 /* Extremely subtle sidebar scrollbar: visible on hover, never distracting */
@@ -223,6 +223,7 @@ textarea {
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.65);
   cursor: pointer;
 }
 
@@ -240,6 +241,18 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Attendance Workbook: Dedicated crisp white spreadsheet grid */
+.attendance-white-sheet {
+  color-scheme: light !important;
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.attendance-white-sheet table {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
 }
 
 /* PDF Designer scroll regions only; the rest of the ERP keeps platform defaults. */

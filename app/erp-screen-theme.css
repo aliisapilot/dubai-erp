@@ -1,15 +1,665 @@
-/* Clean Light UI screen compatibility layer */
+/* Screen-only compatibility layer for legacy light Tailwind utilities.
+   Keep document colours in globals.css and the saved document brand variables.
+   Exclude both each document root and every descendant; an ancestor :not()
+   selector cannot isolate a subtree. data-print-root is the ERP scroll shell,
+   so it must not be treated as a document surface. */
 @media screen {
-  .erp-screen-theme {
-    color-scheme: light;
-    background-color: var(--erp-bg-app, #f8fafc);
-    color: var(--erp-text-main, #0f172a);
+  :where(.erp-screen-theme) :is(
+    .bg-amber-100,
+    .bg-amber-50,
+    .hover\:bg-amber-100:hover,
+    .hover\:bg-amber-50:hover
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: #33270e !important;
   }
 
-  /* Ensure inputs, select boxes and textareas default to crisp light surfaces */
-  .erp-screen-theme input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
-  .erp-screen-theme select,
-  .erp-screen-theme textarea {
-    color-scheme: light;
+  :where(.erp-screen-theme) :is(
+    .bg-amber-50\/50
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, #33270e 50%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-blue-100,
+    .bg-blue-50,
+    .hover\:bg-blue-100:hover,
+    .hover\:bg-blue-50:hover
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: #102b48 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-blue-50\/50
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, #102b48 50%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-blue-50\/60
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, #102b48 60%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-emerald-100,
+    .bg-emerald-50,
+    .hover\:bg-emerald-100:hover,
+    .hover\:bg-emerald-50:hover
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: #062d29 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-emerald-50\/20
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, #062d29 20%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-emerald-50\/40
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, #062d29 40%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-emerald-50\/50
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, #062d29 50%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-emerald-50\/60
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, #062d29 60%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-emerald-50\/70
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, #062d29 70%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-green-100,
+    .bg-green-50
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: #082f25 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-indigo-100,
+    .bg-indigo-50
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: #202443 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-indigo-50\/60
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, #202443 60%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-orange-50
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: #352112 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-purple-50
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: #302044 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-purple-50\/50
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, #302044 50%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-purple-50\/60
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, #302044 60%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-red-50,
+    .hover\:bg-red-100:hover,
+    .hover\:bg-red-50:hover
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: #34151d !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-rose-100,
+    .bg-rose-50,
+    .hover\:bg-rose-100:hover,
+    .hover\:bg-rose-50:hover
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: #341521 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-rose-50\/50
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, #341521 50%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-slate-100,
+    .bg-slate-200,
+    .bg-slate-50,
+    .disabled\:bg-slate-100:disabled
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--erp-bg-input) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-slate-100\/80,
+    .bg-slate-50\/80
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--erp-bg-input) 80%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-slate-50\/30
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--erp-bg-input) 30%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-slate-50\/40
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--erp-bg-input) 40%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-slate-50\/50
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--erp-bg-input) 50%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-slate-50\/60
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--erp-bg-input) 60%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-slate-50\/70
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--erp-bg-input) 70%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-teal-50
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: #082e2e !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-white
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--erp-bg-card) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .bg-white\/80
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--erp-bg-card) 80%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .border-amber-200,
+    .border-amber-300
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    border-color: #78551a !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .border-blue-100,
+    .border-blue-200
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    border-color: #245489 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .border-blue-200\/50
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    border-color: color-mix(in srgb, #245489 50%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .border-emerald-200,
+    .border-emerald-300,
+    .hover\:border-emerald-200:hover
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    border-color: #146452 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .border-green-200
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    border-color: #166534 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .border-indigo-200
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    border-color: #414b83 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .border-orange-200
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    border-color: #7c421b !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .border-purple-200
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    border-color: #67428b !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .border-red-200,
+    .border-red-300,
+    .hover\:border-red-200:hover
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    border-color: #7f2535 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .border-rose-100,
+    .border-rose-200,
+    .border-rose-300
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    border-color: #7f2541 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .border-slate-100,
+    .border-slate-200,
+    .border-slate-300,
+    .border-slate-400,
+    .divide-slate-100 > :not(:last-child),
+    .divide-slate-200 > :not(:last-child),
+    .focus\:border-slate-400:focus,
+    .hover\:border-slate-400:hover
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    border-color: var(--erp-border-card) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .border-slate-200\/60
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    border-color: color-mix(in srgb, var(--erp-border-card) 60%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .border-slate-200\/80
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    border-color: color-mix(in srgb, var(--erp-border-card) 80%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .disabled\:text-slate-500:disabled,
+    .text-slate-500
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--erp-text-muted) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .hover\:bg-slate-100:hover,
+    .hover\:bg-slate-200:hover,
+    .hover\:bg-slate-50:hover,
+    .hover\:bg-white:hover
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--erp-bg-card-hover) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .hover\:bg-slate-50\/50:hover
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--erp-bg-card-hover) 50%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .hover\:bg-slate-50\/75:hover
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--erp-bg-card-hover) 75%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .hover\:bg-slate-50\/80:hover
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--erp-bg-card-hover) 80%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .hover\:ring-amber-300\/60:hover
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    --tw-ring-color: color-mix(in srgb, #78551a 60%, transparent) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .hover\:text-amber-600:hover,
+    .text-amber-600,
+    .text-amber-700,
+    .text-amber-800,
+    .text-amber-900
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: #fcd34d !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .hover\:text-blue-700:hover,
+    .hover\:text-blue-800:hover,
+    .text-blue-600,
+    .text-blue-700,
+    .text-blue-800,
+    .text-blue-900
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: #93c5fd !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .hover\:text-emerald-600:hover,
+    .hover\:text-emerald-700:hover,
+    .hover\:text-emerald-800:hover,
+    .hover\:text-emerald-900:hover,
+    .text-emerald-600,
+    .text-emerald-700,
+    .text-emerald-800,
+    .text-emerald-900
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: #6ee7b7 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .hover\:text-indigo-600:hover,
+    .text-indigo-600,
+    .text-indigo-700,
+    .text-indigo-900
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: #a5b4fc !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .hover\:text-red-600:hover,
+    .hover\:text-red-800:hover,
+    .text-red-600,
+    .text-red-700
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: #fca5a5 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .hover\:text-rose-600:hover,
+    .hover\:text-rose-700:hover,
+    .hover\:text-rose-800:hover,
+    .text-rose-600,
+    .text-rose-700,
+    .text-rose-800,
+    .text-rose-900
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: #fda4af !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .hover\:text-slate-600:hover,
+    .hover\:text-slate-700:hover,
+    .text-slate-600,
+    .text-slate-700
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: #CBD5E1 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .hover\:text-slate-800:hover,
+    .hover\:text-slate-900:hover,
+    .text-slate-800,
+    .text-slate-900
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--erp-text-main) !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .text-green-700
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: #86efac !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .text-orange-700
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: #fdba74 !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .text-purple-600,
+    .text-purple-700,
+    .text-purple-800,
+    .text-purple-900
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: #d8b4fe !important;
+  }
+
+  :where(.erp-screen-theme) :is(
+    .text-teal-700
+  ):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: #5eead4 !important;
+  }
+
+  :where(.erp-screen-theme) .min-h-screen:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--erp-bg-app) !important;
+    color: var(--erp-text-main) !important;
+  }
+
+  /* Default controls also cover month/time fields and native option menus.
+     Checkbox, radio, range and colour controls retain their own rendering. */
+  .erp-screen-theme :is(input, select, textarea):not(:where([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], [type="button"], [type="submit"])):not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color-scheme: dark;
+    background-color: var(--erp-bg-input) !important;
+    color: var(--erp-text-main) !important;
+    border-color: var(--erp-border-input) !important;
+  }
+
+  .erp-screen-theme :is(input, select, textarea):focus-visible:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    outline: 2px solid var(--erp-accent-gold);
+    outline-offset: 2px;
+    border-color: var(--erp-accent-gold) !important;
+  }
+
+  .erp-screen-theme :is(input, select, textarea):disabled:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--erp-text-muted) !important;
+    border-color: var(--erp-border-card) !important;
+  }
+
+  /* Honour darker hover utilities on legacy light controls after remapping
+     their base surface, and preserve white hover labels on action buttons. */
+  :where(.erp-screen-theme) .hover\:bg-amber-400:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-amber-400) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-amber-500:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-amber-500) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-amber-500\/10:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-amber-500) 10%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-amber-500\/20:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-amber-500) 20%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-amber-500\/25:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-amber-500) 25%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-amber-700:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-amber-700) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-blue-500:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-blue-500) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-blue-500\/20:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-blue-500) 20%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-emerald-400:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-emerald-400) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-emerald-500:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-emerald-500) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-emerald-500\/10:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-emerald-500) 10%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-emerald-500\/20:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-emerald-500) 20%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-emerald-500\/25:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-emerald-500) 25%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-emerald-700:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-emerald-700) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-emerald-800:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-emerald-800) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-emerald-900\/60:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-emerald-900) 60%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-indigo-500\/15:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-indigo-500) 15%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-indigo-500\/25:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-indigo-500) 25%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-indigo-700:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-indigo-700) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-purple-900\/60:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-purple-900) 60%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-red-500\/20:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-red-500) 20%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-red-900\/40:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-red-900) 40%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-red-950\/40:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-red-950) 40%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-rose-500:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-rose-500) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-rose-500\/10:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-rose-500) 10%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-rose-500\/15:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-rose-500) 15%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-rose-500\/30:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-rose-500) 30%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-sky-500\/10:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-sky-500) 10%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-sky-500\/20:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-sky-500) 20%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-600:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-slate-600) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-700:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-slate-700) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-700\/30:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-slate-700) 30%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-700\/40:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-slate-700) 40%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-700\/70:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-slate-700) 70%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-700\/80:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-slate-700) 80%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-750:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-slate-750) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-800:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-slate-800) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-800\/30:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-slate-800) 30%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-800\/40:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-slate-800) 40%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-800\/50:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-slate-800) 50%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-800\/80:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-slate-800) 80%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-900:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: var(--color-slate-900) !important;
+  }
+  :where(.erp-screen-theme) .hover\:bg-slate-900\/50:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    background-color: color-mix(in srgb, var(--color-slate-900) 50%, transparent) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-amber-200:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-amber-200) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-amber-300:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-amber-300) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-amber-400:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-amber-400) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-blue-200:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-blue-200) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-blue-300:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-blue-300) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-blue-400:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-blue-400) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-emerald-300:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-emerald-300) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-emerald-400:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-emerald-400) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-indigo-200:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-indigo-200) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-indigo-300:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-indigo-300) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-red-300:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-red-300) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-red-400:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-red-400) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-rose-400:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-rose-400) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-slate-100:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-slate-100) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-slate-200:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-slate-200) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-slate-300:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-slate-300) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-teal-300:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: var(--color-teal-300) !important;
+  }
+  :where(.erp-screen-theme) .hover\:text-white:hover:not(:where(.print-document, .print-document *, .document-sheet, .document-sheet *, .dynamic-document-pages, .dynamic-document-pages *, .dynamic-document-page, .dynamic-document-page *, .print-page, .print-page *, .erp-document-surface, .erp-document-surface *)) {
+    color: #FFFFFF !important;
   }
 }

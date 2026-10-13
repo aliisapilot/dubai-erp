@@ -1256,34 +1256,34 @@ export default function MonthlyAttendanceOvertimeSheet({
   }
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-56px)] bg-slate-100 select-none">
+    <div className="flex flex-col min-h-[calc(100vh-56px)] bg-slate-900 text-slate-100 select-none">
       <div className="app-screen-content no-print flex flex-col flex-1">
         {/* Top Banner / Navigation Bar */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
+      <div className="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 shadow-xs">
         <div className="max-w-[1600px] mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
           {/* Title & Month Selector */}
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <div className="rounded-xl bg-slate-900 p-2 text-white">
-                <CalendarCheck size={20} />
+              <div className="rounded-xl bg-slate-800 border border-slate-700 p-2 text-white">
+                <CalendarCheck size={20} className="text-emerald-400" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-slate-900 leading-tight">
+                <h1 className="text-lg font-bold text-white leading-tight">
                   Attendance & Overtime Workbook
                 </h1>
-                <p className="text-xs text-slate-500 hidden sm:block">
+                <p className="text-xs text-slate-400 hidden sm:block">
                   Integrated Monthly Labourer Sheet & Payroll Workflow
                 </p>
               </div>
             </div>
 
             {/* Month & Year Control */}
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-1.5 bg-slate-800 p-1 rounded-xl border border-slate-700">
               <button
                 type="button"
                 onClick={prevMonth}
                 title="Previous Month"
-                className="p-1 rounded-lg text-slate-600 hover:bg-white hover:text-slate-900 transition"
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition cursor-pointer"
               >
                 <ChevronLeft size={18} />
               </button>
@@ -1291,20 +1291,20 @@ export default function MonthlyAttendanceOvertimeSheet({
               <select
                 value={month}
                 onChange={e => setMonth(Number(e.target.value))}
-                className="bg-transparent text-sm font-bold text-slate-900 px-2 py-0.5 focus:outline-none cursor-pointer"
+                className="bg-slate-800 text-sm font-bold text-white px-2 py-0.5 focus:outline-none cursor-pointer rounded"
               >
                 {MONTH_NAMES.map((m, i) => (
-                  <option key={i + 1} value={i + 1}>{m}</option>
+                  <option key={i + 1} value={i + 1} className="bg-slate-800 text-white">{m}</option>
                 ))}
               </select>
 
               <select
                 value={year}
                 onChange={e => setYear(Number(e.target.value))}
-                className="bg-transparent text-sm font-bold text-slate-900 px-1 py-0.5 focus:outline-none cursor-pointer"
+                className="bg-slate-800 text-sm font-bold text-white px-1 py-0.5 focus:outline-none cursor-pointer rounded"
               >
                 {[2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
-                  <option key={y} value={y}>{y}</option>
+                  <option key={y} value={y} className="bg-slate-800 text-white">{y}</option>
                 ))}
               </select>
 
@@ -1312,7 +1312,7 @@ export default function MonthlyAttendanceOvertimeSheet({
                 type="button"
                 onClick={nextMonth}
                 title="Next Month"
-                className="p-1 rounded-lg text-slate-600 hover:bg-white hover:text-slate-900 transition"
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition cursor-pointer"
               >
                 <ChevronRight size={18} />
               </button>
@@ -1320,7 +1320,7 @@ export default function MonthlyAttendanceOvertimeSheet({
               <button
                 type="button"
                 onClick={jumpToCurrentMonth}
-                className="text-xs font-semibold px-2 py-1 rounded-lg text-slate-600 hover:bg-white hover:text-slate-900 transition ml-0.5"
+                className="text-xs font-semibold px-2 py-1 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition ml-0.5 cursor-pointer"
               >
                 Today
               </button>
@@ -1333,7 +1333,7 @@ export default function MonthlyAttendanceOvertimeSheet({
               <button
                 type="button"
                 onClick={onSwitchToLegacy}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer"
               >
                 <FileText size={14} />
                 <span>Daily List View</span>
@@ -1345,10 +1345,10 @@ export default function MonthlyAttendanceOvertimeSheet({
               type="button"
               onClick={() => void handleBatchSyncAllStatements()}
               disabled={batchSyncing || filteredEmployees.length === 0}
-              className="flex items-center gap-1.5 rounded-lg border border-purple-300 bg-purple-50 px-3 py-1.5 text-xs font-bold text-purple-900 hover:bg-purple-100 transition shadow-2xs"
+              className="flex items-center gap-1.5 rounded-lg border border-purple-500/40 bg-purple-950/40 px-3 py-1.5 text-xs font-bold text-purple-300 hover:bg-purple-900/60 transition shadow-2xs cursor-pointer"
               title="Automatically generate or update official Salary Statements for all labourers for this month"
             >
-              {batchSyncing ? <Loader2 size={14} className="animate-spin text-purple-700" /> : <ShieldCheck size={14} className="text-purple-700" />}
+              {batchSyncing ? <Loader2 size={14} className="animate-spin text-purple-400" /> : <ShieldCheck size={14} className="text-purple-400" />}
               <span>{batchSyncing ? "Syncing..." : "Sync to Salary Statements"}</span>
             </button>
 
@@ -1356,9 +1356,9 @@ export default function MonthlyAttendanceOvertimeSheet({
             <button
               type="button"
               onClick={() => setShowImportModal(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 transition shadow-2xs"
+              className="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-900/60 transition shadow-2xs cursor-pointer"
             >
-              <Upload size={14} className="text-emerald-700" />
+              <Upload size={14} className="text-emerald-400" />
               <span>Import Excel</span>
             </button>
 
@@ -1366,9 +1366,9 @@ export default function MonthlyAttendanceOvertimeSheet({
             <button
               type="button"
               onClick={exportToExcel}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer"
             >
-              <FileSpreadsheet size={14} className="text-emerald-600" />
+              <FileSpreadsheet size={14} className="text-emerald-400" />
               <span>Export .xlsx</span>
             </button>
 
@@ -1376,7 +1376,7 @@ export default function MonthlyAttendanceOvertimeSheet({
             <button
               type="button"
               onClick={() => setShowPrintModal(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer"
             >
               <Printer size={14} />
               <span>Print Sheet</span>
@@ -1387,10 +1387,10 @@ export default function MonthlyAttendanceOvertimeSheet({
               type="button"
               onClick={() => void saveAllChanges()}
               disabled={!hasUnsavedChanges || saving}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition shadow-xs ${
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition shadow-xs cursor-pointer ${
                 hasUnsavedChanges
-                  ? "bg-slate-900 text-white hover:bg-slate-800 animate-pulse ring-2 ring-emerald-500"
-                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  ? "bg-emerald-600 text-white hover:bg-emerald-500 animate-pulse ring-2 ring-emerald-400"
+                  : "bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed"
               }`}
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -1400,74 +1400,74 @@ export default function MonthlyAttendanceOvertimeSheet({
         </div>
 
         {/* Tab Switcher & Quick Filters Bar */}
-        <div className="max-w-[1600px] mx-auto px-4 border-t border-slate-100 flex items-center justify-between gap-4 overflow-x-auto py-2">
+        <div className="max-w-[1600px] mx-auto px-4 border-t border-slate-800 flex items-center justify-between gap-4 overflow-x-auto py-2">
           {/* Main Excel-like Tabs */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold">
+          <div className="flex items-center gap-1 bg-slate-800/90 p-1 rounded-xl text-xs font-bold border border-slate-700">
             <button
               type="button"
               onClick={() => setActiveTab("attendance")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 activeTab === "attendance"
-                  ? "bg-white text-slate-900 shadow-xs border border-slate-200"
-                  : "text-slate-600 hover:text-slate-900"
+                  ? "bg-slate-700 text-white shadow-xs border border-slate-600"
+                  : "text-slate-400 hover:text-white"
               }`}
             >
-              <CalendarCheck size={14} className={activeTab === "attendance" ? "text-emerald-600" : ""} />
+              <CalendarCheck size={14} className={activeTab === "attendance" ? "text-emerald-400" : ""} />
               <span>Attendance (P / A)</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab("overtime")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 activeTab === "overtime"
-                  ? "bg-white text-slate-900 shadow-xs border border-slate-200"
-                  : "text-slate-600 hover:text-slate-900"
+                  ? "bg-slate-700 text-white shadow-xs border border-slate-600"
+                  : "text-slate-400 hover:text-white"
               }`}
             >
-              <Clock size={14} className={activeTab === "overtime" ? "text-violet-600" : ""} />
+              <Clock size={14} className={activeTab === "overtime" ? "text-violet-400" : ""} />
               <span>Overtime (Hours & Charges)</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab("summary")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 activeTab === "summary"
-                  ? "bg-white text-slate-900 shadow-xs border border-slate-200"
-                  : "text-slate-600 hover:text-slate-900"
+                  ? "bg-slate-700 text-white shadow-xs border border-slate-600"
+                  : "text-slate-400 hover:text-white"
               }`}
             >
-              <Sparkles size={14} className={activeTab === "summary" ? "text-amber-500" : ""} />
+              <Sparkles size={14} className={activeTab === "summary" ? "text-amber-400" : ""} />
               <span>Monthly Payroll Summary</span>
             </button>
           </div>
 
           {/* Quick Metrics Strip */}
           <div className="hidden lg:flex items-center gap-4 text-xs">
-            <div className="flex items-center gap-1 text-slate-600">
+            <div className="flex items-center gap-1 text-slate-400">
               <span className="font-medium text-slate-400">Labourers:</span>
-              <span className="font-bold text-slate-900">{totalEmployees}</span>
+              <span className="font-bold text-white">{totalEmployees}</span>
             </div>
-            <div className="h-3 w-px bg-slate-200" />
+            <div className="h-3 w-px bg-slate-800" />
             <div className="flex items-center gap-1">
               <span className="font-medium text-slate-400">Present:</span>
-              <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{totalPresentDays} d</span>
+              <span className="font-bold text-emerald-400 bg-emerald-950/70 border border-emerald-800/60 px-1.5 py-0.5 rounded">{totalPresentDays} d</span>
             </div>
-            <div className="h-3 w-px bg-slate-200" />
+            <div className="h-3 w-px bg-slate-800" />
             <div className="flex items-center gap-1">
               <span className="font-medium text-slate-400">Absent:</span>
-              <span className="font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded">{totalAbsentDays} d</span>
+              <span className="font-bold text-rose-400 bg-rose-950/70 border border-rose-800/60 px-1.5 py-0.5 rounded">{totalAbsentDays} d</span>
             </div>
-            <div className="h-3 w-px bg-slate-200" />
+            <div className="h-3 w-px bg-slate-800" />
             <div className="flex items-center gap-1">
               <span className="font-medium text-slate-400">Total OT:</span>
-              <span className="font-bold text-violet-800 bg-purple-50 px-1.5 py-0.5 rounded">{totalOtHoursMonth.toFixed(1)} hrs</span>
+              <span className="font-bold text-purple-300 bg-purple-950/70 border border-purple-800/60 px-1.5 py-0.5 rounded">{totalOtHoursMonth.toFixed(1)} hrs</span>
             </div>
-            <div className="h-3 w-px bg-slate-200" />
+            <div className="h-3 w-px bg-slate-800" />
             <div className="flex items-center gap-1">
               <span className="font-medium text-slate-400">OT Charges:</span>
-              <span className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded">{fmtAED(totalOtChargesMonth)}</span>
+              <span className="font-bold text-emerald-300 bg-emerald-950/70 border border-emerald-800/60 px-1.5 py-0.5 rounded">{fmtAED(totalOtChargesMonth)}</span>
             </div>
           </div>
 
@@ -1480,10 +1480,10 @@ export default function MonthlyAttendanceOvertimeSheet({
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search labourers..."
-                className="pl-8 pr-3 py-1 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none w-36 sm:w-48 transition"
+                className="pl-8 pr-3 py-1 text-xs rounded-lg border border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus:bg-slate-700 focus:outline-none w-36 sm:w-48 transition"
               />
               {search && (
-                <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200">
                   <X size={12} />
                 </button>
               )}
@@ -1494,32 +1494,32 @@ export default function MonthlyAttendanceOvertimeSheet({
               <button
                 type="button"
                 onClick={() => setShowBulkMenu(!showBulkMenu)}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition"
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer"
               >
                 <Filter size={12} />
                 <span>Quick Fill</span>
               </button>
 
               {showBulkMenu && (
-                <div className="absolute right-0 mt-1 w-64 rounded-xl bg-white shadow-xl border border-slate-200 py-1.5 z-50 text-xs">
+                <div className="absolute right-0 mt-1 w-64 rounded-xl bg-slate-900 shadow-2xl border border-slate-700 py-1.5 z-50 text-xs">
                   <button
                     onClick={markWeekdaysPresent}
-                    className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-800 flex items-center gap-2 font-medium"
+                    className="w-full text-left px-3 py-2 hover:bg-slate-800 text-slate-200 flex items-center gap-2 font-medium cursor-pointer"
                   >
-                    <Check size={14} className="text-emerald-600" />
+                    <Check size={14} className="text-emerald-400" />
                     <span>Fill Mon–Sat as Present (P)</span>
                   </button>
                   <button
                     onClick={markTodayPresentAll}
-                    className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-800 flex items-center gap-2 font-medium"
+                    className="w-full text-left px-3 py-2 hover:bg-slate-800 text-slate-200 flex items-center gap-2 font-medium cursor-pointer"
                   >
-                    <CalendarCheck size={14} className="text-blue-600" />
+                    <CalendarCheck size={14} className="text-blue-400" />
                     <span>Mark Today Present for all</span>
                   </button>
-                  <div className="border-t border-slate-100 my-1" />
+                  <div className="border-t border-slate-800 my-1" />
                   <button
                     onClick={clearAllPending}
-                    className="w-full text-left px-3 py-2 hover:bg-rose-50 text-rose-600 flex items-center gap-2 font-medium"
+                    className="w-full text-left px-3 py-2 hover:bg-rose-950/50 text-rose-400 flex items-center gap-2 font-medium cursor-pointer"
                   >
                     <RotateCcw size={14} />
                     <span>Discard Unsaved Edits</span>
@@ -1552,36 +1552,36 @@ export default function MonthlyAttendanceOvertimeSheet({
       {/* Main Table Content */}
       <div className="flex-1 max-w-[1600px] w-full mx-auto p-4 flex flex-col">
         {loading ? (
-          <div className="flex-1 flex flex-col items-center justify-center py-32 bg-white rounded-2xl border border-slate-200 shadow-xs">
-            <Loader2 size={32} className="animate-spin text-slate-900 mb-3" />
-            <p className="text-sm font-semibold text-slate-600">Loading monthly attendance & payroll workbook...</p>
+          <div className="flex-1 flex flex-col items-center justify-center py-32 bg-slate-800/60 rounded-2xl border border-slate-700 shadow-xs">
+            <Loader2 size={32} className="animate-spin text-emerald-400 mb-3" />
+            <p className="text-sm font-semibold text-slate-300">Loading monthly attendance & payroll workbook...</p>
           </div>
         ) : filteredEmployees.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center py-32 bg-white rounded-2xl border border-slate-200 shadow-xs text-center p-6">
+          <div className="flex-1 flex flex-col items-center justify-center py-32 bg-slate-800/60 rounded-2xl border border-slate-700 shadow-xs text-center p-6">
             <AlertCircle size={36} className="text-slate-400 mb-2" />
-            <h3 className="text-base font-bold text-slate-800">No labourers found</h3>
-            <p className="text-xs text-slate-500 mt-1 max-w-md">
+            <h3 className="text-base font-bold text-white">No labourers found</h3>
+            <p className="text-xs text-slate-400 mt-1 max-w-md">
               {search ? "No labourers match your current search query." : "No active labourers found in your Dubai ERP company database."}
             </p>
           </div>
         ) : (
           <div
             ref={tableContainerRef}
-            className="flex-1 bg-white rounded-xl border border-slate-300 shadow-sm overflow-auto max-h-[calc(100vh-175px)] relative"
+            className="document-sheet attendance-white-sheet flex-1 bg-white rounded-xl border border-slate-300 shadow-xl overflow-auto max-h-[calc(100vh-175px)] relative"
           >
-            <table className="w-full border-collapse text-xs">
+            <table className="w-full border-collapse text-xs bg-white text-slate-900">
               {/* Table Header: Sticky Top */}
-              <thead className="sticky top-0 z-30 bg-slate-100 text-slate-800 shadow-xs border-b border-slate-300">
+              <thead className="sticky top-0 z-30 bg-slate-100 text-slate-800 shadow-xs border-b-2 border-slate-300">
                 <tr>
                   {/* Top-Left Header: Emp No (Click to select all) */}
                   <th
                     onClick={selectAll}
                     title="Click to select all cells"
-                    className="sticky left-0 z-40 bg-slate-100 text-slate-800 px-3 py-2 text-left font-black tracking-wide border-r border-b border-slate-300 w-20 min-w-[75px] cursor-pointer hover:bg-slate-200 transition select-none shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]"
+                    className="sticky left-0 z-40 bg-slate-100 text-slate-900 px-3 py-2 text-left font-black tracking-wide border-r border-b-2 border-slate-300 w-20 min-w-[75px] cursor-pointer hover:bg-slate-200 transition select-none shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]"
                   >
                     Emp No
                   </th>
-                  <th className="sticky left-[75px] z-40 bg-slate-100 text-slate-800 px-3 py-2 text-left font-black tracking-wide border-r border-b border-slate-300 w-44 min-w-[170px] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">
+                  <th className="sticky left-[75px] z-40 bg-slate-100 text-slate-900 px-3 py-2 text-left font-black tracking-wide border-r border-b-2 border-slate-300 w-44 min-w-[170px] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">
                     Employee Name
                   </th>
 
@@ -1595,20 +1595,20 @@ export default function MonthlyAttendanceOvertimeSheet({
                         key={d.dayNum}
                         onClick={() => selectColumn(dayIdx)}
                         title={`Click to select Day ${d.dayNum} column for all labourers`}
-                        className={`px-1 py-1 text-center font-bold border-r border-b border-slate-300 min-w-[36px] w-9 cursor-pointer transition select-none ${
+                        className={`px-1 py-1 text-center font-bold border-r border-b-2 min-w-[36px] w-9 cursor-pointer transition select-none ${
                           isColSelected
-                            ? "bg-emerald-600 text-white ring-2 ring-emerald-300 ring-inset"
+                            ? "bg-emerald-700 text-white ring-2 ring-emerald-300 ring-inset border-emerald-800"
                             : isColActive
-                            ? "bg-slate-200 text-slate-900"
+                            ? "bg-slate-200 text-slate-900 border-slate-300"
                             : d.isSunday
-                            ? "bg-emerald-100 text-emerald-950 font-black"
-                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                            ? "bg-emerald-600 text-white font-black border-emerald-700"
+                            : "bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-300"
                         }`}
                       >
-                        <div className={`text-[11px] leading-tight font-black ${d.isSunday ? "text-emerald-950" : "text-slate-800"}`}>
+                        <div className={`text-[11px] leading-tight font-black ${d.isSunday || isColSelected ? "text-white" : "text-slate-800"}`}>
                           {String(d.dayNum).padStart(2, "0")}
                         </div>
-                        <div className={`text-[9px] uppercase font-bold ${d.isSunday ? "text-emerald-700" : "text-slate-500"}`}>
+                        <div className={`text-[9px] uppercase font-bold ${d.isSunday || isColSelected ? "text-emerald-100" : "text-slate-500"}`}>
                           {d.dayOfWeek.slice(0, 3)}
                         </div>
                       </th>
@@ -1704,7 +1704,13 @@ export default function MonthlyAttendanceOvertimeSheet({
                   });
                   const stmt = salaryStatementsForMonth[emp.id];
 
-                  const isRowSelected = normalizedRange && normalizedRange.minEmp <= empIdx && normalizedRange.maxEmp >= empIdx;
+                  const isFullRowSelected = Boolean(
+                    normalizedRange &&
+                    normalizedRange.minEmp <= empIdx &&
+                    normalizedRange.maxEmp >= empIdx &&
+                    normalizedRange.minDay === 0 &&
+                    normalizedRange.maxDay === days.length - 1
+                  );
                   const isRowActive = selectedCell?.empIdx === empIdx;
 
                   return (
@@ -1716,12 +1722,12 @@ export default function MonthlyAttendanceOvertimeSheet({
                       <td
                         onClick={() => selectRow(empIdx)}
                         title="Click to select entire row"
-                        className={`sticky left-0 z-20 px-3 py-1.5 font-bold font-mono text-xs border-r border-b border-slate-200 whitespace-nowrap cursor-pointer transition select-none shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] ${
-                          isRowSelected
-                            ? "bg-emerald-100 text-emerald-950 font-black"
+                        className={`sticky left-0 z-20 px-3 py-1.5 font-bold font-mono text-xs border-r border-b border-slate-300 whitespace-nowrap cursor-pointer transition select-none shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] ${
+                          isFullRowSelected
+                            ? "bg-emerald-100 text-emerald-950 font-black ring-1 ring-emerald-500"
                             : isRowActive
-                            ? "bg-slate-100 text-slate-900 font-black"
-                            : "bg-white text-slate-800 hover:bg-slate-100"
+                            ? "bg-slate-200 text-slate-900 font-black"
+                            : "bg-slate-50 text-slate-800 hover:bg-slate-200"
                         }`}
                       >
                         {`EMP-${String(empIdx + 1).padStart(2, "0")}`}
@@ -1730,12 +1736,12 @@ export default function MonthlyAttendanceOvertimeSheet({
                       {/* Frozen Column 2: Employee Name */}
                       <td
                         onClick={() => selectRow(empIdx)}
-                        className={`sticky left-[75px] z-20 px-3 py-1.5 font-semibold border-r border-b border-slate-200 whitespace-nowrap truncate max-w-[170px] cursor-pointer shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] ${
-                          isRowSelected
-                            ? "bg-emerald-50 text-emerald-950 font-bold"
+                        className={`sticky left-[75px] z-20 px-3 py-1.5 font-semibold border-r border-b border-slate-300 whitespace-nowrap truncate max-w-[170px] cursor-pointer shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] ${
+                          isFullRowSelected
+                            ? "bg-emerald-50 text-emerald-950 font-bold ring-1 ring-emerald-500"
                             : isRowActive
                             ? "bg-slate-100 text-slate-900 font-bold"
-                            : "bg-white text-slate-900"
+                            : "bg-white text-slate-900 hover:bg-slate-50"
                         }`}
                       >
                         <span title={emp.first_name || ""}>{emp.first_name || "Unnamed"}</span>
@@ -1807,8 +1813,10 @@ export default function MonthlyAttendanceOvertimeSheet({
                                 handleAttendanceCellClick(emp.id, d.dateStr, status);
                               }
                             }}
-                            className={`p-0 text-center border-r border-b border-slate-200 cursor-cell transition select-none relative ${
-                              isSun ? "bg-emerald-50/60" : ""
+                            className={`p-0 text-center border-r border-b cursor-cell transition select-none relative ${
+                              isSun && !isSelected && !inRange && !inFill && !isPending
+                                ? "bg-emerald-100 text-emerald-950 font-bold border-emerald-300"
+                                : "border-slate-200"
                             } ${
                               inFill
                                 ? "ring-2 ring-dashed ring-emerald-600 bg-emerald-100/50 z-20"
@@ -1864,7 +1872,7 @@ export default function MonthlyAttendanceOvertimeSheet({
                                     H
                                   </span>
                                 ) : (
-                                  <span className="text-slate-300 font-bold">·</span>
+                                  <span className={isSun ? "text-emerald-500 font-black" : "text-slate-300 font-bold"}>·</span>
                                 )}
                               </div>
                             ) : activeTab === "overtime" ? (
@@ -1884,6 +1892,8 @@ export default function MonthlyAttendanceOvertimeSheet({
                                   className={`ot-cell-input w-full h-full text-center text-xs font-bold rounded focus:outline-none focus:bg-white focus:ring-1 focus:ring-purple-600 ${
                                     otHours > 0
                                       ? "bg-purple-100 text-purple-900 font-black"
+                                      : isSun
+                                      ? "bg-transparent text-emerald-950 placeholder:text-emerald-500 font-bold"
                                       : "bg-transparent text-slate-700 placeholder:text-slate-400"
                                   }`}
                                 />
@@ -1892,12 +1902,14 @@ export default function MonthlyAttendanceOvertimeSheet({
                               // Summary Tab View
                               <div className="h-8 flex flex-col items-center justify-center text-[10px] font-bold">
                                 {status === "present" ? (
-                                  <span className="text-emerald-700">P</span>
+                                  <span className={isSun ? "text-emerald-900 font-black" : "text-emerald-700"}>P</span>
                                 ) : status === "absent" ? (
                                   <span className="text-rose-600">A</span>
                                 ) : status === "late" ? (
                                   <span className="text-amber-800">HD</span>
-                                ) : null}
+                                ) : (
+                                  <span className={isSun ? "text-emerald-500 font-black" : "text-slate-300"}>·</span>
+                                )}
                                 {otHours > 0 && (
                                   <span className="text-[9px] text-purple-700 font-extrabold leading-none mt-0.5">
                                     +{otHours}h
@@ -2127,13 +2139,13 @@ export default function MonthlyAttendanceOvertimeSheet({
         )}
 
         {/* Bottom Legend & Keyboard Guide */}
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 bg-white p-2.5 rounded-xl border border-slate-200">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300 bg-slate-900 p-2.5 rounded-xl border border-slate-800">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="font-semibold text-slate-700 flex items-center gap-1">
+            <span className="font-semibold text-slate-200 flex items-center gap-1">
               <HelpCircle size={14} className="text-slate-400" /> Excel Shortcuts & Payroll Legend:
             </span>
             <span className="flex items-center gap-1">
-              <span className="font-bold text-emerald-700">P</span> = Present (1.0d)
+              <span className="font-bold text-emerald-400">P</span> = Present (1.0d)
             </span>
             <span className="flex items-center gap-1">
               <span className="inline-block px-1 text-[10px] bg-amber-200 text-amber-900 font-bold rounded-xs">HD</span> = Half Day (0.5d)
@@ -2142,17 +2154,17 @@ export default function MonthlyAttendanceOvertimeSheet({
               <span className="inline-block px-1 text-[10px] bg-rose-600 text-white font-bold rounded-xs">A</span> = Absent
             </span>
             <span className="flex items-center gap-1">
-              <span className="inline-block px-1 text-[10px] bg-amber-100 text-amber-800 font-bold rounded-xs">L</span> = Leave
+              <span className="inline-block px-1 text-[10px] bg-amber-100 text-amber-900 font-bold rounded-xs">L</span> = Leave
             </span>
             <span className="flex items-center gap-1">
-              <span className="inline-block px-1 text-[10px] bg-sky-100 text-sky-800 font-bold rounded-xs">H</span> = Holiday
+              <span className="inline-block px-1 text-[10px] bg-sky-200 text-sky-900 font-bold rounded-xs">H</span> = Holiday
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-3 h-3 bg-emerald-500 rounded-xs inline-block" /> = Sunday
+              <span className="w-3 h-3 bg-emerald-600 rounded-xs inline-block" /> = Sunday
             </span>
           </div>
           <div className="text-[11px] text-slate-400">
-            Arrow keys navigate · Click & drag boxes/headers to select · Click [Charges] to edit overtime charges & sync payroll · <kbd className="px-1 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono text-[10px] text-slate-700">Ctrl+S</kbd> to save
+            Arrow keys navigate · Click & drag boxes/headers to select · Click [Charges] to edit overtime charges & sync payroll · <kbd className="px-1 py-0.5 bg-slate-800 border border-slate-700 rounded font-mono text-[10px] text-slate-300">Ctrl+S</kbd> to save
           </div>
         </div>
       </div>
