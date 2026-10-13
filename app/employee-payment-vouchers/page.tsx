@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, getCurrentCompany, parsePayrollMonth, todayISO } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, parsePayrollMonth, todayISO, formatEmployeeCode } from "@/lib/helpers";
 import {
   FileCheck2, Search, ArrowLeft, Printer, Banknote
 } from "lucide-react";
@@ -113,7 +113,7 @@ export default function EmployeePaymentVouchersPage() {
       voucher_number: voucherNo,
       voucher_date: ss.payment_date || todayISO(),
       employee_name: emp?.first_name || "Employee",
-      employee_id: emp?.employee_number || "-",
+      employee_id: formatEmployeeCode(emp?.employee_number) || "-",
       designation: emp?.designation || "-",
       month: month,
       year: year,
@@ -129,7 +129,7 @@ export default function EmployeePaymentVouchersPage() {
   const filtered = statements.filter(ss => {
     const emp = ss.employee_id ? empMap[ss.employee_id] : null;
     const name = (emp?.first_name || "").toLowerCase();
-    const empNo = emp?.employee_number?.toLowerCase() || "";
+    const empNo = formatEmployeeCode(emp?.employee_number).toLowerCase();
     const q = search.toLowerCase();
     const matchSearch = name.includes(q) || empNo.includes(q);
     const parsed = parsePayrollMonth(ss.payroll_month, ss.payroll_year);
@@ -258,7 +258,7 @@ export default function EmployeePaymentVouchersPage() {
                       <td className="px-4 py-3">
                         <div className="font-semibold text-slate-900">{emp?.first_name || "Employee"}</div>
                         <div className="text-[10px] text-slate-400 font-mono">
-                          {emp?.employee_number || "EMP"} &bull; {emp?.designation || "-"}
+                          {formatEmployeeCode(emp?.employee_number)} &bull; {emp?.designation || "-"}
                         </div>
                       </td>
                       <td className="px-4 py-3 font-medium text-slate-800">

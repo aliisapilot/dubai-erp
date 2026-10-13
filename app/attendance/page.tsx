@@ -59,7 +59,15 @@ export default function AttendancePage() {
       supabase.from("employees").select("id, first_name, employee_number").in("status", ["active", "Active"]).order("first_name"),
     ]);
     setRecords((att || []) as Att[]);
-    setEmployees((emps || []) as Employee[]);
+    const list = ((emps || []) as Employee[]).sort((a, b) => {
+      const codeA = formatEmployeeCode(a.employee_number);
+      const codeB = formatEmployeeCode(b.employee_number);
+      const numA = parseInt(codeA.replace(/\D/g, ""), 10);
+      const numB = parseInt(codeB.replace(/\D/g, ""), 10);
+      if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
+      return (a.first_name || "").localeCompare(b.first_name || "");
+    });
+    setEmployees(list);
     setLoading(false);
   }
 
@@ -244,7 +252,7 @@ export default function AttendancePage() {
                 <div><label className="mb-1 block text-sm font-medium text-slate-700">Employee <span className="text-red-500">*</span></label>
                   <select value={form.employee_id} onChange={e=>f("employee_id",e.target.value)} required className={sel}>
                     <option value="">— Select Employee —</option>
-                    {employees.map((e, idx) => <option key={e.id} value={e.id}>{formatEmployeeCode(e.employee_number, idx)} - {e.first_name}</option>)}
+                    {employees.map((e) => <option key={e.id} value={e.id}>{formatEmployeeCode(e.employee_number)} - {e.first_name}</option>)}
                   </select>
                 </div>
                 <div><label className="mb-1 block text-sm font-medium text-slate-700">Date <span className="text-red-500">*</span></label><input type="date" value={form.attendance_date} onChange={e=>f("attendance_date",e.target.value)} required className={inp} /></div>

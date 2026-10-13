@@ -33,6 +33,7 @@ import {
   ArrowDownRight,
   Printer,
   Ruler,
+  Database,
   type LucideIcon,
 } from "lucide-react";
 import { getCurrentCompany } from "@/lib/helpers";
@@ -77,6 +78,7 @@ function getPageMeta(pathname: string): { title: string; icon: LucideIcon } {
   if (pathname.startsWith("/reports")) return { title: "Reports & Analytics", icon: TrendingUp };
   if (pathname.startsWith("/mobile")) return { title: "Mobile Portal", icon: FileText };
   if (pathname.startsWith("/measurements")) return { title: "Measurements & Takeoffs", icon: Ruler };
+  if (pathname.startsWith("/settings/data-management")) return { title: "Data Management & Safe Reset", icon: Database };
   if (pathname.startsWith("/settings/designer")) return { title: "PDF Designer", icon: FileText };
   if (pathname.startsWith("/settings")) return { title: "Company Settings", icon: Building2 };
 

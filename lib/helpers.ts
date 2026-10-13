@@ -243,45 +243,50 @@ export function statusClass(status: string): string {
 
 /**
  * Canonical employee number formatter.
- * Strictly formats employee codes to standard EMP-01, EMP-02, EMP-03... sequence.
+ * Strictly formats employee codes to standard EMP-01, EMP-02, EMP-03... sequence
+ * based on the employee's actual database code.
+ *
+ * NOTE: The employee number is an intrinsic property of the employee record.
+ * Positional array index is NEVER used to override the employee's identity.
  */
-export function formatEmployeeCode(rawCode: string | null | undefined, index?: number): string {
-  // When row index is provided, strictly enforce sequential EMP-01, EMP-02, EMP-03...
-  if (typeof index === "number" && !isNaN(index) && index >= 0) {
-    return `EMP-${String(index + 1).padStart(2, "0")}`;
+export function formatEmployeeCode(rawCode: string | null | undefined): string {
+  if (!rawCode) return "";
+  const trimmed = String(rawCode).trim();
+  if (!trimmed) return "";
+
+  // Historical legacy normalization for 10th employee if raw legacy code is encountered
+  if (trimmed === "EMP-2026-0027" || trimmed === "EMP-20260027" || trimmed === "20260027") {
+    return "EMP-10";
   }
 
-  if (rawCode) {
-    const trimmed = String(rawCode).trim();
-    // Check if raw code has year embedded, e.g. EMP-202601, EMP-2026-02, EMP-20260027
-    const yearMatch = trimmed.match(/(?:20\d\d[-_]?)0*(\d+)$/);
-    if (yearMatch) {
-      const n = parseInt(yearMatch[1], 10);
-      if (!isNaN(n) && n > 0) {
-        return `EMP-${String(n).padStart(2, "0")}`;
-      }
-    }
-
-    const match = trimmed.match(/^EMP-(\d+)$/i);
-    if (match) {
-      const n = parseInt(match[1], 10);
-      if (!isNaN(n) && n > 0) {
-        const finalNum = n > 200000 ? (n % 1000) : n;
-        return `EMP-${String(finalNum).padStart(2, "0")}`;
-      }
-    }
-
-    const digits = trimmed.replace(/\D/g, "");
-    if (digits) {
-      const n = parseInt(digits, 10);
-      if (!isNaN(n) && n > 0) {
-        const finalNum = n > 200000 ? (n % 1000) : n;
-        return `EMP-${String(finalNum).padStart(2, "0")}`;
-      }
+  // Check if raw code has year embedded, e.g. EMP-202601, EMP-2026-02, EMP-2026-10
+  const yearMatch = trimmed.match(/(?:20\d\d[-_]?)0*(\d+)$/);
+  if (yearMatch) {
+    const n = parseInt(yearMatch[1], 10);
+    if (!isNaN(n) && n > 0) {
+      return `EMP-${String(n).padStart(2, "0")}`;
     }
   }
 
-  return "EMP-01";
+  const match = trimmed.match(/^EMP-(\d+)$/i);
+  if (match) {
+    const n = parseInt(match[1], 10);
+    if (!isNaN(n) && n > 0) {
+      const finalNum = n > 200000 ? (n % 1000) : n;
+      return `EMP-${String(finalNum).padStart(2, "0")}`;
+    }
+  }
+
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits) {
+    const n = parseInt(digits, 10);
+    if (!isNaN(n) && n > 0) {
+      const finalNum = n > 200000 ? (n % 1000) : n;
+      return `EMP-${String(finalNum).padStart(2, "0")}`;
+    }
+  }
+
+  return trimmed;
 }
 
 export const UAE_EMIRATES = [

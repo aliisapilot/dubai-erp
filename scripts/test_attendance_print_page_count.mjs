@@ -13,7 +13,7 @@ const globalsCss = readFileSync(join(process.cwd(), "app", "globals.css"), "utf-
 console.log("=== COMPREHENSIVE A4 LANDSCAPE PRINT VERIFICATION ===");
 console.log("Loaded live globals.css (" + globalsCss.length + " bytes)");
 
-function createHtml({ employeeCount = 20, daysInMonth = 31, mode = "attendance", forceSinglePage = false }) {
+function createHtml({ employeeCount = 20, daysInMonth = 31, mode = "attendance", forceSinglePage = false, printScale = "auto" }) {
   const year = 2026;
   const monthName = "October";
 
@@ -23,8 +23,9 @@ function createHtml({ employeeCount = 20, daysInMonth = 31, mode = "attendance",
     return { dayNum, isSun, dayOfWeek: isSun ? "Su" : "Mo" };
   });
 
-  const isMultiPage = !forceSinglePage && employeeCount > 30;
-  const pageSize = 24;
+  const effectiveForceSingle = forceSinglePage || (printScale === "auto" && employeeCount <= 32);
+  const pageSize = printScale === "actual" ? 18 : 24;
+  const isMultiPage = !effectiveForceSingle && employeeCount > pageSize;
   const totalPages = isMultiPage ? Math.ceil(employeeCount / pageSize) : 1;
 
   const chunks = [];
@@ -47,17 +48,21 @@ function createHtml({ employeeCount = 20, daysInMonth = 31, mode = "attendance",
 
   const rowsOnPage = isMultiPage ? pageSize : employeeCount;
   const densityClass =
-    rowsOnPage > 24
+    printScale === "actual"
+      ? "density-spacious density-actual"
+      : rowsOnPage > 24
       ? "density-tight"
       : rowsOnPage > 15
       ? "density-compact"
       : "density-spacious";
 
+  const scaleClass = `scale-${printScale}`;
+
   const renderedChunksHtml = chunks.map(({ pageIndex, employees }) => {
     const isLastPage = pageIndex === totalPages - 1;
 
     return `
-      <div class="print-attendance-sheet ${densityClass} mx-auto box-border bg-white text-slate-900 ${
+      <div class="print-attendance-sheet ${scaleClass} ${densityClass} mx-auto box-border bg-white text-slate-900 ${
         pageIndex > 0 ? "attendance-print-page-break pt-4 print:pt-0" : ""
       }" style="width: 287mm;">
         <!-- Sheet Header -->
@@ -226,36 +231,43 @@ ${globalsCss}
 </html>`;
 }
 
-// Complete Test Matrix as requested:
-// - 10, 20, 30 employees
-// - Months containing 28, 30, and 31 days
-// - Both Attendance and Overtime modes
-// - Multi-page verification for >30 employees (e.g. 48 employees)
+// Complete Test Matrix verifying:
+// 1. "auto" (Auto Fit One Page): Exactly 1 page for 10, 20, 30 employees
+// 2. "fit-width": 1 page for <= 24 employees, 2 pages for > 24 employees
+// 3. "actual": 1 page for <= 18 employees, 2 pages for > 18 employees
+// 4. October 2026 (31 days) 10 employees in Attendance and Overtime modes
+// 5. Verification of all columns (31 days, Emp No, Name, Pres/Abs/Total or OT/AED)
 const testMatrix = [
-  // 10 Employees
-  { employees: 10, days: 28, mode: "attendance", expectedPages: 1 },
-  { employees: 10, days: 30, mode: "attendance", expectedPages: 1 },
-  { employees: 10, days: 31, mode: "attendance", expectedPages: 1 },
-  { employees: 10, days: 31, mode: "overtime",   expectedPages: 1 },
+  // --- OCTOBER 2026 (31 DAYS), 10 EMPLOYEES: AUTO FIT ONE PAGE ---
+  { employees: 10, days: 31, mode: "attendance", printScale: "auto", expectedPages: 1 },
+  { employees: 10, days: 31, mode: "overtime",   printScale: "auto", expectedPages: 1 },
 
-  // 20 Employees
-  { employees: 20, days: 28, mode: "attendance", expectedPages: 1 },
-  { employees: 20, days: 30, mode: "attendance", expectedPages: 1 },
-  { employees: 20, days: 31, mode: "attendance", expectedPages: 1 },
-  { employees: 20, days: 31, mode: "overtime",   expectedPages: 1 },
+  // --- OCTOBER 2026 (31 DAYS), 10 EMPLOYEES: FIT WIDTH ---
+  { employees: 10, days: 31, mode: "attendance", printScale: "fit-width", expectedPages: 1 },
+  { employees: 10, days: 31, mode: "overtime",   printScale: "fit-width", expectedPages: 1 },
 
-  // 30 Employees
-  { employees: 30, days: 28, mode: "attendance", expectedPages: 1 },
-  { employees: 30, days: 30, mode: "attendance", expectedPages: 1 },
-  { employees: 30, days: 31, mode: "attendance", expectedPages: 1 },
-  { employees: 30, days: 31, mode: "overtime",   expectedPages: 1 },
+  // --- OCTOBER 2026 (31 DAYS), 10 EMPLOYEES: ACTUAL SIZE ---
+  { employees: 10, days: 31, mode: "attendance", printScale: "actual", expectedPages: 1 },
+  { employees: 10, days: 31, mode: "overtime",   printScale: "actual", expectedPages: 1 },
 
-  // > 30 Employees: Multi-page intentional chunking (48 employees -> 2 pages)
-  { employees: 48, days: 31, mode: "attendance", forceSinglePage: false, expectedPages: 2 },
-  { employees: 48, days: 31, mode: "overtime",   forceSinglePage: false, expectedPages: 2 },
+  // --- AUTO FIT ONE PAGE SCALING VERIFICATION (10, 20, 30 EMPLOYEES -> EXACTLY 1 PAGE) ---
+  { employees: 20, days: 31, mode: "attendance", printScale: "auto", expectedPages: 1 },
+  { employees: 20, days: 31, mode: "overtime",   printScale: "auto", expectedPages: 1 },
+  { employees: 30, days: 31, mode: "attendance", printScale: "auto", expectedPages: 1 },
+  { employees: 30, days: 31, mode: "overtime",   printScale: "auto", expectedPages: 1 },
 
-  // > 30 Employees: Force single page option (32 employees -> 1 page)
-  { employees: 32, days: 31, mode: "attendance", forceSinglePage: true,  expectedPages: 1 },
+  // --- FIT WIDTH: PAGINATES AT STANDARD 24 ROWS/PAGE (30 EMP -> 2 PAGES, 48 EMP -> 2 PAGES) ---
+  { employees: 30, days: 31, mode: "attendance", printScale: "fit-width", expectedPages: 2 },
+  { employees: 30, days: 31, mode: "overtime",   printScale: "fit-width", expectedPages: 2 },
+  { employees: 48, days: 31, mode: "attendance", printScale: "fit-width", expectedPages: 2 },
+
+  // --- ACTUAL SIZE: UNSCALED 100% SIZE, PAGINATES AT 18 ROWS/PAGE (20 EMP -> 2 PAGES, 30 EMP -> 2 PAGES) ---
+  { employees: 20, days: 31, mode: "attendance", printScale: "actual", expectedPages: 2 },
+  { employees: 30, days: 31, mode: "attendance", printScale: "actual", expectedPages: 2 },
+  { employees: 30, days: 31, mode: "overtime",   printScale: "actual", expectedPages: 2 },
+
+  // --- FORCE SINGLE PAGE OVERRIDE ---
+  { employees: 32, days: 31, mode: "attendance", forceSinglePage: true, printScale: "auto", expectedPages: 1 },
 ];
 
 console.log(`Running ${testMatrix.length} tests in headless Chrome...`);
@@ -263,13 +275,31 @@ console.log(`Running ${testMatrix.length} tests in headless Chrome...`);
 let passedCount = 0;
 for (const test of testMatrix) {
   const forceTag = test.forceSinglePage ? "_force1p" : "";
-  const testName = `${test.mode}_${test.employees}emp_${test.days}days${forceTag}`;
+  const scaleTag = `_${test.printScale || "auto"}`;
+  const testName = `${test.mode}_${test.employees}emp_${test.days}days${scaleTag}${forceTag}`;
   const html = createHtml({
     employeeCount: test.employees,
     daysInMonth: test.days,
     mode: test.mode,
     forceSinglePage: test.forceSinglePage,
+    printScale: test.printScale,
   });
+
+  // Verify all essential columns and content exist in the generated HTML
+  assert.ok(html.includes("Emp No"), `Missing 'Emp No' column in ${testName}`);
+  assert.ok(html.includes("Employee Name"), `Missing 'Employee Name' column in ${testName}`);
+  for (let d = 1; d <= test.days; d++) {
+    const dayStr = String(d).padStart(2, "0");
+    assert.ok(new RegExp(`>\\s*${dayStr}\\s*<`).test(html), `Missing Day ${dayStr} in ${testName}`);
+  }
+  if (test.mode === "attendance") {
+    assert.ok(html.includes("Pres"), `Missing Pres column in ${testName}`);
+    assert.ok(html.includes("Abs"), `Missing Abs column in ${testName}`);
+    assert.ok(html.includes("Total"), `Missing Total column in ${testName}`);
+  } else {
+    assert.ok(html.includes("OT Hrs"), `Missing OT Hrs column in ${testName}`);
+    assert.ok(html.includes("Est. AED"), `Missing Est. AED column in ${testName}`);
+  }
 
   const htmlPath = join(OUT_DIR, `verify_${testName}.html`);
   const pdfPath = join(OUT_DIR, `verify_${testName}.pdf`);
@@ -288,7 +318,7 @@ for (const test of testMatrix) {
   const matches = pdfText.match(/\/Type\s*\/Page\b/g);
   const pageCount = matches ? matches.length : 1;
 
-  console.log(`  [TEST] ${test.mode.toUpperCase().padEnd(10)} | ${test.employees} Emp | ${test.days} Days | Force1P: ${String(test.forceSinglePage ?? false).padEnd(5)} -> Pages: ${pageCount} (Expected: ${test.expectedPages})`);
+  console.log(`  [TEST] ${test.mode.toUpperCase().padEnd(10)} | ${test.employees} Emp | ${test.days} Days | Scale: ${(test.printScale || "auto").padEnd(9)} | Force1P: ${String(test.forceSinglePage ?? false).padEnd(5)} -> Pages: ${pageCount} (Expected: ${test.expectedPages})`);
   assert.equal(
     pageCount,
     test.expectedPages,

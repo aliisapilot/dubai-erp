@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { FileText, Search, Loader2, Printer, Receipt } from "lucide-react";
-import { fmtAED, getCurrentCompany, parsePayrollMonth } from "@/lib/helpers";
+import { fmtAED, getCurrentCompany, parsePayrollMonth, formatEmployeeCode } from "@/lib/helpers";
 import SalarySlipTemplate, { SalarySlipData } from "@/components/documents/SalarySlipTemplate";
 import EmployeePaymentVoucherTemplate, { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -100,7 +100,7 @@ export default function PayslipsPage() {
     const parsed = parsePayrollMonth(r.payroll_month, r.payroll_year);
     const slipData: SalarySlipData = {
       employee_name: emp?.first_name || "Employee",
-      employee_id: emp?.employee_number || emp?.id?.slice(0, 8) || "EMP-001",
+      employee_id: formatEmployeeCode(emp?.employee_number) || "EMP-01",
       designation: emp?.designation || "Staff",
       department: emp?.department || "Operations",
       joining_date: emp?.joining_date || null,
@@ -131,13 +131,14 @@ export default function PayslipsPage() {
     const emp = empMap[r.employee_id || ""];
     const now = new Date();
     const parsed = parsePayrollMonth(r.payroll_month, r.payroll_year);
-    const voucherNumber = `PV-${parsed.year}${String(parsed.month).padStart(2, "0")}-${(emp?.employee_number || "EMP").replace(/[^a-zA-Z0-9]/g, "")}`;
+    const empCode = formatEmployeeCode(emp?.employee_number) || "EMP-01";
+    const voucherNumber = `PV-${parsed.year}${String(parsed.month).padStart(2, "0")}-${empCode.replace(/[^a-zA-Z0-9]/g, "")}`;
 
     const voucherData: PaymentVoucherData = {
       voucher_number: voucherNumber,
       voucher_date: r.payment_date || now.toISOString().split("T")[0],
       employee_name: emp?.first_name || "Employee",
-      employee_id: emp?.employee_number || emp?.id?.slice(0, 8) || "EMP-001",
+      employee_id: empCode,
       designation: emp?.designation || "Staff",
       month: parsed.month,
       year: r.payroll_year || parsed.year,
@@ -221,7 +222,7 @@ export default function PayslipsPage() {
                   <tr key={r.id} className="hover:bg-slate-50 transition">
                     <td className="px-4 py-3">
                       <div className="font-semibold text-slate-900">{empMap[r.employee_id || ""]?.first_name || "—"}</div>
-                      <div className="text-xs text-slate-400">{empMap[r.employee_id || ""]?.employee_number || ""} · {empMap[r.employee_id || ""]?.designation || ""}</div>
+                      <div className="text-xs text-slate-400 font-mono">{formatEmployeeCode(empMap[r.employee_id || ""]?.employee_number)} · {empMap[r.employee_id || ""]?.designation || ""}</div>
                     </td>
                     <td className="px-4 py-3 text-slate-600 font-medium">
                       {r.payroll_month ? parsePayrollMonth(r.payroll_month, r.payroll_year).label : "—"}

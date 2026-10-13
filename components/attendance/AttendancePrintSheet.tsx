@@ -13,6 +13,7 @@ interface AttendancePrintSheetProps {
   attendanceMap: Record<string, string>; // `${empId}_${dateStr}` -> status
   overtimeMap: Record<string, number>; // `${empId}_${dateStr}` -> hours
   forceSinglePage?: boolean;
+  printScale?: "auto" | "fit-width" | "actual";
 }
 
 export default function AttendancePrintSheet({
@@ -24,6 +25,7 @@ export default function AttendancePrintSheet({
   attendanceMap,
   overtimeMap,
   forceSinglePage = false,
+  printScale = "auto",
 }: AttendancePrintSheetProps) {
   const daysInMonth = new Date(year, month, 0).getDate();
   const monthName = MONTH_NAMES[month - 1] || "";
@@ -47,19 +49,26 @@ export default function AttendancePrintSheet({
     };
   });
 
-  // Determine whether to chunk into multiple pages (> 30 employees unless forceSinglePage is set)
-  const isMultiPage = !forceSinglePage && employees.length > 30;
-  const pageSize = 24;
+  // Dynamic pagination based on printScale and employee count
+  // 1. "auto" (Auto Fit One Page): Up to 32 employees forced to fit on exactly 1 page
+  // 2. "fit-width": 100% printable width (287mm), standard 24 employees per page
+  // 3. "actual": 100% natural unscaled size, roomier cells and font, 18 employees per page
+  const effectiveForceSingle = forceSinglePage || (printScale === "auto" && employees.length <= 32);
+  const pageSize = printScale === "actual" ? 18 : 24;
+  const isMultiPage = !effectiveForceSingle && employees.length > pageSize;
+
   const employeeChunks: EmployeeInfo[][] = isMultiPage
     ? Array.from({ length: Math.ceil(employees.length / pageSize) }, (_, idx) =>
         employees.slice(idx * pageSize, (idx + 1) * pageSize)
       )
     : [employees];
 
-  // Dynamic density tier based on rows per page
+  // Dynamic density tier based on scale mode and rows per page
   const rowsOnPage = isMultiPage ? pageSize : employees.length;
   const densityClass =
-    rowsOnPage > 24
+    printScale === "actual"
+      ? "density-spacious density-actual"
+      : rowsOnPage > 24
       ? "density-tight"
       : rowsOnPage > 15
       ? "density-compact"
@@ -96,6 +105,12 @@ export default function AttendancePrintSheet({
           }
           .print-attendance-sheet {
             page: attendance-sheet !important;
+          }
+          .print-attendance-sheet.density-actual table th,
+          .print-attendance-sheet.density-actual table td {
+            padding: 3.5px 2px !important;
+            font-size: 8.5pt !important;
+            line-height: 1.25 !important;
           }
         }
         .attendance-print-root,
@@ -138,7 +153,7 @@ export default function AttendancePrintSheet({
         return (
           <div
             key={pageIndex}
-            className={`print-attendance-sheet print-document document-sheet erp-document-surface ${densityClass} mx-auto box-border bg-white text-slate-900 ${
+            className={`print-attendance-sheet print-document document-sheet erp-document-surface scale-${printScale} ${densityClass} mx-auto box-border bg-white text-slate-900 ${
               pageIndex > 0 ? "attendance-print-page-break pt-4 print:pt-0" : ""
             }`}
             style={{ width: "287mm" }}
@@ -272,7 +287,6 @@ export default function AttendancePrintSheet({
 
                 <tbody>
                   {chunk.map((emp, idxOnPage) => {
-                    const globalIdx = pageIndex * pageSize + idxOnPage;
                     let pCount = 0;
                     let aCount = 0;
                     let otherCount = 0;
@@ -284,7 +298,7 @@ export default function AttendancePrintSheet({
                         className={`${idxOnPage % 2 === 0 ? "bg-white" : "bg-slate-50"} leading-tight`}
                       >
                         <td className="border border-slate-300 px-1 font-bold font-mono text-slate-800 whitespace-nowrap">
-                          {formatEmployeeCode(emp.employee_number, globalIdx)}
+                          {formatEmployeeCode(emp.employee_number)}
                         </td>
                         <td className="border border-slate-300 px-1 font-medium text-slate-900 whitespace-nowrap truncate">
                           {emp.first_name || "Unnamed"}

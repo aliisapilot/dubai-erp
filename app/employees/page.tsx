@@ -133,9 +133,20 @@ export default function EmployeesPage() {
 
   async function load() {
     setLoading(true);
-    const { data, error } = await supabase.from("employees").select("*").order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("employees").select("*").order("employee_number", { ascending: true });
     if (error) { setError(error.message); setEmployees([]); }
-    else setEmployees((data || []) as Employee[]);
+    else {
+      const list = (data || []) as Employee[];
+      list.sort((a, b) => {
+        const codeA = formatEmployeeCode(a.employee_number);
+        const codeB = formatEmployeeCode(b.employee_number);
+        const numA = parseInt(codeA.replace(/\D/g, ""), 10);
+        const numB = parseInt(codeB.replace(/\D/g, ""), 10);
+        if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
+        return (a.first_name || "").localeCompare(b.first_name || "");
+      });
+      setEmployees(list);
+    }
     setLoading(false);
   }
 
@@ -183,7 +194,8 @@ export default function EmployeesPage() {
       const cid = await getCompanyId();
       // Calculate next sequential code EMP-01, EMP-02, EMP-03...
       const maxNum = employees.reduce((max, e) => {
-        const digits = (e.employee_number || "").replace(/\D/g, "");
+        const code = formatEmployeeCode(e.employee_number);
+        const digits = code.replace(/\D/g, "");
         const n = parseInt(digits, 10);
         return !isNaN(n) && n > max ? n : max;
       }, 0);
@@ -326,9 +338,9 @@ export default function EmployeesPage() {
     await load();
   }
 
-  const filtered = employees.filter((e, idx) => {
+  const filtered = employees.filter((e) => {
     const q = search.toLowerCase();
-    const code = formatEmployeeCode(e.employee_number, idx).toLowerCase();
+    const code = formatEmployeeCode(e.employee_number).toLowerCase();
     const searchTarget = [code, e.employee_number, e.first_name, e.designation, e.department, e.email, e.phone].filter(Boolean).join(" ").toLowerCase();
     return searchTarget.includes(q);
   });
@@ -384,7 +396,7 @@ export default function EmployeesPage() {
 
                   return (
                     <tr key={emp.id} className={`hover:bg-slate-50 ${norm !== "active" ? "opacity-60" : ""}`}>
-                      <td className="px-4 py-3 font-mono font-bold text-xs text-slate-700">{formatEmployeeCode(emp.employee_number, employees.indexOf(emp))}</td>
+                      <td className="px-4 py-3 font-mono font-bold text-xs text-slate-700">{formatEmployeeCode(emp.employee_number)}</td>
                       <td className="px-4 py-3"><div className="font-semibold text-slate-900">{emp.first_name}</div><div className="text-xs text-slate-400">{emp.email || ""}</div></td>
                       <td className="px-4 py-3 text-slate-600">{emp.designation || "—"}</td>
                       <td className="px-4 py-3 text-slate-600">{emp.department || "—"}</td>

@@ -17,6 +17,7 @@ import {
   Sliders,
   Hash,
   ExternalLink,
+  Database,
 } from "lucide-react";
 import { DEFAULT_BRAND_COLORS } from "@/lib/brandConfig";
 import { getCurrentCompany, clearCompanyCache } from "@/lib/helpers";
@@ -473,6 +474,30 @@ export default function SettingsPage() {
           >
             <Sliders size={18} />
             <span>Launch PDF Designer</span>
+          </a>
+        </div>
+
+        {/* ── Data Management & Safe ERP Reset Card ──────────────────────── */}
+        <div className="mb-6 rounded-2xl border border-slate-700 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-6 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="space-y-2 max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-400 border border-emerald-500/30">
+              <Database size={14} />
+              <span>Safe ERP Reset System &bull; Database &amp; Data Lifecycle</span>
+            </div>
+            <h2 className="text-xl font-bold text-white tracking-tight">
+              Data Management &bull; Reset ERP Data
+            </h2>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Generate SHA-256 verified database backups, review topological dependencies, and preview dry-run resets.
+              Employees EMP-01 through EMP-10, company settings, and PDF designer layouts remain 100% protected.
+            </p>
+          </div>
+          <a
+            href="/settings/data-management"
+            className="shrink-0 flex items-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-5 py-3 text-sm shadow-lg transition"
+          >
+            <Database size={18} />
+            <span>Manage &amp; Reset Data</span>
           </a>
         </div>
 

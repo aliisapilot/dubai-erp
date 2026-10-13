@@ -26,7 +26,7 @@ import {
   Settings,
 } from "lucide-react";
 
-import { getCompanyId, getCurrentCompany, MONTH_NAMES, fmtAED } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, MONTH_NAMES, fmtAED, formatEmployeeCode } from "@/lib/helpers";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import AttendanceImportModal, {
   EmployeeInfo,
@@ -150,6 +150,7 @@ export default function MonthlyAttendanceOvertimeSheet({
     return false;
   });
   const [forceSinglePage, setForceSinglePage] = useState(false);
+  const [printScale, setPrintScale] = useState<"auto" | "fit-width" | "actual">("auto");
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [showBulkMenu, setShowBulkMenu] = useState(false);
@@ -206,8 +207,10 @@ export default function MonthlyAttendanceOvertimeSheet({
 
         // Natural numerical sort for employee codes (EMP-01, EMP-02 ... EMP-10 ...)
         const sortedEmps = (empsRes.data || []).sort((a: ExtendedEmployeeInfo, b: ExtendedEmployeeInfo) => {
-          const numA = parseInt((a.employee_number || "").replace(/[^0-9]/g, ""), 10);
-          const numB = parseInt((b.employee_number || "").replace(/[^0-9]/g, ""), 10);
+          const codeA = formatEmployeeCode(a.employee_number);
+          const codeB = formatEmployeeCode(b.employee_number);
+          const numA = parseInt(codeA.replace(/[^0-9]/g, ""), 10);
+          const numB = parseInt(codeB.replace(/[^0-9]/g, ""), 10);
           if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
             return numA - numB;
           }
@@ -332,8 +335,8 @@ export default function MonthlyAttendanceOvertimeSheet({
   const filteredEmployees = useMemo(() => {
     if (!search.trim()) return employees;
     const q = search.toLowerCase().trim();
-    return employees.filter((e, idx) => {
-      const code = `emp-${String(idx + 1).padStart(2, "0")}`;
+    return employees.filter((e) => {
+      const code = formatEmployeeCode(e.employee_number).toLowerCase();
       const raw = (e.employee_number || "").toLowerCase();
       const name = (e.first_name || "").toLowerCase();
       return name.includes(q) || code.includes(q) || raw.includes(q);
@@ -1082,7 +1085,7 @@ export default function MonthlyAttendanceOvertimeSheet({
     ];
     attData.push(attHeader);
 
-    employees.forEach((emp, empIdx) => {
+    employees.forEach((emp) => {
       const empStatuses = days.map(d => getAttendanceStatus(emp.id, d.dateStr));
       const adj = monthlyAdjustments[emp.id] || DEFAULT_MONTHLY_ADJUSTMENT;
       const attTotals = calculateAttendanceTotals(empStatuses, daysInMonth, DEFAULT_PAYROLL_RULES.workingDaysDivisor, {
@@ -1100,7 +1103,7 @@ export default function MonthlyAttendanceOvertimeSheet({
       });
 
       attData.push([
-        `EMP-${String(empIdx + 1).padStart(2, "0")}`,
+        formatEmployeeCode(emp.employee_number),
         emp.first_name || "",
         ...rowVals,
         attTotals.presentDaysCount,
@@ -1130,7 +1133,7 @@ export default function MonthlyAttendanceOvertimeSheet({
     ];
     otData.push(otHeader);
 
-    employees.forEach((emp, empIdx) => {
+    employees.forEach((emp) => {
       let rawOt = 0;
       const rowVals: (number | string)[] = days.map(d => {
         const h = getOvertimeHours(emp.id, d.dateStr);
@@ -1142,7 +1145,7 @@ export default function MonthlyAttendanceOvertimeSheet({
       const otTotals = calculateOvertimeCharge(Number(emp.basic_salary) || 0, rawOt, adj, DEFAULT_PAYROLL_RULES);
 
       otData.push([
-        `EMP-${String(empIdx + 1).padStart(2, "0")}`,
+        formatEmployeeCode(emp.employee_number),
         emp.first_name || "",
         ...rowVals,
         Number(rawOt.toFixed(1)),
@@ -1173,7 +1176,7 @@ export default function MonthlyAttendanceOvertimeSheet({
       "Statement Status",
     ]);
 
-    employees.forEach((emp, empIdx) => {
+    employees.forEach((emp) => {
       const empStatuses = days.map(d => getAttendanceStatus(emp.id, d.dateStr));
       const adj = monthlyAdjustments[emp.id] || DEFAULT_MONTHLY_ADJUSTMENT;
       const attTotals = calculateAttendanceTotals(empStatuses, daysInMonth, DEFAULT_PAYROLL_RULES.workingDaysDivisor, {
@@ -1195,7 +1198,7 @@ export default function MonthlyAttendanceOvertimeSheet({
       const stmt = salaryStatementsForMonth[emp.id];
 
       sumData.push([
-        `EMP-${String(empIdx + 1).padStart(2, "0")}`,
+        formatEmployeeCode(emp.employee_number),
         emp.first_name || "",
         emp.basic_salary || 0,
         attTotals.actualAttendanceDays,
@@ -1751,7 +1754,7 @@ export default function MonthlyAttendanceOvertimeSheet({
                             : "bg-slate-50 text-slate-800 hover:bg-slate-200"
                         }`}
                       >
-                        {`EMP-${String(empIdx + 1).padStart(2, "0")}`}
+                        {formatEmployeeCode(emp.employee_number)}
                       </td>
 
                       {/* Frozen Column 2: Employee Name */}
@@ -2197,7 +2200,7 @@ export default function MonthlyAttendanceOvertimeSheet({
           isOpen={Boolean(selectedChargesEmp)}
           onClose={() => setSelectedChargesEmp(null)}
           employee={selectedChargesEmp}
-          empCode={`EMP-${String(filteredEmployees.indexOf(selectedChargesEmp) + 1).padStart(2, "0")}`}
+          empCode={formatEmployeeCode(selectedChargesEmp.employee_number)}
           year={year}
           month={month}
           dailyAttendance={days.map(d => getAttendanceStatus(selectedChargesEmp.id, d.dateStr))}
@@ -2261,6 +2264,7 @@ export default function MonthlyAttendanceOvertimeSheet({
               )
             )}
             forceSinglePage={forceSinglePage}
+            printScale={printScale}
           />
         </div>
       )}
@@ -2269,6 +2273,26 @@ export default function MonthlyAttendanceOvertimeSheet({
       {showPrintModal && (
         <div className="print-sheet-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs overflow-y-auto print:p-0 print:m-0 print:bg-transparent print:static print:overflow-visible">
           <div className="print-sheet-modal-dialog relative w-full max-w-[1300px] rounded-2xl bg-slate-900 shadow-2xl border border-slate-700 overflow-hidden my-4 print:border-none print:shadow-none print:my-0 print:max-w-none print:w-full print:bg-transparent">
+
+            {/* ── Injected @page zoom hint for Chrome/Edge print engine ── */}
+            <style dangerouslySetInnerHTML={{ __html: `
+              @media print {
+                @page {
+                  size: A4 landscape;
+                  margin: 4mm;
+                  ${printScale === "actual" ? "" : ""}
+                }
+                .attendance-print-scale-root {
+                  ${printScale === "auto"
+                    ? "zoom: 1; transform: none;"
+                    : printScale === "fit-width"
+                    ? "zoom: 1; transform: none; width: 289mm !important; max-width: 289mm !important;"
+                    : /* actual */ "zoom: 1; transform: none; width: auto !important;"
+                  }
+                }
+              }
+            `}} />
+
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-800 px-6 py-3.5 bg-slate-900 text-white no-print">
               <div className="flex items-center gap-2.5">
@@ -2281,6 +2305,30 @@ export default function MonthlyAttendanceOvertimeSheet({
                 </div>
               </div>
               <div className="flex items-center gap-3">
+
+                {/* ── Print Scale Picker ── */}
+                <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700 no-print">
+                  {([
+                    { id: "auto"      , label: "Auto Fit",   title: "Scale content to fit exactly one A4 landscape page" },
+                    { id: "fit-width" , label: "Fit Width",  title: "Expand table to fill the full page width, rows may paginate" },
+                    { id: "actual"    , label: "Actual Size", title: "No scaling — print at 100% (may overflow to multiple pages)" },
+                  ] as { id: "auto" | "fit-width" | "actual"; label: string; title: string }[]).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      title={opt.title}
+                      onClick={() => setPrintScale(opt.id)}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                        printScale === opt.id
+                          ? "bg-emerald-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-white hover:bg-slate-700"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
                 <button
                   type="button"
                   onClick={() => window.print()}
@@ -2336,8 +2384,26 @@ export default function MonthlyAttendanceOvertimeSheet({
 
             {/* Desk Surface Preview Container */}
             <div className="p-4 sm:p-6 bg-slate-950/80 overflow-y-auto max-h-[78vh] flex justify-center print:p-0 print:m-0 print:bg-transparent print:overflow-visible print:max-h-none print:block">
-              {/* Paper Sheet Document Surface: Guaranteed stark white with dark border & shadow */}
-              <div className="print-document document-sheet erp-document-surface bg-white text-slate-900 shadow-2xl p-4 sm:p-5 rounded-xs border border-slate-300 print:shadow-none print:border-none print:p-0 print:m-0 print:rounded-none w-fit mx-auto">
+
+              {/* Scale indicator badge (screen-only) */}
+              <div className="no-print absolute top-[7.5rem] left-6 flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 select-none pointer-events-none">
+                <span className="bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-full">
+                  {printScale === "auto" && "🖨 Auto Fit — 1 Page"}
+                  {printScale === "fit-width" && "↔ Fit Width"}
+                  {printScale === "actual" && "⦿ Actual Size (100%)"}
+                </span>
+              </div>
+
+              {/* Paper Sheet Document Surface */}
+              <div
+                className={`attendance-print-scale-root print-document document-sheet erp-document-surface bg-white text-slate-900 shadow-2xl rounded-xs border border-slate-300 print:shadow-none print:border-none print:p-0 print:m-0 print:rounded-none mx-auto transition-all ${
+                  printScale === "auto"
+                    ? "p-4 sm:p-5 w-fit"
+                    : printScale === "fit-width"
+                    ? "p-4 sm:p-5 w-full max-w-none"
+                    : /* actual */ "p-4 sm:p-5 w-fit overflow-x-auto"
+                }`}
+              >
                 <AttendancePrintSheet
                   company={company}
                   year={year}
@@ -2355,6 +2421,7 @@ export default function MonthlyAttendanceOvertimeSheet({
                     )
                   )}
                   forceSinglePage={forceSinglePage}
+                  printScale={printScale}
                 />
               </div>
             </div>

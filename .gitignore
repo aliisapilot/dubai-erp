@@ -57,5 +57,7 @@ scripts/debug.js
 scripts/edit-page.js
 .chrome-test-profile*
 .chrome-verify-profile*
+.chrome-reset-verify-profile*
 test-results/
 *.audit-tmp
+scratch/

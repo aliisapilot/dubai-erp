@@ -747,9 +747,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   /* 5. The True A4 Printable Document Container (.print-document) */
-  .print-document,
-  .document-sheet,
-  .print-page {
+  .print-document:not(.print-attendance-sheet):not(.attendance-print-root):not(.attendance-print-scale-root),
+  .document-sheet:not(.print-attendance-sheet):not(.attendance-print-root):not(.attendance-print-scale-root),
+  .print-page:not(.print-attendance-sheet):not(.attendance-print-root):not(.attendance-print-scale-root) {
     display: block !important;
     position: relative !important;
     box-sizing: border-box !important;
@@ -767,6 +767,32 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     overflow: visible !important;
     page-break-after: auto !important;
     break-after: auto !important;
+  }
+
+  /* Dedicated Attendance & Overtime Landscape Sheet sizing (never inherits portrait 297mm min-height) */
+  .print-attendance-sheet,
+  .print-attendance-sheet.print-document,
+  .print-attendance-sheet.document-sheet,
+  .attendance-print-root,
+  .attendance-print-scale-root {
+    display: block !important;
+    position: relative !important;
+    box-sizing: border-box !important;
+    width: 287mm !important;
+    min-width: 287mm !important;
+    max-width: 287mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background-color: #ffffff !important;
+    overflow: visible !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   /* Full-bleed designer pages already own the complete 210mm × 297mm surface. */

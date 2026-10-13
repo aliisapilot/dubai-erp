@@ -80,13 +80,22 @@ export default function AttendanceImportModal({
     const cleanName = normalizeName(rawName);
 
     // 1. Try matching by employee number
+    const canonicalCode = formatEmployeeCode(rawCode);
+    if (canonicalCode) {
+      const matchByCanonical = employees.find(e => formatEmployeeCode(e.employee_number) === canonicalCode);
+      if (matchByCanonical) return matchByCanonical;
+    }
+
     if (cleanCode) {
       const matchByCode = employees.find(e => normalizeCode(e.employee_number) === cleanCode);
       if (matchByCode) return matchByCode;
       // also check numeric part match: EMP01 matches EMP-1 or 1
-      const numCode = cleanCode.replace(/[^0-9]/g, "");
-      if (numCode) {
-        const matchByNum = employees.find(e => normalizeCode(e.employee_number).replace(/[^0-9]/g, "") === numCode);
+      const numCode = parseInt(cleanCode.replace(/[^0-9]/g, ""), 10);
+      if (!isNaN(numCode) && numCode > 0) {
+        const matchByNum = employees.find(e => {
+          const empNum = parseInt((formatEmployeeCode(e.employee_number) || "").replace(/[^0-9]/g, ""), 10);
+          return empNum === numCode;
+        });
         if (matchByNum) return matchByNum;
       }
     }
@@ -514,9 +523,9 @@ export default function AttendanceImportModal({
                             className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs focus:outline-none"
                           >
                             <option value="">— Skip Row —</option>
-                            {employees.map((e, idx) => (
+                            {employees.map((e) => (
                               <option key={e.id} value={e.id}>
-                                {formatEmployeeCode(e.employee_number, idx)} - {e.first_name}
+                                {formatEmployeeCode(e.employee_number)} - {e.first_name}
                               </option>
                             ))}
                           </select>

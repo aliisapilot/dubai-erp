@@ -12,7 +12,7 @@ import {
   LogOut, X, Wallet, Briefcase, TrendingUp, Calendar,
   Paperclip, ShieldAlert, ShieldCheck, FileCode2,
   CreditCard, ArrowDownRight, ArrowUpRight, RefreshCw, History,
-  FileCheck, Bell, Ruler
+  FileCheck, Bell, Ruler, Database
 } from "lucide-react";
 import { getCurrentCompany } from "@/lib/helpers";
 import ImmersiveLogo from "@/components/ImmersiveLogo";
@@ -409,8 +409,9 @@ export default function Sidebar() {
         <div className="px-3 pt-3 pb-1 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
           Administration
         </div>
-        <NavLink href="/settings" icon={<Settings size={18} />} label="Settings" />
+        <NavLink href="/settings" icon={<Settings size={18} />} label="Settings" exact />
         <NavLink href="/settings/designer" icon={<FileText size={18} />} label="PDF Designer" />
+        <NavLink href="/settings/data-management" icon={<Database size={18} />} label="Data Management" />
       </div>
 
       {/* User Footer */}

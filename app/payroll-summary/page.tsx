@@ -108,7 +108,14 @@ export default function PayrollSummaryPage() {
       }
       if (version !== requestVersion.current) return;
 
-      const emList = (emps || []) as Employee[];
+      const emList = ((emps || []) as Employee[]).sort((a, b) => {
+        const codeA = formatEmployeeCode(a.employee_number);
+        const codeB = formatEmployeeCode(b.employee_number);
+        const numA = parseInt(codeA.replace(/\D/g, ""), 10);
+        const numB = parseInt(codeB.replace(/\D/g, ""), 10);
+        if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
+        return (a.first_name || "").localeCompare(b.first_name || "");
+      });
       const em: Record<string, Employee> = {};
       emList.forEach((e) => { em[e.id] = e; });
       setEmployees(emList);
@@ -261,7 +268,7 @@ export default function PayrollSummaryPage() {
           : (Number(r.gross_salary) || 0) - (Number(r.net_salary) || 0);
 
       return [
-        `"${emp?.employee_number || "-"}"`,
+        `"${formatEmployeeCode(emp?.employee_number) || "-"}"`,
         `"${emp?.first_name || "Employee"}"`,
         pDays,
         (Number(r.basic_salary) || 0).toFixed(2),
@@ -354,7 +361,7 @@ export default function PayrollSummaryPage() {
               <option value="">All Employees ({employees.length})</option>
               {employees.map((e) => (
                 <option key={e.id} value={e.id}>
-                  {e.first_name || e.employee_number || "Unnamed"}
+                  {formatEmployeeCode(e.employee_number)} - {e.first_name || "Unnamed"}
                 </option>
               ))}
             </select>
@@ -470,7 +477,7 @@ export default function PayrollSummaryPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredRecords.map((r, idx) => {
+                    {filteredRecords.map((r) => {
                       const emp = r.employee_id ? empMap[r.employee_id] : null;
                       const pDays = r.employee_id ? monthPayableDays[r.employee_id] ?? 30 : 30;
                       const otH = r.employee_id ? monthOtHours[r.employee_id] ?? 0 : 0;
@@ -492,8 +499,8 @@ export default function PayrollSummaryPage() {
                             <div className="font-semibold text-slate-900">
                               {emp?.first_name || "Employee"}
                             </div>
-                            <div className="text-xs text-slate-400">
-                              {formatEmployeeCode(emp?.employee_number, idx)} · {emp?.designation || "Staff"}
+                            <div className="text-xs text-slate-400 font-mono">
+                              {formatEmployeeCode(emp?.employee_number)} · {emp?.designation || "Staff"}
                             </div>
                           </td>
                           <td className="px-4 py-3 text-center font-mono font-medium text-slate-700">
