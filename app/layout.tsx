@@ -16,7 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
     >
       <body
-        className="m-0 p-0 w-full min-h-screen bg-slate-900 text-slate-100 antialiased overflow-x-hidden"
+        className="m-0 p-0 w-full min-h-screen bg-slate-50 text-slate-900 antialiased overflow-x-hidden"
         suppressHydrationWarning
       >
         <ERPLayout>{children}</ERPLayout>

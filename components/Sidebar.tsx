@@ -39,11 +39,11 @@ function NavLink({ href, icon, label, exact }: NavLinkProps) {
       href={href}
       className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-colors text-sm ${
         active
-          ? "bg-slate-800 text-white font-medium shadow-sm"
-          : "text-slate-300 hover:bg-slate-800/50 hover:text-white"
+          ? "bg-emerald-50 text-emerald-900 font-semibold border border-emerald-200/80 shadow-2xs"
+          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
       }`}
     >
-      <span className={active ? "text-emerald-400" : "text-slate-400"}>{icon}</span>
+      <span className={active ? "text-emerald-700 font-bold" : "text-slate-500"}>{icon}</span>
       <span>{label}</span>
     </Link>
   );
@@ -57,10 +57,10 @@ function SubLink({ href, icon, label, exact }: SubLinkProps) {
     <Link
       href={href}
       className={`flex items-center gap-2 py-1.5 text-xs transition-colors rounded px-2 ${
-        active ? "text-emerald-400 font-semibold bg-slate-800/60" : "text-slate-400 hover:text-white hover:bg-slate-800/30"
+        active ? "text-emerald-800 font-bold bg-emerald-50/90 border border-emerald-200/60" : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
       }`}
     >
-      <span className={active ? "text-emerald-400" : "text-slate-500"}>{icon}</span>
+      <span className={active ? "text-emerald-700" : "text-slate-400"}>{icon}</span>
       <span>{label}</span>
     </Link>
   );
@@ -172,9 +172,9 @@ export default function Sidebar() {
   }
 
   const navContent = (
-    <div className="flex h-full flex-col bg-slate-900 text-slate-300">
+    <div className="flex h-full flex-col bg-white text-slate-700">
       {/* Brand Header with enlarged logo (48-56px desktop, 44-48px tablet, 40-44px mobile) */}
-      <div className="min-h-[4.75rem] border-b border-slate-800 px-4 py-3 flex items-center justify-between bg-slate-900 shrink-0">
+      <div className="min-h-[4.75rem] border-b border-slate-200 px-4 py-3 flex items-center justify-between bg-white shrink-0">
         <Link href="/" className="flex items-center gap-3 group min-w-0 flex-1">
           {/* Immersive Logo with no borders */}
           <ImmersiveLogo
@@ -186,16 +186,16 @@ export default function Sidebar() {
 
           <div className="flex flex-col min-w-0 flex-1 justify-center">
             <span
-              className="font-bold text-white tracking-tight text-xs sm:text-sm md:text-sm leading-snug line-clamp-2"
+              className="font-bold text-slate-900 tracking-tight text-xs sm:text-sm md:text-sm leading-snug line-clamp-2"
               title={company?.name || "Dubai ERP"}
             >
               {company?.name || "Dubai ERP"}
             </span>
             <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-[10px] text-slate-400 font-medium truncate">
+              <span className="text-[10px] text-slate-500 font-medium truncate">
                 Business Suite
               </span>
-              <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-400 border border-emerald-500/30 leading-none">
+              <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 border border-emerald-200 leading-none">
                 5% VAT
               </span>
             </div>
@@ -204,7 +204,7 @@ export default function Sidebar() {
         <button
           type="button"
           onClick={() => setMobileOpen(false)}
-          className="md:hidden rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors ml-2 shrink-0"
+          className="md:hidden rounded-lg p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors ml-2 shrink-0"
           aria-label="Close Navigation"
         >
           <X size={18} />
@@ -214,9 +214,9 @@ export default function Sidebar() {
       {/* Nav List with subtle sidebar scrollbar */}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1.5 text-sm sidebar-scrollbar">
         {company?.trn && (
-          <div className="mb-2 flex items-center justify-between rounded-lg bg-slate-800/60 px-2.5 py-1 text-[11px] text-slate-400 border border-slate-800">
+          <div className="mb-2 flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600 border border-slate-200">
             <span className="truncate">TRN: {company.trn}</span>
-            <span className="text-emerald-400 font-medium">UAE</span>
+            <span className="text-emerald-700 font-bold">UAE</span>
           </div>
         )}
         {/* DASHBOARD */}
@@ -227,16 +227,16 @@ export default function Sidebar() {
           <button
             type="button"
             onClick={() => setSalesOpen(p => !p)}
-            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800/50 text-sm font-medium"
+            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100 hover:text-slate-900 text-sm font-medium transition-colors"
           >
             <div className="flex items-center gap-3">
-              <Receipt size={18} className="text-emerald-400" />
+              <Receipt size={18} className="text-emerald-600" />
               <span>Sales</span>
             </div>
-            {salesOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+            {salesOpen ? <ChevronDown size={15} className="text-slate-400" /> : <ChevronRight size={15} className="text-slate-400" />}
           </button>
           {salesOpen && (
-            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
+            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
               <SubLink href="/customers" icon={<Users size={14} />} label="Customers" />
               <SubLink href="/quotations" icon={<FileText size={14} />} label="Quotations" />
               <SubLink href="/measurements" icon={<Ruler size={14} />} label="Measurement Takeoff" />
@@ -254,16 +254,16 @@ export default function Sidebar() {
           <button
             type="button"
             onClick={() => setPurchasingOpen(p => !p)}
-            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800/50 text-sm font-medium"
+            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100 hover:text-slate-900 text-sm font-medium transition-colors"
           >
             <div className="flex items-center gap-3">
-              <ShoppingBag size={18} className="text-blue-400" />
+              <ShoppingBag size={18} className="text-blue-600" />
               <span>Purchasing</span>
             </div>
-            {purchasingOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+            {purchasingOpen ? <ChevronDown size={15} className="text-slate-400" /> : <ChevronRight size={15} className="text-slate-400" />}
           </button>
           {purchasingOpen && (
-            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
+            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
               <SubLink href="/suppliers" icon={<Truck size={14} />} label="Suppliers" />
               <SubLink href="/purchase-orders" icon={<FileSignature size={14} />} label="Purchase Orders" />
               <SubLink href="/supplier-bills" icon={<FileCheck2 size={14} />} label="Supplier Bills" />
@@ -277,16 +277,16 @@ export default function Sidebar() {
           <button
             type="button"
             onClick={() => setInventoryOpen(p => !p)}
-            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800/50 text-sm font-medium"
+            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100 hover:text-slate-900 text-sm font-medium transition-colors"
           >
             <div className="flex items-center gap-3">
-              <Package size={18} className="text-amber-400" />
+              <Package size={18} className="text-amber-600" />
               <span>Inventory</span>
             </div>
-            {inventoryOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+            {inventoryOpen ? <ChevronDown size={15} className="text-slate-400" /> : <ChevronRight size={15} className="text-slate-400" />}
           </button>
           {inventoryOpen && (
-            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
+            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
               <SubLink href="/products" icon={<Package size={14} />} label="Products &amp; Services" />
               <SubLink href="/inventory" icon={<ClipboardList size={14} />} label="Stock Overview" exact />
               <SubLink href="/inventory/stock-in" icon={<ArrowDownRight size={14} />} label="Stock In" />
@@ -302,16 +302,16 @@ export default function Sidebar() {
           <button
             type="button"
             onClick={() => setProjectsOpen(p => !p)}
-            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800/50 text-sm font-medium"
+            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100 hover:text-slate-900 text-sm font-medium transition-colors"
           >
             <div className="flex items-center gap-3">
-              <Briefcase size={18} className="text-purple-400" />
+              <Briefcase size={18} className="text-purple-600" />
               <span>Projects</span>
             </div>
-            {projectsOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+            {projectsOpen ? <ChevronDown size={15} className="text-slate-400" /> : <ChevronRight size={15} className="text-slate-400" />}
           </button>
           {projectsOpen && (
-            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
+            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
               <SubLink href="/projects" icon={<Briefcase size={14} />} label="Projects" exact />
               <SubLink href="/measurements" icon={<Ruler size={14} />} label="Estimation &amp; Takeoff" />
               <SubLink href="/projects/costing" icon={<TrendingUp size={14} />} label="Project Costing" />
@@ -331,16 +331,16 @@ export default function Sidebar() {
           <button
             type="button"
             onClick={() => setHrOpen(p => !p)}
-            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800/50 text-sm font-medium"
+            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100 hover:text-slate-900 text-sm font-medium transition-colors"
           >
             <div className="flex items-center gap-3">
-              <UserCheck size={18} className="text-teal-400" />
+              <UserCheck size={18} className="text-teal-600" />
               <span>HR &amp; Payroll</span>
             </div>
-            {hrOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+            {hrOpen ? <ChevronDown size={15} className="text-slate-400" /> : <ChevronRight size={15} className="text-slate-400" />}
           </button>
           {hrOpen && (
-            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
+            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
               <SubLink href="/employees" icon={<Users2 size={14} />} label="Employees" />
               <SubLink href="/attendance" icon={<CalendarCheck size={14} />} label="Attendance" />
               <SubLink href="/overtime" icon={<Clock size={14} />} label="Overtime" />
@@ -357,16 +357,16 @@ export default function Sidebar() {
           <button
             type="button"
             onClick={() => setFinanceOpen(p => !p)}
-            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800/50 text-sm font-medium"
+            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100 hover:text-slate-900 text-sm font-medium transition-colors"
           >
             <div className="flex items-center gap-3">
-              <Wallet size={18} className="text-emerald-400" />
+              <Wallet size={18} className="text-emerald-600" />
               <span>Finance</span>
             </div>
-            {financeOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+            {financeOpen ? <ChevronDown size={15} className="text-slate-400" /> : <ChevronRight size={15} className="text-slate-400" />}
           </button>
           {financeOpen && (
-            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
+            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
               <SubLink href="/cheques" icon={<Receipt size={14} />} label="Cheque Register" />
               <SubLink href="/cheques/dashboard" icon={<Calendar size={14} />} label="Cheque Calendar" />
               <SubLink href="/cheques/settings" icon={<Bell size={14} />} label="Reminder Settings" />
@@ -382,16 +382,16 @@ export default function Sidebar() {
           <button
             type="button"
             onClick={() => setReportsOpen(p => !p)}
-            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800/50 text-sm font-medium"
+            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100 hover:text-slate-900 text-sm font-medium transition-colors"
           >
             <div className="flex items-center gap-3">
-              <BarChart3 size={18} className="text-indigo-400" />
+              <BarChart3 size={18} className="text-indigo-600" />
               <span>Reports</span>
             </div>
-            {reportsOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+            {reportsOpen ? <ChevronDown size={15} className="text-slate-400" /> : <ChevronRight size={15} className="text-slate-400" />}
           </button>
           {reportsOpen && (
-            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
+            <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
               <SubLink href="/reports/cheques" icon={<FileText size={14} />} label="Cheque Reports" />
               <SubLink href="/reports/sales" icon={<TrendingUp size={14} />} label="Sales Reports" />
               <SubLink href="/reports/purchases" icon={<ShoppingBag size={14} />} label="Purchase Reports" />
@@ -406,7 +406,7 @@ export default function Sidebar() {
         </div>
 
         {/* ADMINISTRATION */}
-        <div className="px-3 pt-3 pb-1 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
+        <div className="px-3 pt-3 pb-1 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
           Administration
         </div>
         <NavLink href="/settings" icon={<Settings size={18} />} label="Settings" />
@@ -414,18 +414,18 @@ export default function Sidebar() {
       </div>
 
       {/* User Footer */}
-      <div className="border-t border-slate-800 p-4">
+      <div className="border-t border-slate-200 p-4 bg-white">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold text-white">{userEmail}</p>
-            <p className="text-[11px] text-emerald-400 font-medium">Enterprise User</p>
+            <p className="truncate text-xs font-semibold text-slate-800">{userEmail}</p>
+            <p className="text-[11px] text-emerald-700 font-medium">Enterprise User</p>
           </div>
           <button
             type="button"
             onClick={handleSignOut}
             disabled={loggingOut}
             title="Sign Out"
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-red-400 transition-colors"
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-rose-600 transition-colors"
           >
             <LogOut size={16} />
           </button>
@@ -437,14 +437,14 @@ export default function Sidebar() {
   return (
     <>
       {/* Desktop Navigation */}
-      <aside className="no-print print-hide hidden md:flex h-screen w-72 flex-col shrink-0 border-r border-slate-800 sticky top-0 z-30 m-0 p-0">
+      <aside className="no-print print-hide hidden md:flex h-screen w-72 flex-col shrink-0 border-r border-slate-200 bg-white sticky top-0 z-30 m-0 p-0">
         {navContent}
       </aside>
 
       {/* Mobile Drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden flex">
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs" onClick={() => setMobileOpen(false)} />
           <div className="relative w-72 max-w-[85vw] h-full z-10 shadow-2xl">{navContent}</div>
         </div>
       )}

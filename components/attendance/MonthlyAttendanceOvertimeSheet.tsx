@@ -1571,17 +1571,17 @@ export default function MonthlyAttendanceOvertimeSheet({
           >
             <table className="w-full border-collapse text-xs">
               {/* Table Header: Sticky Top */}
-              <thead className="sticky top-0 z-30 bg-slate-900 text-white shadow-xs">
+              <thead className="sticky top-0 z-30 bg-slate-100 text-slate-800 shadow-xs border-b border-slate-300">
                 <tr>
                   {/* Top-Left Header: Emp No (Click to select all) */}
                   <th
                     onClick={selectAll}
                     title="Click to select all cells"
-                    className="sticky left-0 z-40 bg-slate-900 px-3 py-2 text-left font-black tracking-wide border-r border-slate-700 w-20 min-w-[75px] cursor-pointer hover:bg-slate-800 transition select-none shadow-[2px_0_4px_-2px_rgba(0,0,0,0.3)]"
+                    className="sticky left-0 z-40 bg-slate-100 text-slate-800 px-3 py-2 text-left font-black tracking-wide border-r border-b border-slate-300 w-20 min-w-[75px] cursor-pointer hover:bg-slate-200 transition select-none shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]"
                   >
                     Emp No
                   </th>
-                  <th className="sticky left-[75px] z-40 bg-slate-900 px-3 py-2 text-left font-black tracking-wide border-r border-slate-700 w-44 min-w-[170px] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.3)]">
+                  <th className="sticky left-[75px] z-40 bg-slate-100 text-slate-800 px-3 py-2 text-left font-black tracking-wide border-r border-b border-slate-300 w-44 min-w-[170px] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">
                     Employee Name
                   </th>
 
@@ -1595,18 +1595,20 @@ export default function MonthlyAttendanceOvertimeSheet({
                         key={d.dayNum}
                         onClick={() => selectColumn(dayIdx)}
                         title={`Click to select Day ${d.dayNum} column for all labourers`}
-                        className={`px-1 py-1 text-center font-bold border-r border-slate-700 min-w-[36px] w-9 cursor-pointer transition select-none ${
+                        className={`px-1 py-1 text-center font-bold border-r border-b border-slate-300 min-w-[36px] w-9 cursor-pointer transition select-none ${
                           isColSelected
                             ? "bg-emerald-600 text-white ring-2 ring-emerald-300 ring-inset"
                             : isColActive
-                            ? "bg-slate-700 text-emerald-300"
+                            ? "bg-slate-200 text-slate-900"
                             : d.isSunday
-                            ? "bg-emerald-700 text-white font-black"
-                            : "bg-slate-900 text-slate-200 hover:bg-slate-800"
+                            ? "bg-emerald-100 text-emerald-950 font-black"
+                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                         }`}
                       >
-                        <div className="text-[11px] leading-tight font-black">{String(d.dayNum).padStart(2, "0")}</div>
-                        <div className={`text-[9px] uppercase font-semibold ${d.isSunday ? "text-emerald-100" : "text-slate-400"}`}>
+                        <div className={`text-[11px] leading-tight font-black ${d.isSunday ? "text-emerald-950" : "text-slate-800"}`}>
+                          {String(d.dayNum).padStart(2, "0")}
+                        </div>
+                        <div className={`text-[9px] uppercase font-bold ${d.isSunday ? "text-emerald-700" : "text-slate-500"}`}>
                           {d.dayOfWeek.slice(0, 3)}
                         </div>
                       </th>
@@ -1616,64 +1618,64 @@ export default function MonthlyAttendanceOvertimeSheet({
                   {/* Summary Columns */}
                   {activeTab === "attendance" ? (
                     <>
-                      <th className="px-2 py-2 text-center font-bold bg-emerald-800 text-white border-r border-slate-700 min-w-[44px]" title="Actual Present Days">
+                      <th className="px-2 py-2 text-center font-bold bg-emerald-100 text-emerald-900 border-r border-b border-slate-300 min-w-[44px]" title="Actual Present Days">
                         Pres (P)
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-amber-800 text-white border-r border-slate-700 min-w-[36px]" title="Half Days (0.5d)">
+                      <th className="px-2 py-2 text-center font-bold bg-amber-100 text-amber-900 border-r border-b border-slate-300 min-w-[36px]" title="Half Days (0.5d)">
                         HD
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-rose-800 text-white border-r border-slate-700 min-w-[40px]" title="Absent Days">
+                      <th className="px-2 py-2 text-center font-bold bg-rose-100 text-rose-900 border-r border-b border-slate-300 min-w-[40px]" title="Absent Days">
                         Abs (A)
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-blue-900 text-white border-r border-slate-700 min-w-[55px]" title="Payable Days (Distinguished from attendance)">
+                      <th className="px-2 py-2 text-center font-bold bg-blue-100 text-blue-900 border-r border-b border-slate-300 min-w-[55px]" title="Payable Days (Distinguished from attendance)">
                         Payable (d)
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-slate-800 text-white min-w-[50px]">
+                      <th className="px-2 py-2 text-center font-bold bg-slate-200 text-slate-800 border-b border-slate-300 min-w-[50px]">
                         Charges
                       </th>
                     </>
                   ) : activeTab === "overtime" ? (
                     <>
-                      <th className="px-2 py-2 text-center font-bold bg-purple-900 text-white border-r border-slate-700 min-w-[55px]" title="Effective Overtime Hours">
+                      <th className="px-2 py-2 text-center font-bold bg-purple-100 text-purple-900 border-r border-b border-slate-300 min-w-[55px]" title="Effective Overtime Hours">
                         OT Hrs
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-slate-800 text-white border-r border-slate-700 min-w-[65px]" title="Costing Method: Auto / Hourly / Flat">
+                      <th className="px-2 py-2 text-center font-bold bg-slate-100 text-slate-800 border-r border-b border-slate-300 min-w-[65px]" title="Costing Method: Auto / Hourly / Flat">
                         Method
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-slate-800 text-white border-r border-slate-700 min-w-[55px]" title="Rate per Hour (AED)">
+                      <th className="px-2 py-2 text-center font-bold bg-slate-100 text-slate-800 border-r border-b border-slate-300 min-w-[55px]" title="Rate per Hour (AED)">
                         Rate
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-emerald-800 text-white border-r border-slate-700 min-w-[75px]" title="Total Overtime Charge (AED)">
+                      <th className="px-2 py-2 text-center font-bold bg-emerald-100 text-emerald-900 border-r border-b border-slate-300 min-w-[75px]" title="Total Overtime Charge (AED)">
                         OT Charge
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-slate-800 text-white border-r border-slate-700 min-w-[60px]" title="Approval status for payroll">
+                      <th className="px-2 py-2 text-center font-bold bg-slate-100 text-slate-800 border-r border-b border-slate-300 min-w-[60px]" title="Approval status for payroll">
                         Status
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-slate-800 text-white min-w-[50px]">
+                      <th className="px-2 py-2 text-center font-bold bg-slate-200 text-slate-800 border-b border-slate-300 min-w-[50px]">
                         Charges
                       </th>
                     </>
                   ) : (
                     <>
-                      <th className="px-2 py-2 text-center font-bold bg-emerald-800 text-white border-r border-slate-700 min-w-[44px]">
+                      <th className="px-2 py-2 text-center font-bold bg-emerald-100 text-emerald-900 border-r border-b border-slate-300 min-w-[44px]">
                         Pres (d)
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-blue-900 text-white border-r border-slate-700 min-w-[48px]">
+                      <th className="px-2 py-2 text-center font-bold bg-blue-100 text-blue-900 border-r border-b border-slate-300 min-w-[48px]">
                         Payable
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-purple-900 text-white border-r border-slate-700 min-w-[48px]">
+                      <th className="px-2 py-2 text-center font-bold bg-purple-100 text-purple-900 border-r border-b border-slate-300 min-w-[48px]">
                         OT Hrs
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-emerald-800 text-white border-r border-slate-700 min-w-[70px]">
+                      <th className="px-2 py-2 text-center font-bold bg-emerald-100 text-emerald-900 border-r border-b border-slate-300 min-w-[70px]">
                         OT Charge
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-slate-800 text-white border-r border-slate-700 min-w-[75px]">
+                      <th className="px-2 py-2 text-center font-bold bg-slate-100 text-slate-900 border-r border-b border-slate-300 min-w-[75px]">
                         Est. Net
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-slate-800 text-white border-r border-slate-700 min-w-[55px]">
+                      <th className="px-2 py-2 text-center font-bold bg-slate-100 text-slate-800 border-r border-b border-slate-300 min-w-[55px]">
                         Sync
                       </th>
-                      <th className="px-2 py-2 text-center font-bold bg-slate-800 text-white min-w-[50px]">
+                      <th className="px-2 py-2 text-center font-bold bg-slate-200 text-slate-800 border-b border-slate-300 min-w-[50px]">
                         Action
                       </th>
                     </>
@@ -1708,18 +1710,18 @@ export default function MonthlyAttendanceOvertimeSheet({
                   return (
                     <tr
                       key={emp.id}
-                      className={`hover:bg-slate-50/70 transition-colors ${empIdx % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}
+                      className={`hover:bg-slate-50 transition-colors ${empIdx % 2 === 0 ? "bg-white" : "bg-slate-50/50"}`}
                     >
                       {/* Frozen Column 1: Emp No - strictly EMP-01, EMP-02, EMP-03... Click to select row */}
                       <td
                         onClick={() => selectRow(empIdx)}
                         title="Click to select entire row"
-                        className={`sticky left-0 z-20 px-3 py-1.5 font-bold font-mono text-xs border-r border-slate-200 whitespace-nowrap cursor-pointer transition select-none shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)] ${
+                        className={`sticky left-0 z-20 px-3 py-1.5 font-bold font-mono text-xs border-r border-b border-slate-200 whitespace-nowrap cursor-pointer transition select-none shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] ${
                           isRowSelected
-                            ? "bg-emerald-900 text-emerald-200 font-black"
+                            ? "bg-emerald-100 text-emerald-950 font-black"
                             : isRowActive
-                            ? "bg-slate-800 text-white font-black"
-                            : "bg-white text-slate-800 hover:bg-slate-200"
+                            ? "bg-slate-100 text-slate-900 font-black"
+                            : "bg-white text-slate-800 hover:bg-slate-100"
                         }`}
                       >
                         {`EMP-${String(empIdx + 1).padStart(2, "0")}`}
@@ -1728,11 +1730,11 @@ export default function MonthlyAttendanceOvertimeSheet({
                       {/* Frozen Column 2: Employee Name */}
                       <td
                         onClick={() => selectRow(empIdx)}
-                        className={`sticky left-[75px] z-20 px-3 py-1.5 font-semibold border-r border-slate-200 whitespace-nowrap truncate max-w-[170px] cursor-pointer shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)] ${
+                        className={`sticky left-[75px] z-20 px-3 py-1.5 font-semibold border-r border-b border-slate-200 whitespace-nowrap truncate max-w-[170px] cursor-pointer shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] ${
                           isRowSelected
-                            ? "bg-emerald-950 text-emerald-100"
+                            ? "bg-emerald-50 text-emerald-950 font-bold"
                             : isRowActive
-                            ? "bg-slate-800 text-slate-100"
+                            ? "bg-slate-100 text-slate-900 font-bold"
                             : "bg-white text-slate-900"
                         }`}
                       >
@@ -1805,7 +1807,7 @@ export default function MonthlyAttendanceOvertimeSheet({
                                 handleAttendanceCellClick(emp.id, d.dateStr, status);
                               }
                             }}
-                            className={`p-0 text-center border-r border-slate-200 cursor-cell transition select-none relative ${
+                            className={`p-0 text-center border-r border-b border-slate-200 cursor-cell transition select-none relative ${
                               isSun ? "bg-emerald-50/60" : ""
                             } ${
                               inFill
@@ -1862,7 +1864,7 @@ export default function MonthlyAttendanceOvertimeSheet({
                                     H
                                   </span>
                                 ) : (
-                                  <span className="text-slate-200">·</span>
+                                  <span className="text-slate-300 font-bold">·</span>
                                 )}
                               </div>
                             ) : activeTab === "overtime" ? (
@@ -1882,7 +1884,7 @@ export default function MonthlyAttendanceOvertimeSheet({
                                   className={`ot-cell-input w-full h-full text-center text-xs font-bold rounded focus:outline-none focus:bg-white focus:ring-1 focus:ring-purple-600 ${
                                     otHours > 0
                                       ? "bg-purple-100 text-purple-900 font-black"
-                                      : "bg-transparent text-slate-300 placeholder:text-slate-200"
+                                      : "bg-transparent text-slate-700 placeholder:text-slate-400"
                                   }`}
                                 />
                               </div>
