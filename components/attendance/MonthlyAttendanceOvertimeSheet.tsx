@@ -1260,38 +1260,40 @@ export default function MonthlyAttendanceOvertimeSheet({
       <div className="app-screen-content no-print flex flex-col flex-1">
         {/* Top Banner / Navigation Bar */}
       <div className="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 shadow-xs">
-        <div className="max-w-[1600px] mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="max-w-[1700px] mx-auto px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
           {/* Title & Month Selector */}
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <div className="rounded-xl bg-slate-800 border border-slate-700 p-2 text-white">
-                <CalendarCheck size={20} className="text-emerald-400" />
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
+                <CalendarCheck size={17} />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-white leading-tight">
-                  Attendance & Overtime Workbook
+                <h1 className="text-sm sm:text-base font-bold text-white tracking-tight leading-none">
+                  Attendance &amp; Overtime Workbook
                 </h1>
-                <p className="text-xs text-slate-400 hidden sm:block">
-                  Integrated Monthly Labourer Sheet & Payroll Workflow
+                <p className="text-[11px] text-slate-400 hidden md:block mt-0.5">
+                  Monthly Labourer Registry &amp; Payroll Workflow
                 </p>
               </div>
             </div>
 
+            <div className="h-5 w-px bg-slate-800 hidden sm:block mx-1" />
+
             {/* Month & Year Control */}
-            <div className="flex items-center gap-1.5 bg-slate-800 p-1 rounded-xl border border-slate-700">
+            <div className="flex items-center gap-1 bg-slate-800/90 border border-slate-700/80 rounded-lg p-0.5 text-xs">
               <button
                 type="button"
                 onClick={prevMonth}
                 title="Previous Month"
-                className="p-1 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition cursor-pointer"
+                className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition cursor-pointer"
               >
-                <ChevronLeft size={18} />
+                <ChevronLeft size={15} />
               </button>
 
               <select
                 value={month}
                 onChange={e => setMonth(Number(e.target.value))}
-                className="bg-slate-800 text-sm font-bold text-white px-2 py-0.5 focus:outline-none cursor-pointer rounded"
+                className="bg-transparent font-semibold text-white px-1.5 py-0.5 focus:outline-none cursor-pointer rounded"
               >
                 {MONTH_NAMES.map((m, i) => (
                   <option key={i + 1} value={i + 1} className="bg-slate-800 text-white">{m}</option>
@@ -1301,7 +1303,7 @@ export default function MonthlyAttendanceOvertimeSheet({
               <select
                 value={year}
                 onChange={e => setYear(Number(e.target.value))}
-                className="bg-slate-800 text-sm font-bold text-white px-1 py-0.5 focus:outline-none cursor-pointer rounded"
+                className="bg-transparent font-semibold text-slate-300 px-1 py-0.5 focus:outline-none cursor-pointer rounded"
               >
                 {[2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
                   <option key={y} value={y} className="bg-slate-800 text-white">{y}</option>
@@ -1312,15 +1314,15 @@ export default function MonthlyAttendanceOvertimeSheet({
                 type="button"
                 onClick={nextMonth}
                 title="Next Month"
-                className="p-1 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition cursor-pointer"
+                className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition cursor-pointer"
               >
-                <ChevronRight size={18} />
+                <ChevronRight size={15} />
               </button>
 
               <button
                 type="button"
                 onClick={jumpToCurrentMonth}
-                className="text-xs font-semibold px-2 py-1 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition ml-0.5 cursor-pointer"
+                className="text-[11px] font-medium px-2 py-0.5 rounded text-slate-300 hover:text-white hover:bg-slate-700 transition cursor-pointer border-l border-slate-700 ml-0.5"
               >
                 Today
               </button>
@@ -1328,15 +1330,15 @@ export default function MonthlyAttendanceOvertimeSheet({
           </div>
 
           {/* Action Toolbar */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {onSwitchToLegacy && (
               <button
                 type="button"
                 onClick={onSwitchToLegacy}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer"
+                className="h-8 px-2.5 text-xs font-medium rounded-lg border border-slate-700 bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white transition flex items-center gap-1.5 cursor-pointer"
               >
-                <FileText size={14} />
-                <span>Daily List View</span>
+                <FileText size={13} className="text-slate-400" />
+                <span>Daily View</span>
               </button>
             )}
 
@@ -1345,40 +1347,40 @@ export default function MonthlyAttendanceOvertimeSheet({
               type="button"
               onClick={() => void handleBatchSyncAllStatements()}
               disabled={batchSyncing || filteredEmployees.length === 0}
-              className="flex items-center gap-1.5 rounded-lg border border-purple-500/40 bg-purple-950/40 px-3 py-1.5 text-xs font-bold text-purple-300 hover:bg-purple-900/60 transition shadow-2xs cursor-pointer"
+              className="h-8 px-2.5 text-xs font-semibold rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               title="Automatically generate or update official Salary Statements for all labourers for this month"
             >
-              {batchSyncing ? <Loader2 size={14} className="animate-spin text-purple-400" /> : <ShieldCheck size={14} className="text-purple-400" />}
-              <span>{batchSyncing ? "Syncing..." : "Sync to Salary Statements"}</span>
+              {batchSyncing ? <Loader2 size={13} className="animate-spin text-purple-400" /> : <ShieldCheck size={13} className="text-purple-400" />}
+              <span>Sync Statements</span>
             </button>
 
             {/* Import Button */}
             <button
               type="button"
               onClick={() => setShowImportModal(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-900/60 transition shadow-2xs cursor-pointer"
+              className="h-8 px-2.5 text-xs font-semibold rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition flex items-center gap-1.5 cursor-pointer"
             >
-              <Upload size={14} className="text-emerald-400" />
-              <span>Import Excel</span>
+              <Upload size={13} className="text-emerald-400" />
+              <span>Import</span>
             </button>
 
             {/* Export Button */}
             <button
               type="button"
               onClick={exportToExcel}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer"
+              className="h-8 px-2.5 text-xs font-medium rounded-lg border border-slate-700 bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white transition flex items-center gap-1.5 cursor-pointer"
             >
-              <FileSpreadsheet size={14} className="text-emerald-400" />
-              <span>Export .xlsx</span>
+              <FileSpreadsheet size={13} className="text-emerald-400" />
+              <span>Export</span>
             </button>
 
             {/* Print Button */}
             <button
               type="button"
               onClick={() => setShowPrintModal(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer"
+              className="h-8 px-2.5 text-xs font-medium rounded-lg border border-slate-700 bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white transition flex items-center gap-1.5 cursor-pointer"
             >
-              <Printer size={14} />
+              <Printer size={13} className="text-slate-400" />
               <span>Print Sheet</span>
             </button>
 
@@ -1387,145 +1389,147 @@ export default function MonthlyAttendanceOvertimeSheet({
               type="button"
               onClick={() => void saveAllChanges()}
               disabled={!hasUnsavedChanges || saving}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition shadow-xs cursor-pointer ${
+              className={`h-8 px-3 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer shadow-sm ${
                 hasUnsavedChanges
-                  ? "bg-emerald-600 text-white hover:bg-emerald-500 animate-pulse ring-2 ring-emerald-400"
-                  : "bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed"
+                  ? "bg-emerald-600 hover:bg-emerald-500 text-white animate-pulse ring-2 ring-emerald-400"
+                  : "bg-slate-800 text-slate-400 border border-slate-700 cursor-default"
               }`}
             >
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
               <span>{saving ? "Saving..." : hasUnsavedChanges ? `Save (${Object.keys(pendingAtt).length + Object.keys(pendingOt).length}) [Ctrl+S]` : "Saved"}</span>
             </button>
           </div>
         </div>
 
         {/* Tab Switcher & Quick Filters Bar */}
-        <div className="max-w-[1600px] mx-auto px-4 border-t border-slate-800 flex items-center justify-between gap-4 overflow-x-auto py-2">
-          {/* Main Excel-like Tabs */}
-          <div className="flex items-center gap-1 bg-slate-800/90 p-1 rounded-xl text-xs font-bold border border-slate-700">
-            <button
-              type="button"
-              onClick={() => setActiveTab("attendance")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                activeTab === "attendance"
-                  ? "bg-slate-700 text-white shadow-xs border border-slate-600"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <CalendarCheck size={14} className={activeTab === "attendance" ? "text-emerald-400" : ""} />
-              <span>Attendance (P / A)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("overtime")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                activeTab === "overtime"
-                  ? "bg-slate-700 text-white shadow-xs border border-slate-600"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <Clock size={14} className={activeTab === "overtime" ? "text-violet-400" : ""} />
-              <span>Overtime (Hours & Charges)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("summary")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                activeTab === "summary"
-                  ? "bg-slate-700 text-white shadow-xs border border-slate-600"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <Sparkles size={14} className={activeTab === "summary" ? "text-amber-400" : ""} />
-              <span>Monthly Payroll Summary</span>
-            </button>
-          </div>
-
-          {/* Quick Metrics Strip */}
-          <div className="hidden lg:flex items-center gap-4 text-xs">
-            <div className="flex items-center gap-1 text-slate-400">
-              <span className="font-medium text-slate-400">Labourers:</span>
-              <span className="font-bold text-white">{totalEmployees}</span>
-            </div>
-            <div className="h-3 w-px bg-slate-800" />
-            <div className="flex items-center gap-1">
-              <span className="font-medium text-slate-400">Present:</span>
-              <span className="font-bold text-emerald-400 bg-emerald-950/70 border border-emerald-800/60 px-1.5 py-0.5 rounded">{totalPresentDays} d</span>
-            </div>
-            <div className="h-3 w-px bg-slate-800" />
-            <div className="flex items-center gap-1">
-              <span className="font-medium text-slate-400">Absent:</span>
-              <span className="font-bold text-rose-400 bg-rose-950/70 border border-rose-800/60 px-1.5 py-0.5 rounded">{totalAbsentDays} d</span>
-            </div>
-            <div className="h-3 w-px bg-slate-800" />
-            <div className="flex items-center gap-1">
-              <span className="font-medium text-slate-400">Total OT:</span>
-              <span className="font-bold text-purple-300 bg-purple-950/70 border border-purple-800/60 px-1.5 py-0.5 rounded">{totalOtHoursMonth.toFixed(1)} hrs</span>
-            </div>
-            <div className="h-3 w-px bg-slate-800" />
-            <div className="flex items-center gap-1">
-              <span className="font-medium text-slate-400">OT Charges:</span>
-              <span className="font-bold text-emerald-300 bg-emerald-950/70 border border-emerald-800/60 px-1.5 py-0.5 rounded">{fmtAED(totalOtChargesMonth)}</span>
-            </div>
-          </div>
-
-          {/* Search & Bulk Actions */}
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search labourers..."
-                className="pl-8 pr-3 py-1 text-xs rounded-lg border border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus:bg-slate-700 focus:outline-none w-36 sm:w-48 transition"
-              />
-              {search && (
-                <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200">
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-
-            {/* Bulk Menu Trigger */}
-            <div className="relative">
+        <div className="border-t border-slate-800 bg-slate-900/90">
+          <div className="max-w-[1700px] mx-auto px-4 py-2 flex items-center justify-between gap-3 flex-wrap">
+            {/* Main Excel-like Tabs (Clean Segmented Control) */}
+            <div className="flex items-center gap-0.5 bg-slate-800/90 border border-slate-700/80 p-0.5 rounded-lg text-xs font-semibold shrink-0">
               <button
                 type="button"
-                onClick={() => setShowBulkMenu(!showBulkMenu)}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer"
+                onClick={() => setActiveTab("attendance")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition cursor-pointer ${
+                  activeTab === "attendance"
+                    ? "bg-slate-700 text-white shadow-xs"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                }`}
               >
-                <Filter size={12} />
-                <span>Quick Fill</span>
+                <CalendarCheck size={13} className={activeTab === "attendance" ? "text-emerald-400" : "text-slate-500"} />
+                <span>Attendance</span>
               </button>
 
-              {showBulkMenu && (
-                <div className="absolute right-0 mt-1 w-64 rounded-xl bg-slate-900 shadow-2xl border border-slate-700 py-1.5 z-50 text-xs">
-                  <button
-                    onClick={markWeekdaysPresent}
-                    className="w-full text-left px-3 py-2 hover:bg-slate-800 text-slate-200 flex items-center gap-2 font-medium cursor-pointer"
-                  >
-                    <Check size={14} className="text-emerald-400" />
-                    <span>Fill Mon–Sat as Present (P)</span>
+              <button
+                type="button"
+                onClick={() => setActiveTab("overtime")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition cursor-pointer ${
+                  activeTab === "overtime"
+                    ? "bg-slate-700 text-white shadow-xs"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                }`}
+              >
+                <Clock size={13} className={activeTab === "overtime" ? "text-violet-400" : "text-slate-500"} />
+                <span>Overtime</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("summary")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition cursor-pointer ${
+                  activeTab === "summary"
+                    ? "bg-slate-700 text-white shadow-xs"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                }`}
+              >
+                <Sparkles size={13} className={activeTab === "summary" ? "text-amber-400" : "text-slate-500"} />
+                <span>Payroll Summary</span>
+              </button>
+            </div>
+
+            {/* Quick Metrics Strip (Non-Wrapping Sleek Badges) */}
+            <div className="flex items-center gap-2 text-xs flex-wrap">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/60 border border-slate-700/60 whitespace-nowrap">
+                <span className="text-slate-400 font-medium">Labourers:</span>
+                <span className="font-bold text-white font-mono">{totalEmployees}</span>
+              </div>
+
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-950/40 border border-emerald-800/50 whitespace-nowrap">
+                <span className="text-emerald-400/80 font-medium">Present:</span>
+                <span className="font-bold text-emerald-300 font-mono">{totalPresentDays} d</span>
+              </div>
+
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-950/40 border border-rose-800/50 whitespace-nowrap">
+                <span className="text-rose-400/80 font-medium">Absent:</span>
+                <span className="font-bold text-rose-300 font-mono">{totalAbsentDays} d</span>
+              </div>
+
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-950/40 border border-purple-800/50 whitespace-nowrap">
+                <span className="text-purple-300/80 font-medium">Total OT:</span>
+                <span className="font-bold text-purple-200 font-mono">{totalOtHoursMonth.toFixed(1)} hrs</span>
+              </div>
+
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-950/40 border border-emerald-800/50 whitespace-nowrap">
+                <span className="text-emerald-400/80 font-medium">OT Charges:</span>
+                <span className="font-bold text-emerald-300 font-mono">{fmtAED(totalOtChargesMonth)}</span>
+              </div>
+            </div>
+
+            {/* Search & Bulk Actions */}
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search labourers..."
+                  className="h-8 pl-8 pr-7 text-xs rounded-lg border border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus:bg-slate-750 focus:border-emerald-500 focus:outline-none w-36 sm:w-44 transition"
+                />
+                {search && (
+                  <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200">
+                    <X size={12} />
                   </button>
-                  <button
-                    onClick={markTodayPresentAll}
-                    className="w-full text-left px-3 py-2 hover:bg-slate-800 text-slate-200 flex items-center gap-2 font-medium cursor-pointer"
-                  >
-                    <CalendarCheck size={14} className="text-blue-400" />
-                    <span>Mark Today Present for all</span>
-                  </button>
-                  <div className="border-t border-slate-800 my-1" />
-                  <button
-                    onClick={clearAllPending}
-                    className="w-full text-left px-3 py-2 hover:bg-rose-950/50 text-rose-400 flex items-center gap-2 font-medium cursor-pointer"
-                  >
-                    <RotateCcw size={14} />
-                    <span>Discard Unsaved Edits</span>
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
+
+              {/* Bulk Menu Trigger */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowBulkMenu(!showBulkMenu)}
+                  className="h-8 flex items-center gap-1.5 px-2.5 text-xs font-semibold rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-750 hover:text-white transition cursor-pointer whitespace-nowrap"
+                >
+                  <Filter size={13} className="text-slate-400" />
+                  <span>Quick Fill</span>
+                </button>
+
+                {showBulkMenu && (
+                  <div className="absolute right-0 mt-1 w-64 rounded-xl bg-slate-900 shadow-2xl border border-slate-700 py-1.5 z-50 text-xs">
+                    <button
+                      onClick={markWeekdaysPresent}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-800 text-slate-200 flex items-center gap-2 font-medium cursor-pointer"
+                    >
+                      <Check size={14} className="text-emerald-400" />
+                      <span>Fill Mon–Sat as Present (P)</span>
+                    </button>
+                    <button
+                      onClick={markTodayPresentAll}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-800 text-slate-200 flex items-center gap-2 font-medium cursor-pointer"
+                    >
+                      <CalendarCheck size={14} className="text-blue-400" />
+                      <span>Mark Today Present for all</span>
+                    </button>
+                    <div className="border-t border-slate-800 my-1" />
+                    <button
+                      onClick={clearAllPending}
+                      className="w-full text-left px-3 py-2 hover:bg-rose-950/50 text-rose-400 flex items-center gap-2 font-medium cursor-pointer"
+                    >
+                      <RotateCcw size={14} />
+                      <span>Discard Unsaved Edits</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
