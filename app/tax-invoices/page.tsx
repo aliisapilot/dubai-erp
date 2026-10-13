@@ -223,9 +223,25 @@ function TIContent() {
         const { error: updateErr } = await supabase.from("tax_invoices").update(payload).eq("id", editing.id);
         if (updateErr) throw updateErr;
         iid = editing.id;
-        // DB FK: tax_invoice_id (not invoice_id)
-        const { error: deleteItemsErr } = await supabase.from("tax_invoice_items").delete().eq("tax_invoice_id", iid);
-        if (deleteItemsErr) throw deleteItemsErr;
+        // Upsert line items: preserve existing IDs, insert new ones, delete removed ones
+        const { data: existingItems } = await supabase.from("tax_invoice_items").select("id").eq("tax_invoice_id", iid);
+        const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
+        const currentIds = new Set<string>();
+        for (const l of lines) {
+          if (l.id && existingIds.has(l.id)) {
+            const { error: updErr } = await supabase.from("tax_invoice_items").update({ product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit: l.unit||null, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, taxable_amount: l.taxable_amount, vat_amount: l.vat_amount, line_total: l.line_total }).eq("id", l.id);
+            if (updErr) throw updErr;
+            currentIds.add(l.id);
+          } else {
+            const { error: insErr } = await supabase.from("tax_invoice_items").insert({ tax_invoice_id: iid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit: l.unit||null, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, taxable_amount: l.taxable_amount, vat_amount: l.vat_amount, line_total: l.line_total, sort_order: lines.indexOf(l) });
+            if (insErr) throw insErr;
+          }
+        }
+        const toDelete = [...existingIds].filter(id => !currentIds.has(id));
+        if (toDelete.length > 0) {
+          const { error: delErr } = await supabase.from("tax_invoice_items").delete().in("id", toDelete);
+          if (delErr) throw delErr;
+        }
       } else {
         const cid = await getCompanyId(); const ino = await generateDocNumber(cid, "INV");
         const { data: ins, error: err } = await supabase.from("tax_invoices").insert({ ...payload, company_id: cid, invoice_number: ino }).select("id").single();
