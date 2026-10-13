@@ -311,6 +311,23 @@ export default function MonthlyAttendanceOvertimeSheet({
     return () => window.removeEventListener("keydown", handleKeyDown);
   });
 
+  // Open print modal via Navbar "Print Page" event or Ctrl+P
+  useEffect(() => {
+    const handleOpenPrint = () => setShowPrintModal(true);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setShowPrintModal(true);
+      }
+    };
+    window.addEventListener("open-attendance-print", handleOpenPrint);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("open-attendance-print", handleOpenPrint);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
   // Filtered employees (matches name or EMP-01 format)
   const filteredEmployees = useMemo(() => {
     if (!search.trim()) return employees;
@@ -1257,7 +1274,7 @@ export default function MonthlyAttendanceOvertimeSheet({
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-56px)] bg-slate-900 text-slate-100 select-none">
-      <div className="app-screen-content no-print flex flex-col flex-1">
+      <div className="app-screen-content no-print print:hidden flex flex-col flex-1">
         {/* Top Banner / Navigation Bar */}
       <div className="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 shadow-xs">
         <div className="max-w-[1700px] mx-auto px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
@@ -2224,27 +2241,57 @@ export default function MonthlyAttendanceOvertimeSheet({
         onImportComplete={handleImportApply}
       />
 
+      {/* Unconditional Print Container (guarantees browser print always renders clean landscape sheet) */}
+      {!showPrintModal && (
+        <div className="hidden print:block print-document document-sheet erp-document-surface">
+          <AttendancePrintSheet
+            company={company}
+            year={year}
+            month={month}
+            mode={activeTab}
+            employees={filteredEmployees}
+            attendanceMap={Object.fromEntries(
+              filteredEmployees.flatMap(e =>
+                days.map(d => [`${e.id}_${d.dateStr}`, getAttendanceStatus(e.id, d.dateStr)])
+              )
+            )}
+            overtimeMap={Object.fromEntries(
+              filteredEmployees.flatMap(e =>
+                days.map(d => [`${e.id}_${d.dateStr}`, getOvertimeHours(e.id, d.dateStr)])
+              )
+            )}
+            forceSinglePage={forceSinglePage}
+          />
+        </div>
+      )}
+
       {/* Print View Modal */}
       {showPrintModal && (
-        <div className="print-sheet-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto print:p-0 print:m-0 print:bg-transparent print:static print:overflow-visible">
-          <div className="print-sheet-modal-dialog relative w-full max-w-[1250px] rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden my-6 print:border-none print:shadow-none print:my-0 print:max-w-none print:w-full">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-slate-900 text-white no-print">
-              <div className="flex items-center gap-2">
-                <Printer size={18} />
-                <h3 className="text-base font-bold text-white">Printable Attendance & Overtime Sheet (A4 Landscape)</h3>
+        <div className="print-sheet-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs overflow-y-auto print:p-0 print:m-0 print:bg-transparent print:static print:overflow-visible">
+          <div className="print-sheet-modal-dialog relative w-full max-w-[1300px] rounded-2xl bg-slate-900 shadow-2xl border border-slate-700 overflow-hidden my-4 print:border-none print:shadow-none print:my-0 print:max-w-none print:w-full print:bg-transparent">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 px-6 py-3.5 bg-slate-900 text-white no-print">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  <Printer size={15} />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-white leading-tight">Printable Attendance &amp; Overtime Sheet</h3>
+                  <p className="text-[10px] text-slate-400">A4 Landscape • 297 × 210 mm • Audit Ready</p>
+                </div>
               </div>
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 transition cursor-pointer"
+                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 transition cursor-pointer shadow-sm active:scale-95"
                 >
                   <Printer size={14} /> Print Now
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowPrintModal(false)}
-                  className="rounded-lg p-1 text-slate-400 hover:text-white transition cursor-pointer"
+                  className="rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
                 >
                   <X size={20} />
                 </button>
@@ -2253,21 +2300,21 @@ export default function MonthlyAttendanceOvertimeSheet({
 
             {/* High Employee Count Notice & Multi-page Selector */}
             {filteredEmployees.length > 30 && (
-              <div className="no-print bg-amber-50 border-b border-amber-200 px-6 py-2.5 flex items-center justify-between text-xs text-amber-900 flex-wrap gap-2">
+              <div className="no-print bg-slate-800/90 border-b border-slate-700/80 px-6 py-2.5 flex items-center justify-between text-xs text-slate-300 flex-wrap gap-2">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                  <AlertTriangle size={15} className="text-amber-400 shrink-0" />
                   <span>
-                    <strong>{filteredEmployees.length} Labourers Detected:</strong> To ensure high readability for site audit and official records, multi-page formatting is applied.
+                    <strong className="text-white">{filteredEmployees.length} Labourers Detected:</strong> To ensure high readability for site audit and official records, multi-page formatting is applied.
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5 bg-amber-100/70 p-1 rounded-lg border border-amber-300">
+                <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-700">
                   <button
                     type="button"
                     onClick={() => setForceSinglePage(false)}
                     className={`px-2.5 py-1 rounded text-xs font-bold transition cursor-pointer ${
                       !forceSinglePage
-                        ? "bg-white text-slate-900 shadow-2xs"
-                        : "text-amber-800 hover:text-slate-900"
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "text-slate-400 hover:text-white"
                     }`}
                   >
                     Multi-Page (Recommended)
@@ -2277,8 +2324,8 @@ export default function MonthlyAttendanceOvertimeSheet({
                     onClick={() => setForceSinglePage(true)}
                     className={`px-2.5 py-1 rounded text-xs font-bold transition cursor-pointer ${
                       forceSinglePage
-                        ? "bg-white text-slate-900 shadow-2xs"
-                        : "text-amber-800 hover:text-slate-900"
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "text-slate-400 hover:text-white"
                     }`}
                   >
                     Force 1-Page
@@ -2287,25 +2334,29 @@ export default function MonthlyAttendanceOvertimeSheet({
               </div>
             )}
 
-            <div className="p-6 overflow-y-auto max-h-[80vh] print:p-0 print:m-0 print:overflow-visible print:max-h-none">
-              <AttendancePrintSheet
-                company={company}
-                year={year}
-                month={month}
-                mode={activeTab}
-                employees={filteredEmployees}
-                attendanceMap={Object.fromEntries(
-                  filteredEmployees.flatMap(e =>
-                    days.map(d => [`${e.id}_${d.dateStr}`, getAttendanceStatus(e.id, d.dateStr)])
-                  )
-                )}
-                overtimeMap={Object.fromEntries(
-                  filteredEmployees.flatMap(e =>
-                    days.map(d => [`${e.id}_${d.dateStr}`, getOvertimeHours(e.id, d.dateStr)])
-                  )
-                )}
-                forceSinglePage={forceSinglePage}
-              />
+            {/* Desk Surface Preview Container */}
+            <div className="p-4 sm:p-6 bg-slate-950/80 overflow-y-auto max-h-[78vh] flex justify-center print:p-0 print:m-0 print:bg-transparent print:overflow-visible print:max-h-none print:block">
+              {/* Paper Sheet Document Surface: Guaranteed stark white with dark border & shadow */}
+              <div className="print-document document-sheet erp-document-surface bg-white text-slate-900 shadow-2xl p-4 sm:p-5 rounded-xs border border-slate-300 print:shadow-none print:border-none print:p-0 print:m-0 print:rounded-none w-fit mx-auto">
+                <AttendancePrintSheet
+                  company={company}
+                  year={year}
+                  month={month}
+                  mode={activeTab}
+                  employees={filteredEmployees}
+                  attendanceMap={Object.fromEntries(
+                    filteredEmployees.flatMap(e =>
+                      days.map(d => [`${e.id}_${d.dateStr}`, getAttendanceStatus(e.id, d.dateStr)])
+                    )
+                  )}
+                  overtimeMap={Object.fromEntries(
+                    filteredEmployees.flatMap(e =>
+                      days.map(d => [`${e.id}_${d.dateStr}`, getOvertimeHours(e.id, d.dateStr)])
+                    )
+                  )}
+                  forceSinglePage={forceSinglePage}
+                />
+              </div>
             </div>
           </div>
         </div>

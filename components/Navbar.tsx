@@ -213,8 +213,14 @@ export default function Navbar() {
         <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
           <button
             type="button"
-            onClick={() => void printCurrentDocument()}
-            className="no-print flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-500/20 hover:text-blue-200 whitespace-nowrap"
+            onClick={() => {
+              if (pathname.startsWith("/attendance")) {
+                window.dispatchEvent(new CustomEvent("open-attendance-print"));
+                return;
+              }
+              void printCurrentDocument();
+            }}
+            className="no-print flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-500/20 hover:text-blue-200 whitespace-nowrap cursor-pointer"
             title={`Print ${pageMeta.title}`}
             aria-label={`Print ${pageMeta.title}`}
           >

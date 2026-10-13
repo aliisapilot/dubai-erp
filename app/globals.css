@@ -404,10 +404,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   margin: 0;
 }
 
+@page attendance-sheet {
+  size: A4 landscape;
+  margin: 4mm;
+}
+
 @media print {
   @page {
     size: A4 portrait;
     margin: 0;
+  }
+
+  @page attendance-sheet {
+    size: A4 landscape;
+    margin: 4mm;
   }
 
   /* 1. Global Reset & Print Colors */
@@ -454,7 +464,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   /* Attendance & Overtime Dedicated Landscape Sheet Overrides */
   html:has(.print-attendance-sheet),
-  body:has(.print-attendance-sheet) {
+  body:has(.print-attendance-sheet),
+  .erp-screen-theme:has(.print-attendance-sheet),
+  [data-print-root]:has(.print-attendance-sheet) {
     width: 297mm !important;
     min-width: 297mm !important;
     max-width: 297mm !important;
@@ -468,8 +480,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     overflow: visible !important;
   }
 
+  body:has(.print-attendance-sheet) {
+    page: attendance-sheet !important;
+  }
+
   body:has(.print-attendance-sheet) .app-screen-content,
   body:has(.print-attendance-sheet) .no-print,
+  body:has(.print-attendance-sheet) aside,
+  body:has(.print-attendance-sheet) nav,
   body:has(.print-attendance-sheet) > *:not(:has(.print-attendance-sheet)) {
     display: none !important;
     visibility: hidden !important;
@@ -514,12 +532,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   .print-attendance-sheet {
+    page: attendance-sheet !important;
     width: 287mm !important;
     max-width: 287mm !important;
     box-sizing: border-box !important;
     margin: 0 auto !important;
     padding: 0 !important;
     background: #ffffff !important;
+    color: #0f172a !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     overflow: hidden !important;

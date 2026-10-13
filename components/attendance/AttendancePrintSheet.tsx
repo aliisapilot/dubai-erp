@@ -68,21 +68,67 @@ export default function AttendancePrintSheet({
   const totalPages = employeeChunks.length;
 
   return (
-    <div className="attendance-print-root w-full bg-white text-slate-900 font-sans print:p-0 print:m-0">
+    <div className="attendance-print-root print-document document-sheet erp-document-surface w-full bg-white text-slate-900 font-sans print:p-0 print:m-0">
       <style dangerouslySetInnerHTML={{ __html: `
         @page {
           size: A4 landscape;
-          margin: 5mm;
+          margin: 4mm;
+        }
+        @page attendance-sheet {
+          size: A4 landscape;
+          margin: 4mm;
         }
         @media print {
           @page {
             size: A4 landscape;
-            margin: 5mm;
+            margin: 4mm;
           }
-          body {
+          html, body {
+            width: 297mm !important;
+            min-width: 297mm !important;
+            max-width: 297mm !important;
+            background: #ffffff !important;
+            background-color: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
+          .print-attendance-sheet {
+            page: attendance-sheet !important;
+          }
+        }
+        .attendance-print-root,
+        .attendance-print-root.document-sheet,
+        .print-attendance-sheet,
+        .print-attendance-sheet.document-sheet {
+          background-color: #ffffff !important;
+          color: #0f172a !important;
+        }
+        .attendance-print-root table {
+          background-color: #ffffff !important;
+          color: #0f172a !important;
+        }
+        .attendance-print-root .sunday-col-cell {
+          background-color: #d1fae5 !important;
+          color: #064e3b !important;
+          border-left-color: #6ee7b7 !important;
+          border-right-color: #6ee7b7 !important;
+          font-weight: 700 !important;
+        }
+        .attendance-print-root .sunday-col-head {
+          background-color: #059669 !important;
+          color: #ffffff !important;
+          border-left-color: #10b981 !important;
+          border-right-color: #10b981 !important;
+          font-weight: 800 !important;
+        }
+        .attendance-print-root .sunday-col-subhead {
+          background-color: #047857 !important;
+          color: #ffffff !important;
+          border-left-color: #10b981 !important;
+          border-right-color: #10b981 !important;
+          font-weight: 700 !important;
         }
       `}} />
 
@@ -92,7 +138,7 @@ export default function AttendancePrintSheet({
         return (
           <div
             key={pageIndex}
-            className={`print-attendance-sheet ${densityClass} mx-auto box-border bg-white text-slate-900 ${
+            className={`print-attendance-sheet print-document document-sheet erp-document-surface ${densityClass} mx-auto box-border bg-white text-slate-900 ${
               pageIndex > 0 ? "attendance-print-page-break pt-4 print:pt-0" : ""
             }`}
             style={{ width: "287mm" }}
@@ -145,7 +191,7 @@ export default function AttendancePrintSheet({
                       <th
                         key={d.dayNum}
                         className={`border border-slate-600 px-0 text-center font-bold ${
-                          d.isSunday ? "bg-emerald-600 text-white" : ""
+                          d.isSunday ? "sunday-col-head bg-emerald-600 text-white font-black" : ""
                         }`}
                         style={{ width: `${198 / daysInMonth}mm` }}
                       >
@@ -197,7 +243,7 @@ export default function AttendancePrintSheet({
                       <th
                         key={d.dayNum}
                         className={`border border-slate-700 px-0 text-center font-normal ${
-                          d.isSunday ? "bg-emerald-700 text-white font-bold" : ""
+                          d.isSunday ? "sunday-col-subhead bg-emerald-700 text-white font-bold" : ""
                         }`}
                       >
                         {d.dayOfWeek}
@@ -258,7 +304,7 @@ export default function AttendancePrintSheet({
                               <td
                                 key={d.dayNum}
                                 className={`border border-slate-300 px-0 text-center font-bold ${
-                                  d.isSunday ? "bg-emerald-50/70" : ""
+                                  d.isSunday ? "sunday-col-cell" : ""
                                 } ${otHours > 0 ? "text-purple-800 font-black" : "text-slate-300"}`}
                               >
                                 {otHours > 0 ? otHours : ""}
@@ -289,7 +335,7 @@ export default function AttendancePrintSheet({
                             <td
                               key={d.dayNum}
                               className={`border border-slate-300 px-0 text-center ${
-                                d.isSunday ? "bg-emerald-50/70" : ""
+                                d.isSunday ? "sunday-col-cell" : ""
                               } ${cellColor}`}
                             >
                               {badge}
