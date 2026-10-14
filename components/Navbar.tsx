@@ -174,7 +174,7 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="sticky top-0 z-40 h-14 bg-slate-900 border-b border-slate-800 text-white select-none shrink-0 m-0 p-0">
+    <nav className="sticky top-0 z-40 h-14 bg-slate-900 border-b border-slate-800 text-white select-none shrink-0 m-0 p-0 no-print print:hidden">
       <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
         {/* Left Section: Mobile Menu Trigger + Brand (Mobile only) + Dynamic Page Title */}
         <div className="flex items-center gap-3 shrink-0">

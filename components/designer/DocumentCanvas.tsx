@@ -1,6 +1,14 @@
 "use client";
 
 import React, { useRef, useCallback, useEffect, useLayoutEffect, useState } from "react";
+import {
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Minimize2,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { DocumentLayout, LayoutElement } from "@/lib/documentDesigner";
 import DynamicDocumentRenderer, { getSampleDocumentData } from "../documents/DynamicDocumentRenderer";
 import { CompanyDocInfo } from "../documents/DocHeader";
@@ -15,8 +23,15 @@ interface DocumentCanvasProps {
   snapGrid: boolean;
   snapMargins: boolean;
   pageNumber: number;
+  totalPages?: number;
   containerRef?: React.RefObject<HTMLDivElement | null>;
   onAddImage?: (file: File) => void;
+  onZoomChange?: (zoom: number) => void;
+  onFitWidth?: () => void;
+  onFitPage?: () => void;
+  onPageChange?: (page: number) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
@@ -40,8 +55,15 @@ export default function DocumentCanvas({
   snapGrid,
   snapMargins,
   pageNumber,
+  totalPages,
   containerRef,
   onAddImage,
+  onZoomChange,
+  onFitWidth,
+  onFitPage,
+  onPageChange,
+  isFullscreen,
+  onToggleFullscreen,
 }: DocumentCanvasProps) {
   // The actual A4 page DOM node — used for getBoundingClientRect-based coordinate conversion
   const pageRef = useRef<HTMLDivElement>(null);
@@ -347,10 +369,10 @@ export default function DocumentCanvas({
           onAddImage(file);
         }
       }}
-      className="designer-scrollbar designer-canvas-scroll relative flex min-h-0 min-w-0 flex-1 select-none items-start justify-start overflow-auto overscroll-contain bg-slate-950 p-6 sm:p-8 md:p-10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-500/60"
+      className="designer-scrollbar designer-canvas-scroll relative flex min-h-0 min-w-0 flex-1 select-none items-start justify-start overflow-auto overscroll-contain bg-slate-100 p-6 sm:p-8 md:p-10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-500/60"
       style={{
-        backgroundImage: "radial-gradient(circle at center, rgba(51,65,85,0.25) 1px, transparent 1px)",
-        backgroundSize: "24px 24px",
+        backgroundImage: "radial-gradient(circle at center, rgba(148,163,184,0.3) 1px, transparent 1px)",
+        backgroundSize: "20px 20px",
       }}
     >
       {/* Zoom container matching visual dimensions for reliable flex centering */}
@@ -366,7 +388,7 @@ export default function DocumentCanvas({
         {/* The true A4 Document Sheet (210mm x 297mm) */}
         <div
           ref={pageRef}
-          className="erp-document-surface absolute top-0 left-0 origin-top-left"
+          className="erp-document-surface absolute top-0 left-0 origin-top-left bg-white shadow-2xl rounded-sm border border-slate-300/80"
           style={{
             width: `${layout.page.widthMm}mm`,
             height: `${layout.page.heightMm}mm`,
@@ -438,9 +460,9 @@ export default function DocumentCanvas({
                     }`}
                     style={{
                       left: `${elem.x}mm`,
-                      top: `${elem.y}mm`,
+                      top: `${Math.max(elem.y, (elem as unknown as { effectiveY?: number }).effectiveY ?? elem.y)}mm`,
                       width: `${elem.width}mm`,
-                      height: `${elem.height}mm`,
+                      height: `${Math.max(elem.height, (elem as unknown as { effectiveHeight?: number }).effectiveHeight ?? elem.height)}mm`,
                       zIndex: elem.zIndex,
                     }}
                   >
@@ -485,6 +507,115 @@ export default function DocumentCanvas({
               })}
           </div>
         </div>
+      </div>
+
+      {/* Floating Bottom Canvas Controls */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 px-3.5 py-1.5 rounded-full shadow-2xl text-white select-none">
+        {/* Zoom Out */}
+        {onZoomChange && (
+          <button
+            type="button"
+            onClick={() => onZoomChange(Math.max(0.1, Number((zoom - 0.1).toFixed(2))))}
+            className="p-1 hover:bg-slate-800 rounded-full transition cursor-pointer text-slate-300 hover:text-white"
+            title="Zoom Out"
+            aria-label="Zoom Out"
+          >
+            <ZoomOut size={14} />
+          </button>
+        )}
+
+        {/* Zoom % */}
+        <span
+          onClick={() => onZoomChange && onZoomChange(1.0)}
+          className="px-2 py-0.5 text-xs font-mono font-bold text-slate-200 hover:text-amber-400 cursor-pointer transition"
+          title="Click to reset zoom to 100%"
+        >
+          {Math.round(zoom * 100)}%
+        </span>
+
+        {/* Zoom In */}
+        {onZoomChange && (
+          <button
+            type="button"
+            onClick={() => onZoomChange(Math.min(1.8, Number((zoom + 0.1).toFixed(2))))}
+            className="p-1 hover:bg-slate-800 rounded-full transition cursor-pointer text-slate-300 hover:text-white"
+            title="Zoom In"
+            aria-label="Zoom In"
+          >
+            <ZoomIn size={14} />
+          </button>
+        )}
+
+        <span className="w-px h-3.5 bg-slate-700 mx-1" />
+
+        {/* Fit Width */}
+        {onFitWidth && (
+          <button
+            type="button"
+            onClick={onFitWidth}
+            className="px-2.5 py-0.5 text-[11px] font-semibold text-slate-300 hover:bg-slate-800 hover:text-white rounded-full transition cursor-pointer"
+            title="Fit Canvas to Available Width"
+          >
+            Fit Width
+          </button>
+        )}
+
+        {/* Fit Page */}
+        {onFitPage && (
+          <button
+            type="button"
+            onClick={onFitPage}
+            className="px-2.5 py-0.5 text-[11px] font-semibold text-slate-300 hover:bg-slate-800 hover:text-white rounded-full transition cursor-pointer"
+            title="Fit Full A4 Page in Window"
+          >
+            Fit Page
+          </button>
+        )}
+
+        {/* Distraction-Free Fullscreen */}
+        {onToggleFullscreen && (
+          <>
+            <span className="w-px h-3.5 bg-slate-700 mx-1" />
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              className={`p-1.5 rounded-full transition cursor-pointer ${
+                isFullscreen ? "text-amber-400 bg-slate-800" : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              }`}
+              title={isFullscreen ? "Exit Fullscreen (Esc)" : "Distraction-Free Fullscreen Canvas"}
+            >
+              {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
+          </>
+        )}
+
+        {/* Multi-page Navigation */}
+        {totalPages && totalPages > 1 && onPageChange && (
+          <>
+            <span className="w-px h-3.5 bg-slate-700 mx-1" />
+            <button
+              type="button"
+              onClick={() => onPageChange(Math.max(1, pageNumber - 1))}
+              disabled={pageNumber <= 1}
+              className="p-1 rounded-full text-slate-400 hover:text-white disabled:opacity-30 cursor-pointer"
+              title="Previous Page"
+            >
+              <ChevronLeft size={13} />
+            </button>
+            <span className="text-[11px] font-mono text-slate-300 px-1">
+              {pageNumber} / {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => onPageChange(Math.min(totalPages, pageNumber + 1))}
+              disabled={pageNumber >= totalPages}
+              className="p-1 rounded-full text-slate-400 hover:text-white disabled:opacity-30 cursor-pointer"
+              title="Next Page"
+            >
+              <ChevronRight size={13} />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

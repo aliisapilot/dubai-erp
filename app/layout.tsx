@@ -12,11 +12,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className="m-0 p-0 w-full min-h-screen antialiased"
+      className="m-0 p-0 w-full min-h-screen antialiased print:bg-white print:text-black print:overflow-visible"
       suppressHydrationWarning
     >
       <body
-        className="m-0 p-0 w-full min-h-screen bg-slate-900 text-slate-100 antialiased overflow-x-hidden"
+        className="m-0 p-0 w-full min-h-screen bg-slate-900 text-slate-100 antialiased overflow-x-hidden print:bg-white print:text-black print:overflow-visible"
         suppressHydrationWarning
       >
         <ERPLayout>{children}</ERPLayout>

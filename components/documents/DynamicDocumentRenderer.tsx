@@ -489,14 +489,21 @@ export default function DynamicDocumentRenderer({
       : (layout.branding?.borderColor || brand.colors.border);
 
   const colors = {
-    primary: isGrayscale ? "#0F172A" : (layout.branding?.primaryColor || brand.colors.primary),
+    primary: isGrayscale ? "#0F172A" : (layout.branding?.companyHeaderColor || layout.branding?.primaryColor || brand.colors.primary),
+    companyHeader: isGrayscale ? "#0F172A" : (layout.branding?.companyHeaderColor || layout.branding?.primaryColor || brand.colors.primary),
+    titleBg: isPrinterFriendly ? "#FFFFFF" : isGrayscale ? "#0F172A" : (layout.branding?.titleBackground || layout.branding?.primaryColor || brand.colors.primary),
+    titleText: isPrinterFriendly ? (layout.branding?.titleBackground || layout.branding?.primaryColor || brand.colors.primary) : (layout.branding?.titleTextColor || "#FFFFFF"),
     accent: isGrayscale ? "#334155" : (layout.branding?.accentColor || brand.colors.accent),
     text: isGrayscale ? "#0F172A" : (layout.branding?.textColor || brand.colors.text),
     muted: isGrayscale ? "#475569" : (layout.branding?.mutedColor || brand.colors.muted),
-    border: isGrayscale ? "#475569" : rawBorderColor,
+    border: isGrayscale ? "#475569" : (layout.branding?.borderColor || rawBorderColor),
     tableHeader: isPrinterFriendly ? "#FFFFFF" : isGrayscale ? "#0F172A" : (layout.branding?.tableHeaderColor || brand.colors.tableHeader),
-    tableHeaderTextColor: isPrinterFriendly ? "#0F172A" : "#FFFFFF",
+    tableHeaderTextColor: isPrinterFriendly ? (layout.branding?.tableHeaderColor || "#0F172A") : (layout.branding?.tableHeaderTextColor || "#FFFFFF"),
+    tableRowBg: isGrayscale ? "#FFFFFF" : (layout.branding?.tableRowBackground || "#FFFFFF"),
+    tableRowAlt: isGrayscale ? "#F8FAFC" : (layout.branding?.tableRowAlternating || "#F8FAFC"),
     totalHighlight: isGrayscale ? "#F1F5F9" : (layout.branding?.totalHighlightColor || brand.colors.totalHighlight),
+    footerBg: isGrayscale ? "#FFFFFF" : (layout.branding?.footerBackground || "#FFFFFF"),
+    footerText: isGrayscale ? "#475569" : (layout.branding?.footerTextColor || layout.branding?.mutedColor || brand.colors.muted),
   };
 
   const advance = Number(data.advance_amount) || 0;
@@ -630,51 +637,39 @@ export default function DynamicDocumentRenderer({
       }
 
       case "company_name_en": {
-        const enPt = resolvePt(elem.fontSize, 11.5, 14.5);
+        const enPt = resolvePt(elem.fontSize, 11.0, 13.5);
         return (
           <div
-            className="w-full h-full flex items-center uppercase tracking-wider select-text overflow-hidden"
+            className="w-full h-full flex items-center justify-center uppercase tracking-wider select-text overflow-hidden"
             style={{
-              justifyContent:
-                elem.textAlign === "center"
-                  ? "center"
-                  : elem.textAlign === "right"
-                  ? "flex-end"
-                  : "flex-start",
               fontWeight: elem.fontWeight === "extrabold" ? 800 : elem.fontWeight === "bold" ? 700 : 600,
               fontStyle: elem.fontStyle || "normal",
               fontFamily: elem.fontFamily || "inherit",
-              letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : "0.05em",
-              lineHeight: elem.lineHeight ? elem.lineHeight : 1.15,
-              color: elem.color || colors.primary,
+              letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : "0.04em",
+              lineHeight: elem.lineHeight ? elem.lineHeight : 1.2,
+              color: elem.color || colors.companyHeader,
               backgroundColor: elem.backgroundColor,
               border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
               borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
               opacity: elem.opacity ?? 1,
-              whiteSpace: "nowrap",
-              textOverflow: "ellipsis",
+              wordBreak: "break-word",
+              overflowWrap: "break-word",
               ...elementAppearance(elem),
               fontSize: `${enPt}pt`,
             }}
           >
-            {elem.customText || brand.legal_name || brand.name}
+            <span className="text-center w-full block">{elem.customText || brand.legal_name || brand.name}</span>
           </div>
         );
       }
 
       case "company_name_ar": {
-        const arPt = resolvePt(elem.fontSize, 13.5, 16.5);
+        const arPt = resolvePt(elem.fontSize, 12.5, 15.0);
         return (
           <div
-            className="w-full h-full flex items-center font-arabic select-text overflow-hidden"
+            className="w-full h-full flex items-center justify-center font-arabic select-text overflow-hidden"
             dir="rtl"
             style={{
-              justifyContent:
-                elem.textAlign === "center"
-                  ? "center"
-                  : elem.textAlign === "left"
-                  ? "flex-start"
-                  : "flex-end",
               fontWeight: elem.fontWeight === "bold" ? 700 : elem.fontWeight === "semibold" ? 600 : 700,
               fontStyle: elem.fontStyle || "normal",
               color: elem.color || colors.accent,
@@ -687,13 +682,13 @@ export default function DynamicDocumentRenderer({
               border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
               borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
               opacity: elem.opacity ?? 1,
-              whiteSpace: "nowrap",
-              textOverflow: "ellipsis",
+              wordBreak: "break-word",
+              overflowWrap: "break-word",
               ...elementAppearance(elem),
               fontSize: `${arPt}pt`,
             }}
           >
-            {elem.customText || brand.arabic_name}
+            <span className="text-center w-full block">{elem.customText || brand.arabic_name}</span>
           </div>
         );
       }
@@ -702,14 +697,14 @@ export default function DynamicDocumentRenderer({
         const addrPt = resolvePt(elem.fontSize, 7.8, 9.5);
         return (
           <div
-            className="w-full h-full flex flex-col justify-center leading-tight select-text overflow-hidden"
+            className="w-full h-full flex flex-col justify-center leading-snug select-text overflow-hidden"
             style={{
               textAlign: elem.textAlign || "center",
               color: elem.color || colors.muted,
               fontStyle: elem.fontStyle || "normal",
               fontFamily: elem.fontFamily || "inherit",
               letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
-              lineHeight: elem.lineHeight ? elem.lineHeight : 1.25,
+              lineHeight: elem.lineHeight ? elem.lineHeight : 1.3,
               backgroundColor: elem.backgroundColor,
               border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
               borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
@@ -719,26 +714,28 @@ export default function DynamicDocumentRenderer({
             }}
           >
             {elem.customText ? (
-              <div className="truncate">{replaceCompanyTokens(elem.customText)}</div>
+              <div className="w-full text-center leading-snug break-words">{replaceCompanyTokens(elem.customText)}</div>
             ) : (
-              <>
-                <div className="truncate">{brand.address}</div>
-                <div className="font-semibold text-slate-800 truncate" style={{ fontSize: `${addrPt}pt` }}>
-                  TRN: <span className="font-mono font-bold" style={{ color: colors.primary }}>{brand.trn}</span>
+              <div className="w-full flex flex-col items-center justify-center gap-0.5">
+                <div className="text-center text-slate-600 leading-tight break-words max-w-full">
+                  {brand.address}
+                </div>
+                <div className="font-semibold text-slate-800 text-center leading-tight break-words max-w-full" style={{ fontSize: `${addrPt}pt` }}>
+                  TRN: <span className="font-mono font-bold" style={{ color: colors.companyHeader }}>{brand.trn || "N/A"}</span>
                   {brand.phone ? ` | Tel: ${brand.phone}` : ""}
                   {brand.email ? ` | Email: ${brand.email}` : ""}
                 </div>
-              </>
+              </div>
             )}
           </div>
         );
       }
 
       case "doc_title": {
-        const titleBg = isPrinterFriendly ? "#FFFFFF" : (elem.backgroundColor || colors.primary);
-        const titleColor = isPrinterFriendly ? colors.primary : (elem.color || "#FFFFFF");
+        const titleBg = isPrinterFriendly ? "#FFFFFF" : (elem.backgroundColor || colors.titleBg);
+        const titleColor = isPrinterFriendly ? colors.titleBg : (elem.color || colors.titleText);
         const titleBorder = isPrinterFriendly
-          ? `2px solid ${colors.primary}`
+          ? `2px solid ${colors.titleBg}`
           : elem.borderWidth
           ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}`
           : undefined;
@@ -809,6 +806,8 @@ export default function DynamicDocumentRenderer({
         const configuredPaddingMm = elem.padding !== undefined ? elem.padding : 3.2;
         const isUltraCompact = elem.height <= 22;
         const isCompactPartyCard = elem.height <= 28;
+        const detailFontSize = isCompactPartyCard ? 9 : 9.5;
+        void detailFontSize;
         const padMm = isUltraCompact ? Math.min(configuredPaddingMm, 1.8) : isCompactPartyCard ? Math.min(configuredPaddingMm, 2.2) : configuredPaddingMm;
         const cardPt = resolvePt(elem.fontSize, isUltraCompact ? 7 : isCompactPartyCard ? 7.5 : 8.5);
         return (
@@ -1122,8 +1121,8 @@ export default function DynamicDocumentRenderer({
               <thead>
                 <tr
                   style={{
-                    backgroundColor: isPrinterFriendly ? "#FFFFFF" : tSettings.headerBg,
-                    color: isPrinterFriendly ? colors.primary : tSettings.headerTextColor,
+                    backgroundColor: isPrinterFriendly ? "#FFFFFF" : (tSettings.headerBg || colors.tableHeader),
+                    color: isPrinterFriendly ? colors.titleBg : (tSettings.headerTextColor || colors.tableHeaderTextColor),
                     height: `${headerHeightMm}mm`,
                     borderTop: isPrinterFriendly ? `2px solid ${colors.primary}` : undefined,
                     borderBottom: isPrinterFriendly ? `2px solid ${colors.primary}` : undefined,
@@ -1154,10 +1153,10 @@ export default function DynamicDocumentRenderer({
                 </tr>
               </thead>
               <tbody
-                className="bg-white divide-y"
+                className="divide-y"
                 style={{
-                  color: tSettings.bodyTextColor,
-                  borderColor: isHighContrast ? "#94A3B8" : tSettings.borderColor,
+                  color: tSettings.bodyTextColor || colors.text,
+                  borderColor: isHighContrast ? "#94A3B8" : (tSettings.borderColor || colors.border),
                 }}
               >
                 {pageItems.length === 0 ? (
@@ -1171,7 +1170,14 @@ export default function DynamicDocumentRenderer({
                   </tr>
                 ) : (
                   pageItems.map((item, idx) => (
-                    <tr key={firstItemIndex + idx} className="hover:bg-slate-50/50" style={{ height: `${rowHeightMm}mm` }}>
+                    <tr
+                      key={firstItemIndex + idx}
+                      className="hover:bg-slate-50/50"
+                      style={{
+                        height: `${rowHeightMm}mm`,
+                        backgroundColor: idx % 2 === 0 ? colors.tableRowBg : colors.tableRowAlt,
+                      }}
+                    >
                       {activeCols.map((col) => {
                         let val: React.ReactNode = "";
                         if (col.key === "index") val = firstItemIndex + idx + 1;
@@ -1720,13 +1726,13 @@ export default function DynamicDocumentRenderer({
             className="w-full h-full flex flex-col items-center justify-center select-text"
             style={{
               textAlign: elem.textAlign || "center",
-              color: elem.color || colors.muted,
+              color: elem.color || colors.footerText,
               fontSize: `${footerPt}pt`,
               fontStyle: elem.fontStyle || "normal",
               fontFamily: elem.fontFamily || "inherit",
               letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
               lineHeight: elem.lineHeight ? elem.lineHeight : undefined,
-              backgroundColor: elem.backgroundColor,
+              backgroundColor: elem.backgroundColor || colors.footerBg,
               borderTop: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
               borderBottom: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
               borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
@@ -1888,9 +1894,11 @@ export default function DynamicDocumentRenderer({
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((elem) => {
           const posX = isDesignerPreview ? elem.x : elem.effectiveX;
-          const posY = isDesignerPreview ? elem.y : elem.effectiveY;
+          const posY = isDesignerPreview ? Math.max(elem.y, elem.effectiveY ?? elem.y) : elem.effectiveY;
           const width = isDesignerPreview ? elem.width : elem.effectiveWidth;
-          const height = isDesignerPreview ? Math.max(elem.height, (elem as LayoutElement & {runtimeMinHeight?: number}).runtimeMinHeight ?? 0) : elem.effectiveHeight;
+          const height = isDesignerPreview
+            ? Math.max(elem.height, (elem as LayoutElement & { runtimeMinHeight?: number }).runtimeMinHeight ?? 0, elem.effectiveHeight ?? 0)
+            : elem.effectiveHeight;
 
           return (
             <div

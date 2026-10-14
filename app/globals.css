@@ -404,20 +404,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   margin: 0;
 }
 
-@page attendance-sheet {
-  size: A4 landscape;
-  margin: 4mm;
-}
-
 @media print {
   @page {
     size: A4 portrait;
     margin: 0;
-  }
-
-  @page attendance-sheet {
-    size: A4 landscape;
-    margin: 4mm;
   }
 
   /* 1. Global Reset & Print Colors */
@@ -480,14 +470,24 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     overflow: visible !important;
   }
 
-  body:has(.print-attendance-sheet) {
-    page: attendance-sheet !important;
+  /* Strip all dark backgrounds, fixed heights and overflow from every ancestor container */
+  body:has(.print-attendance-sheet) div:not(.print-attendance-sheet):not(.attendance-print-root):not(.attendance-print-root *),
+  body:has(.print-attendance-sheet) main,
+  body:has(.print-attendance-sheet) section {
+    background: transparent !important;
+    background-color: transparent !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    height: auto !important;
+    box-shadow: none !important;
+    border: none !important;
   }
 
   body:has(.print-attendance-sheet) .app-screen-content,
   body:has(.print-attendance-sheet) .no-print,
   body:has(.print-attendance-sheet) aside,
   body:has(.print-attendance-sheet) nav,
+  body:has(.print-attendance-sheet) header,
   body:has(.print-attendance-sheet) > *:not(:has(.print-attendance-sheet)) {
     display: none !important;
     visibility: hidden !important;
@@ -503,6 +503,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     position: static !important;
     display: block !important;
     background: transparent !important;
+    background-color: transparent !important;
     padding: 0 !important;
     margin: 0 !important;
     overflow: visible !important;
@@ -528,21 +529,61 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     border: none !important;
     box-shadow: none !important;
     background: transparent !important;
+    background-color: transparent !important;
     overflow: visible !important;
   }
 
-  .print-attendance-sheet {
-    page: attendance-sheet !important;
-    width: 287mm !important;
-    max-width: 287mm !important;
+  body:has(.print-attendance-sheet) .no-print,
+  body:has(.print-attendance-sheet) [class*="no-print"],
+  body:has(.print-attendance-sheet) [class*="print:hidden"],
+  body:has(.print-attendance-sheet) .print-sheet-modal-dialog > .no-print,
+  body:has(.print-attendance-sheet) .print-sheet-modal-dialog > [class*="no-print"],
+  body:has(.print-attendance-sheet) .print-sheet-modal-dialog > [class*="print:hidden"] {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    overflow: hidden !important;
+  }
+
+  body:has(.print-attendance-sheet) .print-sheet-modal-dialog > div:not(.no-print):not([class*="no-print"]):not([class*="print:hidden"]),
+  body:has(.print-attendance-sheet) .attendance-print-scale-root {
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .print-attendance-sheet,
+  .attendance-print-root {
+    width: 297mm !important;
+    min-width: 297mm !important;
+    max-width: 297mm !important;
+    height: 210mm !important;
+    min-height: 210mm !important;
+    max-height: 210mm !important;
     box-sizing: border-box !important;
     margin: 0 auto !important;
-    padding: 0 !important;
+    padding: 7mm 7mm !important;
     background: #ffffff !important;
+    background-color: #ffffff !important;
     color: #0f172a !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     overflow: hidden !important;
+    transform: none !important;
   }
 
   .print-attendance-sheet table {
@@ -550,27 +591,39 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     table-layout: fixed !important;
     border-collapse: collapse !important;
     break-inside: avoid !important;
+    background-color: #ffffff !important;
   }
 
-  /* Density tiers ensuring 1-page fit across 10, 20, and 30 employees */
-  .print-attendance-sheet.density-spacious table th,
-  .print-attendance-sheet.density-spacious table td {
-    padding: 3px 2px !important;
+  /* Density tiers ensuring proportional fit:
+     density-spacious (1-14 employees, e.g. current 10-employee sheet):
+     Comfortable ~10.5mm rows filling the page, zero bottom empty box, large legible names */
+  .print-attendance-sheet.density-spacious table th {
+    padding-top: 5px !important;
+    padding-bottom: 5px !important;
     font-size: 8.5pt !important;
     line-height: 1.25 !important;
   }
 
+  .print-attendance-sheet.density-spacious table td {
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    font-size: 10pt !important;
+    line-height: 1.3 !important;
+  }
+
   .print-attendance-sheet.density-compact table th,
   .print-attendance-sheet.density-compact table td {
-    padding: 2px 1.5px !important;
-    font-size: 8pt !important;
-    line-height: 1.2 !important;
+    padding-top: 3px !important;
+    padding-bottom: 3px !important;
+    font-size: 8.5pt !important;
+    line-height: 1.25 !important;
   }
 
   .print-attendance-sheet.density-tight table th,
   .print-attendance-sheet.density-tight table td {
-    padding: 1px 1px !important;
-    font-size: 7.2pt !important;
+    padding-top: 1.5px !important;
+    padding-bottom: 1.5px !important;
+    font-size: 7.5pt !important;
     line-height: 1.15 !important;
   }
 

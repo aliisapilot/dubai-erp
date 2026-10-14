@@ -465,6 +465,201 @@ export function normalizePrintSettings(settings?: Partial<PrintSettings> | null)
   };
 }
 
+export interface DocumentBranding {
+  primaryColor: string;
+  companyHeaderColor?: string;
+  titleBackground?: string;
+  titleTextColor?: string;
+  accentColor: string;
+  tableHeaderColor: string;
+  tableHeaderTextColor?: string;
+  borderColor: string;
+  tableRowBackground?: string;
+  tableRowAlternating?: string;
+  textColor: string;
+  mutedColor: string;
+  totalHighlightColor: string;
+  footerBackground?: string;
+  footerTextColor?: string;
+  attendanceSundayHighlight?: string;
+  attendancePresentColor?: string;
+  attendanceAbsentColor?: string;
+  attendanceHolidayColor?: string;
+  attendanceLeaveColor?: string;
+}
+
+export interface ColorPreset {
+  id: string;
+  name: string;
+  nameAr: string;
+  branding: DocumentBranding;
+}
+
+export const BUILT_IN_COLOR_PRESETS: ColorPreset[] = [
+  {
+    id: "corporate_navy",
+    name: "Corporate Navy & Gold (Default)",
+    nameAr: "الكحلي الرسمي والذهبي",
+    branding: {
+      primaryColor: "#0F172A",
+      companyHeaderColor: "#0F172A",
+      titleBackground: "#0F172A",
+      titleTextColor: "#FFFFFF",
+      accentColor: "#C9A227",
+      tableHeaderColor: "#0F172A",
+      tableHeaderTextColor: "#FFFFFF",
+      borderColor: "#CBD5E1",
+      tableRowBackground: "#FFFFFF",
+      tableRowAlternating: "#F8FAFC",
+      textColor: "#334155",
+      mutedColor: "#64748B",
+      totalHighlightColor: "#F8F6ED",
+      footerBackground: "#FFFFFF",
+      footerTextColor: "#64748B",
+      attendanceSundayHighlight: "#D1FAE5",
+      attendancePresentColor: "#047857",
+      attendanceAbsentColor: "#BE123C",
+      attendanceHolidayColor: "#0284C7",
+      attendanceLeaveColor: "#B45309",
+    },
+  },
+  {
+    id: "emerald_forest",
+    name: "UAE Emerald & Forest Green",
+    nameAr: "الأخضر الزمردي الإماراتي",
+    branding: {
+      primaryColor: "#065F46",
+      companyHeaderColor: "#065F46",
+      titleBackground: "#065F46",
+      titleTextColor: "#FFFFFF",
+      accentColor: "#10B981",
+      tableHeaderColor: "#047857",
+      tableHeaderTextColor: "#FFFFFF",
+      borderColor: "#A7F3D0",
+      tableRowBackground: "#FFFFFF",
+      tableRowAlternating: "#F0FDF4",
+      textColor: "#1F2937",
+      mutedColor: "#64748B",
+      totalHighlightColor: "#ECFDF5",
+      footerBackground: "#FFFFFF",
+      footerTextColor: "#065F46",
+      attendanceSundayHighlight: "#ECFDF5",
+      attendancePresentColor: "#059669",
+      attendanceAbsentColor: "#DC2626",
+      attendanceHolidayColor: "#0284C7",
+      attendanceLeaveColor: "#D97706",
+    },
+  },
+  {
+    id: "royal_indigo",
+    name: "Royal Indigo & Amber",
+    nameAr: "النيلي الملكي والكهرمان",
+    branding: {
+      primaryColor: "#312E81",
+      companyHeaderColor: "#312E81",
+      titleBackground: "#3730A3",
+      titleTextColor: "#FFFFFF",
+      accentColor: "#F59E0B",
+      tableHeaderColor: "#3730A3",
+      tableHeaderTextColor: "#FFFFFF",
+      borderColor: "#C7D2FE",
+      tableRowBackground: "#FFFFFF",
+      tableRowAlternating: "#EEF2FF",
+      textColor: "#312E4A",
+      mutedColor: "#6B7280",
+      totalHighlightColor: "#FEF3C7",
+      footerBackground: "#FFFFFF",
+      footerTextColor: "#312E81",
+      attendanceSundayHighlight: "#EEF2FF",
+      attendancePresentColor: "#4338CA",
+      attendanceAbsentColor: "#E11D48",
+      attendanceHolidayColor: "#0284C7",
+      attendanceLeaveColor: "#D97706",
+    },
+  },
+  {
+    id: "executive_slate",
+    name: "Executive Slate & Charcoal",
+    nameAr: "الرمادي التنفيذي والفحمي",
+    branding: {
+      primaryColor: "#1E293B",
+      companyHeaderColor: "#1E293B",
+      titleBackground: "#334155",
+      titleTextColor: "#FFFFFF",
+      accentColor: "#3B82F6",
+      tableHeaderColor: "#1E293B",
+      tableHeaderTextColor: "#FFFFFF",
+      borderColor: "#94A3B8",
+      tableRowBackground: "#FFFFFF",
+      tableRowAlternating: "#F1F5F9",
+      textColor: "#0F172A",
+      mutedColor: "#475569",
+      totalHighlightColor: "#E2E8F0",
+      footerBackground: "#FFFFFF",
+      footerTextColor: "#475569",
+      attendanceSundayHighlight: "#F1F5F9",
+      attendancePresentColor: "#0284C7",
+      attendanceAbsentColor: "#DC2626",
+      attendanceHolidayColor: "#64748B",
+      attendanceLeaveColor: "#D97706",
+    },
+  },
+  {
+    id: "minimalist_mono",
+    name: "Modern Minimalist Mono",
+    nameAr: "أحادي اللون العصري",
+    branding: {
+      primaryColor: "#18181B",
+      companyHeaderColor: "#18181B",
+      titleBackground: "#27272A",
+      titleTextColor: "#FFFFFF",
+      accentColor: "#71717A",
+      tableHeaderColor: "#18181B",
+      tableHeaderTextColor: "#FFFFFF",
+      borderColor: "#E4E4E7",
+      tableRowBackground: "#FFFFFF",
+      tableRowAlternating: "#FAFAFA",
+      textColor: "#09090B",
+      mutedColor: "#71717A",
+      totalHighlightColor: "#F4F4F5",
+      footerBackground: "#FFFFFF",
+      footerTextColor: "#71717A",
+      attendanceSundayHighlight: "#F4F4F5",
+      attendancePresentColor: "#18181B",
+      attendanceAbsentColor: "#71717A",
+      attendanceHolidayColor: "#A1A1AA",
+      attendanceLeaveColor: "#52525B",
+    },
+  },
+  {
+    id: "printer_safe_bw",
+    name: "Printer-Safe High Contrast (Ink Saver)",
+    nameAr: "موفر الحبر عالي التباين للطباعة",
+    branding: {
+      primaryColor: "#000000",
+      companyHeaderColor: "#000000",
+      titleBackground: "#FFFFFF",
+      titleTextColor: "#000000",
+      accentColor: "#000000",
+      tableHeaderColor: "#FFFFFF",
+      tableHeaderTextColor: "#000000",
+      borderColor: "#000000",
+      tableRowBackground: "#FFFFFF",
+      tableRowAlternating: "#FFFFFF",
+      textColor: "#000000",
+      mutedColor: "#333333",
+      totalHighlightColor: "#FFFFFF",
+      footerBackground: "#FFFFFF",
+      footerTextColor: "#000000",
+      attendanceSundayHighlight: "#F3F4F6",
+      attendancePresentColor: "#000000",
+      attendanceAbsentColor: "#000000",
+      attendanceHolidayColor: "#333333",
+      attendanceLeaveColor: "#333333",
+    },
+  },
+];
+
 export interface DocumentLayout {
   version: number;
   documentType: DocumentTypeId;
@@ -489,15 +684,7 @@ export interface DocumentLayout {
     smartFit?: SmartFitSettings;
     printSettings?: PrintSettings;
   };
-  branding: {
-    primaryColor: string;
-    accentColor: string;
-    textColor: string;
-    mutedColor: string;
-    borderColor: string;
-    tableHeaderColor: string;
-    totalHighlightColor: string;
-  };
+  branding: DocumentBranding;
   elements: LayoutElement[];
 }
 
@@ -515,20 +702,233 @@ export function documentUsesVat(docType: DocumentTypeId): boolean {
   return VAT_DOCUMENT_TYPES.has(docType);
 }
 
-const DOCUMENT_STYLES: Record<DocumentTypeId, DocumentLayout["branding"]> = {
-  tax_invoice: { primaryColor: "#0F172A", accentColor: "#C9A227", textColor: "#334155", mutedColor: "#64748B", borderColor: "#CBD5E1", tableHeaderColor: "#0F172A", totalHighlightColor: "#F8F6ED" },
-  quotation: { primaryColor: "#0F4C5C", accentColor: "#D4A72C", textColor: "#263238", mutedColor: "#607D8B", borderColor: "#B0BEC5", tableHeaderColor: "#0F4C5C", totalHighlightColor: "#EDF7F8" },
-  proforma_invoice: { primaryColor: "#312E81", accentColor: "#F59E0B", textColor: "#312E4A", mutedColor: "#6B7280", borderColor: "#C7D2FE", tableHeaderColor: "#3730A3", totalHighlightColor: "#EEF2FF" },
-  delivery_note: { primaryColor: "#065F46", accentColor: "#10B981", textColor: "#1F2937", mutedColor: "#64748B", borderColor: "#A7F3D0", tableHeaderColor: "#047857", totalHighlightColor: "#ECFDF5" },
-  purchase_order: { primaryColor: "#7F1D1D", accentColor: "#D4A72C", textColor: "#3F2A2A", mutedColor: "#78716C", borderColor: "#E7C7C7", tableHeaderColor: "#7F1D1D", totalHighlightColor: "#FFF7ED" },
-  receipt_voucher: { primaryColor: "#075985", accentColor: "#16A34A", textColor: "#1E3A5F", mutedColor: "#64748B", borderColor: "#BAE6FD", tableHeaderColor: "#0369A1", totalHighlightColor: "#F0FDF4" },
-  customer_statement: { primaryColor: "#1E293B", accentColor: "#2563EB", textColor: "#334155", mutedColor: "#64748B", borderColor: "#CBD5E1", tableHeaderColor: "#334155", totalHighlightColor: "#EFF6FF" },
-  supplier_bill: { primaryColor: "#78350F", accentColor: "#D97706", textColor: "#422006", mutedColor: "#78716C", borderColor: "#FED7AA", tableHeaderColor: "#92400E", totalHighlightColor: "#FFFBEB" },
-  salary_statement: { primaryColor: "#5B21B6", accentColor: "#0D9488", textColor: "#312E4A", mutedColor: "#6B7280", borderColor: "#DDD6FE", tableHeaderColor: "#6D28D9", totalHighlightColor: "#F5F3FF" },
-  project_handover: { primaryColor: "#14532D", accentColor: "#CA8A04", textColor: "#26352B", mutedColor: "#64748B", borderColor: "#BBF7D0", tableHeaderColor: "#166534", totalHighlightColor: "#F7FEE7" },
-  work_method_statement: { primaryColor: "#9A3412", accentColor: "#F59E0B", textColor: "#431407", mutedColor: "#78716C", borderColor: "#FED7AA", tableHeaderColor: "#C2410C", totalHighlightColor: "#FFF7ED" },
-  employee_payment_voucher: { primaryColor: "#164E63", accentColor: "#0891B2", textColor: "#243B45", mutedColor: "#64748B", borderColor: "#A5F3FC", tableHeaderColor: "#155E75", totalHighlightColor: "#ECFEFF" },
-  measurement_sheet: { primaryColor: "#0F172A", accentColor: "#059669", textColor: "#334155", mutedColor: "#64748B", borderColor: "#CBD5E1", tableHeaderColor: "#0F172A", totalHighlightColor: "#F0FDF4" },
+const DOCUMENT_STYLES: Record<DocumentTypeId, DocumentBranding> = {
+  tax_invoice: {
+    primaryColor: "#0F172A",
+    companyHeaderColor: "#0F172A",
+    titleBackground: "#0F172A",
+    titleTextColor: "#FFFFFF",
+    accentColor: "#C9A227",
+    textColor: "#334155",
+    mutedColor: "#64748B",
+    borderColor: "#CBD5E1",
+    tableHeaderColor: "#0F172A",
+    tableHeaderTextColor: "#FFFFFF",
+    tableRowBackground: "#FFFFFF",
+    tableRowAlternating: "#F8FAFC",
+    totalHighlightColor: "#F8F6ED",
+    footerBackground: "#FFFFFF",
+    footerTextColor: "#64748B",
+    attendanceSundayHighlight: "#D1FAE5",
+    attendancePresentColor: "#047857",
+    attendanceAbsentColor: "#BE123C",
+    attendanceHolidayColor: "#0284C7",
+    attendanceLeaveColor: "#B45309",
+  },
+  quotation: {
+    primaryColor: "#0F4C5C",
+    companyHeaderColor: "#0F4C5C",
+    titleBackground: "#0F4C5C",
+    titleTextColor: "#FFFFFF",
+    accentColor: "#D4A72C",
+    textColor: "#263238",
+    mutedColor: "#607D8B",
+    borderColor: "#B0BEC5",
+    tableHeaderColor: "#0F4C5C",
+    tableHeaderTextColor: "#FFFFFF",
+    tableRowBackground: "#FFFFFF",
+    tableRowAlternating: "#EDF7F8",
+    totalHighlightColor: "#EDF7F8",
+    footerBackground: "#FFFFFF",
+    footerTextColor: "#0F4C5C",
+  },
+  proforma_invoice: {
+    primaryColor: "#312E81",
+    companyHeaderColor: "#312E81",
+    titleBackground: "#3730A3",
+    titleTextColor: "#FFFFFF",
+    accentColor: "#F59E0B",
+    textColor: "#312E4A",
+    mutedColor: "#6B7280",
+    borderColor: "#C7D2FE",
+    tableHeaderColor: "#3730A3",
+    tableHeaderTextColor: "#FFFFFF",
+    tableRowBackground: "#FFFFFF",
+    tableRowAlternating: "#EEF2FF",
+    totalHighlightColor: "#FEF3C7",
+    footerBackground: "#FFFFFF",
+    footerTextColor: "#312E81",
+  },
+  delivery_note: {
+    primaryColor: "#065F46",
+    companyHeaderColor: "#065F46",
+    titleBackground: "#065F46",
+    titleTextColor: "#FFFFFF",
+    accentColor: "#10B981",
+    textColor: "#1F2937",
+    mutedColor: "#64748B",
+    borderColor: "#A7F3D0",
+    tableHeaderColor: "#047857",
+    tableHeaderTextColor: "#FFFFFF",
+    tableRowBackground: "#FFFFFF",
+    tableRowAlternating: "#F0FDF4",
+    totalHighlightColor: "#ECFDF5",
+    footerBackground: "#FFFFFF",
+    footerTextColor: "#065F46",
+  },
+  purchase_order: {
+    primaryColor: "#7F1D1D",
+    companyHeaderColor: "#7F1D1D",
+    titleBackground: "#7F1D1D",
+    titleTextColor: "#FFFFFF",
+    accentColor: "#D4A72C",
+    textColor: "#3F2A2A",
+    mutedColor: "#78716C",
+    borderColor: "#E7C7C7",
+    tableHeaderColor: "#7F1D1D",
+    tableHeaderTextColor: "#FFFFFF",
+    tableRowBackground: "#FFFFFF",
+    tableRowAlternating: "#FFF7ED",
+    totalHighlightColor: "#FFF7ED",
+    footerBackground: "#FFFFFF",
+    footerTextColor: "#7F1D1D",
+  },
+  receipt_voucher: {
+    primaryColor: "#075985",
+    companyHeaderColor: "#075985",
+    titleBackground: "#0369A1",
+    titleTextColor: "#FFFFFF",
+    accentColor: "#16A34A",
+    textColor: "#1E3A5F",
+    mutedColor: "#64748B",
+    borderColor: "#BAE6FD",
+    tableHeaderColor: "#0369A1",
+    tableHeaderTextColor: "#FFFFFF",
+    tableRowBackground: "#FFFFFF",
+    tableRowAlternating: "#F0FDF4",
+    totalHighlightColor: "#F0FDF4",
+    footerBackground: "#FFFFFF",
+    footerTextColor: "#075985",
+  },
+  customer_statement: {
+    primaryColor: "#1E293B",
+    companyHeaderColor: "#1E293B",
+    titleBackground: "#334155",
+    titleTextColor: "#FFFFFF",
+    accentColor: "#2563EB",
+    textColor: "#334155",
+    mutedColor: "#64748B",
+    borderColor: "#CBD5E1",
+    tableHeaderColor: "#334155",
+    tableHeaderTextColor: "#FFFFFF",
+    tableRowBackground: "#FFFFFF",
+    tableRowAlternating: "#F1F5F9",
+    totalHighlightColor: "#EFF6FF",
+    footerBackground: "#FFFFFF",
+    footerTextColor: "#475569",
+  },
+  supplier_bill: {
+    primaryColor: "#78350F",
+    companyHeaderColor: "#78350F",
+    titleBackground: "#92400E",
+    titleTextColor: "#FFFFFF",
+    accentColor: "#D97706",
+    textColor: "#422006",
+    mutedColor: "#78716C",
+    borderColor: "#FED7AA",
+    tableHeaderColor: "#92400E",
+    tableHeaderTextColor: "#FFFFFF",
+    tableRowBackground: "#FFFFFF",
+    tableRowAlternating: "#FFFBEB",
+    totalHighlightColor: "#FFFBEB",
+    footerBackground: "#FFFFFF",
+    footerTextColor: "#78350F",
+  },
+  salary_statement: {
+    primaryColor: "#5B21B6",
+    companyHeaderColor: "#5B21B6",
+    titleBackground: "#6D28D9",
+    titleTextColor: "#FFFFFF",
+    accentColor: "#0D9488",
+    textColor: "#312E4A",
+    mutedColor: "#6B7280",
+    borderColor: "#DDD6FE",
+    tableHeaderColor: "#6D28D9",
+    tableHeaderTextColor: "#FFFFFF",
+    tableRowBackground: "#FFFFFF",
+    tableRowAlternating: "#F5F3FF",
+    totalHighlightColor: "#F5F3FF",
+    footerBackground: "#FFFFFF",
+    footerTextColor: "#5B21B6",
+  },
+  project_handover: {
+    primaryColor: "#14532D",
+    companyHeaderColor: "#14532D",
+    titleBackground: "#166534",
+    titleTextColor: "#FFFFFF",
+    accentColor: "#CA8A04",
+    textColor: "#26352B",
+    mutedColor: "#64748B",
+    borderColor: "#BBF7D0",
+    tableHeaderColor: "#166534",
+    tableHeaderTextColor: "#FFFFFF",
+    tableRowBackground: "#FFFFFF",
+    tableRowAlternating: "#F7FEE7",
+    totalHighlightColor: "#F7FEE7",
+    footerBackground: "#FFFFFF",
+    footerTextColor: "#14532D",
+  },
+  work_method_statement: {
+    primaryColor: "#9A3412",
+    companyHeaderColor: "#9A3412",
+    titleBackground: "#C2410C",
+    titleTextColor: "#FFFFFF",
+    accentColor: "#F59E0B",
+    textColor: "#431407",
+    mutedColor: "#78716C",
+    borderColor: "#FED7AA",
+    tableHeaderColor: "#C2410C",
+    tableHeaderTextColor: "#FFFFFF",
+    tableRowBackground: "#FFFFFF",
+    tableRowAlternating: "#FFF7ED",
+    totalHighlightColor: "#FFF7ED",
+    footerBackground: "#FFFFFF",
+    footerTextColor: "#9A3412",
+  },
+  employee_payment_voucher: {
+    primaryColor: "#164E63",
+    companyHeaderColor: "#164E63",
+    titleBackground: "#155E75",
+    titleTextColor: "#FFFFFF",
+    accentColor: "#0891B2",
+    textColor: "#243B45",
+    mutedColor: "#64748B",
+    borderColor: "#A5F3FC",
+    tableHeaderColor: "#155E75",
+    tableHeaderTextColor: "#FFFFFF",
+    tableRowBackground: "#FFFFFF",
+    tableRowAlternating: "#ECFEFF",
+    totalHighlightColor: "#ECFEFF",
+    footerBackground: "#FFFFFF",
+    footerTextColor: "#164E63",
+  },
+  measurement_sheet: {
+    primaryColor: "#0F172A",
+    companyHeaderColor: "#0F172A",
+    titleBackground: "#0F172A",
+    titleTextColor: "#FFFFFF",
+    accentColor: "#059669",
+    textColor: "#334155",
+    mutedColor: "#64748B",
+    borderColor: "#CBD5E1",
+    tableHeaderColor: "#0F172A",
+    tableHeaderTextColor: "#FFFFFF",
+    tableRowBackground: "#FFFFFF",
+    tableRowAlternating: "#F0FDF4",
+    totalHighlightColor: "#F0FDF4",
+    footerBackground: "#FFFFFF",
+    footerTextColor: "#64748B",
+  },
 };
 
 // ── Default Table Columns ──────────────────────────────────────────────────────
@@ -1291,9 +1691,9 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
             type: "company_signature" as ElementType,
             label: "Company Authorized Signature",
             x: 121,
-            y: 216,
+            y: 224,
             width: 44,
-            height: 36,
+            height: 32,
             visible: true,
             locked: false,
             lockAspectRatio: true,
@@ -1308,9 +1708,9 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
             type: "company_stamp" as ElementType,
             label: "Official Company Stamp",
             x: 167,
-            y: 216,
+            y: 224,
             width: 31,
-            height: 36,
+            height: 32,
             visible: true,
             locked: false,
             lockAspectRatio: true,
@@ -1464,12 +1864,13 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
   });
 
   // Header collision detection and self-healing:
-  // Detect if header elements (logo, en name, ar name, address, title) overlap or collide vertically.
+  // Detect if header elements (logo, en name, ar name, address, title, or custom header texts) overlap or collide vertically.
   const logoEl = elements.find((e) => e.id === "logo" && e.visible);
   const enEl = elements.find((e) => e.id === "company_name_en" && e.visible);
   const arEl = elements.find((e) => e.id === "company_name_ar" && e.visible);
   const addrEl = elements.find((e) => e.id === "company_address" && e.visible);
   const titleEl = elements.find((e) => e.id === "doc_title" && e.visible);
+  const headerCustomTexts = elements.filter((e) => e.type === "custom_text" && e.visible && e.y < 65);
 
   const hasHeaderCollision = (() => {
     if (logoEl && enEl) {
@@ -1480,37 +1881,103 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
     if (enEl && arEl && (enEl.y + enEl.height > arEl.y - 0.5 || arEl.y <= enEl.y)) return true;
     if (arEl && addrEl && (arEl.y + arEl.height > addrEl.y - 0.5 || addrEl.y <= arEl.y)) return true;
     if (addrEl && titleEl && (addrEl.y + addrEl.height > titleEl.y - 0.5 || titleEl.y <= addrEl.y)) return true;
+
+    // Detect if custom header texts collide with logo, en name, ar name, address, or each other
+    for (const ct of headerCustomTexts) {
+      if (enEl && Math.max(0, Math.min(ct.y + ct.height, enEl.y + enEl.height) - Math.max(ct.y, enEl.y)) > 0.5) return true;
+      if (arEl && Math.max(0, Math.min(ct.y + ct.height, arEl.y + arEl.height) - Math.max(ct.y, arEl.y)) > 0.5) return true;
+      if (logoEl && Math.max(0, Math.min(ct.y + ct.height, logoEl.y + logoEl.height) - Math.max(ct.y, logoEl.y)) > 0.5) return true;
+    }
+
     return false;
   })();
 
   if (hasHeaderCollision) {
-    const healed = elements.map((el) => {
-      if (el.id === "logo") {
-        return { ...el, x: 85, y: 10, width: 40, height: 12, lockAspectRatio: true };
+    let curY = 10;
+    const healed = elements.map((e) => ({ ...e }));
+    const getEl = (id: string) => healed.find((e) => e.id === id);
+
+    const l = getEl("logo");
+    if (l && l.visible) {
+      l.x = 80;
+      l.y = curY;
+      l.width = 50;
+      l.height = 14;
+      l.lockAspectRatio = true;
+      curY = l.y + l.height + 2.5; // 26.5
+    }
+
+    const en = getEl("company_name_en");
+    if (en && en.visible) {
+      en.x = 12;
+      en.y = curY;
+      en.width = 186;
+      en.height = 8.0;
+      en.fontSize = Math.min(en.fontSize || 12, 13);
+      curY = en.y + en.height + 1.0; // 35.5
+    }
+
+    const ar = getEl("company_name_ar");
+    if (ar && ar.visible) {
+      ar.x = 12;
+      ar.y = curY;
+      ar.width = 186;
+      ar.height = 8.5;
+      ar.fontSize = Math.min(ar.fontSize || 13.5, 14.5);
+      curY = ar.y + ar.height + 1.2; // 45.2
+    }
+
+    const addr = getEl("company_address");
+    if (addr && addr.visible) {
+      addr.x = 12;
+      addr.y = curY;
+      addr.width = 186;
+      addr.height = 8.0;
+      addr.fontSize = Math.min(addr.fontSize || 7.8, 8.5);
+      curY = addr.y + addr.height + 1.0;
+    }
+
+    // Stack any custom text header elements (e.g. TRN, telephone, address blocks)
+    const cts = healed
+      .filter((e) => e.type === "custom_text" && e.visible && e.y < 65)
+      .sort((a, b) => a.y - b.y);
+
+    for (const ct of cts) {
+      ct.x = 12;
+      ct.y = curY;
+      ct.width = 186;
+      ct.height = Math.max(5.0, Math.min(8.0, ct.height || 6.0));
+      ct.fontSize = Math.min(ct.fontSize || 9.0, 10.5);
+      ct.textAlign = "center";
+      curY = ct.y + ct.height + 1.0;
+    }
+
+    const t = getEl("doc_title");
+    if (t && t.visible) {
+      t.x = 12;
+      t.y = Math.max(curY + 1.0, 56.0);
+      t.width = 186;
+      t.height = 10.5;
+      t.fontSize = Math.min(t.fontSize || 12, 13);
+      curY = t.y + t.height + 2.5;
+    }
+
+    const cards = healed.filter(
+      (e) => ["customer_info", "supplier_info", "project_info", "doc_meta"].includes(e.type) || e.id === "doc_meta"
+    );
+    const cardY = Math.max(curY, 68.0);
+    for (const c of cards) {
+      if (c.y < 85) {
+        c.y = cardY;
+        c.height = Math.max(26.0, c.height);
       }
-      if (el.id === "company_name_en") {
-        return { ...el, x: 12, y: 24.5, width: 186, height: 5.5, fontSize: Math.min(el.fontSize || 11.5, 12.5) };
-      }
-      if (el.id === "company_name_ar") {
-        return { ...el, x: 12, y: 31.0, width: 186, height: 6.5, fontSize: Math.min(el.fontSize || 13.5, 14.5) };
-      }
-      if (el.id === "company_address") {
-        return { ...el, x: 12, y: 38.5, width: 186, height: 5.5, fontSize: Math.min(el.fontSize || 7.8, 8.5) };
-      }
-      if (el.id === "doc_title") {
-        return { ...el, x: 12, y: 46.0, width: 186, height: 10.0, fontSize: Math.min(el.fontSize || 12, 13) };
-      }
-      if (["customer_info", "supplier_info", "project_info"].includes(el.type) && el.y < 57) {
-        return { ...el, y: 58, height: Math.min(el.height, 26) };
-      }
-      if (el.id === "doc_meta" && el.y < 57) {
-        return { ...el, y: 58, height: Math.min(el.height, 26) };
-      }
-      if (el.id === "line_items" && el.y < 86) {
-        return { ...el, y: 88 };
-      }
-      return el;
-    });
+    }
+
+    const table = getEl("line_items");
+    if (table && table.y < cardY + 28) {
+      table.y = cardY + 29;
+    }
+
     elements.splice(0, elements.length, ...healed);
   }
 

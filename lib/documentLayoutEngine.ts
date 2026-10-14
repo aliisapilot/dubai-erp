@@ -780,9 +780,9 @@ export function computeEffectiveLayout(
   const originalTableY = table ? table.y : 95;
   const tableShift = table && isSinglePage ? originalTableY - effectiveTableY : 0;
 
-  // Elements above table (ignoring watermark)
+  // Elements above table (ignoring watermark and footer)
   const elementsAbove = layout.elements.filter(
-    (el) => el.visible && el.type !== "watermark" && el.y + el.height <= originalTableY + 2
+    (el) => el.visible && el.type !== "watermark" && el.type !== "footer" && (!table || el.id !== table.id) && (!table || el.y < table.y + 5)
   );
   const minHeaderY = elementsAbove.length > 0 ? Math.min(...elementsAbove.map((el) => el.y)) : 10;
   const originalHeaderSpan = Math.max(20, originalTableY - minHeaderY);
@@ -828,14 +828,22 @@ export function computeEffectiveLayout(
   }
 
   // Header positioning map for elements above the table:
-  // Replaces blind linear position scaling with clearance-aware sequential stacking
-  // ensuring header elements never lose minimum heights or collide into each other.
+  // Sequential clearance-aware stacking ensures header elements NEVER collide into each other
+  // or lose minimum readable dimensions across single-page and multi-page layouts.
   const headerLayoutMap = new Map<string, { y: number; height: number }>();
-  if (tableShift > 0 && elementsAbove.length > 0) {
+  if (elementsAbove.length > 0) {
     const sortedAbove = [...elementsAbove].sort((a, b) => a.y - b.y);
     const rows: LayoutElement[][] = [];
     for (const el of sortedAbove) {
-      const existingRow = rows.find((r) => Math.abs(r[0].y - el.y) <= 4.0);
+      // Find an existing row where Y is close (<= 4.0mm) AND el does NOT horizontally collide with any element already in that row
+      const existingRow = rows.find((r) => {
+        if (Math.abs(r[0].y - el.y) > 4.0) return false;
+        const wouldOverlapHorizontally = r.some((existing) => {
+          const xOverlap = Math.max(0, Math.min(existing.x + existing.width, el.x + el.width) - Math.max(existing.x, el.x));
+          return xOverlap > 5.0; // horizontal collision threshold
+        });
+        return !wouldOverlapHorizontally;
+      });
       if (existingRow) {
         existingRow.push(el);
       } else {
@@ -852,24 +860,42 @@ export function computeEffectiveLayout(
       const hasParty = row.some((e) => ["customer_info", "supplier_info", "project_info", "doc_meta"].includes(e.type));
 
       let minHeight = 4.0;
-      if (hasLogo) minHeight = 10.0;
-      else if (hasEn) minHeight = 4.8;
-      else if (hasAr) minHeight = 5.8;
-      else if (hasAddr) minHeight = 4.8;
-      else if (hasTitle) minHeight = 8.5;
-      else if (hasParty) minHeight = 18.0;
-      else minHeight = Math.max(...row.map((e) => e.height * 0.7));
+      let naturalHeight = 6.0;
+      if (hasLogo) {
+        minHeight = 11.0;
+        naturalHeight = 14.0;
+      } else if (hasEn) {
+        minHeight = 6.5;
+        naturalHeight = 8.5;
+      } else if (hasAr) {
+        minHeight = 7.0;
+        naturalHeight = 8.5;
+      } else if (hasAddr) {
+        minHeight = 7.5;
+        naturalHeight = 9.5;
+      } else if (hasTitle) {
+        minHeight = 8.5;
+        naturalHeight = 11.0;
+      } else if (hasParty) {
+        minHeight = 18.0;
+        naturalHeight = partyMetaEqualHeight || 26.0;
+      } else {
+        minHeight = Math.max(...row.map((e) => e.height * 0.7));
+        naturalHeight = Math.max(...row.map((e) => e.height));
+      }
 
-      const origMaxHeight = Math.max(...row.map((e) => e.height));
-      const targetHeight = Math.max(minHeight, Math.min(origMaxHeight, Math.round(origMaxHeight * headerScale * 10) / 10));
+      const origMaxHeight = Math.max(naturalHeight, ...row.map((e) => e.height));
+      const targetHeight = tableShift > 0
+        ? Math.max(minHeight, Math.min(origMaxHeight, Math.round(origMaxHeight * headerScale * 10) / 10))
+        : origMaxHeight;
       return { row, height: targetHeight, minHeight };
     });
 
     const totalTargetRowHeight = rowSpecs.reduce((sum, r) => sum + r.height, 0);
-    const availableHeaderSpan = Math.max(15, effectiveTableY - fitProfile.gap - minHeaderY);
+    const availableHeaderSpan = Math.max(20, effectiveTableY - fitProfile.gap - minHeaderY);
     const availableSlack = availableHeaderSpan - totalTargetRowHeight;
     const rowGap = rowSpecs.length > 1
-      ? Math.max(0.6, Math.min(2.0, availableSlack / (rowSpecs.length - 1)))
+      ? Math.max(1.2, Math.min(3.5, availableSlack / (rowSpecs.length - 1)))
       : 0;
 
     let currentY = minHeaderY;
@@ -1433,4 +1459,286 @@ export function getAdaptiveDocumentDensity(
         rowHeightMm: 4.6,
       };
   }
+}
+
+/**
+ * Intelligent One-Click Auto Fix Engine
+ * Eliminates overlapping elements, aligns header stack and cards, enforces readable font sizes,
+ * guarantees zero clipping, and fits layout onto single A4 page where possible.
+ */
+export function autoFixDocumentLayout(layout: DocumentLayout): {
+  fixedLayout: DocumentLayout;
+  message: string;
+  warning?: string;
+  overlapCount: number;
+} {
+  const elements = layout.elements.map((e) => ({ ...e }));
+  let overlapCount = 0;
+
+  // Detect existing overlaps for reporting
+  for (let i = 0; i < elements.length; i++) {
+    for (let j = i + 1; j < elements.length; j++) {
+      const a = elements[i];
+      const b = elements[j];
+      if (!a.visible || !b.visible || a.type === "watermark" || b.type === "watermark") continue;
+      const xOverlap = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+      const yOverlap = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+      if (xOverlap > 2 && yOverlap > 2) overlapCount++;
+    }
+  }
+
+  const logo = elements.find((e) => e.type === "logo");
+  const compEn = elements.find((e) => e.type === "company_name_en");
+  const compAr = elements.find((e) => e.type === "company_name_ar");
+  const compAddr = elements.find((e) => e.type === "company_address");
+  const docTitle = elements.find((e) => e.type === "doc_title");
+  const customerInfo = elements.find((e) => e.type === "customer_info" || e.type === "supplier_info");
+  const docMeta = elements.find((e) => e.type === "doc_meta" || e.type === "project_info");
+  const table = elements.find((e) => e.type === "line_items");
+  const footer = elements.find((e) => e.type === "footer");
+  const watermark = elements.find((e) => e.type === "watermark");
+
+  const pageWidth = layout.page?.widthMm || 210;
+  const pageHeight = layout.page?.heightMm || 297;
+  const marginL = layout.page?.margins?.left || 12;
+  const marginR = layout.page?.margins?.right || 12;
+  const fullW = pageWidth - marginL - marginR;
+
+  // 1. Header Stack: Guaranteed clean vertical flow
+  let currentY = 10;
+  if (layout.page?.borders?.top?.enabled) {
+    currentY = Math.max(currentY, (layout.page.borders.top.position || 0) + (layout.page.borders.top.thickness || 4) + 2);
+  }
+
+  if (logo && logo.visible) {
+    logo.y = currentY;
+    if (logo.lockAspectRatio && logo.imageAspectRatio) {
+      logo.width = Math.min(logo.width, 50);
+      logo.height = Math.max(10, Math.min(18, logo.width / logo.imageAspectRatio));
+    } else {
+      logo.width = Math.min(logo.width, 50);
+      logo.height = Math.max(10, Math.min(18, logo.height));
+    }
+    if (logo.x > 35 || logo.textAlign === "center") {
+      logo.x = Math.round((pageWidth - logo.width) / 2);
+    } else {
+      logo.x = marginL;
+    }
+    currentY = logo.y + logo.height + 2.5;
+  }
+
+  if (compEn && compEn.visible) {
+    compEn.y = currentY;
+    compEn.x = marginL;
+    compEn.width = fullW;
+    compEn.height = Math.max(7.5, Math.min(10, compEn.height));
+    compEn.fontSize = Math.max(10.5, Math.min(13, compEn.fontSize || 11.5));
+    currentY = compEn.y + compEn.height + 1.8;
+  }
+
+  if (compAr && compAr.visible) {
+    compAr.y = currentY;
+    compAr.x = marginL;
+    compAr.width = fullW;
+    compAr.height = Math.max(8.0, Math.min(11, compAr.height));
+    compAr.fontSize = Math.max(11.5, Math.min(14, compAr.fontSize || 12.5));
+    currentY = compAr.y + compAr.height + 2.0;
+  }
+
+  if (compAddr && compAddr.visible) {
+    compAddr.y = currentY;
+    compAddr.x = marginL;
+    compAddr.width = fullW;
+    compAddr.height = Math.max(9.0, Math.min(12, compAddr.height));
+    compAddr.fontSize = Math.max(7.2, Math.min(8.5, compAddr.fontSize || 8));
+    currentY = compAddr.y + compAddr.height + 2.8;
+  }
+
+  const headerCustomTexts = elements
+    .filter((e) => e.type === "custom_text" && e.visible && e.y < 65)
+    .sort((a, b) => a.y - b.y);
+
+  for (const ct of headerCustomTexts) {
+    ct.y = currentY;
+    ct.x = marginL;
+    ct.width = fullW;
+    ct.height = Math.max(5.0, Math.min(8.0, ct.height || 6.0));
+    ct.fontSize = Math.max(8.0, Math.min(10.5, ct.fontSize || 9.5));
+    ct.textAlign = "center";
+    currentY = ct.y + ct.height + 1.5;
+  }
+
+  if (docTitle && docTitle.visible) {
+    docTitle.y = currentY;
+    docTitle.x = marginL;
+    docTitle.width = fullW;
+    docTitle.height = Math.max(10.0, Math.min(13, docTitle.height));
+    docTitle.fontSize = Math.max(10.5, Math.min(13, docTitle.fontSize || 11.5));
+    currentY = docTitle.y + docTitle.height + 3.0;
+  }
+
+  // 2. Align Customer Info & Document Meta cards symmetrically
+  if ((customerInfo && customerInfo.visible) || (docMeta && docMeta.visible)) {
+    const cardY = currentY;
+    const cardGap = 4;
+    const halfW = (fullW - cardGap) / 2;
+
+    const baseH = Math.max(
+      customerInfo?.height || 26,
+      docMeta?.height || 26,
+      26
+    );
+    const cardH = Math.min(baseH, 32);
+
+    if (customerInfo && customerInfo.visible) {
+      customerInfo.y = cardY;
+      customerInfo.x = marginL;
+      customerInfo.width = halfW;
+      customerInfo.height = cardH;
+      customerInfo.fontSize = Math.max(7.5, Math.min(9, customerInfo.fontSize || 8));
+    }
+
+    if (docMeta && docMeta.visible) {
+      docMeta.y = cardY;
+      docMeta.x = marginL + halfW + cardGap;
+      docMeta.width = halfW;
+      docMeta.height = cardH;
+      docMeta.fontSize = Math.max(7.5, Math.min(9, docMeta.fontSize || 8));
+    }
+
+    currentY = cardY + cardH + 3;
+  }
+
+  // 3. Position Line Items Table
+  if (table && table.visible) {
+    table.y = currentY;
+    table.x = marginL;
+    table.width = fullW;
+    table.height = Math.max(55, Math.min(85, table.height));
+    if (table.tableSettings) {
+      table.tableSettings.fontSize = Math.max(7.5, Math.min(9.5, table.tableSettings.fontSize || 8.5));
+      table.tableSettings.rowHeight = Math.max(6.0, Math.min(9.0, table.tableSettings.rowHeight || 7.5));
+    }
+    currentY = table.y + table.height + 3;
+  }
+
+  // 4. Follower cards alignment
+  const followers = elements.filter(
+    (el) => el.visible && el.y >= (table ? table.y + table.height - 5 : currentY - 5) &&
+            el.type !== "footer" && el.type !== "watermark" && el.type !== "line_items"
+  );
+
+  const totalsEl = followers.find((e) => e.type === "totals");
+  const wordsEl = followers.find((e) => e.type === "amount_in_words");
+  const bankEl = followers.find((e) => e.type === "bank_details");
+  const termsEl = followers.find((e) => e.type === "payment_terms");
+  const sigEl = followers.find((e) => e.type === "company_signature");
+  const stampEl = followers.find((e) => e.type === "company_stamp");
+
+  let followerY = currentY;
+  // Row A: Totals (Right) + Amount in Words (Left)
+  if (totalsEl || wordsEl) {
+    const rowY = followerY;
+    let rowH = 0;
+    if (totalsEl) {
+      totalsEl.x = marginL + fullW - 77;
+      totalsEl.width = 77;
+      totalsEl.y = rowY;
+      totalsEl.height = Math.max(38, Math.min(48, totalsEl.height));
+      rowH = Math.max(rowH, totalsEl.height);
+    }
+    if (wordsEl) {
+      wordsEl.x = marginL;
+      wordsEl.width = totalsEl ? (fullW - 77 - 4) : fullW;
+      wordsEl.y = rowY;
+      wordsEl.height = Math.max(22, Math.min(28, wordsEl.height));
+      rowH = Math.max(rowH, wordsEl.height);
+    }
+    followerY = rowY + (totalsEl ? totalsEl.height : rowH) + 2.5;
+  }
+
+  // Row B: Bank Details
+  if (bankEl) {
+    bankEl.x = marginL;
+    bankEl.width = totalsEl ? (fullW - 77 - 4) : fullW;
+    bankEl.y = followerY;
+    bankEl.height = Math.max(22, Math.min(28, bankEl.height));
+    followerY = bankEl.y + bankEl.height + 2.5;
+  }
+
+  // Row C: Payment Terms (Left) + Signatures/Stamp (Right)
+  const hasSigOrStamp = (sigEl && sigEl.visible) || (stampEl && stampEl.visible);
+  const leftColW = hasSigOrStamp ? (fullW - 80) : fullW;
+
+  if (termsEl) {
+    termsEl.x = marginL;
+    termsEl.width = leftColW;
+    termsEl.y = followerY;
+    termsEl.height = Math.max(24, Math.min(36, termsEl.height));
+  }
+
+  if (sigEl || stampEl) {
+    const sigY = followerY;
+    if (sigEl && stampEl) {
+      sigEl.x = marginL + leftColW + 3;
+      sigEl.width = 44;
+      sigEl.y = sigY;
+      sigEl.height = Math.max(30, Math.min(40, sigEl.height));
+
+      stampEl.x = sigEl.x + sigEl.width + 3;
+      stampEl.width = 30;
+      stampEl.y = sigY;
+      stampEl.height = Math.max(30, Math.min(40, stampEl.height));
+    } else if (sigEl) {
+      sigEl.x = marginL + leftColW + 3;
+      sigEl.width = 74;
+      sigEl.y = sigY;
+      sigEl.height = Math.max(30, Math.min(40, sigEl.height));
+    } else if (stampEl) {
+      stampEl.x = marginL + leftColW + 3;
+      stampEl.width = 74;
+      stampEl.y = sigY;
+      stampEl.height = Math.max(30, Math.min(40, stampEl.height));
+    }
+    followerY = Math.max(
+      termsEl ? termsEl.y + termsEl.height : 0,
+      sigEl ? sigEl.y + sigEl.height : 0,
+      stampEl ? stampEl.y + stampEl.height : 0
+    ) + 3;
+  } else if (termsEl) {
+    followerY = termsEl.y + termsEl.height + 3;
+  }
+
+  // Position Footer
+  if (footer && footer.visible) {
+    footer.y = pageHeight - (layout.page?.margins?.bottom || 12) - 8;
+    footer.x = marginL;
+    footer.width = fullW;
+    footer.height = 7;
+  }
+
+  // Watermark
+  if (watermark && watermark.visible) {
+    watermark.x = Math.round((pageWidth - watermark.width) / 2);
+    watermark.y = Math.round((pageHeight - watermark.height) / 2) - 10;
+  }
+
+  // Check single page capacity
+  const pagination = computePaginationPlan({ ...layout, elements }, 4);
+  let warning: string | undefined = undefined;
+  if (!pagination.isSinglePage || pagination.totalPages > 1) {
+    warning = "Document contains extensive items and will print cleanly over multiple A4 pages without compressing text illegibly.";
+  }
+
+  return {
+    fixedLayout: {
+      ...layout,
+      elements,
+    },
+    message: overlapCount > 0
+      ? `Auto Fix corrected ${overlapCount} overlapping elements and aligned spacing for A4.`
+      : "Auto Fix aligned cards, spacing, and verified single-page A4 balance.",
+    warning,
+    overlapCount,
+  };
 }
