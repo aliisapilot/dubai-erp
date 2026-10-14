@@ -1129,6 +1129,7 @@ export default function DynamicDocumentRenderer({
                     borderBottom: isPrinterFriendly ? `2px solid ${colors.primary}` : undefined,
                   }}
                 >
+                  {activeCols.map((col) => {
                     const colHeaderPt = col.fontSize !== undefined ? col.fontSize : tableHeaderFontSizePt;
                     const labelContent = col.labelAr ? `${col.label}<br/><span dir="rtl" className="font-arabic text-[9px] text-slate-300">${col.labelAr}</span>` : col.label;
                     return (
