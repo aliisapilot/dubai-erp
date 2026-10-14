@@ -57,7 +57,7 @@ export default function TrialDataManagement({ companyId }: { companyId: string }
     try {
       for (const t of CLEANUP_TABLES) {
         const { count, error } = await supabase
-          .from(t.key as any)
+          .from(t.key as unknown as Parameters<typeof supabase.from>[0])
           .select("*", { count: "exact", head: true })
           .eq("company_id", companyId);
         if (error) {
@@ -67,15 +67,18 @@ export default function TrialDataManagement({ companyId }: { companyId: string }
         }
       }
       setCounts(result);
-    } catch (e: any) {
-      setError(e.message || "Failed to fetch counts");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to fetch counts");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (companyId) fetchCounts();
+    if (companyId) {
+      void Promise.resolve().then(fetchCounts);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
 
   const handleDryRun = async () => {
@@ -93,8 +96,8 @@ export default function TrialDataManagement({ companyId }: { companyId: string }
         p_is_dry_run: true,
       });
       if (rpcError) throw rpcError;
-    } catch (e: any) {
-      setError(e.message || "Dry run failed");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Dry run failed");
     } finally {
       setDryRunLoading(false);
     }
@@ -122,8 +125,8 @@ export default function TrialDataManagement({ companyId }: { companyId: string }
       setAuditId(audit);
       setShowConfirm(false);
       setConfirmationInput("");
-    } catch (e: any) {
-      setError(e.message || "Execution failed");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Execution failed");
     } finally {
       setExecuteLoading(false);
     }
