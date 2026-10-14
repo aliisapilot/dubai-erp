@@ -20,7 +20,7 @@ import {
 type Supplier = { id: string; name: string | null; supplier_code: string | null; trn?: string | null; address?: string | null; phone?: string | null; email?: string | null };
 type Project = { id: string; project_number: string; name: string };
 type Product = { id: string; name: string | null; sku: string | null; cost_price: number | null; vat_rate: number | null; unit: string | null };
-type POLine = { product_id: string; description: string; quantity: number; unit_price: number; discount_pct: number; vat_rate: number; line_total: number; vat_amount: number; sort_order: number };
+type POLine = { id?: string; product_id: string; description: string; quantity: number; unit_price: number; discount_pct: number; vat_rate: number; line_total: number; vat_amount: number; sort_order: number };
 type PO = { id: string; company_id: string; purchase_order_number: string | null; supplier_id: string | null; project_id?: string | null; order_date: string | null; expected_date: string | null; status: string | null; subtotal: number | null; vat_amount: number | null; total_amount: number | null; notes: string | null; created_at: string | null };
 type POForm = { supplier_id: string; project_id: string; order_date: string; expected_date: string; status: PurchaseOrderStatus; notes: string };
 const emptyForm: POForm = { supplier_id:"", project_id:"", order_date: todayISO(), expected_date:"", status:"draft", notes:"" };
@@ -127,7 +127,7 @@ export default function PurchaseOrdersPage() {
     });
     // DB FK: purchase_order_id (not po_id)
     const { data: items } = await supabase.from("purchase_order_items").select("*").eq("purchase_order_id", po.id).order("sort_order");
-    // Map DB discount_percent → UI discount_pct
+    // Map DB discount_percent â†’ UI discount_pct
     type DBPOItem = { id?: string; purchase_order_id?: string; product_id?: string; description?: string; quantity?: number; unit_price?: number; discount_percent?: number; vat_rate?: number; line_total?: number; vat_amount?: number; sort_order?: number };
     setLines((items||[]).length>0?(items as DBPOItem[]).map(it => ({ product_id: it.product_id||"", description: it.description||"", quantity: Number(it.quantity)||1, unit_price: Number(it.unit_price)||0, discount_pct: Number(it.discount_percent??0), vat_rate: Number(it.vat_rate ?? 5), line_total: Number(it.line_total)||0, vat_amount: Number(it.vat_amount)||0, sort_order: Number(it.sort_order)||0 })):[emptyLine()]);
     setShowForm(true);
@@ -160,9 +160,26 @@ export default function PurchaseOrdersPage() {
         const { error: updateErr } = await supabase.from("purchase_orders").update(payload).eq("id", editing.id);
         if (updateErr) throw updateErr;
         poid = editing.id;
-        // DB FK: purchase_order_id (not po_id)
-        const { error: deleteItemsErr } = await supabase.from("purchase_order_items").delete().eq("purchase_order_id", poid);
-        if (deleteItemsErr) throw deleteItemsErr;
+        // Upsert line items: preserve existing IDs, insert new ones, delete removed ones
+        const { data: existingItems } = await supabase.from("purchase_order_items").select("id").eq("purchase_order_id", poid);
+        const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
+        const currentIds = new Set<string>();
+        for (const l of lines) {
+          if (l.id && existingIds.has(l.id)) {
+            const { error: updErr } = await supabase.from("purchase_order_items").update({ product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, line_total: l.line_total, vat_amount: l.vat_amount }).eq("id", l.id);
+            if (updErr) throw updErr;
+            currentIds.add(l.id);
+          } else {
+            const { error: insErr } = await supabase.from("purchase_order_items").insert({ purchase_order_id: poid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, line_total: l.line_total, vat_amount: l.vat_amount, sort_order: lines.indexOf(l) });
+            if (insErr) throw insErr;
+          }
+        }
+        // Delete items no longer in the form
+        const toDelete = [...existingIds].filter(id => !currentIds.has(id));
+        if (toDelete.length > 0) {
+          const { error: delErr } = await supabase.from("purchase_order_items").delete().in("id", toDelete);
+          if (delErr) throw delErr;
+        }
       } else {
         const cid = await getCompanyId();
         const poNum = await generateDocNumber(cid, "PO");
@@ -238,7 +255,7 @@ export default function PurchaseOrdersPage() {
           <div className="mb-6 flex gap-3">
             <div className="relative flex-1">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
-              <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search POs…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/>
+              <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search POsâ€¦" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/>
             </div>
             <select
               value={filterStatus}
@@ -265,10 +282,10 @@ export default function PurchaseOrdersPage() {
                     <tr key={po.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3 font-mono text-xs text-slate-500">{po.purchase_order_number || po.id.slice(0,8).toUpperCase()}</td>
                       <td className="px-4 py-3">
-                        <div className="font-semibold text-slate-900">{suppMap[po.supplier_id||""]?.name||"—"}</div>
+                        <div className="font-semibold text-slate-900">{suppMap[po.supplier_id||""]?.name||"â€”"}</div>
                         {po.project_id && projMap[po.project_id] && (
                           <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">
-                            📁 {projMap[po.project_id].project_number}
+                            ðŸ“ {projMap[po.project_id].project_number}
                           </span>
                         )}
                       </td>
@@ -335,9 +352,9 @@ export default function PurchaseOrdersPage() {
             <div className="flex-1 overflow-y-auto">
               <form id="po-form" onSubmit={save} className="p-6 space-y-5">
                 {error&&<div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-                {normalizePurchaseOrderStatus(form.status)==="received"&&<div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">✅ When saved as Received, stock will be updated for product line items.</div>}
+                {normalizePurchaseOrderStatus(form.status)==="received"&&<div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">âœ… When saved as Received, stock will be updated for product line items.</div>}
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Supplier <span className="text-red-500">*</span></label><select value={form.supplier_id} onChange={e=>ff("supplier_id",e.target.value)} required className={sel}><option value="">— Select Supplier —</option>{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Supplier <span className="text-red-500">*</span></label><select value={form.supplier_id} onChange={e=>ff("supplier_id",e.target.value)} required className={sel}><option value="">â€” Select Supplier â€”</option>{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
                     <select
@@ -353,8 +370,8 @@ export default function PurchaseOrdersPage() {
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Project / Job (Optional)</label>
                     <select value={form.project_id} onChange={e=>ff("project_id",e.target.value)} className={sel}>
-                      <option value="">— No Project / General Stock —</option>
-                      {projects.map(p=><option key={p.id} value={p.id}>{p.project_number} — {p.name}</option>)}
+                      <option value="">â€” No Project / General Stock â€”</option>
+                      {projects.map(p=><option key={p.id} value={p.id}>{p.project_number} â€” {p.name}</option>)}
                     </select>
                   </div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Order Date</label><input type="date" value={form.order_date} onChange={e=>ff("order_date",e.target.value)} className={inp}/></div>
@@ -365,7 +382,7 @@ export default function PurchaseOrdersPage() {
                     <table className="w-full text-sm"><thead><tr className="bg-slate-50 text-xs font-semibold uppercase text-slate-500"><th className="px-3 py-2 text-left w-48">Product</th><th className="px-3 py-2 text-left">Description</th><th className="px-3 py-2 w-16 text-center">Qty</th><th className="px-3 py-2 w-24 text-right">Cost Price</th><th className="px-3 py-2 w-14 text-center">Disc%</th><th className="px-3 py-2 w-14 text-center">VAT%</th><th className="px-3 py-2 w-28 text-right">Total</th><th className="px-3 py-2 w-8"></th></tr></thead>
                     <tbody>{lines.map((l,i)=>(
                       <tr key={i} className="border-t border-slate-100">
-                        <td className="px-2 py-1"><select value={l.product_id} onChange={e=>onProductSelect(i,e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"><option value="">—</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></td>
+                        <td className="px-2 py-1"><select value={l.product_id} onChange={e=>onProductSelect(i,e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"><option value="">â€”</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></td>
                         <td className="px-2 py-1"><input type="text" value={l.description} onChange={e=>updateLine(i,{description:e.target.value})} placeholder="Description" className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"/></td>
                         <td className="px-2 py-1"><input type="number" min="1" step="1" value={l.quantity} onChange={e=>updateLine(i,{quantity:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-center focus:outline-none"/></td>
                         <td className="px-2 py-1"><input type="number" min="0" step="0.01" value={l.unit_price} onChange={e=>updateLine(i,{unit_price:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none"/></td>
@@ -385,7 +402,7 @@ export default function PurchaseOrdersPage() {
             <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
               <button type="button" onClick={closeForm} disabled={saving} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
               <button type="submit" form="po-form" disabled={saving} className="flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
-                {saving?<Loader2 size={16} className="animate-spin"/>:<Save size={16}/>}{saving?"Saving…":editing?"Save Changes":"Create PO"}
+                {saving?<Loader2 size={16} className="animate-spin"/>:<Save size={16}/>}{saving?"Savingâ€¦":editing?"Save Changes":"Create PO"}
               </button>
             </div>
           </div>
@@ -401,7 +418,7 @@ export default function PurchaseOrdersPage() {
                 <p className="text-sm text-slate-500">{suppMap[viewing.po.supplier_id||""]?.name}</p>
                 {viewing.po.project_id && projMap[viewing.po.project_id] && (
                   <p className="text-xs text-blue-600 font-semibold mt-0.5">
-                    Project: {projMap[viewing.po.project_id].project_number} — {projMap[viewing.po.project_id].name}
+                    Project: {projMap[viewing.po.project_id].project_number} â€” {projMap[viewing.po.project_id].name}
                   </p>
                 )}
               </div>

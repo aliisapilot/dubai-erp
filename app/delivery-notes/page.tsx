@@ -15,7 +15,7 @@ import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
 type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; address: string | null; contact_person: string | null; phone: string | null; mobile: string | null; email: string | null; active: boolean | null };
 type Product = { id: string; name: string | null; sku: string | null; unit: string | null; current_stock: number | null };
 type Project = { id: string; name: string | null; project_number: string | null };
-type DNLine = { product_id: string; description: string; quantity: number; unit: string; remarks?: string; sort_order: number };
+type DNLine = { id?: string; product_id: string; description: string; quantity: number; unit: string; remarks?: string; sort_order: number };
 
 type DN = {
   id: string;
@@ -301,8 +301,26 @@ export default function DeliveryNotesPage() {
         if (updateErr) throw updateErr;
         dnid = editing.id;
         dnNumber = editing.delivery_note_number || editing.id; // DB: delivery_note_number
-        const { error: deleteItemsErr } = await supabase.from("delivery_note_items").delete().eq("delivery_note_id", dnid); // DB FK
-        if (deleteItemsErr) throw deleteItemsErr;
+        // Upsert line items: preserve existing IDs, insert new ones, delete removed ones
+        const { data: existingItems } = await supabase.from("delivery_note_items").select("id").eq("delivery_note_id", dnid);
+        const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
+        const currentIds = new Set<string>();
+        const validLines = lines.filter(l => l.description.trim());
+        for (const l of validLines) {
+          if (l.id && existingIds.has(l.id)) {
+            const { error: updErr } = await supabase.from("delivery_note_items").update({ product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit: l.unit||"Nos", remarks: l.remarks||null }).eq("id", l.id);
+            if (updErr) throw updErr;
+            currentIds.add(l.id);
+          } else {
+            const { error: insErr } = await supabase.from("delivery_note_items").insert({ delivery_note_id: dnid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit: l.unit||"Nos", remarks: l.remarks||null, sort_order: validLines.indexOf(l) });
+            if (insErr) throw insErr;
+          }
+        }
+        const toDelete = [...existingIds].filter(id => !currentIds.has(id));
+        if (toDelete.length > 0) {
+          const { error: delErr } = await supabase.from("delivery_note_items").delete().in("id", toDelete);
+          if (delErr) throw delErr;
+        }
       } else {
         const cid = await getCompanyId();
         const dno = await generateDocNumber(cid, "DN");
@@ -315,21 +333,6 @@ export default function DeliveryNotesPage() {
         if (err) throw new Error(err.message);
         dnid = ins.id;
       }
-
-      const { error: itemErr } = await supabase.from("delivery_note_items").insert(
-        lines
-          .filter(l => l.description.trim())
-          .map((l, i) => ({
-            delivery_note_id: dnid, // DB FK: delivery_note_id (not dn_id)
-            product_id: l.product_id || null,
-            description: l.description,
-            quantity: l.quantity,
-            unit: l.unit || "Nos",
-            remarks: l.remarks || null,
-            sort_order: i,
-          }))
-      );
-      if (itemErr) throw itemErr;
 
       // Apply the preflight plan: repeated product lines use cumulative balances.
       if (shouldDeductStock) {
