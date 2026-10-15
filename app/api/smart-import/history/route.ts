@@ -7,6 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import { rollbackImportBatch } from "@/lib/smartImport/importer";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 export async function GET() {
   try {

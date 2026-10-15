@@ -404,10 +404,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   margin: 0;
 }
 
+@page attendance-sheet {
+  size: 297mm 210mm;
+  margin: 0;
+}
+
 @media print {
   @page {
     size: A4 portrait;
     margin: 0;
+  }
+
+  @page attendance-sheet {
+    size: 297mm 210mm !important;
+    margin: 0 !important;
   }
 
   /* 1. Global Reset & Print Colors */
@@ -420,7 +430,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     print-color-adjust: exact !important;
   }
 
-  html {
+  html:not(:has(.print-attendance-sheet)):not(:has([data-orientation="landscape"])):not(:has(.attendance-print-root)) {
     width: 210mm !important;
     min-width: 210mm !important;
     max-width: 210mm !important;
@@ -433,7 +443,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     overflow: visible !important;
   }
 
-  body {
+  body:not(:has(.print-attendance-sheet)):not(:has([data-orientation="landscape"])):not(:has(.attendance-print-root)) {
     width: 210mm !important;
     min-width: 210mm !important;
     max-width: 210mm !important;
@@ -455,14 +465,18 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   /* Attendance & Overtime Dedicated Landscape Sheet Overrides */
   html:has(.print-attendance-sheet),
   body:has(.print-attendance-sheet),
+  html:has([data-orientation="landscape"]),
+  body:has([data-orientation="landscape"]),
+  html:has(.attendance-print-root),
+  body:has(.attendance-print-root),
   .erp-screen-theme:has(.print-attendance-sheet),
   [data-print-root]:has(.print-attendance-sheet) {
     width: 297mm !important;
     min-width: 297mm !important;
     max-width: 297mm !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
+    height: 210mm !important;
+    min-height: 210mm !important;
+    max-height: 210mm !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
@@ -568,6 +582,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   .print-attendance-sheet,
   .attendance-print-root {
+    page: attendance-sheet !important;
     width: 297mm !important;
     min-width: 297mm !important;
     max-width: 297mm !important;

@@ -60,7 +60,7 @@ export default function TrialDataManagement({ companyId }: { companyId: string }
           .from(t.key as unknown as Parameters<typeof supabase.from>[0])
           .select("*", { count: "exact", head: true })
           .eq("company_id", companyId);
-        if (countErr) {
+        if (error) {
           result[t.key] = 0;
         } else {
           result[t.key] = count ?? 0;

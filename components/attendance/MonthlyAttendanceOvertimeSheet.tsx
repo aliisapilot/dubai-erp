@@ -25,6 +25,7 @@ import {
   FileText,
   ShieldCheck,
   Settings,
+  Palette,
 } from "lucide-react";
 
 import { getCompanyId, getCurrentCompany, MONTH_NAMES, fmtAED, formatEmployeeCode } from "@/lib/helpers";
@@ -37,6 +38,10 @@ import AttendanceImportModal, {
   AttendanceStatus,
 } from "./AttendanceImportModal";
 import AttendancePrintSheet, { AttendanceSheetColors } from "./AttendancePrintSheet";
+import AttendanceColorCustomizerModal, {
+  DEFAULT_ATTENDANCE_COLORS,
+  ATTENDANCE_COLORS_STORAGE_KEY,
+} from "./AttendanceColorCustomizerModal";
 import EmployeePayrollChargesModal from "./EmployeePayrollChargesModal";
 import SalarySlipTemplate, { SalarySlipData } from "@/components/documents/SalarySlipTemplate";
 import EmployeePaymentVoucherTemplate, { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
@@ -156,9 +161,13 @@ export default function MonthlyAttendanceOvertimeSheet({
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [showBulkMenu, setShowBulkMenu] = useState(false);
-  const [sheetColors] = useState<AttendanceSheetColors | undefined>(() => {
-    if (typeof window === "undefined") return undefined;
+  const [showColorModal, setShowColorModal] = useState(false);
+  const [sheetColors, setSheetColors] = useState<AttendanceSheetColors>(() => {
+    if (typeof window === "undefined") return DEFAULT_ATTENDANCE_COLORS;
     try {
+      const custom = localStorage.getItem(ATTENDANCE_COLORS_STORAGE_KEY);
+      if (custom) return { ...DEFAULT_ATTENDANCE_COLORS, ...JSON.parse(custom) };
+
       const stored = localStorage.getItem("dubai-erp.custom-color-presets");
       if (stored) {
         const presets = JSON.parse(stored);
@@ -166,46 +175,23 @@ export default function MonthlyAttendanceOvertimeSheet({
           const last = presets[presets.length - 1];
           if (last?.branding) {
             return {
-              sundayHighlight: last.branding.attendanceSundayHighlight,
-              sundayHeader: last.branding.attendanceSundayHeader,
-              presentColor: last.branding.attendancePresentColor,
-              absentColor: last.branding.attendanceAbsentColor,
-              holidayColor: last.branding.attendanceHolidayColor,
-              leaveColor: last.branding.attendanceLeaveColor,
-              headerBg: last.branding.tableHeaderBg,
-              headerTextColor: last.branding.tableHeaderTextColor,
+              ...DEFAULT_ATTENDANCE_COLORS,
+              sundayHighlight: last.branding.attendanceSundayHighlight || DEFAULT_ATTENDANCE_COLORS.sundayHighlight,
+              sundayHeader: last.branding.attendanceSundayHeader || DEFAULT_ATTENDANCE_COLORS.sundayHeader,
+              presentColor: last.branding.attendancePresentColor || DEFAULT_ATTENDANCE_COLORS.presentColor,
+              absentColor: last.branding.attendanceAbsentColor || DEFAULT_ATTENDANCE_COLORS.absentColor,
+              holidayColor: last.branding.attendanceHolidayColor || DEFAULT_ATTENDANCE_COLORS.holidayColor,
+              leaveColor: last.branding.attendanceLeaveColor || DEFAULT_ATTENDANCE_COLORS.leaveColor,
+              headerBg: last.branding.tableHeaderBg || DEFAULT_ATTENDANCE_COLORS.headerBg,
+              headerTextColor: last.branding.tableHeaderTextColor || DEFAULT_ATTENDANCE_COLORS.headerTextColor,
             };
-          }
-        }
-      }
-
-      // Also check if any saved template layout has custom attendance branding
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (key.startsWith("dubai-erp.design-cache.") || key.startsWith("dubai-erp.document-layout."))) {
-          const raw = localStorage.getItem(key);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            const b = parsed?.branding;
-            if (b && (b.attendanceSundayHighlight || b.attendancePresentColor || b.attendanceAbsentColor)) {
-              return {
-                sundayHighlight: b.attendanceSundayHighlight,
-                sundayHeader: b.attendanceSundayHeader,
-                presentColor: b.attendancePresentColor,
-                absentColor: b.attendanceAbsentColor,
-                holidayColor: b.attendanceHolidayColor,
-                leaveColor: b.attendanceLeaveColor,
-                headerBg: b.tableHeaderColor,
-                headerTextColor: b.tableHeaderTextColor,
-              };
-            }
           }
         }
       }
     } catch {
       // Ignore fallback
     }
-    return undefined;
+    return DEFAULT_ATTENDANCE_COLORS;
   });
 
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -2395,7 +2381,7 @@ export default function MonthlyAttendanceOvertimeSheet({
 
       {/* Print View Modal */}
       {showPrintModal && (
-        <div className="print-sheet-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs overflow-y-auto print:p-0 print:m-0 print:bg-transparent print:static print:overflow-visible">
+        <div className="print-modal-container print-sheet-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs overflow-y-auto print:p-0 print:m-0 print:bg-transparent print:static print:overflow-visible">
           <div className="print-sheet-modal-dialog relative w-full max-w-[1300px] rounded-2xl bg-slate-900 shadow-2xl border border-slate-700 overflow-hidden my-4 print:border-none print:shadow-none print:my-0 print:max-w-none print:w-full print:bg-transparent">
 
             {/* ── Injected @page zoom hint for Chrome/Edge print engine ── */}
@@ -2462,6 +2448,17 @@ export default function MonthlyAttendanceOvertimeSheet({
                   ))}
                 </div>
 
+                {/* ── Palette Color Customizer Button ── */}
+                <button
+                  type="button"
+                  onClick={() => setShowColorModal(true)}
+                  className="flex items-center gap-1.5 rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-700 transition cursor-pointer shadow-xs active:scale-95 no-print"
+                  title="Customize Sunday column highlights, status badges, and table header accents"
+                >
+                  <Palette size={14} className="text-emerald-400" />
+                  <span>Colors</span>
+                </button>
+
                 {/* ── Download A4 PDF Button (Primary Direct Clean Export) ── */}
                 <button
                   type="button"
@@ -2507,13 +2504,13 @@ export default function MonthlyAttendanceOvertimeSheet({
               </div>
             </div>
 
-            {/* High Employee Count Notice & Multi-page Selector */}
-            {filteredEmployees.length > 30 && (
+            {/* High Employee Count Notice & Multi-page Selector (Calibrated for >24 Employees) */}
+            {filteredEmployees.length > 24 && (
               <div className="no-print bg-slate-800/90 border-b border-slate-700/80 px-6 py-2.5 flex items-center justify-between text-xs text-slate-300 flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={15} className="text-amber-400 shrink-0" />
                   <span>
-                    <strong className="text-white">{filteredEmployees.length} Labourers Detected:</strong> To ensure high readability for site audit and official records, multi-page formatting is applied.
+                    <strong className="text-white">{filteredEmployees.length} Labourers Detected:</strong> A single A4 landscape sheet is calibrated for up to 24 employees to guarantee audit-grade legibility (≥7.5pt). Multi-page layout (24/page) is applied.
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-700">
@@ -2575,6 +2572,21 @@ export default function MonthlyAttendanceOvertimeSheet({
           </div>
         </div>
       )}
+
+      {/* Color Customizer Modal */}
+      <AttendanceColorCustomizerModal
+        isOpen={showColorModal}
+        onClose={() => setShowColorModal(false)}
+        currentColors={sheetColors}
+        onSave={(newColors) => {
+          setSheetColors(newColors);
+          setNotification({
+            type: "success",
+            message: "Attendance print sheet colors updated and saved persistently.",
+          });
+          setTimeout(() => setNotification(null), 3000);
+        }}
+      />
     </div>
   );
 }

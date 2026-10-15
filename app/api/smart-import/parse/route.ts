@@ -39,6 +39,7 @@ import {
 import type { ParsedDocument, SupportedFileType, CalculationAuditRow } from "@/lib/smartImport/types";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   try {

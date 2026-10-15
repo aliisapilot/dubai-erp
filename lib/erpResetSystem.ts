@@ -1,6 +1,28 @@
-import fs from "fs";
-import path from "path";
-import crypto from "crypto";
+interface NodeFs {
+  existsSync(path: string): boolean;
+  readFileSync(path: string, encoding: string): string;
+}
+interface NodePath {
+  join(...paths: string[]): string;
+}
+interface NodeCrypto {
+  createHash(algo: string): { update(data: string): { digest(enc: string): string } };
+}
+
+let nodeFs: NodeFs | null = null;
+let nodePath: NodePath | null = null;
+let nodeCrypto: NodeCrypto | null = null;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  nodeFs = require("fs");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  nodePath = require("path");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  nodeCrypto = require("crypto");
+} catch {
+  // Edge runtime: Node fs/path not available
+}
 
 export interface TableCategoryInfo {
   category: string;
@@ -216,25 +238,29 @@ export const DELETION_TOPOLOGY_ORDER = [
 ];
 
 export async function getLiveDatabaseSummary() {
-  const backupDir = path.join(process.cwd(), "backups");
-  const backupJsonPath = path.join(backupDir, "complete_erp_database_backup.json");
-  const manifestPath = path.join(backupDir, "backup_manifest.json");
-
   let backupVerified = false;
   let backupManifest: Record<string, unknown> | null = null;
   let backupChecksum = "";
   let backupTimestamp = "";
+  let backupExists = false;
 
-  if (fs.existsSync(backupJsonPath) && fs.existsSync(manifestPath)) {
+  if (nodeFs && nodePath && nodeCrypto && typeof process !== "undefined" && typeof process.cwd === "function") {
     try {
-      const manifestRaw = fs.readFileSync(manifestPath, "utf-8");
-      backupManifest = JSON.parse(manifestRaw);
-      const jsonContent = fs.readFileSync(backupJsonPath, "utf-8");
-      const calculatedHash = crypto.createHash("sha256").update(jsonContent).digest("hex");
-      if (calculatedHash === (backupManifest as { checksum_sha256?: string })?.checksum_sha256) {
-        backupVerified = true;
-        backupChecksum = calculatedHash;
-        backupTimestamp = (backupManifest as { timestamp?: string })?.timestamp || "";
+      const backupDir = nodePath.join(process.cwd(), "backups");
+      const backupJsonPath = nodePath.join(backupDir, "complete_erp_database_backup.json");
+      const manifestPath = nodePath.join(backupDir, "backup_manifest.json");
+
+      if (nodeFs.existsSync(backupJsonPath) && nodeFs.existsSync(manifestPath)) {
+        backupExists = true;
+        const manifestRaw = nodeFs.readFileSync(manifestPath, "utf-8");
+        backupManifest = JSON.parse(manifestRaw);
+        const jsonContent = nodeFs.readFileSync(backupJsonPath, "utf-8");
+        const calculatedHash = nodeCrypto.createHash("sha256").update(jsonContent).digest("hex");
+        if (calculatedHash === (backupManifest as { checksum_sha256?: string })?.checksum_sha256) {
+          backupVerified = true;
+          backupChecksum = calculatedHash;
+          backupTimestamp = (backupManifest as { timestamp?: string })?.timestamp || "";
+        }
       }
     } catch {
       backupVerified = false;
@@ -283,7 +309,7 @@ export async function getLiveDatabaseSummary() {
     preservedCategories,
     resetCategories,
     backup: {
-      exists: fs.existsSync(backupJsonPath),
+      exists: backupExists,
       verified: backupVerified,
       checksumSha256: backupChecksum,
       timestamp: backupTimestamp,

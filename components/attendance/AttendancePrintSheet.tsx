@@ -44,7 +44,7 @@ export default function AttendancePrintSheet({
   const monthName = MONTH_NAMES[month - 1] || "";
   const shortMonth = monthName.slice(0, 3);
 
-  // Generate days array
+  // Generate days array for the month (supports 28, 29, 30, and 31 days)
   const days = Array.from({ length: daysInMonth }, (_, i) => {
     const dayNum = i + 1;
     const dateObj = new Date(year, month - 1, dayNum);
@@ -63,10 +63,9 @@ export default function AttendancePrintSheet({
   });
 
   // Dynamic pagination based on printScale and employee count
-  // 1. "auto" (Auto Fit One Page): Up to 32 employees forced to fit on exactly 1 page
-  // 2. "fit-width": 100% printable width (287mm), standard 24 employees per page
-  // 3. "actual": 100% natural unscaled size, roomier cells and font, 18 employees per page
-  const effectiveForceSingle = forceSinglePage || (printScale === "auto" && employees.length <= 32);
+  // Standard capacity: Up to 24 employees fit on exactly 1 A4 Landscape page with high legibility.
+  // Beyond 24 employees, paginate to multiple pages (24/page) unless forceSinglePage is explicitly requested.
+  const effectiveForceSingle = forceSinglePage || (printScale === "auto" && employees.length <= 24);
   const pageSize = printScale === "actual" ? 18 : 24;
   const isMultiPage = !effectiveForceSingle && employees.length > pageSize;
 
@@ -82,23 +81,36 @@ export default function AttendancePrintSheet({
     printScale === "actual"
       ? "density-spacious density-actual"
       : rowsOnPage > 24
+      ? "density-ultra-tight"
+      : rowsOnPage > 18
       ? "density-tight"
-      : rowsOnPage > 15
+      : rowsOnPage > 12
       ? "density-compact"
       : "density-spacious";
 
   const totalPages = employeeChunks.length;
-  // Dynamic row height in mm ensuring optimal fill of the 210mm printable area without multi-page overflow
+
+  // Calibrated row height in mm ensuring optimal fill of the 210mm printable area without page blowout
   const rowHeightMm =
     rowsOnPage <= 10
-      ? 11.6
+      ? 10.5
       : rowsOnPage <= 14
-      ? 8.8
+      ? 8.5
       : rowsOnPage <= 18
-      ? 7.2
+      ? 7.0
       : rowsOnPage <= 24
-      ? 5.2
-      : 4.2;
+      ? 5.0
+      : Math.max(3.8, Math.round((120 / rowsOnPage) * 10) / 10);
+
+  // Active color variables with safe UAE corporate fallbacks
+  const activeHeaderBg = colors?.headerBg || "#0f172a";
+  const activeHeaderTextColor = colors?.headerTextColor || "#ffffff";
+  const activeSundayHighlight = colors?.sundayHighlight || "#d1fae5";
+  const activeSundayHeader = colors?.sundayHeader || "#059669";
+  const activePresentColor = colors?.presentColor || "#047857";
+  const activeAbsentColor = colors?.absentColor || "#be123c";
+  const activeHolidayColor = colors?.holidayColor || "#0284c7";
+  const activeLeaveColor = colors?.leaveColor || "#b45309";
 
   return (
     <div className="attendance-print-root print-document document-sheet erp-document-surface w-full bg-white text-slate-900 font-sans print:p-0 print:m-0">
@@ -144,6 +156,7 @@ export default function AttendancePrintSheet({
             justify-content: space-between !important;
           }
         }
+
         .attendance-print-root,
         .attendance-print-root.document-sheet,
         .print-attendance-sheet,
@@ -151,30 +164,87 @@ export default function AttendancePrintSheet({
           background-color: #ffffff !important;
           color: #0f172a !important;
         }
+
         .attendance-print-root table {
           background-color: #ffffff !important;
           color: #0f172a !important;
         }
+
+        /* Density Tiers - Active across Screen Preview, html2canvas, and Print */
+        .attendance-print-root .density-spacious th,
+        .print-attendance-sheet.density-spacious th {
+          font-size: 8.5pt !important;
+          line-height: 1.25 !important;
+          padding: 4px 1px !important;
+        }
+        .attendance-print-root .density-spacious td,
+        .print-attendance-sheet.density-spacious td {
+          font-size: 9.5pt !important;
+          line-height: 1.25 !important;
+          padding: 3px 1px !important;
+        }
+
+        .attendance-print-root .density-compact th,
+        .print-attendance-sheet.density-compact th {
+          font-size: 8.0pt !important;
+          line-height: 1.2 !important;
+          padding: 2.5px 1px !important;
+        }
+        .attendance-print-root .density-compact td,
+        .print-attendance-sheet.density-compact td {
+          font-size: 8.5pt !important;
+          line-height: 1.2 !important;
+          padding: 2px 1px !important;
+        }
+
+        .attendance-print-root .density-tight th,
+        .print-attendance-sheet.density-tight th {
+          font-size: 7.2pt !important;
+          line-height: 1.1 !important;
+          padding: 1.5px 0.5px !important;
+        }
+        .attendance-print-root .density-tight td,
+        .print-attendance-sheet.density-tight td {
+          font-size: 7.5pt !important;
+          line-height: 1.1 !important;
+          padding: 1px 0.5px !important;
+        }
+
+        .attendance-print-root .density-ultra-tight th,
+        .print-attendance-sheet.density-ultra-tight th {
+          font-size: 6.5pt !important;
+          line-height: 1.05 !important;
+          padding: 1px 0.5px !important;
+        }
+        .attendance-print-root .density-ultra-tight td,
+        .print-attendance-sheet.density-ultra-tight td {
+          font-size: 6.5pt !important;
+          line-height: 1.05 !important;
+          padding: 0.5px 0.5px !important;
+        }
+
+        /* Sunday Columns Styling */
         .attendance-print-root .sunday-col-cell {
-          background-color: ${colors?.sundayHighlight || "#d1fae5"} !important;
-          color: ${colors?.sundayHeader || "#064e3b"} !important;
-          border-left-color: ${colors?.sundayHighlight ? `${colors.sundayHighlight}99` : "#6ee7b7"} !important;
-          border-right-color: ${colors?.sundayHighlight ? `${colors.sundayHighlight}99` : "#6ee7b7"} !important;
+          background-color: ${activeSundayHighlight} !important;
+          color: ${activeSundayHeader} !important;
+          border-left-color: ${activeSundayHighlight}99 !important;
+          border-right-color: ${activeSundayHighlight}99 !important;
           font-weight: 700 !important;
         }
         .attendance-print-root .sunday-col-head {
-          background-color: ${colors?.sundayHeader || "#059669"} !important;
+          background-color: ${activeSundayHeader} !important;
           color: #ffffff !important;
-          border-left-color: ${colors?.sundayHeader || "#10b981"} !important;
-          border-right-color: ${colors?.sundayHeader || "#10b981"} !important;
+          border-left-color: ${activeSundayHeader} !important;
+          border-right-color: ${activeSundayHeader} !important;
           font-weight: 800 !important;
         }
         .attendance-print-root .sunday-col-subhead {
-          background-color: ${colors?.sundayHeader || "#047857"} !important;
+          background-color: ${activeSundayHeader} !important;
           color: #ffffff !important;
-          border-left-color: ${colors?.sundayHeader || "#10b981"} !important;
-          border-right-color: ${colors?.sundayHeader || "#10b981"} !important;
+          border-left-color: ${activeSundayHeader} !important;
+          border-right-color: ${activeSundayHeader} !important;
           font-weight: 700 !important;
+          opacity: 0.95;
         }
       `}} />
 
@@ -202,364 +272,355 @@ export default function AttendancePrintSheet({
             <div className="w-[283mm]">
               {/* Sheet Header - cleanly spanning the full 283mm printable width */}
               <div className="w-[283mm] border-b-2 border-slate-900 pb-2 mb-2 flex items-center justify-between">
-              <div className="flex-1 min-w-0 pr-4">
-                <h1 className="text-base sm:text-lg font-black uppercase tracking-wider text-slate-900 leading-tight truncate">
-                  {company?.name || "DUBAI ENTERPRISE ERP L.L.C"}
-                </h1>
-                <p className="text-[9pt] text-slate-600 font-semibold leading-tight mt-0.5 truncate">
-                  {company?.trn ? `TRN: ${company.trn}` : "Employee Attendance & Overtime Records"}
-                  {company?.address ? ` | ${company.address}` : " | United Arab Emirates"}
-                </p>
-              </div>
-              <div className="text-right shrink-0">
-                <div
-                  className="inline-block bg-slate-900 text-white font-black px-3.5 py-1 text-[10pt] uppercase rounded tracking-wide shadow-xs"
-                  style={colors?.headerBg ? { backgroundColor: colors.headerBg, color: colors.headerTextColor || "#ffffff" } : {}}
-                >
-                  {mode === "overtime"
-                    ? "Employee Overtime Sheet"
-                    : mode === "summary"
-                    ? "Monthly Payroll & Attendance Summary"
-                    : "Employee Attendance Sheet"}
-                </div>
-                <div className="flex items-center justify-end gap-3 mt-1">
-                  <p className="text-[9.5pt] font-extrabold text-slate-700">
-                    Month: <span className="text-slate-900 uppercase font-black">{monthName} {year}</span>
+                <div className="flex-1 min-w-0 pr-4">
+                  <h1 className="text-base sm:text-lg font-black uppercase tracking-wider text-slate-900 leading-tight truncate">
+                    {company?.name || "DUBAI ENTERPRISE ERP L.L.C"}
+                  </h1>
+                  <p className="text-[9pt] text-slate-600 font-semibold leading-tight mt-0.5 truncate">
+                    {company?.trn ? `TRN: ${company.trn}` : "Employee Attendance & Overtime Records"}
+                    {company?.address ? ` | ${company.address}` : " | United Arab Emirates"}
                   </p>
-                  {totalPages > 1 && (
-                    <span className="text-[8.5pt] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-300">
-                      Page {pageIndex + 1} of {totalPages}
-                    </span>
-                  )}
+                </div>
+                <div className="text-right shrink-0">
+                  <div
+                    className="inline-block font-black px-3.5 py-1 text-[10pt] uppercase rounded tracking-wide shadow-xs"
+                    style={{ backgroundColor: activeHeaderBg, color: activeHeaderTextColor }}
+                  >
+                    {mode === "overtime"
+                      ? "Employee Overtime Sheet"
+                      : mode === "summary"
+                      ? "Monthly Payroll & Attendance Summary"
+                      : "Employee Attendance Sheet"}
+                  </div>
+                  <div className="flex items-center justify-end gap-3 mt-1">
+                    <p className="text-[9.5pt] font-extrabold text-slate-700">
+                      Month: <span className="text-slate-900 uppercase font-black">{monthName} {year}</span>
+                    </p>
+                    {totalPages > 1 && (
+                      <span className="text-[8.5pt] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-300">
+                        Page {pageIndex + 1} of {totalPages}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Main Attendance Table - 283mm exactly: 18mm (Emp No) + 49mm (Name) + 180mm (Days) + 36mm (Summary) */}
-            <div className="w-[283mm] overflow-hidden border-2 border-slate-700">
-              <table className="w-[283mm] border-collapse table-fixed bg-white">
-                <thead>
-                  {/* Row 1: Header Titles & Day Numbers */}
-                  <tr
-                    className="bg-slate-900 text-white leading-tight"
-                    style={colors?.headerBg ? { backgroundColor: colors.headerBg, color: colors.headerTextColor || "#ffffff" } : {}}
-                  >
-                    <th
-                      className="border border-slate-600 border-r-2 border-r-slate-400 px-1 text-center font-bold text-[9pt] uppercase tracking-wide bg-slate-900 text-white"
-                      style={{ width: "18mm" }}
+              {/* Main Attendance Table - Exactly 283mm: 18mm (Emp No) + 49mm (Name) + 180mm (Days) + 36mm (Summary) */}
+              <div className="w-[283mm] overflow-hidden border-2 border-slate-700">
+                <table className="w-[283mm] border-collapse table-fixed bg-white">
+                  <thead>
+                    {/* Row 1: Header Titles & Day Numbers */}
+                    <tr
+                      className="text-white leading-tight"
+                      style={{ backgroundColor: activeHeaderBg, color: activeHeaderTextColor }}
                     >
-                      Emp No
-                    </th>
-                    <th
-                      className="border border-slate-600 border-r-2 border-r-slate-400 px-3 text-left font-bold text-[9pt] uppercase tracking-wide bg-slate-900 text-white"
-                      style={{ width: "49mm" }}
-                    >
-                      Employee Name
-                    </th>
-                    {days.map((d) => (
                       <th
-                        key={d.dayNum}
-                        className={`border border-slate-600 px-0 text-center font-bold text-[8.5pt] ${
-                          d.isSunday ? "sunday-col-head bg-emerald-600 text-white font-black" : ""
-                        }`}
-                        style={{ width: `${180 / daysInMonth}mm` }}
+                        className="border border-slate-600 border-r-2 border-r-slate-400 px-1 text-center font-bold text-[9pt] uppercase tracking-wide"
+                        style={{ width: "18mm", backgroundColor: activeHeaderBg }}
                       >
-                        {String(d.dayNum).padStart(2, "0")}
+                        Emp No
                       </th>
-                    ))}
-                    {mode === "attendance" ? (
-                      <>
-                        <th className="border border-slate-600 border-l-2 border-l-slate-400 px-0.5 text-center font-bold bg-emerald-800 text-white text-[8.5pt]" style={{ width: "12mm" }}>
-                          Pres
-                        </th>
-                        <th className="border border-slate-600 px-0.5 text-center font-bold bg-rose-800 text-white text-[8.5pt]" style={{ width: "12mm" }}>
-                          Abs
-                        </th>
-                        <th className="border border-slate-600 px-0.5 text-center font-bold bg-slate-800 text-white text-[8.5pt]" style={{ width: "12mm" }}>
-                          Total
-                        </th>
-                      </>
-                    ) : mode === "overtime" ? (
-                      <>
-                        <th className="border border-slate-600 border-l-2 border-l-slate-400 px-0.5 text-center font-bold bg-purple-900 text-white text-[8.5pt]" style={{ width: "18mm" }}>
-                          OT Hrs
-                        </th>
-                        <th className="border border-slate-600 px-0.5 text-center font-bold bg-slate-800 text-white text-[8.5pt]" style={{ width: "18mm" }}>
-                          Est. AED
-                        </th>
-                      </>
-                    ) : (
-                      <>
-                        <th className="border border-slate-600 border-l-2 border-l-slate-400 px-0.5 text-center font-bold bg-emerald-800 text-white text-[8.5pt]" style={{ width: "12mm" }}>
-                          Pres
-                        </th>
-                        <th className="border border-slate-600 px-0.5 text-center font-bold bg-rose-800 text-white text-[8.5pt]" style={{ width: "12mm" }}>
-                          Abs
-                        </th>
-                        <th className="border border-slate-600 px-0.5 text-center font-bold bg-purple-900 text-white text-[8.5pt]" style={{ width: "12mm" }}>
-                          OT Hrs
-                        </th>
-                      </>
-                    )}
-                  </tr>
-
-                  {/* Row 2: Sub-headers (Days of Week) - NO COLSPAN to preserve independent column boundaries */}
-                  <tr className="bg-slate-800 text-slate-300 leading-none">
-                    <th
-                      className="border border-slate-700 border-r-2 border-r-slate-400 px-1 text-center font-bold text-[7.5pt] text-slate-300 bg-slate-800"
-                      style={{ width: "18mm" }}
-                    >
-                      CODE
-                    </th>
-                    <th
-                      className="border border-slate-700 border-r-2 border-r-slate-400 px-3 text-left font-bold text-[7.5pt] text-slate-300 bg-slate-800"
-                      style={{ width: "49mm" }}
-                    >
-                      Staff ({employees.length})
-                    </th>
-                    {days.map((d) => (
                       <th
-                        key={d.dayNum}
-                        className={`border border-slate-700 px-0 text-center font-bold text-[7.5pt] ${
-                          d.isSunday ? "sunday-col-subhead bg-emerald-700 text-white font-black" : ""
-                        }`}
-                        style={{ width: `${180 / daysInMonth}mm` }}
+                        className="border border-slate-600 border-r-2 border-r-slate-400 px-3 text-left font-bold text-[9pt] uppercase tracking-wide"
+                        style={{ width: "49mm", backgroundColor: activeHeaderBg }}
                       >
-                        {d.dayOfWeek}
+                        Employee Name
                       </th>
-                    ))}
-                    {mode === "attendance" ? (
-                      <>
-                        <th className="border border-slate-700 border-l-2 border-l-slate-400 px-0.5 text-center font-bold text-[7.5pt] bg-emerald-950 text-emerald-300">P</th>
-                        <th className="border border-slate-700 px-0.5 text-center font-bold text-[7.5pt] bg-rose-950 text-rose-300">A</th>
-                        <th className="border border-slate-700 px-0.5 text-center font-bold text-[7.5pt] bg-slate-900 text-slate-300">Days</th>
-                      </>
-                    ) : mode === "overtime" ? (
-                      <>
-                        <th className="border border-slate-700 border-l-2 border-l-slate-400 px-0.5 text-center font-bold text-[7.5pt] bg-purple-950 text-purple-300">Total</th>
-                        <th className="border border-slate-700 px-0.5 text-center font-bold text-[7.5pt] bg-slate-900 text-slate-300">Pay</th>
-                      </>
-                    ) : (
-                      <>
-                        <th className="border border-slate-700 border-l-2 border-l-slate-400 px-0.5 text-center font-bold text-[7.5pt] bg-emerald-950 text-emerald-300">P</th>
-                        <th className="border border-slate-700 px-0.5 text-center font-bold text-[7.5pt] bg-rose-950 text-rose-300">A</th>
-                        <th className="border border-slate-700 px-0.5 text-center font-bold text-[7.5pt] bg-purple-950 text-purple-300">OT</th>
-                      </>
-                    )}
-                  </tr>
-                </thead>
+                      {days.map((d) => (
+                        <th
+                          key={d.dayNum}
+                          className={`border border-slate-600 px-0 text-center font-bold text-[8.5pt] ${
+                            d.isSunday ? "sunday-col-head" : ""
+                          }`}
+                          style={{ width: `${180 / daysInMonth}mm` }}
+                        >
+                          {String(d.dayNum).padStart(2, "0")}
+                        </th>
+                      ))}
+                      {mode === "attendance" ? (
+                        <>
+                          <th className="border border-slate-600 border-l-2 border-l-slate-400 px-0.5 text-center font-bold bg-emerald-800 text-white text-[8.5pt]" style={{ width: "12mm" }}>
+                            Pres
+                          </th>
+                          <th className="border border-slate-600 px-0.5 text-center font-bold bg-rose-800 text-white text-[8.5pt]" style={{ width: "12mm" }}>
+                            Abs
+                          </th>
+                          <th className="border border-slate-600 px-0.5 text-center font-bold bg-slate-800 text-white text-[8.5pt]" style={{ width: "12mm" }}>
+                            Total
+                          </th>
+                        </>
+                      ) : mode === "overtime" ? (
+                        <>
+                          <th className="border border-slate-600 border-l-2 border-l-slate-400 px-0.5 text-center font-bold bg-purple-900 text-white text-[8.5pt]" style={{ width: "18mm" }}>
+                            OT Hrs
+                          </th>
+                          <th className="border border-slate-600 px-0.5 text-center font-bold bg-slate-800 text-white text-[8.5pt]" style={{ width: "18mm" }}>
+                            Est. AED
+                          </th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="border border-slate-600 border-l-2 border-l-slate-400 px-0.5 text-center font-bold bg-emerald-800 text-white text-[8.5pt]" style={{ width: "12mm" }}>
+                            Pres
+                          </th>
+                          <th className="border border-slate-600 px-0.5 text-center font-bold bg-rose-800 text-white text-[8.5pt]" style={{ width: "12mm" }}>
+                            Abs
+                          </th>
+                          <th className="border border-slate-600 px-0.5 text-center font-bold bg-purple-900 text-white text-[8.5pt]" style={{ width: "12mm" }}>
+                            OT Hrs
+                          </th>
+                        </>
+                      )}
+                    </tr>
 
-                <tbody>
-                  {chunk.map((emp, idxOnPage) => {
-                    let pCount = 0;
-                    let aCount = 0;
-                    let otherCount = 0;
-                    let totalOtHours = 0;
-
-                    return (
-                      <tr
-                        key={emp.id}
-                        className={`${idxOnPage % 2 === 0 ? "bg-white" : "bg-slate-50"} leading-tight`}
-                        style={{ height: `${rowHeightMm}mm` }}
+                    {/* Row 2: Sub-headers (Days of Week) - NO COLSPAN to preserve strictly aligned column boundaries */}
+                    <tr className="bg-slate-800 text-slate-300 leading-none">
+                      <th
+                        className="border border-slate-700 border-r-2 border-r-slate-400 px-1 text-center font-bold text-[7.5pt] text-slate-300 bg-slate-800"
+                        style={{ width: "18mm" }}
                       >
-                        <td
-                          className="border border-slate-300 border-r-2 border-r-slate-400 px-1 text-center font-bold font-mono text-slate-900 bg-slate-50/90 text-[10pt] whitespace-nowrap"
-                          style={{ width: "18mm", height: `${rowHeightMm}mm` }}
+                        CODE
+                      </th>
+                      <th
+                        className="border border-slate-700 border-r-2 border-r-slate-400 px-3 text-left font-bold text-[7.5pt] text-slate-300 bg-slate-800"
+                        style={{ width: "49mm" }}
+                      >
+                        Staff ({employees.length})
+                      </th>
+                      {days.map((d) => (
+                        <th
+                          key={d.dayNum}
+                          className={`border border-slate-700 px-0 text-center font-bold text-[7.5pt] ${
+                            d.isSunday ? "sunday-col-subhead" : ""
+                          }`}
+                          style={{ width: `${180 / daysInMonth}mm` }}
                         >
-                          {formatEmployeeCode(emp.employee_number)}
-                        </td>
-                        <td
-                          className="border border-slate-300 border-r-2 border-r-slate-400 px-3 text-left font-bold text-slate-900 text-[10pt] whitespace-nowrap overflow-hidden text-ellipsis"
-                          style={{ width: "49mm", height: `${rowHeightMm}mm` }}
-                          title={emp.first_name || ""}
+                          {d.dayOfWeek}
+                        </th>
+                      ))}
+                      {mode === "attendance" ? (
+                        <>
+                          <th className="border border-slate-700 border-l-2 border-l-slate-400 px-0.5 text-center font-bold text-[7.5pt] bg-emerald-950 text-emerald-300">P</th>
+                          <th className="border border-slate-700 px-0.5 text-center font-bold text-[7.5pt] bg-rose-950 text-rose-300">A</th>
+                          <th className="border border-slate-700 px-0.5 text-center font-bold text-[7.5pt] bg-slate-900 text-slate-300">Days</th>
+                        </>
+                      ) : mode === "overtime" ? (
+                        <>
+                          <th className="border border-slate-700 border-l-2 border-l-slate-400 px-0.5 text-center font-bold text-[7.5pt] bg-purple-950 text-purple-300">Total</th>
+                          <th className="border border-slate-700 px-0.5 text-center font-bold text-[7.5pt] bg-slate-900 text-slate-300">Pay</th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="border border-slate-700 border-l-2 border-l-slate-400 px-0.5 text-center font-bold text-[7.5pt] bg-emerald-950 text-emerald-300">P</th>
+                          <th className="border border-slate-700 px-0.5 text-center font-bold text-[7.5pt] bg-rose-950 text-rose-300">A</th>
+                          <th className="border border-slate-700 px-0.5 text-center font-bold text-[7.5pt] bg-purple-950 text-purple-300">OT</th>
+                        </>
+                      )}
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {chunk.map((emp, idxOnPage) => {
+                      let pCount = 0;
+                      let aCount = 0;
+                      let otherCount = 0;
+                      let totalOtHours = 0;
+
+                      return (
+                        <tr
+                          key={emp.id}
+                          className={`${idxOnPage % 2 === 0 ? "bg-white" : "bg-slate-50"} leading-tight`}
+                          style={{ height: `${rowHeightMm}mm` }}
                         >
-                          {emp.first_name || "Unnamed"}
-                        </td>
-                        {days.map((d) => {
-                          const attStatus = attendanceMap[`${emp.id}_${d.dateStr}`];
-                          const otHours = overtimeMap[`${emp.id}_${d.dateStr}`] || 0;
+                          <td
+                            className="border border-slate-300 border-r-2 border-r-slate-400 px-1 text-center font-bold font-mono text-slate-900 bg-slate-50/90 whitespace-nowrap"
+                            style={{ width: "18mm", height: `${rowHeightMm}mm` }}
+                          >
+                            {formatEmployeeCode(emp.employee_number)}
+                          </td>
+                          <td
+                            className="border border-slate-300 border-r-2 border-r-slate-400 px-3 text-left font-bold text-slate-900 whitespace-nowrap overflow-hidden text-ellipsis"
+                            style={{ width: "49mm", height: `${rowHeightMm}mm` }}
+                            title={emp.first_name || ""}
+                          >
+                            {emp.first_name || "Unnamed"}
+                          </td>
+                          {days.map((d) => {
+                            const attStatus = attendanceMap[`${emp.id}_${d.dateStr}`];
+                            const otHours = overtimeMap[`${emp.id}_${d.dateStr}`] || 0;
 
-                          if (attStatus === "present") pCount++;
-                          else if (attStatus === "absent") aCount++;
-                          else if (attStatus) otherCount++;
+                            if (attStatus === "present") pCount++;
+                            else if (attStatus === "absent") aCount++;
+                            else if (attStatus) otherCount++;
 
-                          totalOtHours += otHours;
+                            totalOtHours += otHours;
 
-                          if (mode === "overtime") {
+                            if (mode === "overtime") {
+                              return (
+                                <td
+                                  key={d.dayNum}
+                                  className={`border border-slate-300 px-0 text-center font-bold ${
+                                    d.isSunday ? "sunday-col-cell" : ""
+                                  } ${otHours > 0 ? "text-purple-800 font-black" : "text-slate-300"}`}
+                                  style={{ width: `${180 / daysInMonth}mm`, height: `${rowHeightMm}mm` }}
+                                >
+                                  {otHours > 0 ? otHours : ""}
+                                </td>
+                              );
+                            }
+
+                            let badge = "";
+                            let cellStyle: React.CSSProperties = {};
+                            if (attStatus === "present") {
+                              badge = "P";
+                              cellStyle = { color: activePresentColor, fontWeight: 800 };
+                            } else if (attStatus === "absent") {
+                              badge = "A";
+                              cellStyle = {
+                                color: activeAbsentColor,
+                                fontWeight: 800,
+                                backgroundColor: `${activeAbsentColor}12`,
+                              };
+                            } else if (attStatus === "leave") {
+                              badge = "L";
+                              cellStyle = { color: activeLeaveColor, fontWeight: 700 };
+                            } else if (attStatus === "holiday") {
+                              badge = "H";
+                              cellStyle = { color: activeHolidayColor, fontWeight: 700 };
+                            } else if (attStatus === "late") {
+                              badge = "HD";
+                              cellStyle = { color: "#4338ca", fontWeight: 700 };
+                            }
+
                             return (
                               <td
                                 key={d.dayNum}
-                                className={`border border-slate-300 px-0 text-center font-bold text-[10pt] ${
+                                className={`border border-slate-300 px-0 text-center font-extrabold ${
                                   d.isSunday ? "sunday-col-cell" : ""
-                                } ${otHours > 0 ? "text-purple-800 font-black" : "text-slate-300"}`}
-                                style={{ width: `${180 / daysInMonth}mm`, height: `${rowHeightMm}mm` }}
+                                }`}
+                                style={{
+                                  width: `${180 / daysInMonth}mm`,
+                                  height: `${rowHeightMm}mm`,
+                                  ...cellStyle,
+                                }}
                               >
-                                {otHours > 0 ? otHours : ""}
+                                {badge}
                               </td>
                             );
-                          }
+                          })}
 
-                          let badge = "";
-                          let cellColor = "";
-                          let cellStyle: React.CSSProperties = {};
-                          if (attStatus === "present") {
-                            badge = "P";
-                            if (colors?.presentColor) {
-                              cellStyle = { color: colors.presentColor, fontWeight: "bold" };
-                            } else {
-                              cellColor = "text-emerald-700 font-bold";
-                            }
-                          } else if (attStatus === "absent") {
-                            badge = "A";
-                            if (colors?.absentColor) {
-                              cellStyle = { color: colors.absentColor, fontWeight: "bold", backgroundColor: `${colors.absentColor}15` };
-                            } else {
-                              cellColor = "text-rose-700 font-black bg-rose-50/60";
-                            }
-                          } else if (attStatus === "leave") {
-                            badge = "L";
-                            if (colors?.leaveColor) {
-                              cellStyle = { color: colors.leaveColor, fontWeight: "bold" };
-                            } else {
-                              cellColor = "text-amber-700 font-bold";
-                            }
-                          } else if (attStatus === "holiday") {
-                            badge = "H";
-                            if (colors?.holidayColor) {
-                              cellStyle = { color: colors.holidayColor, fontWeight: "bold" };
-                            } else {
-                              cellColor = "text-sky-700 font-bold";
-                            }
-                          } else if (attStatus === "late") {
-                            badge = "HD";
-                            cellColor = "text-indigo-700 font-bold";
-                          }
-
-                          return (
-                            <td
-                              key={d.dayNum}
-                              className={`border border-slate-300 px-0 text-center text-[10pt] font-extrabold ${
-                                d.isSunday ? "sunday-col-cell" : ""
-                              } ${cellColor}`}
-                              style={{ width: `${180 / daysInMonth}mm`, height: `${rowHeightMm}mm`, ...cellStyle }}
-                            >
-                              {badge}
-                            </td>
-                          );
-                        })}
-
-                        {/* Summary Columns */}
-                        {mode === "attendance" ? (
-                          <>
-                            <td
-                              className="border border-slate-300 border-l-2 border-l-slate-400 px-0.5 text-center font-bold text-emerald-800 bg-emerald-50/50 text-[10pt]"
-                              style={{ width: "12mm", height: `${rowHeightMm}mm` }}
-                            >
-                              {pCount}
-                            </td>
-                            <td
-                              className="border border-slate-300 px-0.5 text-center font-bold text-rose-800 bg-rose-50/50 text-[10pt]"
-                              style={{ width: "12mm", height: `${rowHeightMm}mm` }}
-                            >
-                              {aCount}
-                            </td>
-                            <td
-                              className="border border-slate-300 px-0.5 text-center font-black text-slate-900 bg-slate-100/50 text-[10pt]"
-                              style={{ width: "12mm", height: `${rowHeightMm}mm` }}
-                            >
-                              {pCount + aCount + otherCount}
-                            </td>
-                          </>
-                        ) : mode === "overtime" ? (
-                          <>
-                            <td
-                              className="border border-slate-300 border-l-2 border-l-slate-400 px-0.5 text-center font-black text-purple-900 bg-purple-50/60 text-[10pt]"
-                              style={{ width: "18mm", height: `${rowHeightMm}mm` }}
-                            >
-                              {totalOtHours > 0 ? totalOtHours.toFixed(1) : "0"}
-                            </td>
-                            <td
-                              className="border border-slate-300 px-0.5 text-right font-bold text-slate-800 pr-1.5 text-[9.5pt]"
-                              style={{ width: "18mm", height: `${rowHeightMm}mm` }}
-                            >
-                              {emp.basic_salary
-                                ? ((Number(emp.basic_salary) / 30 / 8) * 1.25 * totalOtHours).toLocaleString("en-US", {
-                                    minimumFractionDigits: 0,
-                                    maximumFractionDigits: 0,
-                                  })
-                                : "—"}
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td
-                              className="border border-slate-300 border-l-2 border-l-slate-400 px-0.5 text-center font-bold text-emerald-800 text-[10pt]"
-                              style={{ width: "12mm", height: `${rowHeightMm}mm` }}
-                            >
-                              {pCount}
-                            </td>
-                            <td
-                              className="border border-slate-300 px-0.5 text-center font-bold text-rose-800 text-[10pt]"
-                              style={{ width: "12mm", height: `${rowHeightMm}mm` }}
-                            >
-                              {aCount}
-                            </td>
-                            <td
-                              className="border border-slate-300 px-0.5 text-center font-black text-purple-900 bg-purple-50/60 text-[10pt]"
-                              style={{ width: "12mm", height: `${rowHeightMm}mm` }}
-                            >
-                              {totalOtHours.toFixed(1)}
-                            </td>
-                          </>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          {/* Summary Columns */}
+                          {mode === "attendance" ? (
+                            <>
+                              <td
+                                className="border border-slate-300 border-l-2 border-l-slate-400 px-0.5 text-center font-bold bg-emerald-50/50"
+                                style={{ width: "12mm", height: `${rowHeightMm}mm`, color: activePresentColor }}
+                              >
+                                {pCount}
+                              </td>
+                              <td
+                                className="border border-slate-300 px-0.5 text-center font-bold bg-rose-50/50"
+                                style={{ width: "12mm", height: `${rowHeightMm}mm`, color: activeAbsentColor }}
+                              >
+                                {aCount}
+                              </td>
+                              <td
+                                className="border border-slate-300 px-0.5 text-center font-black text-slate-900 bg-slate-100/50"
+                                style={{ width: "12mm", height: `${rowHeightMm}mm` }}
+                              >
+                                {pCount + aCount + otherCount}
+                              </td>
+                            </>
+                          ) : mode === "overtime" ? (
+                            <>
+                              <td
+                                className="border border-slate-300 border-l-2 border-l-slate-400 px-0.5 text-center font-black text-purple-900 bg-purple-50/60"
+                                style={{ width: "18mm", height: `${rowHeightMm}mm` }}
+                              >
+                                {totalOtHours > 0 ? totalOtHours.toFixed(1) : "0"}
+                              </td>
+                              <td
+                                className="border border-slate-300 px-0.5 text-right font-bold text-slate-800 pr-1.5"
+                                style={{ width: "18mm", height: `${rowHeightMm}mm` }}
+                              >
+                                {emp.basic_salary
+                                  ? ((Number(emp.basic_salary) / 30 / 8) * 1.25 * totalOtHours).toLocaleString("en-US", {
+                                      minimumFractionDigits: 0,
+                                      maximumFractionDigits: 0,
+                                    })
+                                  : "—"}
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td
+                                className="border border-slate-300 border-l-2 border-l-slate-400 px-0.5 text-center font-bold text-emerald-800"
+                                style={{ width: "12mm", height: `${rowHeightMm}mm` }}
+                              >
+                                {pCount}
+                              </td>
+                              <td
+                                className="border border-slate-300 px-0.5 text-center font-bold text-rose-800"
+                                style={{ width: "12mm", height: `${rowHeightMm}mm` }}
+                              >
+                                {aCount}
+                              </td>
+                              <td
+                                className="border border-slate-300 px-0.5 text-center font-black text-purple-900 bg-purple-50/60"
+                                style={{ width: "12mm", height: `${rowHeightMm}mm` }}
+                              >
+                                {totalOtHours.toFixed(1)}
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             {/* Bottom Block: Signatures & Legend Footnote - pinned to bottom of page */}
             <div className="w-[283mm] mt-auto pt-2">
               {(isLastPage || totalPages === 1) ? (
                 <>
-                  {/* Signature Section - 3 evenly spaced corporate verification blocks */}
-                  <div className="attendance-print-signatures pt-2 border-t-2 border-slate-700 break-inside-avoid flex items-start justify-between w-[283mm]">
-                    <div className="text-center" style={{ width: "88mm" }}>
-                      <div className="h-10 border-b-2 border-dashed border-slate-400 mb-1.5 flex items-end justify-center pb-0.5">
-                        <span className="text-[7.5pt] text-slate-400 italic">Authorized Signature &amp; Stamp</span>
+                  {/* Signature Section - 3 horizontal corporate verification blocks side by side */}
+                  <div className="attendance-print-signatures pt-1.5 border-t-2 border-slate-700 break-inside-avoid flex items-start justify-between w-[283mm]">
+                    <div className="text-center" style={{ width: "90mm" }}>
+                      <div className="h-8 border-b-2 border-dashed border-slate-400 mb-1 flex items-end justify-center pb-0.5">
+                        <span className="text-[7pt] text-slate-400 italic">Authorized Signature &amp; Stamp</span>
                       </div>
-                      <p className="font-extrabold text-slate-900 text-[9.5pt] uppercase tracking-wide">Prepared By</p>
-                      <p className="text-[8pt] font-semibold text-slate-600">Site Timekeeper / HR Department</p>
-                      <p className="text-[7.5pt] text-slate-400 mt-0.5">Date: ____ / ____ / {year}</p>
+                      <p className="font-extrabold text-slate-900 text-[9pt] uppercase tracking-wide">Prepared By</p>
+                      <p className="text-[7.5pt] font-semibold text-slate-600">Site Timekeeper / HR Department</p>
+                      <p className="text-[7pt] text-slate-400 mt-0.5">Date: ____ / ____ / {year}</p>
                     </div>
-                    <div className="text-center" style={{ width: "88mm" }}>
-                      <div className="h-10 border-b-2 border-dashed border-slate-400 mb-1.5 flex items-end justify-center pb-0.5">
-                        <span className="text-[7.5pt] text-slate-400 italic">Authorized Signature &amp; Stamp</span>
+                    <div className="text-center" style={{ width: "90mm" }}>
+                      <div className="h-8 border-b-2 border-dashed border-slate-400 mb-1 flex items-end justify-center pb-0.5">
+                        <span className="text-[7pt] text-slate-400 italic">Authorized Signature &amp; Stamp</span>
                       </div>
-                      <p className="font-extrabold text-slate-900 text-[9.5pt] uppercase tracking-wide">Checked By</p>
-                      <p className="text-[8pt] font-semibold text-slate-600">Project Manager / Site Engineer</p>
-                      <p className="text-[7.5pt] text-slate-400 mt-0.5">Date: ____ / ____ / {year}</p>
+                      <p className="font-extrabold text-slate-900 text-[9pt] uppercase tracking-wide">Checked By</p>
+                      <p className="text-[7.5pt] font-semibold text-slate-600">Project Manager / Site Engineer</p>
+                      <p className="text-[7pt] text-slate-400 mt-0.5">Date: ____ / ____ / {year}</p>
                     </div>
-                    <div className="text-center" style={{ width: "88mm" }}>
-                      <div className="h-10 border-b-2 border-dashed border-slate-400 mb-1.5 flex items-end justify-center pb-0.5">
-                        <span className="text-[7.5pt] text-slate-400 italic">Authorized Signature &amp; Stamp</span>
+                    <div className="text-center" style={{ width: "90mm" }}>
+                      <div className="h-8 border-b-2 border-dashed border-slate-400 mb-1 flex items-end justify-center pb-0.5">
+                        <span className="text-[7pt] text-slate-400 italic">Authorized Signature &amp; Stamp</span>
                       </div>
-                      <p className="font-extrabold text-slate-900 text-[9.5pt] uppercase tracking-wide">Approved By</p>
-                      <p className="text-[8pt] font-semibold text-slate-600">Managing Director / Finance Controller</p>
-                      <p className="text-[7.5pt] text-slate-400 mt-0.5">Date: ____ / ____ / {year}</p>
+                      <p className="font-extrabold text-slate-900 text-[9pt] uppercase tracking-wide">Approved By</p>
+                      <p className="text-[7.5pt] font-semibold text-slate-600">Managing Director / Finance Controller</p>
+                      <p className="text-[7pt] text-slate-400 mt-0.5">Date: ____ / ____ / {year}</p>
                     </div>
                   </div>
 
                   {/* Bottom Legend Footnote */}
-                  <div className="w-[283mm] mt-2 pt-1 border-t border-slate-200 flex items-center justify-between text-[7.5pt] text-slate-500">
+                  <div className="w-[283mm] mt-1.5 pt-1 border-t border-slate-200 flex items-center justify-between text-[7.5pt] text-slate-500">
                     <div>
                       <span className="font-bold text-slate-700">STATUS LEGEND: </span>
-                      <span className="font-bold text-emerald-700">P</span> = Present |{" "}
-                      <span className="font-bold text-rose-700">A</span> = Absent |{" "}
-                      <span className="font-bold text-amber-700">L</span> = Leave |{" "}
-                      <span className="font-bold text-sky-700">H</span> = Holiday |{" "}
+                      <span className="font-bold" style={{ color: activePresentColor }}>P</span> = Present |{" "}
+                      <span className="font-bold" style={{ color: activeAbsentColor }}>A</span> = Absent |{" "}
+                      <span className="font-bold" style={{ color: activeLeaveColor }}>L</span> = Leave |{" "}
+                      <span className="font-bold" style={{ color: activeHolidayColor }}>H</span> = Holiday |{" "}
                       <span className="font-bold text-indigo-700">HD</span> = Half Day |{" "}
                       <span className="font-bold text-purple-700">OT</span> = Overtime
                     </div>

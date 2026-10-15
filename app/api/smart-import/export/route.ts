@@ -12,6 +12,7 @@ import {
 } from "@/lib/smartImport/exporter";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 export async function GET(req: NextRequest) {
   try {

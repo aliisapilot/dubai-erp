@@ -509,8 +509,18 @@ export default function DynamicDocumentRenderer({
   const advance = Number(data.advance_amount) || 0;
   const balanceDue = Math.max(0, data.total_amount - advance);
 
+  const documentFitData: DocumentFitText = {
+    ...data,
+    company_name: company?.legal_name || company?.name || undefined,
+    company_name_ar: company?.arabic_name || undefined,
+    company_address: company?.address || undefined,
+    company_trn: company?.trn || undefined,
+    company_phone: company?.phone || undefined,
+    company_email: company?.email || undefined,
+  };
+
   // Compute intelligent pagination plan with item line-wrap awareness
-  const paginationPlan = computePaginationPlan(layout, data.items.length, data.items, data);
+  const paginationPlan = computePaginationPlan(layout, data.items.length, data.items, documentFitData);
   const resolvedTotalPages = totalPages || paginationPlan.totalPages;
   const currentPageInfo = paginationPlan.pageItemRanges.find((p) => p.pageNumber === pageNumber) || {
     pageNumber,
@@ -535,7 +545,7 @@ export default function DynamicDocumentRenderer({
     pageNumber,
     resolvedTotalPages,
     pageItems,
-    data
+    documentFitData
   );
 
   const fontWeight = (weight: LayoutElement["fontWeight"]): CSSProperties["fontWeight"] => {
@@ -638,15 +648,17 @@ export default function DynamicDocumentRenderer({
 
       case "company_name_en": {
         const enPt = resolvePt(elem.fontSize, 11.0, 13.5);
+        const textAlign = elem.textAlign || "center";
+        const justifyClass = textAlign === "left" ? "justify-start" : textAlign === "right" ? "justify-end" : "justify-center";
         return (
           <div
-            className="w-full h-full flex items-center justify-center uppercase tracking-wider select-text overflow-hidden"
+            className={`w-full h-full flex items-center ${justifyClass} uppercase tracking-wider select-text overflow-hidden`}
             style={{
               fontWeight: elem.fontWeight === "extrabold" ? 800 : elem.fontWeight === "bold" ? 700 : 600,
               fontStyle: elem.fontStyle || "normal",
               fontFamily: elem.fontFamily || "inherit",
               letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : "0.04em",
-              lineHeight: elem.lineHeight ? elem.lineHeight : 1.2,
+              lineHeight: elem.lineHeight ? elem.lineHeight : 1.25,
               color: elem.color || colors.companyHeader,
               backgroundColor: elem.backgroundColor,
               border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
@@ -654,27 +666,32 @@ export default function DynamicDocumentRenderer({
               opacity: elem.opacity ?? 1,
               wordBreak: "break-word",
               overflowWrap: "break-word",
+              textAlign,
               ...elementAppearance(elem),
               fontSize: `${enPt}pt`,
             }}
           >
-            <span className="text-center w-full block">{elem.customText || brand.legal_name || brand.name}</span>
+            <span className={`w-full block ${textAlign === "left" ? "text-left" : textAlign === "right" ? "text-right" : "text-center"}`}>
+              {elem.customText || brand.legal_name || brand.name}
+            </span>
           </div>
         );
       }
 
       case "company_name_ar": {
         const arPt = resolvePt(elem.fontSize, 12.5, 15.0);
+        const textAlign = elem.textAlign || "center";
+        const justifyClass = textAlign === "left" ? "justify-start" : textAlign === "right" ? "justify-end" : "justify-center";
         return (
           <div
-            className="w-full h-full flex items-center justify-center font-arabic select-text overflow-hidden"
+            className={`w-full h-full flex items-center ${justifyClass} font-arabic select-text overflow-hidden`}
             dir="rtl"
             style={{
               fontWeight: elem.fontWeight === "bold" ? 700 : elem.fontWeight === "semibold" ? 600 : 700,
               fontStyle: elem.fontStyle || "normal",
               color: elem.color || colors.accent,
               letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : "0.01em",
-              lineHeight: elem.lineHeight ? elem.lineHeight : 1.25,
+              lineHeight: elem.lineHeight ? elem.lineHeight : 1.3,
               fontFamily:
                 elem.fontFamily ||
                 "'Segoe UI Arabic', 'Amiri', 'Scheherazade New', 'Traditional Arabic', 'Noto Naskh Arabic', Arial, sans-serif",
@@ -684,22 +701,27 @@ export default function DynamicDocumentRenderer({
               opacity: elem.opacity ?? 1,
               wordBreak: "break-word",
               overflowWrap: "break-word",
+              textAlign,
               ...elementAppearance(elem),
               fontSize: `${arPt}pt`,
             }}
           >
-            <span className="text-center w-full block">{elem.customText || brand.arabic_name}</span>
+            <span className={`w-full block ${textAlign === "left" ? "text-left" : textAlign === "right" ? "text-right" : "text-center"}`}>
+              {elem.customText || brand.arabic_name}
+            </span>
           </div>
         );
       }
 
       case "company_address": {
         const addrPt = resolvePt(elem.fontSize, 7.8, 9.5);
+        const textAlign = elem.textAlign || "center";
+        const alignClass = textAlign === "left" ? "items-start text-left" : textAlign === "right" ? "items-end text-right" : "items-center text-center";
         return (
           <div
-            className="w-full h-full flex flex-col justify-center leading-snug select-text overflow-hidden"
+            className={`w-full h-full flex flex-col justify-center leading-snug select-text overflow-hidden ${alignClass}`}
             style={{
-              textAlign: elem.textAlign || "center",
+              textAlign,
               color: elem.color || colors.muted,
               fontStyle: elem.fontStyle || "normal",
               fontFamily: elem.fontFamily || "inherit",
@@ -714,13 +736,15 @@ export default function DynamicDocumentRenderer({
             }}
           >
             {elem.customText ? (
-              <div className="w-full text-center leading-snug break-words">{replaceCompanyTokens(elem.customText)}</div>
+              <div className={`w-full ${textAlign === "left" ? "text-left" : textAlign === "right" ? "text-right" : "text-center"} leading-snug break-words`}>
+                {replaceCompanyTokens(elem.customText)}
+              </div>
             ) : (
-              <div className="w-full flex flex-col items-center justify-center gap-0.5">
-                <div className="text-center text-slate-600 leading-tight break-words max-w-full">
+              <div className={`w-full flex flex-col ${alignClass} gap-0.5`}>
+                <div className={`text-slate-600 leading-tight break-words max-w-full ${textAlign === "left" ? "text-left" : textAlign === "right" ? "text-right" : "text-center"}`}>
                   {brand.address}
                 </div>
-                <div className="font-semibold text-slate-800 text-center leading-tight break-words max-w-full" style={{ fontSize: `${addrPt}pt` }}>
+                <div className={`font-semibold text-slate-800 leading-tight break-words max-w-full ${textAlign === "left" ? "text-left" : textAlign === "right" ? "text-right" : "text-center"}`} style={{ fontSize: `${addrPt}pt` }}>
                   TRN: <span className="font-mono font-bold" style={{ color: colors.companyHeader }}>{brand.trn || "N/A"}</span>
                   {brand.phone ? ` | Tel: ${brand.phone}` : ""}
                   {brand.email ? ` | Email: ${brand.email}` : ""}
@@ -1894,11 +1918,9 @@ export default function DynamicDocumentRenderer({
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((elem) => {
           const posX = isDesignerPreview ? elem.x : elem.effectiveX;
-          const posY = isDesignerPreview ? Math.max(elem.y, elem.effectiveY ?? elem.y) : elem.effectiveY;
+          const posY = elem.effectiveY ?? elem.y;
           const width = isDesignerPreview ? elem.width : elem.effectiveWidth;
-          const height = isDesignerPreview
-            ? Math.max(elem.height, (elem as LayoutElement & { runtimeMinHeight?: number }).runtimeMinHeight ?? 0, elem.effectiveHeight ?? 0)
-            : elem.effectiveHeight;
+          const height = elem.effectiveHeight ?? elem.height;
 
           return (
             <div

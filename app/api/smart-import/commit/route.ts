@@ -10,6 +10,7 @@ import { executeTopologicalImport } from "@/lib/smartImport/importer";
 import type { ParsedDocument } from "@/lib/smartImport/types";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   try {
