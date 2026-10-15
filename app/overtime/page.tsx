@@ -2,7 +2,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, Clock, X, Save, Loader2, Pencil, CheckCircle2, Trash2 } from "lucide-react";
-import { getCompanyId, statusClass, todayISO, formatEmployeeCode } from "@/lib/helpers";
+import { getCompanyId, statusClass, todayISO, formatEmployeeCode, compareEmployees } from "@/lib/helpers";
 
 type Employee = { id: string; first_name: string | null; employee_number: string | null; basic_salary: number | null };
 type OT = { id: string; company_id: string; employee_id: string | null; overtime_date: string | null; hours: number | null; approval_status: string | null; approved_by: string | null; created_at: string | null };
@@ -56,14 +56,7 @@ export default function OvertimePage() {
       supabase.from("employees").select("id, first_name, employee_number, basic_salary").in("status", ["active", "Active"]).order("first_name"),
     ]);
     setRecords((ot || []) as OT[]);
-    const list = ((emps || []) as Employee[]).sort((a, b) => {
-      const codeA = formatEmployeeCode(a.employee_number);
-      const codeB = formatEmployeeCode(b.employee_number);
-      const numA = parseInt(codeA.replace(/\D/g, ""), 10);
-      const numB = parseInt(codeB.replace(/\D/g, ""), 10);
-      if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
-      return (a.first_name || "").localeCompare(b.first_name || "");
-    });
+    const list = ((emps || []) as Employee[]).sort(compareEmployees);
     setEmployees(list);
     setLoading(false);
   }
@@ -162,12 +155,20 @@ export default function OvertimePage() {
   }
 
   const empMap = Object.fromEntries(employees.map(e => [e.id, e]));
-  const filtered = records.filter(r => {
-    if (filterEmp && r.employee_id !== filterEmp) return false;
-    if (filterStatus && normalizeApprovalStatus(r.approval_status) !== filterStatus) return false;
-    const empName = empMap[r.employee_id || ""]?.first_name || "";
-    return [empName, r.overtime_date].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
-  });
+  const filtered = records
+    .filter(r => {
+      if (filterEmp && r.employee_id !== filterEmp) return false;
+      if (filterStatus && normalizeApprovalStatus(r.approval_status) !== filterStatus) return false;
+      const empName = empMap[r.employee_id || ""]?.first_name || "";
+      return [empName, r.overtime_date].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
+    })
+    .sort((a, b) => {
+      const dateDiff = (b.overtime_date || "").localeCompare(a.overtime_date || "");
+      if (dateDiff !== 0) return dateDiff;
+      const empA = a.employee_id ? empMap[a.employee_id] : null;
+      const empB = b.employee_id ? empMap[b.employee_id] : null;
+      return compareEmployees(empA || {}, empB || {});
+    });
   const totalHours = records.reduce((s, r) => s + (Number(r.hours) || 0), 0);
   const pending = records.filter(r => normalizeApprovalStatus(r.approval_status) === "pending").length;
   const approvedCount = records.filter(r => normalizeApprovalStatus(r.approval_status) === "approved").length;

@@ -384,3 +384,66 @@ export function toISODate(dateVal: string | Date | null | undefined): string | n
   return null;
 }
 
+/**
+ * Extracts the canonical integer number from an employee code (e.g., "EMP-01" -> 1, "EMP-10" -> 10).
+ * Returns Infinity if no valid number can be determined, placing unknown codes stably at the end.
+ */
+export function parseEmployeeNumber(rawCode: string | null | undefined): number {
+  if (!rawCode) return Infinity;
+  const canonical = formatEmployeeCode(rawCode);
+  const digits = canonical.replace(/\D/g, "");
+  if (!digits) return Infinity;
+  const num = parseInt(digits, 10);
+  return isNaN(num) ? Infinity : num;
+}
+
+/**
+ * Compares two employee codes numerically (e.g. EMP-01 < EMP-02 < EMP-10).
+ */
+export function compareEmployeeCodes(codeA: string | null | undefined, codeB: string | null | undefined): number {
+  const numA = parseEmployeeNumber(codeA);
+  const numB = parseEmployeeNumber(codeB);
+  if (numA !== numB) return numA - numB;
+  const strA = formatEmployeeCode(codeA) || String(codeA || "");
+  const strB = formatEmployeeCode(codeB) || String(codeB || "");
+  return strA.localeCompare(strB, undefined, { numeric: true, sensitivity: "base" });
+}
+
+/**
+ * Compares two employee records by canonical employee number ascending, then name.
+ */
+export function compareEmployees<T extends { employee_number?: string | null; first_name?: string | null; id?: string }>(
+  a: T,
+  b: T
+): number {
+  const codeDiff = compareEmployeeCodes(a.employee_number, b.employee_number);
+  if (codeDiff !== 0) return codeDiff;
+  const nameDiff = (a.first_name || "").localeCompare(b.first_name || "");
+  if (nameDiff !== 0) return nameDiff;
+  return (a.id || "").localeCompare(b.id || "");
+}
+
+/**
+ * Compares two salary statement records:
+ * 1. Newest payroll period first (descending by periodStr, e.g. "2026-10" before "2026-09").
+ * 2. Within each month, numerical employee number ascending (EMP-01, EMP-02, ..., EMP-10).
+ * 3. Stable tie-breaker by id.
+ */
+export function compareSalaryStatements<T extends { payroll_month?: string | number | null; payroll_year?: number | null; employee_id?: string | null; id?: string }>(
+  a: T,
+  b: T,
+  empMap: Record<string, { employee_number?: string | null } | null | undefined>
+): number {
+  const parsedA = parsePayrollMonth(a.payroll_month, a.payroll_year);
+  const parsedB = parsePayrollMonth(b.payroll_month, b.payroll_year);
+  const periodDiff = parsedB.periodStr.localeCompare(parsedA.periodStr);
+  if (periodDiff !== 0) return periodDiff;
+
+  const empA = a.employee_id ? empMap[a.employee_id] : null;
+  const empB = b.employee_id ? empMap[b.employee_id] : null;
+  const codeDiff = compareEmployeeCodes(empA?.employee_number, empB?.employee_number);
+  if (codeDiff !== 0) return codeDiff;
+
+  return (a.id || "").localeCompare(b.id || "");
+}
+

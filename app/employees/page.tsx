@@ -2,7 +2,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, Users2, X, Save, Loader2, Pencil, Power, Trash2 } from "lucide-react";
-import { getCompanyId, statusClass, formatEmployeeCode } from "@/lib/helpers";
+import { getCompanyId, statusClass, formatEmployeeCode, compareEmployees } from "@/lib/helpers";
 
 import {
   getEmployeeSalarySettings,
@@ -136,15 +136,7 @@ export default function EmployeesPage() {
     const { data, error } = await supabase.from("employees").select("*").order("employee_number", { ascending: true });
     if (error) { setError(error.message); setEmployees([]); }
     else {
-      const list = (data || []) as Employee[];
-      list.sort((a, b) => {
-        const codeA = formatEmployeeCode(a.employee_number);
-        const codeB = formatEmployeeCode(b.employee_number);
-        const numA = parseInt(codeA.replace(/\D/g, ""), 10);
-        const numB = parseInt(codeB.replace(/\D/g, ""), 10);
-        if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
-        return (a.first_name || "").localeCompare(b.first_name || "");
-      });
+      const list = ((data || []) as Employee[]).sort(compareEmployees);
       setEmployees(list);
     }
     setLoading(false);

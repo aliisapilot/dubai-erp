@@ -2,7 +2,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, CalendarCheck, X, Save, Loader2, Pencil, Trash2 } from "lucide-react";
-import { getCompanyId, statusClass, todayISO, formatEmployeeCode } from "@/lib/helpers";
+import { getCompanyId, statusClass, todayISO, formatEmployeeCode, compareEmployees } from "@/lib/helpers";
 
 type Employee = { id: string; first_name: string | null; employee_number: string | null };
 type Att = { id: string; company_id: string; employee_id: string | null; attendance_date: string | null; check_in: string | null; check_out: string | null; total_hours: number | null; regular_hours: number | null; overtime_hours: number | null; status: string | null; remarks: string | null };
@@ -59,14 +59,7 @@ export default function AttendancePage() {
       supabase.from("employees").select("id, first_name, employee_number").in("status", ["active", "Active"]).order("first_name"),
     ]);
     setRecords((att || []) as Att[]);
-    const list = ((emps || []) as Employee[]).sort((a, b) => {
-      const codeA = formatEmployeeCode(a.employee_number);
-      const codeB = formatEmployeeCode(b.employee_number);
-      const numA = parseInt(codeA.replace(/\D/g, ""), 10);
-      const numB = parseInt(codeB.replace(/\D/g, ""), 10);
-      if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
-      return (a.first_name || "").localeCompare(b.first_name || "");
-    });
+    const list = ((emps || []) as Employee[]).sort(compareEmployees);
     setEmployees(list);
     setLoading(false);
   }
@@ -142,12 +135,20 @@ export default function AttendancePage() {
   }
 
   const empMap = Object.fromEntries(employees.map(e => [e.id, e]));
-  const filtered = records.filter(r => {
-    if (filterEmp && r.employee_id !== filterEmp) return false;
-    if (filterDate && r.attendance_date !== filterDate) return false;
-    const empName = empMap[r.employee_id||""]?.first_name||"";
-    return [empName, r.attendance_date, r.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
-  });
+  const filtered = records
+    .filter(r => {
+      if (filterEmp && r.employee_id !== filterEmp) return false;
+      if (filterDate && r.attendance_date !== filterDate) return false;
+      const empName = empMap[r.employee_id||""]?.first_name||"";
+      return [empName, r.attendance_date, r.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
+    })
+    .sort((a, b) => {
+      const dateDiff = (b.attendance_date || "").localeCompare(a.attendance_date || "");
+      if (dateDiff !== 0) return dateDiff;
+      const empA = a.employee_id ? empMap[a.employee_id] : null;
+      const empB = b.employee_id ? empMap[b.employee_id] : null;
+      return compareEmployees(empA || {}, empB || {});
+    });
   const presentToday = records.filter(r => r.attendance_date === todayISO() && normalizeAttendanceStatus(r.status) === "present").length;
   const absentToday = records.filter(r => r.attendance_date === todayISO() && normalizeAttendanceStatus(r.status) === "absent").length;
 

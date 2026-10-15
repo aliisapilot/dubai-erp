@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { FileText, Search, Loader2, Printer, Receipt } from "lucide-react";
-import { fmtAED, getCurrentCompany, parsePayrollMonth, formatEmployeeCode } from "@/lib/helpers";
+import { fmtAED, getCurrentCompany, parsePayrollMonth, formatEmployeeCode, compareSalaryStatements } from "@/lib/helpers";
 import SalarySlipTemplate, { SalarySlipData } from "@/components/documents/SalarySlipTemplate";
 import EmployeePaymentVoucherTemplate, { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -32,6 +32,7 @@ type SS = {
   housing_allowance?: number | null;
   transport_allowance?: number | null;
   other_allowances?: number | null;
+  allowances?: number | null;
   friday_pay?: number | null;
   overtime_amount: number | null;
   bonus?: number | null;
@@ -41,6 +42,7 @@ type SS = {
   insurance_deduction?: number | null;
   loan_deduction?: number | null;
   leave_deduction?: number | null;
+  unpaid_leave_deduction?: number | null;
   other_deductions: number | null;
   total_deductions?: number | null;
   net_salary: number | null;
@@ -76,12 +78,13 @@ export default function PayslipsPage() {
         getCurrentCompany().catch(() => null),
       ]);
 
-      setRecords((ss || []) as SS[]);
       const em: Record<string, Employee> = {};
       (emps || []).forEach((e: Employee) => {
         em[e.id] = e;
       });
       setEmpMap(em);
+      const sortedSS = ((ss || []) as SS[]).sort((a, b) => compareSalaryStatements(a, b, em));
+      setRecords(sortedSS);
       if (co) setCompany(co as CompanyDocInfo);
     } catch (err) {
       console.error("Error loading payslips:", err);
@@ -112,13 +115,16 @@ export default function PayslipsPage() {
       basic_salary: Number(r.basic_salary) || 0,
       housing_allowance: Number(r.housing_allowance) || 0,
       transport_allowance: Number(r.transport_allowance) || 0,
-      other_allowances: Number(r.other_allowances) || 0,
+      other_allowances: Number(r.other_allowances ?? r.allowances) || 0,
       friday_pay: Number(r.friday_pay) || 0,
       overtime_amount: Number(r.overtime_amount) || 0,
-      absence_deduction: (Number(r.absence_deduction) || 0) + (Number(r.leave_deduction) || 0),
+      bonus: Number(r.bonus) || 0,
+      absence_deduction: Number(r.absence_deduction) || 0,
       advance_deduction: Number(r.advance_deduction) || 0,
       insurance_deduction: Number(r.insurance_deduction) || 0,
-      other_deductions: (Number(r.other_deductions) || 0) + (Number(r.loan_deduction) || 0),
+      loan_deduction: Number(r.loan_deduction) || 0,
+      leave_deduction: Number(r.leave_deduction ?? r.unpaid_leave_deduction) || 0,
+      other_deductions: Number(r.other_deductions) || 0,
       total_earnings: Number(r.gross_salary) || 0,
       total_deductions: Number(r.total_deductions) || ((Number(r.gross_salary) || 0) - (Number(r.net_salary) || 0)),
       net_pay: Number(r.net_salary) || 0,
@@ -154,12 +160,16 @@ export default function PayslipsPage() {
     setActiveVoucher(voucherData);
   }
 
-  const filtered = records.filter(r => {
-    const parsed = parsePayrollMonth(r.payroll_month, r.payroll_year);
-    if (filterPeriod && parsed.periodStr !== filterPeriod) return false;
-    const empName = empMap[r.employee_id || ""]?.first_name || "";
-    return [empName, parsed.label].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
-  });
+  const filtered = useMemo(() => {
+    return records
+      .filter(r => {
+        const parsed = parsePayrollMonth(r.payroll_month, r.payroll_year);
+        if (filterPeriod && parsed.periodStr !== filterPeriod) return false;
+        const empName = empMap[r.employee_id || ""]?.first_name || "";
+        return [empName, parsed.label].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
+      })
+      .sort((a, b) => compareSalaryStatements(a, b, empMap));
+  }, [records, filterPeriod, search, empMap]);
 
   return (
     <main className="min-h-screen bg-slate-50">

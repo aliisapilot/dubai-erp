@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, Banknote, X, Save, Loader2, Pencil, Eye, Printer, Receipt, Trash2 } from "lucide-react";
-import { getCompanyId, getCurrentCompany, statusClass, fmtAED, parsePayrollMonth, formatEmployeeCode } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, statusClass, fmtAED, parsePayrollMonth, formatEmployeeCode, compareEmployees, compareSalaryStatements } from "@/lib/helpers";
 import {
   SalaryStatementStatus,
   SALARY_STATEMENT_STATUS_OPTIONS,
@@ -49,6 +49,7 @@ type SS = {
   housing_allowance?: number | null;
   transport_allowance?: number | null;
   other_allowances?: number | null;
+  allowances?: number | null;
   friday_pay?: number | null;
   overtime_amount: number | null;
   bonus?: number | null;
@@ -58,6 +59,7 @@ type SS = {
   insurance_deduction?: number | null;
   loan_deduction?: number | null;
   leave_deduction?: number | null;
+  unpaid_leave_deduction?: number | null;
   other_deductions: number | null;
   total_deductions?: number | null;
   net_salary: number | null;
@@ -167,7 +169,13 @@ export default function SalaryStatementsPage() {
   const [activeSlip, setActiveSlip] = useState<SalarySlipData | null>(null);
   const [activeVoucher, setActiveVoucher] = useState<PaymentVoucherData | null>(null);
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => {
+    loadAll();
+    if (typeof window !== "undefined") {
+      (window as unknown as { __setActiveSlip?: (s: SalarySlipData | null) => void }).__setActiveSlip = setActiveSlip;
+      (window as unknown as { __setViewRec?: (r: SS | null) => void }).__setViewRec = setViewRec;
+    }
+  }, []);
 
   async function loadAll() {
     setLoading(true);
@@ -176,15 +184,11 @@ export default function SalaryStatementsPage() {
       supabase.from("employees").select("id, first_name, employee_number, designation, department, joining_date, account_number, bank_name, iban, basic_salary, payment_method").order("first_name"),
       getCurrentCompany(),
     ]);
-    setRecords((ss || []) as SS[]);
-    const list = ((emps || []) as Employee[]).sort((a, b) => {
-      const codeA = formatEmployeeCode(a.employee_number);
-      const codeB = formatEmployeeCode(b.employee_number);
-      const numA = parseInt(codeA.replace(/\D/g, ""), 10);
-      const numB = parseInt(codeB.replace(/\D/g, ""), 10);
-      if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
-      return (a.first_name || "").localeCompare(b.first_name || "");
-    });
+    const list = ((emps || []) as Employee[]).sort(compareEmployees);
+    const emMapObj: Record<string, Employee> = {};
+    list.forEach(e => { emMapObj[e.id] = e; });
+    const sortedSS = ((ss || []) as SS[]).sort((a, b) => compareSalaryStatements(a, b, emMapObj));
+    setRecords(sortedSS);
     setEmployees(list);
     if (co) setCompany(co as CompanyDocInfo);
     setLoading(false);
@@ -311,7 +315,7 @@ export default function SalaryStatementsPage() {
 
 
   const { gross: fGross, deductions: fDed, net: fNet } = calcTotals(form);
-  const empMap = Object.fromEntries(employees.map(e => [e.id, e]));
+  const empMap = useMemo(() => Object.fromEntries(employees.map(e => [e.id, e])), [employees]);
   function openAdd() {
     setError("");
     setSuccess("");
@@ -336,7 +340,7 @@ export default function SalaryStatementsPage() {
       basic_salary: String(ss.basic_salary ?? 0),
       housing_allowance: String(ss.housing_allowance ?? 0),
       transport_allowance: String(ss.transport_allowance ?? 0),
-      other_allowances: String(ss.other_allowances ?? 0),
+      other_allowances: String(ss.other_allowances ?? ss.allowances ?? 0),
       friday_pay: String(ss.friday_pay ?? 0),
       overtime_amount: String(ss.overtime_amount ?? 0),
       bonus: String(ss.bonus ?? 0),
@@ -344,7 +348,7 @@ export default function SalaryStatementsPage() {
       advance_deduction: String(ss.advance_deduction ?? 0),
       insurance_deduction: String(ss.insurance_deduction ?? 0),
       loan_deduction: String(ss.loan_deduction ?? 0),
-      leave_deduction: String(ss.leave_deduction ?? 0),
+      leave_deduction: String(ss.leave_deduction ?? ss.unpaid_leave_deduction ?? 0),
       other_deductions: String(ss.other_deductions ?? 0),
       payment_method: ss.payment_method || "Bank Transfer",
       payment_date: ss.payment_date || "",
@@ -531,7 +535,7 @@ export default function SalaryStatementsPage() {
       basic_salary: r.basic_salary ?? 0,
       housing_allowance: r.housing_allowance ?? 0,
       transport_allowance: r.transport_allowance ?? 0,
-      other_allowances: r.other_allowances ?? 0,
+      other_allowances: r.other_allowances ?? r.allowances ?? 0,
       friday_pay: r.friday_pay ?? 0,
       overtime_amount: r.overtime_amount ?? 0,
       bonus: r.bonus ?? 0,
@@ -539,7 +543,7 @@ export default function SalaryStatementsPage() {
       advance_deduction: r.advance_deduction ?? 0,
       insurance_deduction: r.insurance_deduction ?? 0,
       loan_deduction: r.loan_deduction ?? 0,
-      leave_deduction: r.leave_deduction ?? 0,
+      leave_deduction: r.leave_deduction ?? r.unpaid_leave_deduction ?? 0,
       other_deductions: r.other_deductions ?? 0,
       total_earnings: r.gross_salary ?? 0,
       total_deductions: (r.gross_salary ?? 0) - (r.net_salary ?? 0),
@@ -572,13 +576,17 @@ export default function SalaryStatementsPage() {
     setActiveVoucher(vData);
   }
 
-  const filtered = records.filter(r => {
-    if (filterEmp && r.employee_id !== filterEmp) return false;
-    const parsed = parsePayrollMonth(r.payroll_month, r.payroll_year);
-    if (filterPeriod && parsed.periodStr !== filterPeriod) return false;
-    const empName = empMap[r.employee_id||""]?.first_name || "";
-    return [empName, parsed.label, r.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
-  });
+  const filtered = useMemo(() => {
+    return records
+      .filter(r => {
+        if (filterEmp && r.employee_id !== filterEmp) return false;
+        const parsed = parsePayrollMonth(r.payroll_month, r.payroll_year);
+        if (filterPeriod && parsed.periodStr !== filterPeriod) return false;
+        const empName = empMap[r.employee_id || ""]?.first_name || "";
+        return [empName, parsed.label, r.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
+      })
+      .sort((a, b) => compareSalaryStatements(a, b, empMap));
+  }, [records, filterEmp, filterPeriod, search, empMap]);
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -761,11 +769,11 @@ export default function SalaryStatementsPage() {
             <div className="flex justify-between"><h2 className="text-lg font-bold text-slate-900">Salary Statement</h2><button onClick={()=>setViewRec(null)}><X size={20} /></button></div>
             <div className="flex justify-between text-sm"><span className="text-slate-500">{emp?.first_name || "—"} ({formatEmployeeCode(emp?.employee_number)})</span><span className="font-semibold text-slate-700">{viewRec.payroll_month ? parsePayrollMonth(viewRec.payroll_month, viewRec.payroll_year).label : "—"}</span></div>
             <table className="w-full text-sm"><tbody>
-              {[["Basic Salary",viewRec.basic_salary],["Housing Allowance",viewRec.housing_allowance],["Transport Allowance",viewRec.transport_allowance],["Other Allowances",viewRec.other_allowances],["Friday / Weekend Pay",viewRec.friday_pay],["Overtime",viewRec.overtime_amount],["Bonus",viewRec.bonus]].map(([l,v])=>(
+              {[["Basic Salary",viewRec.basic_salary],["Housing Allowance",viewRec.housing_allowance],["Transport Allowance",viewRec.transport_allowance],["Other Allowances",viewRec.other_allowances ?? viewRec.allowances],["Friday / Weekend Pay",viewRec.friday_pay],["Overtime",viewRec.overtime_amount],["Bonus",viewRec.bonus]].map(([l,v])=>(
                 <tr key={String(l)}><td className="py-1 text-slate-500">{l}</td><td className="py-1 text-right text-slate-900">{fmtAED(v as number)}</td></tr>
               ))}
               <tr className="border-t border-slate-200"><td className="py-2 font-semibold text-emerald-700">Gross Salary</td><td className="py-2 text-right font-bold text-emerald-700">{fmtAED(viewRec.gross_salary)}</td></tr>
-              {[["Absence Deduction",viewRec.absence_deduction],["Advance Deduction",viewRec.advance_deduction],["Insurance Deduction",viewRec.insurance_deduction],["Loan Deduction",viewRec.loan_deduction],["Leave Deduction",viewRec.leave_deduction],["Other Deductions",viewRec.other_deductions]].map(([l,v])=>(
+              {[["Absence Deduction",viewRec.absence_deduction],["Advance Deduction",viewRec.advance_deduction],["Insurance Deduction",viewRec.insurance_deduction],["Loan Deduction",viewRec.loan_deduction],["Leave Deduction",viewRec.leave_deduction ?? viewRec.unpaid_leave_deduction],["Other Deductions",viewRec.other_deductions]].map(([l,v])=>(
                 <tr key={String(l)}><td className="py-1 text-red-500">- {l}</td><td className="py-1 text-right text-red-600">- {fmtAED(v as number)}</td></tr>
               ))}
               <tr className="border-t-2 border-slate-900 bg-slate-900"><td className="py-2 px-2 font-bold text-white rounded-bl-lg">Net Salary</td><td className="py-2 px-2 text-right font-bold text-white rounded-br-lg">{fmtAED(viewRec.net_salary)}</td></tr>

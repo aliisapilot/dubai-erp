@@ -28,7 +28,7 @@ import {
   Palette,
 } from "lucide-react";
 
-import { getCompanyId, getCurrentCompany, MONTH_NAMES, fmtAED, formatEmployeeCode } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, MONTH_NAMES, fmtAED, formatEmployeeCode, compareEmployees } from "@/lib/helpers";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { exportAttendanceToPdf } from "@/lib/exportAttendancePdf";
 import AttendanceImportModal, {
@@ -315,18 +315,8 @@ export default function MonthlyAttendanceOvertimeSheet({
         if (comp) setCompany(comp as CompanyDocInfo);
 
         // Natural numerical sort for employee codes (EMP-01, EMP-02 ... EMP-10 ...)
-        const sortedEmps = (empsRes.data || []).sort((a: ExtendedEmployeeInfo, b: ExtendedEmployeeInfo) => {
-          const codeA = formatEmployeeCode(a.employee_number);
-          const codeB = formatEmployeeCode(b.employee_number);
-          const numA = parseInt(codeA.replace(/[^0-9]/g, ""), 10);
-          const numB = parseInt(codeB.replace(/[^0-9]/g, ""), 10);
-          if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
-            return numA - numB;
-          }
-          return (a.employee_number || "").localeCompare(b.employee_number || "") ||
-                 (a.first_name || "").localeCompare(b.first_name || "");
-        });
-        setEmployees(sortedEmps as ExtendedEmployeeInfo[]);
+        const sortedEmps = ((empsRes.data || []) as ExtendedEmployeeInfo[]).sort(compareEmployees);
+        setEmployees(sortedEmps);
 
         // Fetch monthly payroll adjustments and existing statements
         if (comp?.id) {

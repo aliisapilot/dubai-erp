@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, getCurrentCompany, parsePayrollMonth, todayISO, formatEmployeeCode } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, parsePayrollMonth, todayISO, formatEmployeeCode, compareEmployees, compareSalaryStatements } from "@/lib/helpers";
 import {
   FileCheck2, Search, ArrowLeft, Printer, Banknote
 } from "lucide-react";
@@ -68,10 +68,12 @@ export default function EmployeePaymentVouchersPage() {
         getCurrentCompany()
       ]);
 
-      setStatements(ssRes.data || []);
       const em: Record<string, Employee> = {};
-      empRes.data?.forEach((e: Employee) => { em[e.id] = e; });
+      const sortedEmps = ((empRes.data || []) as Employee[]).sort(compareEmployees);
+      sortedEmps.forEach((e: Employee) => { em[e.id] = e; });
       setEmpMap(em);
+      const sortedSS = ((ssRes.data || []) as SalaryStatement[]).sort((a, b) => compareSalaryStatements(a, b, em));
+      setStatements(sortedSS);
       if (co) setCompany(co as CompanyDocInfo);
     } catch (err) {
       console.error("Error loading payment vouchers:", err);
@@ -126,16 +128,20 @@ export default function EmployeePaymentVouchersPage() {
     });
   }
 
-  const filtered = statements.filter(ss => {
-    const emp = ss.employee_id ? empMap[ss.employee_id] : null;
-    const name = (emp?.first_name || "").toLowerCase();
-    const empNo = formatEmployeeCode(emp?.employee_number).toLowerCase();
-    const q = search.toLowerCase();
-    const matchSearch = name.includes(q) || empNo.includes(q);
-    const parsed = parsePayrollMonth(ss.payroll_month, ss.payroll_year);
-    const matchMonth = monthFilter === "all" || String(parsed.month) === monthFilter;
-    return matchSearch && matchMonth;
-  });
+  const filtered = useMemo(() => {
+    return statements
+      .filter(ss => {
+        const emp = ss.employee_id ? empMap[ss.employee_id] : null;
+        const name = (emp?.first_name || "").toLowerCase();
+        const empNo = formatEmployeeCode(emp?.employee_number).toLowerCase();
+        const q = search.toLowerCase();
+        const matchSearch = name.includes(q) || empNo.includes(q);
+        const parsed = parsePayrollMonth(ss.payroll_month, ss.payroll_year);
+        const matchMonth = monthFilter === "all" || String(parsed.month) === monthFilter;
+        return matchSearch && matchMonth;
+      })
+      .sort((a, b) => compareSalaryStatements(a, b, empMap));
+  }, [statements, empMap, search, monthFilter]);
 
   const totalDisbursed = filtered.reduce((acc, ss) => acc + (ss.net_salary || 0), 0);
 

@@ -1,10 +1,10 @@
 "use client";
 
 import ReportLoadState from "@/components/ReportLoadState";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { BarChart3, Filter, Search, Download, CheckCircle, Clock } from "lucide-react";
-import { fmtAED, getCompanyId, formatEmployeeCode } from "@/lib/helpers";
+import { fmtAED, getCompanyId, formatEmployeeCode, compareEmployees, compareSalaryStatements } from "@/lib/helpers";
 import { normalizeSalaryStatementStatus, formatSalaryStatementStatus } from "@/lib/payrollTypes";
 import { getMonthlyAdjustmentsForPeriod, MonthlyEmployeeAdjustment } from "@/lib/payrollWorkflowService";
 
@@ -108,19 +108,13 @@ export default function PayrollSummaryPage() {
       }
       if (version !== requestVersion.current) return;
 
-      const emList = ((emps || []) as Employee[]).sort((a, b) => {
-        const codeA = formatEmployeeCode(a.employee_number);
-        const codeB = formatEmployeeCode(b.employee_number);
-        const numA = parseInt(codeA.replace(/\D/g, ""), 10);
-        const numB = parseInt(codeB.replace(/\D/g, ""), 10);
-        if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
-        return (a.first_name || "").localeCompare(b.first_name || "");
-      });
+      const emList = ((emps || []) as Employee[]).sort(compareEmployees);
       const em: Record<string, Employee> = {};
       emList.forEach((e) => { em[e.id] = e; });
       setEmployees(emList);
       setEmpMap(em);
-      setRecords((ss || []) as SS[]);
+      const sortedSS = ((ss || []) as SS[]).sort((a, b) => compareSalaryStatements(a, b, em));
+      setRecords(sortedSS);
 
       // Fetch adjustments for payable days
       let adjMap: Record<string, MonthlyEmployeeAdjustment> = {};
@@ -171,24 +165,28 @@ export default function PayrollSummaryPage() {
   useEffect(() => { void Promise.resolve().then(load); }, [year, month]);
 
   // Filter records
-  const filteredRecords = records.filter((r) => {
-    if (filterEmployeeId && r.employee_id !== filterEmployeeId) return false;
-    const normStatus = normalizeSalaryStatementStatus(r.status);
-    if (filterStatus !== "all" && normStatus !== filterStatus) return false;
+  const filteredRecords = useMemo(() => {
+    return records
+      .filter((r) => {
+        if (filterEmployeeId && r.employee_id !== filterEmployeeId) return false;
+        const normStatus = normalizeSalaryStatementStatus(r.status);
+        if (filterStatus !== "all" && normStatus !== filterStatus) return false;
 
-    if (search.trim()) {
-      const emp = r.employee_id ? empMap[r.employee_id] : null;
-      const searchTarget = [
-        emp?.first_name,
-        emp?.employee_number,
-        emp?.designation,
-        r.status,
-      ].filter(Boolean).join(" ").toLowerCase();
-      if (!searchTarget.includes(search.toLowerCase())) return false;
-    }
+        if (search.trim()) {
+          const emp = r.employee_id ? empMap[r.employee_id] : null;
+          const searchTarget = [
+            emp?.first_name,
+            emp?.employee_number,
+            emp?.designation,
+            r.status,
+          ].filter(Boolean).join(" ").toLowerCase();
+          if (!searchTarget.includes(search.toLowerCase())) return false;
+        }
 
-    return true;
-  });
+        return true;
+      })
+      .sort((a, b) => compareSalaryStatements(a, b, empMap));
+  }, [records, filterEmployeeId, filterStatus, search, empMap]);
 
   // Calculate the 10 KPIs
   const totalEmployees = filteredRecords.length;

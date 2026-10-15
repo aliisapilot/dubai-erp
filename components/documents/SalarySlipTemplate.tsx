@@ -213,6 +213,12 @@ export default function SalarySlipTemplate({
                   <span className="font-mono font-semibold text-slate-900">{(slip.other_allowances || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
                 </div>
               )}
+              {(slip.bonus || 0) > 0 && (
+                <div className="flex justify-between py-1 border-b border-slate-100 bg-sky-50/50 px-1 rounded">
+                  <span className="text-slate-800 font-medium">Bonus / Incentives (مكافأة):</span>
+                  <span className="font-mono font-bold text-slate-900">{(slip.bonus || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
             </div>
             <div className="bg-slate-100 px-3 py-2 border-t-2 border-slate-300 font-bold flex justify-between text-slate-900">
               <span>Total Earnings (إجمالي المستحقات):</span>
@@ -243,6 +249,18 @@ export default function SalarySlipTemplate({
                 <div className="flex justify-between py-1 border-b border-slate-100 text-rose-800">
                   <span>Medical Insurance (تأمين صحي):</span>
                   <span className="font-mono font-semibold">{(slip.insurance_deduction || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                </div>
+              ) : null}
+              {(slip.loan_deduction || 0) > 0 ? (
+                <div className="flex justify-between py-1 border-b border-slate-100 text-rose-800">
+                  <span>Loan Deduction (خصم قرض):</span>
+                  <span className="font-mono font-semibold">{(slip.loan_deduction || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                </div>
+              ) : null}
+              {(slip.leave_deduction || 0) > 0 ? (
+                <div className="flex justify-between py-1 border-b border-slate-100 text-rose-800">
+                  <span>Leave Deduction (خصم إجازة):</span>
+                  <span className="font-mono font-semibold">{(slip.leave_deduction || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
                 </div>
               ) : null}
               {(slip.other_deductions || 0) > 0 ? (
