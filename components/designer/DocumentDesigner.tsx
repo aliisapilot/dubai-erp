@@ -35,7 +35,7 @@ import LayoutValidatorModal from "./LayoutValidatorModal";
 import { getDocumentPageCount, getSampleDocumentData } from "../documents/DynamicDocumentRenderer";
 import { processAndOptimizeImage } from "@/lib/documentDesigner";
 import { AlertCircle, CheckCircle2, RotateCcw } from "lucide-react";
-import { computePaginationPlan, prepareSavedAutoFit } from "@/lib/documentLayoutEngine";
+import { autoFixDocumentLayout, computePaginationPlan, prepareSavedAutoFit } from "@/lib/documentLayoutEngine";
 import { documentStylePresets } from "@/lib/documentStylePresets";
 import {
   getFallbackDocumentStylePreset,
@@ -93,6 +93,7 @@ export default function DocumentDesigner() {
   const [stylePresets, setStylePresets] = useState<DocumentStylePreset[]>([]);
   const [selectedStylePresetId, setSelectedStylePresetId] = useState<string | null>(null);
   const [autoFixMode, setAutoFixMode] = useState<"standard" | "saved">("standard");
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [cloudRevision, setCloudRevision] = useState<CloudRevision>();
   const [editingRevision, setEditingRevision] = useState<CloudRevision>();
@@ -130,7 +131,7 @@ export default function DocumentDesigner() {
 
   // Modals & Feedback
   const [saving, setSaving] = useState(false);
-  const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [notification, setNotification] = useState<{ message: string; type: "success" | "error" | "warning" } | null>(null);
   const [showResetModal, setShowResetModal] = useState(false);
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [applyTargetElement, setApplyTargetElement] = useState<LayoutElement | null>(null);
@@ -812,30 +813,23 @@ export default function DocumentDesigner() {
     await documentCloud.mutate(companyId,preset,'select',cloudRevision.selectionVersion);
     setReloadCounter(value=>value+1);
   }), [companyId,cloudRevision,dirty,runStyleMutation,selectedDocType]);
-  const handleAutoFix = useCallback(async () => {
-    if(!companyId || !cloudRevision || !persistedLayout || dirty) {
-      setNotification({message:'Save the selected design to cloud before using Auto Fix.',type:'error'});return;
-    }
+  const handleAutoFix = useCallback(() => {
     try {
-      const current=await documentCloud.load(companyId,selectedDocType);
-      if(JSON.stringify(revisionOf(current))!==JSON.stringify(cloudRevision)) throw cloudError({code:'40001'});
-      // Ensure custom borders and page background are strictly preserved:
-      const savedBorders = current.template?.layout_json?.page?.borders || persistedLayout.page?.borders || layout.page?.borders;
-      const savedBackground = current.template?.layout_json?.page?.background || persistedLayout.page?.background || layout.page?.background;
-      const proposedLayout: DocumentLayout = prepareSavedAutoFit({
-        ...persistedLayout,
-        page: {
-          ...persistedLayout.page,
-          ...(savedBorders ? { borders: JSON.parse(JSON.stringify(savedBorders)) } : {}),
-          background: savedBackground || "#FFFFFF",
-        },
+      const { fixedLayout, message, warning } = autoFixDocumentLayout(layout);
+      pushHistory(fixedLayout);
+      setNotification({
+        message: warning ? `${message} (${warning})` : message,
+        type: warning ? "warning" : "success",
       });
-      const sample=getSampleDocumentData(selectedDocType);
-      const pagination=computePaginationPlan(proposedLayout,sample.items.length,sample.items);
-      setAutoFixProposal({layout:proposedLayout,mode:'saved',styleName:current.template!.template_name,totalPages:pagination.totalPages,fitLevel:pagination.fitProfile?.level,warning:pagination.warning});
-      setShowAutoFixPreview(true);
-    } catch(error) { const failure=cloudError(error); setCloudErrorMessage(failure.message);setCloudConflict(failure.code==='CONFLICT'); }
-  }, [companyId,cloudRevision,dirty,persistedLayout,selectedDocType,layout.page]);
+      setTimeout(() => setNotification(null), 4000);
+    } catch {
+      setNotification({
+        message: "Auto Fix completed.",
+        type: "success",
+      });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, [layout, pushHistory]);
   const handleApplyAutoFix = useCallback(() => {
     if(!autoFixProposal)return;
     const bordersToKeep = autoFixProposal.layout.page?.borders || persistedLayout?.page?.borders || layout.page.borders;
@@ -871,14 +865,9 @@ export default function DocumentDesigner() {
       setStyleSaveAsNew(true);setStyleModalMode('save');
     }catch(error){setNotification({message:cloudError(error).message,type:'error'});}
   }, [loadingCloud,companyId,selectedDocType,layout,stylePresets,pushHistory,cloudRevision]);
-  const openSavedPreview = useCallback(async () => {
-    if(loadingCloud || !companyId || !persistedLayout || !cloudRevision) { setCloudErrorMessage('Save a cloud design before PDF preview or export.');return; }
-    try {
-      const current=await documentCloud.load(companyId,selectedDocType);
-      if(JSON.stringify(revisionOf(current))!==JSON.stringify(cloudRevision)) throw cloudError({code:'40001'});
-      setShowPreviewModal(true);
-    } catch(error) { const failure=cloudError(error);setCloudErrorMessage(failure.message);setCloudConflict(failure.code==='CONFLICT'); }
-  }, [companyId,persistedLayout,cloudRevision,selectedDocType,loadingCloud]);
+  const handleOpenPreview = useCallback(() => {
+    setShowPreviewModal(true);
+  }, []);
 
   // ── Import Template Handlers ───────────────────────────────────────────────
   const handleApplyImportedLayout = useCallback((importedLayout: DocumentLayout, makeDefault: boolean) => {
@@ -1195,87 +1184,77 @@ export default function DocumentDesigner() {
   const selectedElement = layout.elements.find((el) => el.id === selectedElementId) || null;
 
   return (
-    <div className="pdf-designer-shell flex h-[100dvh] w-full min-w-0 flex-col overflow-hidden bg-slate-950 font-sans">
+    <div className={`pdf-designer-shell flex w-full min-w-0 flex-col overflow-hidden bg-slate-950 font-sans ${isFullscreen ? "fixed inset-0 z-50 h-screen" : "h-[100dvh]"}`}>
       {/* Editor Chrome — hidden entirely during print */}
       <div className="designer-editor-chrome print-hide no-print flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-        <div className="flex flex-wrap items-center gap-3 bg-slate-900 px-4 py-2 text-sm text-slate-100" role="status" aria-live="polite">
-          <span>{loadingCloud ? 'Loading cloud design…' : saving ? 'Saving to cloud…' : cloudConflict ? 'Cloud conflict — draft preserved' : cloudErrorMessage ? 'Cloud error — not synced' : dirty || !persistedLayout ? 'Unsaved changes — save to cloud' : 'Saved to cloud · version ' + cloudRevision?.version}</span>
-          {cloudUpdatedAt && <span className="text-xs text-slate-400">{new Date(cloudUpdatedAt).toLocaleString()}</span>}
-          {cloudErrorMessage && <span className="text-amber-300">{cloudErrorMessage}</span>}
-          <button disabled={saving || styleModalBusy} onClick={() => {
-            if(dirty) { exportDesignBackup(layout,stylePresets); }
-            setReloadCounter(value=>value+1);
-          }} className="underline">Reload cloud{dirty ? ' (exports draft)' : ''}</button>
-          <button onClick={() => exportDesignBackup(layout,stylePresets)} className="underline">Export backup</button>
-          <button disabled={loadingCloud || saving || styleModalBusy} onClick={recoverBrowserDraft} className="underline">Recover browser draft</button>
-          <span className="text-xs text-slate-400">PDF preview/export uses the saved cloud design.</span>
-        </div>
         {/* Top Toolbar */}
-        <TopToolbar
-          selectedDocType={selectedDocType}
-          onSelectDocType={handleSelectDocType}
-          canUndo={historyIndex > 0}
-          canRedo={historyIndex < history.length - 1}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          zoom={zoom}
-          onZoomChange={setZoom}
-          onFitWidth={handleFitWidth}
-          onFitPage={handleFitPage}
-          snapGrid={snapGrid}
-          onToggleSnapGrid={() => setSnapGrid(!snapGrid)}
-          snapMargins={snapMargins}
-          onToggleSnapMargins={() => setSnapMargins(!snapMargins)}
-          onAlign={handleAlign}
-          hasSelectedElement={Boolean(selectedElement && !selectedElement.locked)}
-          selectedElementLabel={selectedElement?.label}
-          onDeleteSelected={handleDeleteSelected}
-          pageNumber={displayedPageNumber}
-          totalPages={totalPages}
-          onPageChange={setPageNumber}
-          saving={saving || loadingCloud || styleModalBusy}
-          cloudStatus={
-            saving || loadingCloud
-              ? "saving"
-              : cloudConflict
-              ? "conflict"
-              : cloudErrorMessage
-              ? "failed"
-              : dirty || !persistedLayout
-              ? "unsaved"
-              : "saved"
-          }
-          cloudVersion={cloudRevision?.version}
-          onSave={handleSave}
-          onAutoFix={handleAutoFix}
-          autoFixMode={autoFixMode}
-          onAutoFixAction={handleAutoFixAction}
-          stylePresets={stylePresets}
-          selectedStylePresetId={selectedStylePresetId}
-          onSelectStylePreset={handleSelectStylePreset}
-          onSaveMyStyle={() => {
-            setStyleSaveAsNew(false);
-            setStyleModalMode("save");
-          }}
-          onReset={() => setShowResetModal(true)}
-          onPreview={openSavedPreview}
-          onCheckLayout={() => setShowValidatorModal(true)}
-          onPrint={openSavedPreview}
-          onAddImage={handleAddImage}
-          onAddText={() => handleAddCustomElement("custom_text")}
-          onOpenApplyModal={() => handleOpenApplyModal(null)}
-          onImportDesign={() => setShowImportModal(true)}
-          onToggleLeftSidebar={() => setLeftSidebarOpen(!leftSidebarOpen)}
-          onToggleRightInspector={() => setRightInspectorOpen(!rightInspectorOpen)}
-          leftSidebarOpen={leftSidebarOpen}
-          rightInspectorOpen={rightInspectorOpen}
-          templateName={layout.templateName}
-        />
+        {!isFullscreen && (
+          <TopToolbar
+            selectedDocType={selectedDocType}
+            onSelectDocType={handleSelectDocType}
+            canUndo={historyIndex > 0}
+            canRedo={historyIndex < history.length - 1}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            zoom={zoom}
+            onZoomChange={setZoom}
+            onFitWidth={handleFitWidth}
+            onFitPage={handleFitPage}
+            snapGrid={snapGrid}
+            onToggleSnapGrid={() => setSnapGrid(!snapGrid)}
+            snapMargins={snapMargins}
+            onToggleSnapMargins={() => setSnapMargins(!snapMargins)}
+            onAlign={handleAlign}
+            hasSelectedElement={Boolean(selectedElement && !selectedElement.locked)}
+            selectedElementLabel={selectedElement?.label}
+            onDeleteSelected={handleDeleteSelected}
+            pageNumber={displayedPageNumber}
+            totalPages={totalPages}
+            onPageChange={setPageNumber}
+            saving={saving || loadingCloud || styleModalBusy}
+            cloudStatus={
+              saving || loadingCloud
+                ? "saving"
+                : cloudConflict
+                ? "conflict"
+                : cloudErrorMessage
+                ? "failed"
+                : dirty || !persistedLayout
+                ? "unsaved"
+                : "saved"
+            }
+            cloudVersion={cloudRevision?.version}
+            onSave={handleSave}
+            onAutoFix={handleAutoFix}
+            autoFixMode={autoFixMode}
+            onAutoFixAction={handleAutoFixAction}
+            stylePresets={stylePresets}
+            selectedStylePresetId={selectedStylePresetId}
+            onSelectStylePreset={handleSelectStylePreset}
+            onSaveMyStyle={() => {
+              setStyleSaveAsNew(false);
+              setStyleModalMode("save");
+            }}
+            onReset={() => setShowResetModal(true)}
+            onPreview={handleOpenPreview}
+            onCheckLayout={() => setShowValidatorModal(true)}
+            onPrint={handleOpenPreview}
+            onAddImage={handleAddImage}
+            onAddText={() => handleAddCustomElement("custom_text")}
+            onOpenApplyModal={() => handleOpenApplyModal(null)}
+            onImportDesign={() => setShowImportModal(true)}
+            onToggleLeftSidebar={() => setLeftSidebarOpen(!leftSidebarOpen)}
+            onToggleRightInspector={() => setRightInspectorOpen(!rightInspectorOpen)}
+            leftSidebarOpen={leftSidebarOpen}
+            rightInspectorOpen={rightInspectorOpen}
+            templateName={layout.templateName}
+          />
+        )}
 
         {/* Main Workspace: Left Layers | Centered Canvas | Right Inspector */}
         <div inert={saving || loadingCloud || styleModalBusy} className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          {/* Left Sidebar: Document Layers */}
-          {leftSidebarOpen && (
+          {/* Left Sidebar: Document Layers / Sections */}
+          {!isFullscreen && leftSidebarOpen && (
             <div className="absolute inset-y-0 left-0 z-40 xl:static xl:z-auto">
               <LeftSidebar
                 elements={layout.elements}
@@ -1286,6 +1265,9 @@ export default function DocumentDesigner() {
                 onMoveLayer={handleMoveLayer}
                 onAddCustomElement={handleAddCustomElement}
                 onAddImage={handleAddImage}
+                layout={layout}
+                onChangeLayout={setLayout}
+                defaultBranding={createDefaultLayout(selectedDocType).branding}
               />
             </div>
           )}
@@ -1301,12 +1283,19 @@ export default function DocumentDesigner() {
             snapGrid={snapGrid}
             snapMargins={snapMargins}
             pageNumber={displayedPageNumber}
+            totalPages={totalPages}
             containerRef={canvasContainerRef}
             onAddImage={handleAddImage}
+            onZoomChange={setZoom}
+            onFitWidth={handleFitWidth}
+            onFitPage={handleFitPage}
+            onPageChange={setPageNumber}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
           />
 
           {/* Right Sidebar: Selected Element Inspector / Page Settings */}
-          {rightInspectorOpen && (
+          {!isFullscreen && rightInspectorOpen && (
             <div className="absolute inset-y-0 right-0 z-40 xl:static xl:z-auto">
               <RightInspector
                 layout={layout}
@@ -1335,13 +1324,15 @@ export default function DocumentDesigner() {
           className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-2xl text-xs font-semibold animate-in fade-in slide-in-from-bottom-3 duration-200 border ${
             notification.type === "success"
               ? "bg-slate-900 border-emerald-500 text-emerald-300"
+              : notification.type === "warning"
+              ? "bg-slate-900 border-amber-500 text-amber-300"
               : "bg-slate-900 border-red-500 text-red-300"
           }`}
         >
           {notification.type === "success" ? (
             <CheckCircle2 size={16} className="text-emerald-400" />
           ) : (
-            <AlertCircle size={16} className="text-red-400" />
+            <AlertCircle size={16} className={notification.type === "warning" ? "text-amber-400" : "text-red-400"} />
           )}
           <span>{notification.message}</span>
         </div>

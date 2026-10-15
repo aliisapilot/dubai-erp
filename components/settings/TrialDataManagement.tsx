@@ -56,8 +56,8 @@ export default function TrialDataManagement({ companyId }: { companyId: string }
     const result: CountsMap = {};
     try {
       for (const t of CLEANUP_TABLES) {
-        const { count, error: countErr } = await supabase
-          .from(t.key as unknown as "companies")
+        const { count, error } = await supabase
+          .from(t.key as unknown as Parameters<typeof supabase.from>[0])
           .select("*", { count: "exact", head: true })
           .eq("company_id", companyId);
         if (countErr) {
@@ -76,10 +76,10 @@ export default function TrialDataManagement({ companyId }: { companyId: string }
 
   useEffect(() => {
     if (companyId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      void fetchCounts();
+      void Promise.resolve().then(fetchCounts);
     }
-  }, [companyId, fetchCounts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
 
   const handleDryRun = async () => {
     if (!userId) return;

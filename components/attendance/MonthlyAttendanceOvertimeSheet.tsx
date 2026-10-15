@@ -9,6 +9,7 @@ import {
   Loader2,
   FileSpreadsheet,
   Printer,
+  Download,
   Upload,
   CalendarCheck,
   Clock,
@@ -28,13 +29,14 @@ import {
 
 import { getCompanyId, getCurrentCompany, MONTH_NAMES, fmtAED, formatEmployeeCode } from "@/lib/helpers";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { exportAttendanceToPdf } from "@/lib/exportAttendancePdf";
 import AttendanceImportModal, {
   EmployeeInfo,
   ParsedAttendanceEntry,
   ParsedOvertimeEntry,
   AttendanceStatus,
 } from "./AttendanceImportModal";
-import AttendancePrintSheet from "./AttendancePrintSheet";
+import AttendancePrintSheet, { AttendanceSheetColors } from "./AttendancePrintSheet";
 import EmployeePayrollChargesModal from "./EmployeePayrollChargesModal";
 import SalarySlipTemplate, { SalarySlipData } from "@/components/documents/SalarySlipTemplate";
 import EmployeePaymentVoucherTemplate, { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
@@ -154,6 +156,57 @@ export default function MonthlyAttendanceOvertimeSheet({
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [showBulkMenu, setShowBulkMenu] = useState(false);
+  const [sheetColors] = useState<AttendanceSheetColors | undefined>(() => {
+    if (typeof window === "undefined") return undefined;
+    try {
+      const stored = localStorage.getItem("dubai-erp.custom-color-presets");
+      if (stored) {
+        const presets = JSON.parse(stored);
+        if (Array.isArray(presets) && presets.length > 0) {
+          const last = presets[presets.length - 1];
+          if (last?.branding) {
+            return {
+              sundayHighlight: last.branding.attendanceSundayHighlight,
+              sundayHeader: last.branding.attendanceSundayHeader,
+              presentColor: last.branding.attendancePresentColor,
+              absentColor: last.branding.attendanceAbsentColor,
+              holidayColor: last.branding.attendanceHolidayColor,
+              leaveColor: last.branding.attendanceLeaveColor,
+              headerBg: last.branding.tableHeaderBg,
+              headerTextColor: last.branding.tableHeaderTextColor,
+            };
+          }
+        }
+      }
+
+      // Also check if any saved template layout has custom attendance branding
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith("dubai-erp.design-cache.") || key.startsWith("dubai-erp.document-layout."))) {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const b = parsed?.branding;
+            if (b && (b.attendanceSundayHighlight || b.attendancePresentColor || b.attendanceAbsentColor)) {
+              return {
+                sundayHighlight: b.attendanceSundayHighlight,
+                sundayHeader: b.attendanceSundayHeader,
+                presentColor: b.attendancePresentColor,
+                absentColor: b.attendanceAbsentColor,
+                holidayColor: b.attendanceHolidayColor,
+                leaveColor: b.attendanceLeaveColor,
+                headerBg: b.tableHeaderColor,
+                headerTextColor: b.tableHeaderTextColor,
+              };
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore fallback
+    }
+    return undefined;
+  });
 
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -182,6 +235,76 @@ export default function MonthlyAttendanceOvertimeSheet({
 
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Dynamic page style injection to guarantee genuine A4 Landscape (297 x 210 mm)
+  // without relying on named pages, and clean up cleanly when closing preview
+  useEffect(() => {
+    if (!showPrintModal) return;
+    const styleId = "attendance-page-size-override";
+    let style = document.getElementById(styleId) as HTMLStyleElement | null;
+    if (!style) {
+      style = document.createElement("style");
+      style.id = styleId;
+      document.head.appendChild(style);
+    }
+    style.textContent = `
+      @page {
+        size: 297mm 210mm !important;
+        margin: 0 !important;
+      }
+      @media print {
+        @page {
+          size: 297mm 210mm !important;
+          margin: 0 !important;
+        }
+        html, body {
+          width: 297mm !important;
+          min-width: 297mm !important;
+          max-width: 297mm !important;
+          height: 210mm !important;
+          min-height: 210mm !important;
+          max-height: 210mm !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #ffffff !important;
+        }
+      }
+    `;
+    return () => {
+      const el = document.getElementById(styleId);
+      if (el) el.remove();
+    };
+  }, [showPrintModal]);
+
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    if (downloadingPdf) return;
+    setDownloadingPdf(true);
+    try {
+      const monthName = MONTH_NAMES[month - 1] || "Month";
+      const printRoot = document.querySelector(".print-sheet-modal-dialog") as HTMLElement | null;
+      await exportAttendanceToPdf({
+        monthName,
+        year,
+        mode: activeTab,
+        containerElement: printRoot,
+      });
+      setNotification({
+        type: "success",
+        message: `Successfully downloaded genuine A4 Landscape PDF for ${monthName} ${year}.`,
+      });
+      setTimeout(() => setNotification(null), 4000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to export PDF";
+      setNotification({
+        type: "error",
+        message: `PDF Export failed: ${msg}`,
+      });
+      setTimeout(() => setNotification(null), 5000);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   // Load Data Effect
   useEffect(() => {
@@ -1276,7 +1399,7 @@ export default function MonthlyAttendanceOvertimeSheet({
   }
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-56px)] bg-slate-900 text-slate-100 select-none">
+    <div className="flex flex-col min-h-[calc(100vh-56px)] bg-slate-900 text-slate-100 select-none print:bg-white print:min-h-0 print:h-auto print:p-0 print:m-0 print:block">
       <div className="app-screen-content no-print print:hidden flex flex-col flex-1">
         {/* Top Banner / Navigation Bar */}
       <div className="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 shadow-xs">
@@ -2265,6 +2388,7 @@ export default function MonthlyAttendanceOvertimeSheet({
             )}
             forceSinglePage={forceSinglePage}
             printScale={printScale}
+            colors={sheetColors}
           />
         </div>
       )}
@@ -2276,35 +2400,44 @@ export default function MonthlyAttendanceOvertimeSheet({
 
             {/* ── Injected @page zoom hint for Chrome/Edge print engine ── */}
             <style dangerouslySetInnerHTML={{ __html: `
+              @page {
+                size: 297mm 210mm !important;
+                margin: 0 !important;
+              }
               @media print {
                 @page {
-                  size: A4 landscape;
-                  margin: 4mm;
-                  ${printScale === "actual" ? "" : ""}
+                  size: 297mm 210mm !important;
+                  margin: 0 !important;
                 }
                 .attendance-print-scale-root {
-                  ${printScale === "auto"
-                    ? "zoom: 1; transform: none;"
-                    : printScale === "fit-width"
-                    ? "zoom: 1; transform: none; width: 289mm !important; max-width: 289mm !important;"
-                    : /* actual */ "zoom: 1; transform: none; width: auto !important;"
-                  }
+                  width: 297mm !important;
+                  max-width: 297mm !important;
+                  padding: 0 !important;
+                  margin: 0 auto !important;
+                  box-shadow: none !important;
+                  border: none !important;
+                  transform: none !important;
                 }
               }
             `}} />
 
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 px-6 py-3.5 bg-slate-900 text-white no-print">
+            <div className="flex items-center justify-between border-b border-slate-800 px-6 py-3.5 bg-slate-900 text-white no-print print:hidden">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                   <Printer size={15} />
                 </div>
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-white leading-tight">Printable Attendance &amp; Overtime Sheet</h3>
-                  <p className="text-[10px] text-slate-400">A4 Landscape • 297 × 210 mm • Audit Ready</p>
+                  <p className="text-[10px] text-slate-400">A4 Landscape • 297 × 210 mm • Margins: None (0) • Headers/Footers: Off</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
+                {/* Print Settings Recommendation Badge */}
+                <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700 text-[11px] text-slate-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  <span>Print Hint: <strong>Margins: None</strong> • <strong>Headers/Footers: Off</strong></span>
+                </div>
 
                 {/* ── Print Scale Picker ── */}
                 <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700 no-print">
@@ -2320,7 +2453,7 @@ export default function MonthlyAttendanceOvertimeSheet({
                       onClick={() => setPrintScale(opt.id)}
                       className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
                         printScale === opt.id
-                          ? "bg-emerald-600 text-white shadow-sm"
+                          ? "bg-emerald-600 text-white shadow-xs"
                           : "text-slate-400 hover:text-white hover:bg-slate-700"
                       }`}
                     >
@@ -2329,10 +2462,24 @@ export default function MonthlyAttendanceOvertimeSheet({
                   ))}
                 </div>
 
+                {/* ── Download A4 PDF Button (Primary Direct Clean Export) ── */}
+                <button
+                  type="button"
+                  disabled={downloadingPdf}
+                  onClick={handleDownloadPdf}
+                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 transition cursor-pointer shadow-xs active:scale-95 disabled:opacity-50"
+                  title="Download genuine A4 Landscape PDF directly without browser headers, footers or URL stamps"
+                >
+                  {downloadingPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                  <span>{downloadingPdf ? "Generating PDF..." : "Download A4 PDF"}</span>
+                </button>
+
+                {/* ── Print Now (Browser Print Dialog) ── */}
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 transition cursor-pointer shadow-sm active:scale-95"
+                  className="flex items-center gap-1.5 rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-200 hover:text-white hover:bg-slate-700 transition cursor-pointer shadow-xs active:scale-95"
+                  title="Print or Save via browser dialog (remember to uncheck 'Headers and footers' in Chrome)"
                 >
                   <Printer size={14} /> Print Now
                 </button>
@@ -2343,6 +2490,20 @@ export default function MonthlyAttendanceOvertimeSheet({
                 >
                   <X size={20} />
                 </button>
+              </div>
+            </div>
+
+            {/* Print Guidance Banner: clear Chrome instructions for Headers/Footers */}
+            <div className="no-print bg-slate-800/95 border-b border-slate-700 px-6 py-2 flex items-center justify-between text-xs text-slate-300 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-[9px]">✓</span>
+                <span>
+                  <strong className="text-white">Recommended:</strong> Click <strong className="text-emerald-400">Download A4 PDF</strong> for an instant clean document with zero browser URLs or stamps.
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
+                <span>For <strong>Print Now</strong>: In Chrome print preview, open <em>More settings</em> → uncheck <em>Headers and footers</em>.</span>
               </div>
             </div>
 
@@ -2385,24 +2546,9 @@ export default function MonthlyAttendanceOvertimeSheet({
             {/* Desk Surface Preview Container */}
             <div className="p-4 sm:p-6 bg-slate-950/80 overflow-y-auto max-h-[78vh] flex justify-center print:p-0 print:m-0 print:bg-transparent print:overflow-visible print:max-h-none print:block">
 
-              {/* Scale indicator badge (screen-only) */}
-              <div className="no-print absolute top-[7.5rem] left-6 flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 select-none pointer-events-none">
-                <span className="bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-full">
-                  {printScale === "auto" && "🖨 Auto Fit — 1 Page"}
-                  {printScale === "fit-width" && "↔ Fit Width"}
-                  {printScale === "actual" && "⦿ Actual Size (100%)"}
-                </span>
-              </div>
-
-              {/* Paper Sheet Document Surface */}
+              {/* Paper Sheet Document Surface - Clean 1:1 match with print dimensions */}
               <div
-                className={`attendance-print-scale-root print-document document-sheet erp-document-surface bg-white text-slate-900 shadow-2xl rounded-xs border border-slate-300 print:shadow-none print:border-none print:p-0 print:m-0 print:rounded-none mx-auto transition-all ${
-                  printScale === "auto"
-                    ? "p-4 sm:p-5 w-fit"
-                    : printScale === "fit-width"
-                    ? "p-4 sm:p-5 w-full max-w-none"
-                    : /* actual */ "p-4 sm:p-5 w-fit overflow-x-auto"
-                }`}
+                className={`attendance-print-scale-root print-document document-sheet erp-document-surface bg-white text-slate-900 shadow-2xl rounded-xs border border-slate-300 print:shadow-none print:border-none print:p-0 print:m-0 print:rounded-none mx-auto transition-all p-0 w-fit overflow-x-auto`}
               >
                 <AttendancePrintSheet
                   company={company}
@@ -2422,6 +2568,7 @@ export default function MonthlyAttendanceOvertimeSheet({
                   )}
                   forceSinglePage={forceSinglePage}
                   printScale={printScale}
+                  colors={sheetColors}
                 />
               </div>
             </div>

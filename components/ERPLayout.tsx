@@ -144,13 +144,13 @@ export default function ERPLayout({ children }: { children: ReactNode }) {
   const isDesigner = pathname === "/settings/designer";
 
   return (
-    <div className="erp-screen-theme flex h-screen w-full m-0 p-0 bg-slate-900 text-slate-100 overflow-hidden print:block print:h-auto print:min-h-0 print:bg-white print:p-0 print:m-0 print:w-[210mm]">
+    <div className="erp-screen-theme flex h-screen w-full m-0 p-0 bg-slate-900 text-slate-100 overflow-hidden print:block print:h-auto print:min-h-0 print:bg-white print:p-0 print:m-0 print:w-full print:max-w-none">
       <Sidebar />
-      <div className="flex-1 min-w-0 flex flex-col h-full m-0 p-0 overflow-hidden print:block print:w-[210mm] print:overflow-visible print:m-0 print:p-0">
+      <div className="flex-1 min-w-0 flex flex-col h-full m-0 p-0 overflow-hidden print:block print:w-full print:max-w-none print:overflow-visible print:m-0 print:p-0">
         {!isDesigner && <Navbar />}
         <main
           data-print-root
-          className="flex-1 min-w-0 flex flex-col m-0 p-0 overflow-y-auto overflow-x-hidden bg-slate-900 text-slate-100 print:overflow-visible"
+          className="flex-1 min-w-0 flex flex-col m-0 p-0 overflow-y-auto overflow-x-hidden bg-slate-900 text-slate-100 print:bg-white print:text-black print:overflow-visible print:p-0 print:m-0 print:w-full print:h-auto print:min-h-0"
         >
           {children}
         </main>

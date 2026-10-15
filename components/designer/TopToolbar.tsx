@@ -1,16 +1,12 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState } from "react";
 import {
   Undo2,
   Redo2,
-  Trash2,
-  ZoomIn,
-  ZoomOut,
   Save,
   RotateCcw,
   WandSparkles,
-  Printer,
   AlignLeft,
   AlignCenter,
   AlignRight,
@@ -18,20 +14,21 @@ import {
   AlignHorizontalJustifyCenter,
   Grid,
   Magnet,
-  ChevronLeft,
-  ChevronRight,
   ChevronDown,
   Loader2,
   FileText,
   Copy,
   Eye,
-  Image as ImageIcon,
-  Type,
-  PanelLeft,
-  PanelRight,
-  ShieldCheck,
-  MoreHorizontal,
+  Sliders,
+  X,
   Upload,
+  ShieldCheck,
+  CheckCircle2,
+  PanelRight,
+  Download,
+  BookmarkPlus,
+  Trash2,
+  Layers,
 } from "lucide-react";
 import { DocumentTypeId, DOCUMENT_TYPE_OPTIONS } from "@/lib/documentDesigner";
 import type { DocumentStylePreset } from "@/lib/documentStylePresetModel";
@@ -133,80 +130,35 @@ export default function TopToolbar({
   leftSidebarOpen = true,
   rightInspectorOpen = true,
 }: TopToolbarProps) {
-  const imageUploadInputRef = useRef<HTMLInputElement>(null);
+  const [showAdvancedModal, setShowAdvancedModal] = useState(false);
+  const [advancedTab, setAdvancedTab] = useState<"grid" | "styles" | "tools">("grid");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const [moreMenuPosition, setMoreMenuPosition] = useState<{ top: number; right: number } | null>(null);
-  const moreMenuRef = useRef<HTMLDivElement>(null);
-  const moreMenuButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!showMoreMenu) return;
-
-    const updatePosition = () => {
-      const trigger = moreMenuButtonRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      const menuHeight = Math.min(280, window.innerHeight - 16);
-      const below = rect.bottom + 8 + menuHeight <= window.innerHeight - 8;
-      const top = below ? rect.bottom + 8 : Math.max(8, rect.top - menuHeight - 8);
-      setMoreMenuPosition({ top, right: Math.max(8, window.innerWidth - rect.right) });
-    };
-
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [showMoreMenu]);
-
-  // Close overflow menu when clicking outside
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
-        setShowMoreMenu(false);
-      }
-    }
-    if (showMoreMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [showMoreMenu]);
+  const moreMenuButtonRef = useRef<HTMLButtonElement | null>(null);
 
   return (
-    <header className="shrink-0 border-b border-slate-800 bg-slate-900 text-white select-none z-30">
-      {/* Primary Row: Document Selection, Editing & Main Actions */}
-      <div
-        className="designer-scrollbar flex h-14 w-full min-w-0 items-center justify-between gap-1.5 overflow-x-auto overscroll-x-contain px-2.5"
-        role="toolbar"
-        aria-label="PDF Designer primary actions"
-        tabIndex={0}
-      >
-        {/* Left Section: Brand, Document Selector & History / Delete */}
-        <div className="flex shrink-0 items-center gap-1.5">
-          {/* Brand & Badge */}
-          <div className="flex shrink-0 items-center gap-1.5 pr-1.5 border-r border-slate-800">
-            <div
-              className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold"
-              title={templateName ? `PDF Designer: ${templateName}` : "PDF Designer"}
-            >
-              <FileText size={17} />
+    <header className="shrink-0 border-b border-slate-800 bg-slate-900 text-white select-none z-30 shadow-md">
+      {/* ── Single Simplified Main Toolbar ───────────────────────────────────────────── */}
+      <div className="flex h-14 w-full items-center justify-between px-3 gap-2 overflow-x-auto overscroll-x-contain">
+        {/* 1. Template & Document Selection */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 pr-2 border-r border-slate-800">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold shadow-inner">
+              <FileText size={16} />
             </div>
-            <span className="font-bold text-xs tracking-wider text-slate-100 hidden 2xl:inline uppercase leading-tight">
-              PDF Designer
+            <span className="font-bold text-xs tracking-wider text-slate-100 hidden lg:inline uppercase">
+              Designer
             </span>
           </div>
 
-          {/* Document Type Dropdown (Generous Width, Full Name Visible, Never Cut Off) */}
-          <div className="flex shrink-0 items-center gap-1">
-            <label className="hidden text-xs font-medium text-slate-400 2xl:inline">Document:</label>
+          {/* Template Selector Dropdown */}
+          <div className="flex items-center gap-1">
+            <span className="text-xs font-semibold text-slate-400 hidden xl:inline">Template:</span>
             <div className="relative">
               <select
                 value={selectedDocType}
                 onChange={(e) => onSelectDocType(e.target.value as DocumentTypeId)}
-                className="w-[185px] sm:w-[205px] md:w-[225px] rounded-lg border border-slate-700 bg-slate-800 pl-2.5 pr-7 py-1.5 text-xs font-semibold text-white outline-none focus:border-amber-400 cursor-pointer shadow-inner appearance-none transition"
-                aria-label="Document type"
+                className="w-[190px] sm:w-[215px] md:w-[235px] rounded-lg border border-slate-700 bg-slate-800 pl-2.5 pr-7 py-1.5 text-xs font-semibold text-white outline-none focus:border-amber-400 cursor-pointer shadow-inner appearance-none transition hover:bg-slate-750"
+                aria-label="Document template"
                 title="Select document template to edit"
               >
                 {DOCUMENT_TYPE_OPTIONS.map((opt) => (
@@ -219,13 +171,13 @@ export default function TopToolbar({
             </div>
           </div>
 
-          {/* History Controls: Undo & Redo */}
-          <div className="flex shrink-0 items-center gap-0.5 border-l border-slate-800 pl-1.5">
+          {/* Undo / Redo controls */}
+          <div className="flex items-center gap-0.5 border-l border-slate-800 pl-1.5">
             <button
               type="button"
               onClick={onUndo}
               disabled={!canUndo}
-              className={`p-1.5 rounded-lg border border-transparent hover:border-slate-700 hover:bg-slate-800 transition ${
+              className={`p-1.5 rounded-lg border border-transparent hover:border-slate-700 hover:bg-slate-800 transition cursor-pointer ${
                 canUndo ? "text-slate-200" : "text-slate-600 cursor-not-allowed"
               }`}
               title="Undo (Ctrl+Z)"
@@ -237,7 +189,7 @@ export default function TopToolbar({
               type="button"
               onClick={onRedo}
               disabled={!canRedo}
-              className={`p-1.5 rounded-lg border border-transparent hover:border-slate-700 hover:bg-slate-800 transition ${
+              className={`p-1.5 rounded-lg border border-transparent hover:border-slate-700 hover:bg-slate-800 transition cursor-pointer ${
                 canRedo ? "text-slate-200" : "text-slate-600 cursor-not-allowed"
               }`}
               title="Redo (Ctrl+Y)"
@@ -245,551 +197,561 @@ export default function TopToolbar({
             >
               <Redo2 size={15} />
             </button>
-
-            {/* Delete Selected Element Button (ALWAYS VISIBLE, RED ACCENT WHEN SELECTED) */}
-            {onDeleteSelected && (
-              <button
-                type="button"
-                onClick={onDeleteSelected}
-                disabled={!hasSelectedElement}
-                className={`flex items-center gap-1 rounded-lg border p-1.5 2xl:px-2 py-1.5 text-xs font-semibold transition ml-0.5 ${
-                  hasSelectedElement
-                    ? "border-rose-500/60 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 cursor-pointer shadow-sm"
-                    : "border-slate-800/80 bg-slate-800/40 text-slate-500 cursor-not-allowed opacity-40"
-                }`}
-                title={
-                  hasSelectedElement
-                    ? `Delete or hide selected ${selectedElementLabel || "element"} (Delete / Backspace)`
-                    : "Select an element to delete"
-                }
-                aria-label="Delete selected element"
-              >
-                <Trash2 size={14} className={hasSelectedElement ? "text-rose-400" : "text-slate-500"} />
-                <span className="hidden 2xl:inline font-medium">Delete</span>
-              </button>
-            )}
           </div>
         </div>
 
-        {/* Hidden File Input for Add Image */}
-        <input
-          type="file"
-          ref={imageUploadInputRef}
-          accept="image/png,image/jpeg,image/jpg,image/webp"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file && onAddImage) {
-              onAddImage(file);
-            }
-            e.target.value = "";
-          }}
-        />
-
-        {/* Right Section: Add Elements, Auto Fix, Overflow Tools, Preview/Print/Save, Panels */}
-        <div className="flex shrink-0 items-center gap-1">
-          {/* Insert Content Actions */}
-          {onAddImage && (
+        {/* 2. Core Actions: Edit | Auto Fix | Preview | Save | Download PDF */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Edit Toggle (toggles sidebar sections) */}
+          {onToggleLeftSidebar && (
             <button
               type="button"
-              onClick={() => imageUploadInputRef.current?.click()}
-              className="flex items-center gap-1 rounded-lg border border-blue-500/40 bg-blue-500/10 p-1.5 2xl:px-2 py-1.5 text-xs font-semibold text-blue-300 shadow-sm transition hover:bg-blue-500/20 cursor-pointer"
-              title="Upload image or logo from computer (PNG, JPG, WEBP)"
-              aria-label="Add Image"
+              onClick={onToggleLeftSidebar}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                leftSidebarOpen
+                  ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
+                  : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+              }`}
+              title="Toggle Sections Editing Panel"
             >
-              <ImageIcon size={14} className="text-blue-400" />
-              <span className="hidden 2xl:inline">Add Image</span>
+              <Layers size={14} className={leftSidebarOpen ? "text-amber-400" : "text-slate-400"} />
+              <span className="hidden sm:inline">Edit</span>
             </button>
           )}
 
-          {onAddText && (
-            <button
-              type="button"
-              onClick={onAddText}
-              className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/90 p-1.5 2xl:px-2 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white cursor-pointer"
-              title="Add custom text block (edit text directly in inspector)"
-              aria-label="Add Text"
-            >
-              <Type size={14} className="text-amber-400" />
-              <span className="hidden 2xl:inline">Add Text</span>
-            </button>
-          )}
-
-          {/* Auto Fix PDF (One-Click Smart Layout Optimization) */}
+          {/* Auto Fix: One-Click Smart Layout Optimization */}
           <button
             type="button"
             onClick={onAutoFix}
             disabled={saving}
-            className="flex items-center gap-1.5 rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-2 py-1.5 text-xs font-bold text-emerald-300 shadow-sm transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-            title="Auto Fix: One-click optimization to fit document neatly on single A4 page"
+            className="flex items-center gap-1.5 rounded-lg border border-emerald-500/60 bg-emerald-500/20 px-3 py-1.5 text-xs font-bold text-emerald-300 shadow-sm transition hover:bg-emerald-500/30 cursor-pointer disabled:opacity-50"
+            title="Auto Fix: Fix overlaps, balance spacing, and fit neatly onto single A4 page"
             aria-label="Auto Fix PDF"
           >
             <WandSparkles size={14} className="text-emerald-400" />
-            <span className="hidden xl:inline">Auto Fix</span>
+            <span>Auto Fix</span>
           </button>
-          <select
-            value={autoFixMode}
-            onChange={(event) => onAutoFixAction(event.target.value as AutoFixAction)}
-            disabled={saving}
-            className="h-8 max-w-[115px] rounded-lg border border-slate-700 bg-slate-800 px-1.5 text-[10px] font-semibold text-slate-200 outline-none focus:border-amber-400 sm:max-w-[145px] sm:px-2 sm:text-xs"
-            aria-label="Auto Fix style"
-            title="Choose Standard Auto Fix, a saved style, or manage styles"
-          >
-            <option value="standard">Standard Auto Fix</option>
-            <option value="saved">My Saved Style</option>
-            <option value="create">Create New Style</option>
-            <option value="manage">Manage Saved Styles</option>
-          </select>
-          {autoFixMode === "saved" && (
-            <select
-              value={selectedStylePresetId || ""}
-              onChange={(event) => onSelectStylePreset(event.target.value)}
-              disabled={saving || stylePresets.length === 0}
-              className="h-8 max-w-[130px] rounded-lg border border-amber-500/30 bg-slate-800 px-1.5 text-[10px] font-semibold text-amber-100 outline-none focus:border-amber-400 sm:max-w-[180px] sm:px-2 sm:text-xs"
-              aria-label="Choose saved style"
-            >
-              {stylePresets.length === 0 ? <option value="">No saved styles</option> : stylePresets.map((preset) => (
-                <option key={preset.id} value={preset.id}>
-                  {preset.template_name} — {DOCUMENT_TYPE_OPTIONS.find((option) => option.id === preset.document_type)?.label || preset.document_type.replaceAll("_", " ")}{preset.is_default ? " (Default)" : ""}
-                </option>
-              ))}
-            </select>
-          )}
+
+          {/* Preview: Dedicated A4 Document Preview */}
           <button
             type="button"
-            onClick={onSaveMyStyle}
-            disabled={saving}
-            className="flex h-8 items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 text-[10px] font-bold text-amber-200 hover:bg-amber-500/20 disabled:opacity-50 sm:text-xs"
-            title="Save the complete current layout as a named style"
-            aria-label="Save My Style"
+            onClick={onPreview}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white cursor-pointer"
+            title="Preview actual A4 document"
+            aria-label="Preview"
           >
-            <Save size={13} /><span className="hidden 2xl:inline">Save My Style</span>
+            <Eye size={14} className="text-blue-400" />
+            <span className="hidden md:inline">Preview</span>
           </button>
 
-          {/* Tools & Overflow Menu (More Actions) */}
-          <div className="relative" ref={moreMenuRef}>
-            <button
-              ref={moreMenuButtonRef}
-              type="button"
-              onClick={() => setShowMoreMenu(!showMoreMenu)}
-              className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-semibold transition ${
-                showMoreMenu
-                  ? "border-amber-500/50 bg-slate-800 text-amber-400"
-                  : "border-slate-700 bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white"
-              }`}
-              title="More Actions: Apply to Others, Check Layout, Reset"
-              aria-label="More Actions"
-            >
-              <MoreHorizontal size={14} />
-              <span className="hidden xl:inline">Tools</span>
-              <ChevronDown size={11} className={`transition-transform duration-150 ${showMoreMenu ? "rotate-180" : ""}`} />
-            </button>
+          {/* Download PDF / Print */}
+          <button
+            type="button"
+            onClick={onPrint || onPreview}
+            className="flex items-center gap-1.5 rounded-lg border border-indigo-500/40 bg-indigo-950/40 px-2.5 py-1.5 text-xs font-semibold text-indigo-200 transition hover:bg-indigo-900/60 hover:text-white cursor-pointer shadow-sm"
+            title="Download or Print PDF Document"
+            aria-label="Download PDF"
+          >
+            <Download size={14} className="text-indigo-400" />
+            <span className="hidden sm:inline">Download PDF</span>
+          </button>
 
-            {showMoreMenu && (
-              <div
-                className="designer-scrollbar fixed z-50 w-64 max-h-[min(70dvh,320px)] overflow-y-auto overscroll-contain rounded-xl border border-slate-700 bg-slate-900 p-2 text-xs space-y-1 shadow-2xl animate-in fade-in zoom-in-95"
-                tabIndex={0}
-                aria-label="Document designer actions menu"
-                style={{ top: moreMenuPosition?.top ?? -1000, right: moreMenuPosition?.right ?? 8 }}
-              >
-                <div className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-800">
-                  Document Tools
-                </div>
-                {onImportDesign && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMoreMenu(false);
-                      onImportDesign();
-                    }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left font-medium text-slate-200 hover:bg-slate-800 transition"
-                  >
-                    <Upload size={15} className="text-indigo-400 shrink-0" />
-                    <div>
-                      <div className="font-semibold text-slate-100">Import Template Design</div>
-                      <div className="text-[11px] text-slate-400">Reconstruct layout from Word, Excel, or PDF</div>
-                    </div>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMoreMenu(false);
-                    onOpenApplyModal();
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left font-medium text-slate-200 hover:bg-slate-800 transition"
-                >
-                  <Copy size={15} className="text-amber-400 shrink-0" />
-                  <div>
-                    <div className="font-semibold text-slate-100">Apply to Other Documents</div>
-                    <div className="text-[11px] text-slate-400">Copy header, footer, & styling across templates</div>
-                  </div>
-                </button>
-
-                {onCheckLayout && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMoreMenu(false);
-                      onCheckLayout();
-                    }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left font-medium text-slate-200 hover:bg-slate-800 transition"
-                  >
-                    <ShieldCheck size={15} className="text-teal-400 shrink-0" />
-                    <div>
-                      <div className="font-semibold text-slate-100">Check Layout Audit</div>
-                      <div className="text-[11px] text-slate-400">Scan for overlaps, margins & single-page fit</div>
-                    </div>
-                  </button>
-                )}
-
-                <div className="border-t border-slate-800 my-1" />
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMoreMenu(false);
-                    onReset();
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left font-medium text-rose-300 hover:bg-rose-500/15 transition"
-                >
-                  <RotateCcw size={15} className="text-rose-400 shrink-0" />
-                  <div>
-                    <div className="font-semibold text-rose-200">Reset to Default</div>
-                    <div className="text-[11px] text-rose-400/80">Restore official UAE corporate layout (with confirmation)</div>
-                  </div>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Primary Final Actions: Preview, Print, and Save (ALWAYS VISIBLE, FULLY ALIGNED & PINNED) */}
-          <div className="flex shrink-0 items-center gap-1 border-l border-slate-800 pl-1.5">
-            {onImportDesign && (
-              <button
-                type="button"
-                onClick={onImportDesign}
-                className="flex items-center gap-1.5 rounded-lg border border-indigo-500/40 bg-indigo-950/40 px-2.5 py-1.5 text-xs font-semibold text-indigo-200 transition hover:bg-indigo-900/60 hover:text-white cursor-pointer shadow-sm"
-                title="Import DOCX, XLSX, or PDF template design"
-                aria-label="Import Design"
-              >
-                <Upload size={14} className="text-indigo-400" />
-                <span className="hidden sm:inline">Import Design</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={onPreview}
-              className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white cursor-pointer"
-              title="Preview actual A4 document"
-              aria-label="Preview"
-            >
-              <Eye size={14} className="text-emerald-400" />
-              <span className="hidden lg:inline">Preview</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onPrint || onPreview}
-              className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white cursor-pointer"
-              title="Open Print Dialog"
-              aria-label="Print"
-            >
-              <Printer size={14} className="text-blue-400" />
-              <span className="hidden lg:inline">Print</span>
-            </button>
-
-            {/* Cloud Persistence Status Badge */}
-            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold border transition"
-                 style={{
-                   borderColor:
-                     cloudStatus === "saved"
-                       ? "rgba(16, 185, 129, 0.3)"
-                       : cloudStatus === "saving"
-                       ? "rgba(245, 158, 11, 0.3)"
-                       : cloudStatus === "failed"
-                       ? "rgba(239, 68, 68, 0.3)"
-                       : cloudStatus === "conflict"
-                       ? "rgba(99, 102, 241, 0.3)"
-                       : "rgba(245, 158, 11, 0.25)",
-                   backgroundColor:
-                     cloudStatus === "saved"
-                       ? "rgba(16, 185, 129, 0.08)"
-                       : cloudStatus === "saving"
-                       ? "rgba(245, 158, 11, 0.08)"
-                       : cloudStatus === "failed"
-                       ? "rgba(239, 68, 68, 0.08)"
-                       : cloudStatus === "conflict"
-                       ? "rgba(99, 102, 241, 0.08)"
-                       : "rgba(245, 158, 11, 0.05)",
-                   color:
-                     cloudStatus === "saved"
-                       ? "#34d399"
-                       : cloudStatus === "saving"
-                       ? "#fbbf24"
-                       : cloudStatus === "failed"
-                       ? "#f87171"
-                       : cloudStatus === "conflict"
-                       ? "#818cf8"
-                       : "#fbbf24",
-                 }}
-                 title={
-                   cloudStatus === "saved"
-                     ? "Design successfully synchronized to cloud"
-                     : cloudStatus === "saving"
-                     ? "Saving design to cloud..."
-                     : cloudStatus === "failed"
-                     ? "Cloud synchronization failed"
-                     : cloudStatus === "conflict"
-                     ? "Cloud version updated from another session"
-                     : "You have unsaved changes"
-                 }
-            >
-              {cloudStatus === "saved" ? (
-                <>
-                  <ShieldCheck size={11} className="text-emerald-400 shrink-0" />
-                  <span>Saved to Cloud{cloudVersion ? ` (v${cloudVersion})` : ""}</span>
-                </>
-              ) : cloudStatus === "saving" ? (
-                <>
-                  <Loader2 size={11} className="animate-spin text-amber-400 shrink-0" />
-                  <span>Saving...</span>
-                </>
-              ) : cloudStatus === "failed" ? (
-                <>
-                  <span className="text-red-400 font-bold">⚠</span>
-                  <span>Save Failed</span>
-                </>
-              ) : cloudStatus === "conflict" ? (
-                <>
-                  <span className="text-indigo-400 font-bold">ℹ</span>
-                  <span>Cloud Version Updated</span>
-                </>
-              ) : (
-                <>
-                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
-                  <span>Unsaved Changes</span>
-                </>
-              )}
-            </div>
-
+          {/* Save Action with Cloud Sync Status Pill */}
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={onSave}
               disabled={saving}
-              className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-slate-950 shadow-md transition hover:bg-amber-400 cursor-pointer disabled:opacity-50"
-              title="Save layout (Ctrl+S)"
+              className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold shadow-md transition cursor-pointer disabled:opacity-50 ${
+                cloudStatus === "unsaved"
+                  ? "bg-amber-500 hover:bg-amber-400 text-slate-950"
+                  : "bg-emerald-600 hover:bg-emerald-500 text-white"
+              }`}
+              title="Save layout to cloud for all devices (Ctrl+S)"
               aria-label="Save layout"
             >
-              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-              <span>{saving ? "Saving..." : "Save"}</span>
+              {saving ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : cloudStatus === "saved" ? (
+                <CheckCircle2 size={13} />
+              ) : (
+                <Save size={13} />
+              )}
+              <span>{saving ? "Saving…" : cloudStatus === "saved" ? "Saved" : "Save"}</span>
             </button>
           </div>
+        </div>
 
-          {/* Responsive Panel Toggle Buttons (ALWAYS VISIBLE & PADDED) */}
-          <div className="flex shrink-0 items-center gap-0.5 border-l border-slate-800 pl-1">
-            {onToggleLeftSidebar && (
+        {/* 3. Advanced Tools & Panel Controls */}
+        <div className="flex items-center gap-1 border-l border-slate-800 pl-2 shrink-0">
+          {/* Advanced Settings Modal Trigger */}
+          <button
+            type="button"
+            onClick={() => setShowAdvancedModal(true)}
+            className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/90 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer"
+            title="Advanced Settings: Grid, Margins, Alignment, Styles & Tools"
+          >
+            <Sliders size={14} className="text-amber-400" />
+            <span className="hidden xl:inline">Advanced</span>
+          </button>
+
+          {/* More Actions Menu Button */}
+          <div className="relative">
+            <button
+              ref={moreMenuButtonRef}
+              type="button"
+              aria-label="Document designer actions menu"
+              onClick={() => setShowMoreMenu((v) => !v)}
+              className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/90 px-2 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer"
+              title="More Actions: Auto Fix Modes & Styles"
+            >
+              <ChevronDown size={14} className={showMoreMenu ? "rotate-180 transition-transform" : "transition-transform"} />
+            </button>
+
+            {showMoreMenu && (
+              <div
+                className="designer-scrollbar fixed z-50 w-64 max-h-[min(70dvh,320px)] overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-2xl text-xs text-slate-200 space-y-1 right-3 top-14"
+              >
+              <div className="px-2 py-1 text-[10px] font-bold uppercase text-slate-400 border-b border-slate-800">
+                Auto Fix &amp; Saved Styles
+              </div>
               <button
                 type="button"
-                onClick={onToggleLeftSidebar}
-                className={`p-1.5 rounded-lg transition ${leftSidebarOpen ? "text-amber-400 bg-slate-800" : "text-slate-400 hover:bg-slate-800"}`}
-                title="Toggle Layers Sidebar"
-                aria-label="Toggle Layers Sidebar"
+                onClick={() => {
+                  onAutoFixAction("standard");
+                  setShowMoreMenu(false);
+                }}
+                className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 transition cursor-pointer"
               >
-                <PanelLeft size={15} />
+                Standard Auto Fix
               </button>
-            )}
-            {onToggleRightInspector && (
               <button
                 type="button"
-                onClick={onToggleRightInspector}
-                className={`p-1.5 rounded-lg transition ${rightInspectorOpen ? "text-amber-400 bg-slate-800" : "text-slate-400 hover:bg-slate-800"}`}
-                title="Toggle Element Inspector"
-                aria-label="Toggle Inspector"
+                onClick={() => {
+                  onAutoFixAction("saved");
+                  setShowMoreMenu(false);
+                }}
+                className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 transition cursor-pointer"
               >
-                <PanelRight size={15} />
+                My Saved Style
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => {
+                  onAutoFixAction("create");
+                  setShowMoreMenu(false);
+                }}
+                className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 transition cursor-pointer"
+              >
+                Create New Style
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onAutoFixAction("manage");
+                  setShowMoreMenu(false);
+                }}
+                className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 transition cursor-pointer"
+              >
+                Manage Saved Styles
+              </button>
+              <div className="pt-1 border-t border-slate-800">
+                <button
+                  type="button"
+                  aria-label="Save My Style"
+                  onClick={() => {
+                    onSaveMyStyle();
+                    setShowMoreMenu(false);
+                  }}
+                  className="w-full text-left px-2 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 font-semibold transition cursor-pointer"
+                >
+                  Save My Style
+                </button>
+              </div>
+            </div>
+          )}
+          </div>
+
+          {/* Right Inspector Toggle */}
+          {onToggleRightInspector && (
+            <button
+              type="button"
+              onClick={onToggleRightInspector}
+              className={`p-1.5 rounded-lg transition cursor-pointer ${
+                rightInspectorOpen
+                  ? "text-amber-400 bg-slate-800"
+                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              }`}
+              title="Toggle Properties Inspector"
+            >
+              <PanelRight size={15} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Unified Advanced Settings Modal ───────────────────────────────────────── */}
+      {showAdvancedModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full text-white shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <Sliders size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Advanced Settings &amp; Tools</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Fine-tune grid, alignment, margins, templates, and utilities
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Tabs */}
+            <div className="flex border-b border-slate-800 bg-slate-950/40 p-1.5 gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setAdvancedTab("grid")}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  advancedTab === "grid"
+                    ? "bg-slate-800 text-amber-400 shadow border border-slate-700"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Grid &amp; Alignment
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdvancedTab("styles")}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  advancedTab === "styles"
+                    ? "bg-slate-800 text-amber-400 shadow border border-slate-700"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Saved Styles
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdvancedTab("tools")}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  advancedTab === "tools"
+                    ? "bg-slate-800 text-amber-400 shadow border border-slate-700"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Tools &amp; Audit
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto space-y-5 text-xs text-slate-300">
+              {/* Tab 1: Grid & Alignment */}
+              {advancedTab === "grid" && (
+                <div className="space-y-4">
+                  {/* Grid & Magnet Toggles */}
+                  <div>
+                    <h4 className="font-bold text-slate-100 uppercase tracking-wider text-[11px] mb-2">
+                      Snapping &amp; Guides
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={onToggleSnapGrid}
+                        className={`flex items-center justify-between p-3 rounded-xl border transition cursor-pointer ${
+                          snapGrid
+                            ? "bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold"
+                            : "bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Grid size={16} />
+                          <span>Snap to Grid (5mm)</span>
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${snapGrid ? "bg-amber-500/30 text-amber-200" : "bg-slate-700 text-slate-400"}`}>
+                          {snapGrid ? "ON" : "OFF"}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={onToggleSnapMargins}
+                        className={`flex items-center justify-between p-3 rounded-xl border transition cursor-pointer ${
+                          snapMargins
+                            ? "bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold"
+                            : "bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Magnet size={16} />
+                          <span>Snap to Margins (12mm)</span>
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${snapMargins ? "bg-amber-500/30 text-amber-200" : "bg-slate-700 text-slate-400"}`}>
+                          {snapMargins ? "ON" : "OFF"}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Element Alignment Controls */}
+                  <div>
+                    <h4 className="font-bold text-slate-100 uppercase tracking-wider text-[11px] mb-2">
+                      Element Alignment {hasSelectedElement ? `(${selectedElementLabel || "Selected"})` : "(Select an element on canvas to align)"}
+                    </h4>
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onAlign("left")}
+                        disabled={!hasSelectedElement}
+                        className="flex flex-col items-center justify-center p-2.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-750 disabled:opacity-40 transition cursor-pointer"
+                        title="Align Left"
+                      >
+                        <AlignLeft size={16} className="mb-1 text-slate-300" />
+                        <span className="text-[10px]">Left</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onAlign("center")}
+                        disabled={!hasSelectedElement}
+                        className="flex flex-col items-center justify-center p-2.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-750 disabled:opacity-40 transition cursor-pointer"
+                        title="Align Center"
+                      >
+                        <AlignCenter size={16} className="mb-1 text-slate-300" />
+                        <span className="text-[10px]">Center</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onAlign("right")}
+                        disabled={!hasSelectedElement}
+                        className="flex flex-col items-center justify-center p-2.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-750 disabled:opacity-40 transition cursor-pointer"
+                        title="Align Right"
+                      >
+                        <AlignRight size={16} className="mb-1 text-slate-300" />
+                        <span className="text-[10px]">Right</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onAlign("center-h")}
+                        disabled={!hasSelectedElement}
+                        className="flex flex-col items-center justify-center p-2.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-750 disabled:opacity-40 transition cursor-pointer"
+                        title="Center Horizontally on Page"
+                      >
+                        <AlignHorizontalJustifyCenter size={16} className="mb-1 text-amber-400" />
+                        <span className="text-[10px]">Page H</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onAlign("center-v")}
+                        disabled={!hasSelectedElement}
+                        className="flex flex-col items-center justify-center p-2.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-750 disabled:opacity-40 transition cursor-pointer"
+                        title="Center Vertically on Page"
+                      >
+                        <AlignVerticalJustifyCenter size={16} className="mb-1 text-amber-400" />
+                        <span className="text-[10px]">Page V</span>
+                      </button>
+
+                      {onDeleteSelected && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onDeleteSelected();
+                            setShowAdvancedModal(false);
+                          }}
+                          disabled={!hasSelectedElement}
+                          className="flex flex-col items-center justify-center p-2.5 rounded-lg border border-rose-500/50 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 disabled:opacity-40 transition cursor-pointer"
+                          title="Delete or Hide Selected Element"
+                        >
+                          <Trash2 size={16} className="mb-1 text-rose-400" />
+                          <span className="text-[10px]">Delete</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 2: Saved Styles & Presets */}
+              {advancedTab === "styles" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-slate-100 uppercase tracking-wider text-[11px]">
+                        Saved Style Presets
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Apply saved company designs or create a new template variant
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      aria-label="Save My Style"
+                      onClick={() => {
+                        onSaveMyStyle();
+                        setShowAdvancedModal(false);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition cursor-pointer"
+                    >
+                      <BookmarkPlus size={14} />
+                      <span>Save Current as New</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                    {stylePresets.length === 0 ? (
+                      <div className="p-4 rounded-xl border border-dashed border-slate-700 text-center text-slate-400 text-xs">
+                        No custom presets saved for this document type yet.
+                      </div>
+                    ) : (
+                      stylePresets.map((preset) => (
+                        <div
+                          key={preset.id}
+                          onClick={() => {
+                            onSelectStylePreset(preset.id);
+                            setShowAdvancedModal(false);
+                          }}
+                          className={`flex items-center justify-between p-2.5 rounded-xl border transition cursor-pointer ${
+                            selectedStylePresetId === preset.id
+                              ? "bg-amber-500/20 border-amber-500/60 text-amber-200 font-bold"
+                              : "bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800"
+                          }`}
+                        >
+                          <div>
+                            <div className="font-semibold text-slate-100">{preset.template_name}</div>
+                            <div className="text-[10px] text-slate-400">
+                              {preset.is_default ? "Default Template • " : ""}Version {preset.version}
+                            </div>
+                          </div>
+                          {selectedStylePresetId === preset.id && (
+                            <span className="text-[10px] bg-amber-500 text-slate-950 px-2 py-0.5 rounded font-bold">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 3: Tools & Audit */}
+              {advancedTab === "tools" && (
+                <div className="space-y-3">
+                  <h4 className="font-bold text-slate-100 uppercase tracking-wider text-[11px]">
+                    Document Tools &amp; Actions
+                  </h4>
+
+                  {onImportDesign && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAdvancedModal(false);
+                        onImportDesign();
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-850 hover:border-indigo-500/50 transition cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-indigo-500/20 text-indigo-400">
+                          <Upload size={16} />
+                        </div>
+                        <div>
+                          <div className="font-bold text-slate-100">Import Template Design</div>
+                          <div className="text-[11px] text-slate-400">Reconstruct layout from Word (.docx), Excel (.xlsx), or PDF</div>
+                        </div>
+                      </div>
+                    </button>
+                  )}
+
+                  {onCheckLayout && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAdvancedModal(false);
+                        onCheckLayout();
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-850 hover:border-teal-500/50 transition cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-teal-500/20 text-teal-400">
+                          <ShieldCheck size={16} />
+                        </div>
+                        <div>
+                          <div className="font-bold text-slate-100">Layout Flow &amp; Overlap Audit</div>
+                          <div className="text-[11px] text-slate-400">Automated diagnostic scanner for overlaps, bounds, and A4 clearance</div>
+                        </div>
+                      </div>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAdvancedModal(false);
+                      onOpenApplyModal();
+                    }}
+                    className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-850 hover:border-amber-500/50 transition cursor-pointer text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400">
+                        <Copy size={16} />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-100">Apply to Other Document Types</div>
+                        <div className="text-[11px] text-slate-400">Copy header, branding, borders, or styling to other templates</div>
+                      </div>
+                    </div>
+                  </button>
+
+                  <div className="pt-2 border-t border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAdvancedModal(false);
+                        onReset();
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 transition cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-rose-500/20 text-rose-400">
+                          <RotateCcw size={16} />
+                        </div>
+                        <div>
+                          <div className="font-bold text-rose-200">Reset to Default UAE Corporate Layout</div>
+                          <div className="text-[11px] text-rose-300/80">Restores standard positions (with confirmation dialog)</div>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 border-t border-slate-800 flex items-center justify-end bg-slate-950/80">
+              <button
+                type="button"
+                onClick={() => setShowAdvancedModal(false)}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* Tool Row: Editing Controls (Align, Grid, Zoom, Page Nav) */}
-      <div className="designer-scrollbar hidden h-11 items-center justify-between gap-2 overflow-x-auto border-t border-slate-800/80 px-3 md:flex">
-        {/* Alignment Controls (Enabled when element is selected) */}
-        <div className="flex shrink-0 items-center gap-0.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/80">
-          <button
-            type="button"
-            onClick={() => onAlign("left")}
-            disabled={!hasSelectedElement}
-            className={`p-1 rounded hover:bg-slate-700 transition ${
-              hasSelectedElement ? "text-slate-200" : "text-slate-600 cursor-not-allowed"
-            }`}
-            title="Align Left"
-            aria-label="Align Left"
-          >
-            <AlignLeft size={15} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onAlign("center")}
-            disabled={!hasSelectedElement}
-            className={`p-1 rounded hover:bg-slate-700 transition ${
-              hasSelectedElement ? "text-slate-200" : "text-slate-600 cursor-not-allowed"
-            }`}
-            title="Align Center Horizontally"
-            aria-label="Align Center"
-          >
-            <AlignCenter size={15} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onAlign("right")}
-            disabled={!hasSelectedElement}
-            className={`p-1 rounded hover:bg-slate-700 transition ${
-              hasSelectedElement ? "text-slate-200" : "text-slate-600 cursor-not-allowed"
-            }`}
-            title="Align Right"
-            aria-label="Align Right"
-          >
-            <AlignRight size={15} />
-          </button>
-          <span className="w-[1px] h-3.5 bg-slate-700 mx-1" />
-          <button
-            type="button"
-            onClick={() => onAlign("center-h")}
-            disabled={!hasSelectedElement}
-            className={`p-1 rounded hover:bg-slate-700 transition ${
-              hasSelectedElement ? "text-slate-200" : "text-slate-600 cursor-not-allowed"
-            }`}
-            title="Center on Page Horizontally"
-            aria-label="Center Horizontally"
-          >
-            <AlignHorizontalJustifyCenter size={15} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onAlign("center-v")}
-            disabled={!hasSelectedElement}
-            className={`p-1 rounded hover:bg-slate-700 transition ${
-              hasSelectedElement ? "text-slate-200" : "text-slate-600 cursor-not-allowed"
-            }`}
-            title="Center on Page Vertically"
-            aria-label="Center Vertically"
-          >
-            <AlignVerticalJustifyCenter size={15} />
-          </button>
-        </div>
-
-        {/* Snap Grid & Margins */}
-        <div className="flex shrink-0 items-center gap-0.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/80">
-          <button
-            type="button"
-            onClick={onToggleSnapGrid}
-            className={`p-1 rounded transition flex items-center gap-1 text-xs px-2 ${
-              snapGrid ? "bg-amber-500/20 text-amber-400 font-semibold" : "text-slate-400 hover:bg-slate-700"
-            }`}
-            title="Toggle Snap to Grid (5mm)"
-            aria-label="Toggle Grid"
-          >
-            <Grid size={14} /> Grid
-          </button>
-          <button
-            type="button"
-            onClick={onToggleSnapMargins}
-            className={`p-1 rounded transition flex items-center gap-1 text-xs px-2 ${
-              snapMargins ? "bg-amber-500/20 text-amber-400 font-semibold" : "text-slate-400 hover:bg-slate-700"
-            }`}
-            title="Toggle Snap to Margins (12mm)"
-            aria-label="Toggle Margins"
-          >
-            <Magnet size={14} /> Margins
-          </button>
-        </div>
-
-        {/* Zoom Controls */}
-        <div className="flex shrink-0 items-center gap-1 bg-slate-800/80 p-1 rounded-lg border border-slate-700/80">
-          <button
-            type="button"
-            onClick={() => onZoomChange(Math.max(0.1, Number((zoom - 0.1).toFixed(2))))}
-            className="p-1 rounded text-slate-300 hover:bg-slate-700"
-            title="Zoom Out"
-            aria-label="Zoom Out"
-          >
-            <ZoomOut size={14} />
-          </button>
-          <span className="text-xs font-mono font-medium px-1.5 text-slate-200 min-w-[45px] text-center">
-            {Math.round(zoom * 100)}%
-          </span>
-          <button
-            type="button"
-            onClick={() => onZoomChange(Math.min(1.8, Number((zoom + 0.1).toFixed(2))))}
-            className="p-1 rounded text-slate-300 hover:bg-slate-700"
-            title="Zoom In"
-            aria-label="Zoom In"
-          >
-            <ZoomIn size={14} />
-          </button>
-          <input
-            type="range"
-            min="0.1"
-            max="1.8"
-            step="0.05"
-            value={zoom}
-            onChange={(event) => onZoomChange(Number(event.target.value))}
-            className="hidden w-20 cursor-pointer accent-amber-500 xl:block"
-            aria-label="PDF zoom level"
-            title={`Zoom ${Math.round(zoom * 100)}%`}
-          />
-          <span className="w-[1px] h-3.5 bg-slate-700 mx-0.5" />
-          <button
-            type="button"
-            onClick={onFitWidth}
-            className="px-2 py-0.5 rounded text-[11px] font-medium text-slate-300 hover:bg-slate-700"
-            title="Fit Width"
-          >
-            Fit Width
-          </button>
-          <button
-            type="button"
-            onClick={onFitPage}
-            className="px-2 py-0.5 rounded text-[11px] font-medium text-slate-300 hover:bg-slate-700"
-            title="Fit Full Page"
-          >
-            Fit Page
-          </button>
-        </div>
-
-        {/* Multi-page Navigation */}
-        <div className="flex shrink-0 items-center gap-1 bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700/80 text-xs">
-          <button
-            type="button"
-            onClick={() => onPageChange(Math.max(1, pageNumber - 1))}
-            disabled={pageNumber <= 1}
-            className={`p-0.5 rounded ${pageNumber <= 1 ? "text-slate-600 cursor-not-allowed" : "text-slate-300 hover:bg-slate-700"}`}
-            title="Previous Page"
-            aria-label="Previous Page"
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <span className="font-mono text-slate-300">
-            Page {pageNumber} of {totalPages}
-          </span>
-          <button
-            type="button"
-            onClick={() => onPageChange(Math.min(totalPages, pageNumber + 1))}
-            disabled={pageNumber >= totalPages}
-            className={`p-0.5 rounded ${pageNumber >= totalPages ? "text-slate-600 cursor-not-allowed" : "text-slate-300 hover:bg-slate-700"}`}
-            title="Next Page"
-            aria-label="Next Page"
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
+      )}
     </header>
   );
 }
-
