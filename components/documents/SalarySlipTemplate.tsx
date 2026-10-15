@@ -28,10 +28,13 @@ export type SalarySlipData = {
   other_allowances?: number;
   friday_pay?: number;
   overtime_amount?: number;
+  bonus?: number;
   // Deductions
   absence_deduction?: number;
   advance_deduction?: number;
   insurance_deduction?: number;
+  loan_deduction?: number;
+  leave_deduction?: number;
   other_deductions?: number;
   // Calculated
   total_earnings: number;
@@ -72,8 +75,14 @@ export default function SalarySlipTemplate({
       ...(slip.transport_allowance ? [{ description: "Transport Allowance", quantity: 1, unit_price: slip.transport_allowance, line_total: slip.transport_allowance, vat_amount: 0 }] : []),
       ...(slip.other_allowances ? [{ description: "Other Allowances", quantity: 1, unit_price: slip.other_allowances, line_total: slip.other_allowances, vat_amount: 0 }] : []),
       ...(slip.overtime_amount ? [{ description: "Overtime Pay", quantity: 1, unit_price: slip.overtime_amount, line_total: slip.overtime_amount, vat_amount: 0 }] : []),
+      ...(slip.friday_pay ? [{ description: "Friday / Weekend Pay", quantity: 1, unit_price: slip.friday_pay, line_total: slip.friday_pay, vat_amount: 0 }] : []),
+      ...(slip.bonus ? [{ description: "Bonus", quantity: 1, unit_price: slip.bonus, line_total: slip.bonus, vat_amount: 0 }] : []),
       ...(slip.absence_deduction ? [{ description: "Absence Deduction", quantity: 1, unit_price: -slip.absence_deduction, line_total: -slip.absence_deduction, vat_amount: 0 }] : []),
       ...(slip.advance_deduction ? [{ description: "Advance Salary Deduction", quantity: 1, unit_price: -slip.advance_deduction, line_total: -slip.advance_deduction, vat_amount: 0 }] : []),
+      ...(slip.insurance_deduction ? [{ description: "Insurance Deduction", quantity: 1, unit_price: -slip.insurance_deduction, line_total: -slip.insurance_deduction, vat_amount: 0 }] : []),
+      ...(slip.loan_deduction ? [{ description: "Loan Deduction", quantity: 1, unit_price: -slip.loan_deduction, line_total: -slip.loan_deduction, vat_amount: 0 }] : []),
+      ...(slip.leave_deduction ? [{ description: "Leave Deduction", quantity: 1, unit_price: -slip.leave_deduction, line_total: -slip.leave_deduction, vat_amount: 0 }] : []),
+      ...(slip.other_deductions ? [{ description: "Other Deductions", quantity: 1, unit_price: -slip.other_deductions, line_total: -slip.other_deductions, vat_amount: 0 }] : []),
     ],
     subtotal: slip.total_earnings,
     vat_amount: 0,
