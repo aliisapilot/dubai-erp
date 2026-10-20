@@ -17,6 +17,9 @@ import {
   normalizeLayout,
   getLocalStorageKey,
   DOCUMENT_TYPE_OPTIONS,
+  type DesignerLayoutMode,
+  getBorderAsLayoutElement,
+  normalizePageBorders,
 } from "@/lib/documentDesigner";
 import {
   type DocNumberingConfig,
@@ -35,7 +38,7 @@ import LayoutValidatorModal from "./LayoutValidatorModal";
 import { getDocumentPageCount, getSampleDocumentData } from "../documents/DynamicDocumentRenderer";
 import { processAndOptimizeImage } from "@/lib/documentDesigner";
 import { AlertCircle, CheckCircle2, RotateCcw } from "lucide-react";
-import { autoFixDocumentLayout, computePaginationPlan, prepareSavedAutoFit } from "@/lib/documentLayoutEngine";
+import { autoFixDocumentLayout } from "@/lib/documentLayoutEngine";
 import { documentStylePresets } from "@/lib/documentStylePresets";
 import {
   getFallbackDocumentStylePreset,
@@ -50,44 +53,9 @@ import { getBrandConfig } from '@/lib/brandConfig';
 import { cloudError, revisionOf, type CloudRevision } from '@/lib/documentCloud';
 import { exportDesignBackup, preserveDesignDraft } from '@/lib/documentDesignBackup';
 
-function getInitialLayout(docType: DocumentTypeId): DocumentLayout {
-  if (typeof window !== "undefined") {
-    try {
-      const targetCompId = getCachedCompanySync()?.id;
-      if (targetCompId) {
-        const cacheKey = getLocalStorageKey(targetCompId, docType);
-        const fallbackKey = 'dubai-erp.design-cache.' + targetCompId + '.' + docType;
-        for (const key of [cacheKey, fallbackKey]) {
-          const raw = window.localStorage.getItem(key);
-          if (raw) {
-            const cached = JSON.parse(raw) as DocumentLayout;
-            if (cached.documentType === docType && Array.isArray(cached.elements)) {
-              return normalizeLayout(cached);
-            }
-          }
-        }
-      }
-    } catch {}
-  }
-  return createDefaultLayout(docType);
-}
-
-function getRequestedDocType(): DocumentTypeId {
-  if (typeof window !== "undefined") {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const req = (params.get("type") || params.get("docType")) as DocumentTypeId;
-      if (req && DOCUMENT_TYPE_OPTIONS.some((d) => d.id === req)) {
-        return req;
-      }
-    } catch {}
-  }
-  return "tax_invoice";
-}
-
 export default function DocumentDesigner() {
-  const [selectedDocType, setSelectedDocType] = useState<DocumentTypeId>(getRequestedDocType);
-  const [layout, setLayout] = useState<DocumentLayout>(() => getInitialLayout(getRequestedDocType()));
+  const [selectedDocType, setSelectedDocType] = useState<DocumentTypeId>("tax_invoice");
+  const [layout, setLayout] = useState<DocumentLayout>(() => createDefaultLayout("tax_invoice"));
   const [company, setCompany] = useState<CompanyDocInfo | null>(() => getCachedCompanySync() as CompanyDocInfo | null);
   const [companyId, setCompanyId] = useState<string | null | undefined>(() => getCachedCompanySync()?.id ?? undefined);
   const [stylePresets, setStylePresets] = useState<DocumentStylePreset[]>([]);
@@ -137,6 +105,8 @@ export default function DocumentDesigner() {
   const [applyTargetElement, setApplyTargetElement] = useState<LayoutElement | null>(null);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [rightInspectorOpen, setRightInspectorOpen] = useState(true);
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(250);
+  const [rightInspectorWidth, setRightInspectorWidth] = useState(360);
 
   const handleOpenApplyModal = useCallback((targetElem?: LayoutElement | null) => {
     setApplyTargetElement(targetElem || null);
@@ -210,6 +180,24 @@ export default function DocumentDesigner() {
     };
   }, []);
 
+  // ── 0. Sync URL parameters and responsive sidebars strictly after hydration ──
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const req = (params.get("type") || params.get("docType")) as DocumentTypeId;
+      if (req && DOCUMENT_TYPE_OPTIONS.some((d) => d.id === req)) {
+        queueMicrotask(() => setSelectedDocType(req));
+      }
+    } catch {}
+
+    if (window.innerWidth < 1024) {
+      queueMicrotask(() => {
+        setLeftSidebarOpen(false);
+        setRightInspectorOpen(false);
+      });
+    }
+  }, []);
+
   // ── 1. Load Company Profile Once ───────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
@@ -239,11 +227,11 @@ export default function DocumentDesigner() {
     let cancelled = false;
 
     // Instant paint from localStorage so the canvas is visible while Supabase loads.
-    if (companyId) {
-      try {
-        const cacheKey = getLocalStorageKey(companyId, selectedDocType);
-        const fallbackKey = 'dubai-erp.design-cache.' + companyId + '.' + selectedDocType;
-        for (const key of [cacheKey, fallbackKey]) {
+    const targetCompId = companyId || "anonymous";
+    try {
+      const cacheKey = getLocalStorageKey(targetCompId, selectedDocType);
+      const fallbackKey = 'dubai-erp.design-cache.' + targetCompId + '.' + selectedDocType;
+      for (const key of [cacheKey, fallbackKey]) {
           const raw = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
           if (raw) {
             const cached = JSON.parse(raw) as DocumentLayout;
@@ -267,7 +255,6 @@ export default function DocumentDesigner() {
           }
         }
       } catch { /* ignore cache errors */ }
-    }
 
     async function hydrateDocument() {
       try {
@@ -396,16 +383,121 @@ export default function DocumentDesigner() {
     }
   }, []);
 
+  const handleChangeLayoutMode = useCallback(
+    (mode: DesignerLayoutMode) => {
+      const updated = { ...layout, layoutMode: mode };
+      pushHistory(updated);
+      setNotification({
+        message:
+          mode === "manual"
+            ? "Switched to Manual Design mode: User dimensions and positions strictly preserved."
+            : mode === "assisted"
+            ? "Switched to Assisted Layout mode: Layout suggestions will be provided."
+            : "Switched to Auto Fit mode: Automatic single-page compaction active.",
+        type: "success",
+      });
+      setTimeout(() => setNotification(null), 3500);
+    },
+    [layout, pushHistory]
+  );
+
   // ── 4. Element Update Handler ──────────────────────────────────────────────
   // Uses refs for history so it's safe to call 60×/sec during drag without stale closures.
   const handleUpdateElement = useCallback(
     (id: string, patch: Partial<LayoutElement>, commitHistory: boolean = true) => {
       setLayout((prevLayout) => {
-        const nextElements = prevLayout.elements.map((el) => {
-          if (el.id !== id) return el;
-          return { ...el, ...patch };
-        });
-        const updated = { ...prevLayout, elements: nextElements };
+        let updated: DocumentLayout;
+
+        if (id.startsWith("border_")) {
+          const borders = normalizePageBorders(prevLayout.page?.borders);
+          const pw = prevLayout.page.widthMm || 210;
+          const ph = prevLayout.page.heightMm || 297;
+          const nextBorders = { ...borders };
+
+          if (id === "border_top") {
+            const b = borders.top;
+            const newPos = patch.y !== undefined ? Math.max(0, patch.y) : b.position;
+            const newThick = patch.height !== undefined ? Math.max(0.5, patch.height) : b.thickness;
+            const newX = patch.x !== undefined ? patch.x : b.x;
+            const newW = patch.width !== undefined ? patch.width : b.width;
+            nextBorders.top = {
+              ...b,
+              position: newPos,
+              thickness: newThick,
+              x: newX,
+              width: newW,
+              ...(patch.color ? { color: patch.color } : {}),
+              ...(patch.opacity !== undefined ? { opacity: patch.opacity } : {}),
+              ...(patch.locked !== undefined ? { locked: patch.locked } : {}),
+              ...(patch.visible !== undefined ? { enabled: patch.visible } : {}),
+            };
+          } else if (id === "border_bottom") {
+            const b = borders.bottom;
+            const newThick = patch.height !== undefined ? Math.max(0.5, patch.height) : b.thickness;
+            const newPos = patch.y !== undefined ? Math.max(0, ph - patch.y - newThick) : b.position;
+            const newX = patch.x !== undefined ? patch.x : b.x;
+            const newW = patch.width !== undefined ? patch.width : b.width;
+            nextBorders.bottom = {
+              ...b,
+              position: newPos,
+              thickness: newThick,
+              x: newX,
+              width: newW,
+              ...(patch.color ? { color: patch.color } : {}),
+              ...(patch.opacity !== undefined ? { opacity: patch.opacity } : {}),
+              ...(patch.locked !== undefined ? { locked: patch.locked } : {}),
+              ...(patch.visible !== undefined ? { enabled: patch.visible } : {}),
+            };
+          } else if (id === "border_left") {
+            const b = borders.left;
+            const newPos = patch.x !== undefined ? Math.max(0, patch.x) : b.position;
+            const newY = patch.y !== undefined ? Math.max(0, patch.y) : b.y;
+            const newLen = patch.height !== undefined ? Math.max(5, patch.height) : b.length;
+            const newThick = patch.width !== undefined ? Math.max(0.5, patch.width) : b.thickness;
+            nextBorders.left = {
+              ...b,
+              position: newPos,
+              y: newY,
+              length: newLen,
+              thickness: newThick,
+              ...(patch.color ? { color: patch.color } : {}),
+              ...(patch.opacity !== undefined ? { opacity: patch.opacity } : {}),
+              ...(patch.locked !== undefined ? { locked: patch.locked } : {}),
+              ...(patch.visible !== undefined ? { enabled: patch.visible } : {}),
+            };
+          } else if (id === "border_right") {
+            const b = borders.right;
+            const newThick = patch.width !== undefined ? Math.max(0.5, patch.width) : b.thickness;
+            const newPos = patch.x !== undefined ? Math.max(0, pw - patch.x - newThick) : b.position;
+            const newY = patch.y !== undefined ? Math.max(0, patch.y) : b.y;
+            const newLen = patch.height !== undefined ? Math.max(5, patch.height) : b.length;
+            nextBorders.right = {
+              ...b,
+              position: newPos,
+              y: newY,
+              length: newLen,
+              thickness: newThick,
+              ...(patch.color ? { color: patch.color } : {}),
+              ...(patch.opacity !== undefined ? { opacity: patch.opacity } : {}),
+              ...(patch.locked !== undefined ? { locked: patch.locked } : {}),
+              ...(patch.visible !== undefined ? { enabled: patch.visible } : {}),
+            };
+          }
+
+          updated = {
+            ...prevLayout,
+            page: {
+              ...prevLayout.page,
+              borders: nextBorders,
+            },
+          };
+        } else {
+          const nextElements = prevLayout.elements.map((el) => {
+            if (el.id !== id) return el;
+            return { ...el, ...patch };
+          });
+          updated = { ...prevLayout, elements: nextElements };
+        }
 
         if (commitHistory) {
           const cur = historyRef.current;
@@ -533,6 +625,11 @@ export default function DocumentDesigner() {
   // ── 8. Visibility & Lock Toggles ───────────────────────────────────────────
   const handleToggleVisibility = useCallback(
     (id: string) => {
+      if (id.startsWith("border_")) {
+        const borderEl = getBorderAsLayoutElement(id, layout);
+        if (borderEl) handleUpdateElement(id, { visible: !borderEl.visible }, true);
+        return;
+      }
       const elem = layout.elements.find((el) => el.id === id);
       if (elem) handleUpdateElement(id, { visible: !elem.visible }, true);
     },
@@ -541,6 +638,11 @@ export default function DocumentDesigner() {
 
   const handleToggleLock = useCallback(
     (id: string) => {
+      if (id.startsWith("border_")) {
+        const borderEl = getBorderAsLayoutElement(id, layout);
+        if (borderEl) handleUpdateElement(id, { locked: !borderEl.locked }, true);
+        return;
+      }
       const elem = layout.elements.find((el) => el.id === id);
       if (elem) handleUpdateElement(id, { locked: !elem.locked }, true);
     },
@@ -699,6 +801,15 @@ export default function DocumentDesigner() {
 
   const handleDeleteSelected = useCallback(() => {
     if (!selectedElementId) return;
+    if (selectedElementId.startsWith("border_")) {
+      handleUpdateElement(selectedElementId, { visible: false }, true);
+      setNotification({
+        message: `Disabled page border. Re-enable in Page & Borders settings anytime.`,
+        type: "success",
+      });
+      setTimeout(() => setNotification(null), 3000);
+      return;
+    }
     const elem = layout.elements.find((el) => el.id === selectedElementId);
     if (!elem || elem.locked) return;
 
@@ -718,7 +829,7 @@ export default function DocumentDesigner() {
       });
       setTimeout(() => setNotification(null), 3000);
     }
-  }, [selectedElementId, layout.elements, handleDeleteElement, handleToggleVisibility]);
+  }, [selectedElementId, layout.elements, handleDeleteElement, handleToggleVisibility, handleUpdateElement]);
 
   const handleResetElement = useCallback(
     (id: string) => {
@@ -976,25 +1087,6 @@ export default function DocumentDesigner() {
     handleFitWidthRef.current = handleFitWidth;
   }, [handleFitWidth]);
 
-  // Keep narrow workspaces usable. Actual canvas-size changes are handled by
-  // the ResizeObserver below so browser zoom and toolbar wrapping cannot crop A4.
-  useEffect(() => {
-    const collapsePanelsForViewport = () => {
-      if (window.innerWidth < 1280) {
-        setLeftSidebarOpen(false);
-        setRightInspectorOpen(false);
-      }
-    };
-    collapsePanelsForViewport();
-    const handleResize = () => {
-      collapsePanelsForViewport();
-    };
-    window.addEventListener("resize", handleResize);
-    return () => {
-      window.removeEventListener("resize", handleResize);
-    };
-  }, []);
-
   // ── Keyboard Shortcut and Arrow-Key Nudging Listener ───────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1181,7 +1273,10 @@ export default function DocumentDesigner() {
     handleDeleteSelected,
   ]);
 
-  const selectedElement = layout.elements.find((el) => el.id === selectedElementId) || null;
+  const selectedBorder = selectedElementId?.startsWith("border_")
+    ? getBorderAsLayoutElement(selectedElementId, layout)
+    : null;
+  const selectedElement = selectedBorder || layout.elements.find((el) => el.id === selectedElementId) || null;
 
   return (
     <div className={`pdf-designer-shell flex w-full min-w-0 flex-col overflow-hidden bg-slate-950 font-sans ${isFullscreen ? "fixed inset-0 z-50 h-screen" : "h-[100dvh]"}`}>
@@ -1248,6 +1343,8 @@ export default function DocumentDesigner() {
             leftSidebarOpen={leftSidebarOpen}
             rightInspectorOpen={rightInspectorOpen}
             templateName={layout.templateName}
+            layoutMode={layout.layoutMode || "manual"}
+            onChangeLayoutMode={handleChangeLayoutMode}
           />
         )}
 
@@ -1255,21 +1352,45 @@ export default function DocumentDesigner() {
         <div inert={saving || loadingCloud || styleModalBusy} className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
           {/* Left Sidebar: Document Layers / Sections */}
           {!isFullscreen && leftSidebarOpen && (
-            <div className="absolute inset-y-0 left-0 z-40 xl:static xl:z-auto">
-              <LeftSidebar
-                elements={layout.elements}
-                selectedElementId={selectedElementId}
-                onSelectElement={setSelectedElementId}
-                onToggleVisibility={handleToggleVisibility}
-                onToggleLock={handleToggleLock}
-                onMoveLayer={handleMoveLayer}
-                onAddCustomElement={handleAddCustomElement}
-                onAddImage={handleAddImage}
-                layout={layout}
-                onChangeLayout={setLayout}
-                defaultBranding={createDefaultLayout(selectedDocType).branding}
+            <>
+              <div
+                className="absolute inset-y-0 left-0 z-40 xl:static xl:z-auto shrink-0 flex flex-col h-full overflow-hidden"
+                style={{ width: `${leftSidebarWidth}px` }}
+              >
+                <LeftSidebar
+                  elements={layout.elements}
+                  selectedElementId={selectedElementId}
+                  onSelectElement={setSelectedElementId}
+                  onToggleVisibility={handleToggleVisibility}
+                  onToggleLock={handleToggleLock}
+                  onMoveLayer={handleMoveLayer}
+                  onAddCustomElement={handleAddCustomElement}
+                  onAddImage={handleAddImage}
+                  layout={layout}
+                  onChangeLayout={setLayout}
+                  defaultBranding={createDefaultLayout(selectedDocType).branding}
+                />
+              </div>
+              <div
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  const startX = e.clientX;
+                  const startWidth = leftSidebarWidth;
+                  const onMouseMove = (moveEvent: MouseEvent) => {
+                    const newW = Math.max(180, Math.min(420, startWidth + (moveEvent.clientX - startX)));
+                    setLeftSidebarWidth(newW);
+                  };
+                  const onMouseUp = () => {
+                    window.removeEventListener("mousemove", onMouseMove);
+                    window.removeEventListener("mouseup", onMouseUp);
+                  };
+                  window.addEventListener("mousemove", onMouseMove);
+                  window.addEventListener("mouseup", onMouseUp);
+                }}
+                className="w-1 hover:w-1.5 bg-slate-800/80 hover:bg-amber-500 cursor-col-resize transition-all z-30 shrink-0 hidden xl:block select-none"
+                title="Drag to resize Layers panel"
               />
-            </div>
+            </>
           )}
 
           {/* Center: Interactive A4 Canvas */}
@@ -1279,6 +1400,8 @@ export default function DocumentDesigner() {
             selectedElementId={selectedElementId}
             onSelectElement={setSelectedElementId}
             onUpdateElement={handleUpdateElement}
+            onDuplicateElement={handleDuplicateElement}
+            onDeleteSelected={handleDeleteSelected}
             zoom={zoom}
             snapGrid={snapGrid}
             snapMargins={snapMargins}
@@ -1296,24 +1419,53 @@ export default function DocumentDesigner() {
 
           {/* Right Sidebar: Selected Element Inspector / Page Settings */}
           {!isFullscreen && rightInspectorOpen && (
-            <div className="absolute inset-y-0 right-0 z-40 xl:static xl:z-auto">
-              <RightInspector
-                layout={layout}
-                selectedElement={selectedElement}
-                onUpdateElement={handleUpdateElement}
-                onUpdateLayoutBranding={handleUpdateLayoutBranding}
-                onUpdatePageSettings={handleUpdatePageSettings}
-                onDeleteElement={handleDeleteElement}
-                onMoveLayer={handleMoveLayer}
-                onResetElement={handleResetElement}
-                onApplyElementToOthers={(elem) => handleOpenApplyModal(elem)}
-                onDuplicateElement={handleDuplicateElement}
-                onReplaceImage={handleReplaceImage}
-                onPreviewActualSize={() => setShowPreviewModal(true)}
-                onOpenTestSheet={() => setShowTestSheetModal(true)}
-                onUpdateNumberingConfig={handleUpdateNumberingConfig}
+            <>
+              <div
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  const startX = e.clientX;
+                  const startWidth = rightInspectorWidth;
+                  const onMouseMove = (moveEvent: MouseEvent) => {
+                    const newW = Math.max(280, Math.min(500, startWidth - (moveEvent.clientX - startX)));
+                    setRightInspectorWidth(newW);
+                  };
+                  const onMouseUp = () => {
+                    window.removeEventListener("mousemove", onMouseMove);
+                    window.removeEventListener("mouseup", onMouseUp);
+                  };
+                  window.addEventListener("mousemove", onMouseMove);
+                  window.addEventListener("mouseup", onMouseUp);
+                }}
+                className="w-1 hover:w-1.5 bg-slate-800/80 hover:bg-amber-500 cursor-col-resize transition-all z-30 shrink-0 hidden xl:block select-none"
+                title="Drag to resize Properties Inspector"
               />
-            </div>
+              <div
+                className="absolute inset-y-0 right-0 z-40 xl:static xl:z-auto shrink-0 flex flex-col h-full overflow-hidden"
+                style={{ width: `${rightInspectorWidth}px` }}
+              >
+                <RightInspector
+                  layout={layout}
+                  selectedElement={selectedElement}
+                  onUpdateElement={handleUpdateElement}
+                  onUpdateLayoutBranding={handleUpdateLayoutBranding}
+                  onUpdatePageSettings={handleUpdatePageSettings}
+                  onDeleteElement={handleDeleteElement}
+                  onMoveLayer={handleMoveLayer}
+                  onResetElement={handleResetElement}
+                  onApplyElementToOthers={(elem) => handleOpenApplyModal(elem)}
+                  onDuplicateElement={handleDuplicateElement}
+                  onReplaceImage={handleReplaceImage}
+                  onPreviewActualSize={() => setShowPreviewModal(true)}
+                  onOpenTestSheet={() => setShowTestSheetModal(true)}
+                  onUpdateNumberingConfig={handleUpdateNumberingConfig}
+                  onChangeLayoutMode={handleChangeLayoutMode}
+                  snapGrid={snapGrid}
+                  onToggleSnapGrid={() => setSnapGrid(!snapGrid)}
+                  snapMargins={snapMargins}
+                  onToggleSnapMargins={() => setSnapMargins(!snapMargins)}
+                />
+              </div>
+            </>
           )}
         </div>
       </div>

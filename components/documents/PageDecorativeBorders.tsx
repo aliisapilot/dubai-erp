@@ -95,14 +95,16 @@ export default function PageDecorativeBorders({
 }: PageDecorativeBordersProps) {
   const borders = normalizePageBorders(directBorders || layout?.page?.borders);
   const printSettings = normalizePrintSettings(layout?.page?.printSettings);
-  const { top, bottom } = borders;
+  const { top, bottom, left, right } = borders;
 
-  if (!top.enabled && !bottom.enabled) {
+  if (!top.enabled && !bottom.enabled && !left.enabled && !right.enabled) {
     return null;
   }
 
   const pageWidth = layout?.page?.widthMm || 210;
   const pageHeight = layout?.page?.heightMm || 297;
+  const margins = layout?.page?.margins || { top: 10, bottom: 10, left: 10, right: 10 };
+  const isManual = layout?.layoutMode === "manual";
 
   const { safeTopLimitMm, safeBottomLimitMm } = calculateBorderClearances(layout, elements);
 
@@ -111,29 +113,43 @@ export default function PageDecorativeBorders({
     printSettings.printerSafeMargins !== false;
   const isGrayscale = printSettings.colorMode === "grayscale";
 
-  // Clamp top border so its lowest edge NEVER penetrates safeTopLimitMm
-  // Insetting to 3.5mm ensures physical printer rollers do not clip it off
-  const minTopSafeOffset = isPrintSafe ? 3.5 : 0;
+  // In Manual mode, user has absolute authority — no silent clamping
+  const minTopSafeOffset = !isManual && isPrintSafe ? 3.5 : 0;
   const rawTopPos = Math.max(minTopSafeOffset, top.position || 0);
-  const clampedTopPos = Math.min(rawTopPos, Math.max(minTopSafeOffset, safeTopLimitMm - 1));
-  const maxAllowedTopThickness = Math.max(0.5, safeTopLimitMm - clampedTopPos);
-  const effectiveTopThickness = Math.min(Math.max(0.5, top.thickness || 4), maxAllowedTopThickness);
+  const clampedTopPos = isManual ? (top.position || 0) : Math.min(rawTopPos, Math.max(minTopSafeOffset, safeTopLimitMm - 1));
+  const maxAllowedTopThickness = isManual ? (top.thickness || 4) : Math.max(0.5, safeTopLimitMm - clampedTopPos);
+  const effectiveTopThickness = Math.max(0.5, isManual ? (top.thickness || 4) : Math.min(top.thickness || 4, maxAllowedTopThickness));
 
-  // Clamp bottom border so its highest edge NEVER penetrates safeBottomLimitMm
-  // Insetting to 4.0mm ensures physical paper prints the navy bottom border completely
-  const minBottomSafeOffset = isPrintSafe ? 4.0 : 0;
+  const minBottomSafeOffset = !isManual && isPrintSafe ? 4.0 : 0;
   const rawBottomPos = Math.max(minBottomSafeOffset, bottom.position || 0);
-  const clampedBottomPos = Math.min(rawBottomPos, Math.max(minBottomSafeOffset, pageHeight - safeBottomLimitMm - 1));
-  const maxAllowedBottomThickness = Math.max(0.5, pageHeight - clampedBottomPos - safeBottomLimitMm);
-  const effectiveBottomThickness = Math.min(
-    Math.max(0.5, bottom.thickness || 4),
-    maxAllowedBottomThickness
-  );
+  const clampedBottomPos = isManual ? (bottom.position || 0) : Math.min(rawBottomPos, Math.max(minBottomSafeOffset, pageHeight - safeBottomLimitMm - 1));
+  const maxAllowedBottomThickness = isManual ? (bottom.thickness || 4) : Math.max(0.5, pageHeight - clampedBottomPos - safeBottomLimitMm);
+  const effectiveBottomThickness = Math.max(0.5, isManual ? (bottom.thickness || 4) : Math.min(bottom.thickness || 4, maxAllowedBottomThickness));
 
   const effectiveTopColor = isGrayscale ? "#334155" : (top.color || "#E0AC23");
   const effectiveBottomColor = isGrayscale ? "#0F172A" : (bottom.color || "#173C64");
   const effectiveTopSecondary = isGrayscale ? "#475569" : (top.secondaryColor || (effectiveTopColor === "#E0AC23" ? "#173C64" : "#E0AC23"));
   const effectiveBottomSecondary = isGrayscale ? "#475569" : (bottom.secondaryColor || (effectiveBottomColor === "#173C64" ? "#E0AC23" : "#173C64"));
+
+  const topX = top.widthMode === "margins" ? margins.left : (top.x ?? 0);
+  const topW = top.widthMode === "margins" ? (pageWidth - margins.left - margins.right) : (top.width ?? (pageWidth - topX));
+
+  const bottomX = bottom.widthMode === "margins" ? margins.left : (bottom.x ?? 0);
+  const bottomW = bottom.widthMode === "margins" ? (pageWidth - margins.left - margins.right) : (bottom.width ?? (pageWidth - bottomX));
+
+  const effectiveLeftColor = isGrayscale ? "#334155" : (left.color || "#CBD5E1");
+  const effectiveRightColor = isGrayscale ? "#334155" : (right.color || "#CBD5E1");
+
+  const leftX = left.position || 0;
+  const leftY = left.y || 0;
+  const leftLen = left.length || (pageHeight - leftY);
+  const leftThick = Math.max(0.5, left.thickness || 1);
+
+  const rightPos = right.position || 0;
+  const rightY = right.y || 0;
+  const rightLen = right.length || (pageHeight - rightY);
+  const rightThick = Math.max(0.5, right.thickness || 1);
+  const rightX = pageWidth - rightPos - rightThick;
 
   return (
     <div
@@ -146,38 +162,74 @@ export default function PageDecorativeBorders({
       }}
       aria-hidden="true"
     >
-      {/* 1. Universal CSS Border Stripes (Guaranteed to render under ALL browser settings and paper destinations) */}
-      {top.enabled && top.style === "straight" && (top.angle || 0) === 0 && (
+      {/* 1. Universal CSS Border Stripes */}
+      {top.enabled && (top.style === "straight" || top.style === "solid") && (top.angle || 0) === 0 && (
         <div
           className="print-border-stripe-top"
           style={{
             position: "absolute",
             top: `${clampedTopPos}mm`,
-            left: 0,
-            width: `${pageWidth}mm`,
+            left: `${topX}mm`,
+            width: `${topW}mm`,
             height: `${effectiveTopThickness}mm`,
             boxSizing: "border-box",
             backgroundColor: effectiveTopColor,
             borderBottom: `${effectiveTopThickness}mm solid ${effectiveTopColor}`,
             opacity: top.opacity ?? 1,
+            zIndex: top.zIndex,
             WebkitPrintColorAdjust: "exact",
             printColorAdjust: "exact",
           }}
         />
       )}
-      {bottom.enabled && bottom.style === "straight" && (bottom.angle || 0) === 0 && (
+      {bottom.enabled && (bottom.style === "straight" || bottom.style === "solid") && (bottom.angle || 0) === 0 && (
         <div
           className="print-border-stripe-bottom"
           style={{
             position: "absolute",
             bottom: `${clampedBottomPos}mm`,
-            left: 0,
-            width: `${pageWidth}mm`,
+            left: `${bottomX}mm`,
+            width: `${bottomW}mm`,
             height: `${effectiveBottomThickness}mm`,
             boxSizing: "border-box",
             backgroundColor: effectiveBottomColor,
             borderTop: `${effectiveBottomThickness}mm solid ${effectiveBottomColor}`,
             opacity: bottom.opacity ?? 1,
+            zIndex: bottom.zIndex,
+            WebkitPrintColorAdjust: "exact",
+            printColorAdjust: "exact",
+          }}
+        />
+      )}
+      {left.enabled && (left.style === "solid" || left.style === "straight") && (
+        <div
+          className="print-border-stripe-left"
+          style={{
+            position: "absolute",
+            top: `${leftY}mm`,
+            left: `${leftX}mm`,
+            width: `${leftThick}mm`,
+            height: `${leftLen}mm`,
+            backgroundColor: effectiveLeftColor,
+            opacity: left.opacity ?? 1,
+            zIndex: left.zIndex,
+            WebkitPrintColorAdjust: "exact",
+            printColorAdjust: "exact",
+          }}
+        />
+      )}
+      {right.enabled && (right.style === "solid" || right.style === "straight") && (
+        <div
+          className="print-border-stripe-right"
+          style={{
+            position: "absolute",
+            top: `${rightY}mm`,
+            right: `${rightPos}mm`,
+            width: `${rightThick}mm`,
+            height: `${rightLen}mm`,
+            backgroundColor: effectiveRightColor,
+            opacity: right.opacity ?? 1,
+            zIndex: right.zIndex,
             WebkitPrintColorAdjust: "exact",
             printColorAdjust: "exact",
           }}
@@ -201,7 +253,6 @@ export default function PageDecorativeBorders({
         }}
       >
         <defs>
-          {/* Subtle gradient for depth if needed */}
           <linearGradient id="goldAccentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="#C8961D" />
             <stop offset="50%" stopColor="#E0AC23" />
@@ -219,6 +270,8 @@ export default function PageDecorativeBorders({
           <TopBorderRenderer
             border={top}
             pageWidth={pageWidth}
+            startX={topX}
+            customWidth={topW}
             positionY={clampedTopPos}
             thickness={effectiveTopThickness}
             maxAllowedBottomY={safeTopLimitMm}
@@ -233,11 +286,37 @@ export default function PageDecorativeBorders({
             border={bottom}
             pageWidth={pageWidth}
             pageHeight={pageHeight}
+            startX={bottomX}
+            customWidth={bottomW}
             positionFromBottom={clampedBottomPos}
             thickness={effectiveBottomThickness}
             minAllowedTopY={safeBottomLimitMm}
             overrideColor={effectiveBottomColor}
             overrideSecondary={effectiveBottomSecondary}
+          />
+        )}
+
+        {/* ── LEFT BORDER ─────────────────────────────────────────────────────── */}
+        {left.enabled && (
+          <SideBorderRenderer
+            border={left}
+            startX={leftX}
+            startY={leftY}
+            thickness={leftThick}
+            length={leftLen}
+            color={effectiveLeftColor}
+          />
+        )}
+
+        {/* ── RIGHT BORDER ────────────────────────────────────────────────────── */}
+        {right.enabled && (
+          <SideBorderRenderer
+            border={right}
+            startX={rightX}
+            startY={rightY}
+            thickness={rightThick}
+            length={rightLen}
+            color={effectiveRightColor}
           />
         )}
       </svg>
@@ -249,6 +328,8 @@ export default function PageDecorativeBorders({
 function TopBorderRenderer({
   border,
   pageWidth,
+  startX,
+  customWidth,
   positionY,
   thickness,
   maxAllowedBottomY,
@@ -257,6 +338,8 @@ function TopBorderRenderer({
 }: {
   border: PageDecorativeBorder;
   pageWidth: number;
+  startX?: number;
+  customWidth?: number;
   positionY: number;
   thickness: number;
   maxAllowedBottomY: number;
@@ -267,6 +350,8 @@ function TopBorderRenderer({
   const opacity = border.opacity ?? 1;
   const angle = border.angle || 0;
   const secondary = overrideSecondary || border.secondaryColor || (color === "#E0AC23" ? "#173C64" : "#E0AC23");
+  const xPos = startX ?? 0;
+  const w = customWidth ?? (pageWidth - xPos);
 
   const fillStyle: React.CSSProperties = {
     fill: color,
@@ -289,16 +374,56 @@ function TopBorderRenderer({
     printColorAdjust: "exact",
   };
 
+  if (border.style === "dashed") {
+    return (
+      <line
+        x1={xPos}
+        y1={positionY + thickness / 2}
+        x2={xPos + w}
+        y2={positionY + thickness / 2}
+        stroke={color}
+        strokeWidth={thickness}
+        strokeDasharray="4 2"
+        opacity={opacity}
+      />
+    );
+  }
+  if (border.style === "dotted") {
+    return (
+      <line
+        x1={xPos}
+        y1={positionY + thickness / 2}
+        x2={xPos + w}
+        y2={positionY + thickness / 2}
+        stroke={color}
+        strokeWidth={thickness}
+        strokeDasharray="1 2"
+        strokeLinecap="round"
+        opacity={opacity}
+      />
+    );
+  }
+  if (border.style === "double") {
+    const t3 = Math.max(0.3, thickness / 3);
+    return (
+      <g opacity={opacity}>
+        <line x1={xPos} y1={positionY} x2={xPos + w} y2={positionY} stroke={color} strokeWidth={t3} />
+        <line x1={xPos} y1={positionY + thickness - t3} x2={xPos + w} y2={positionY + thickness - t3} stroke={color} strokeWidth={t3} />
+      </g>
+    );
+  }
+
   switch (border.style) {
+    case "solid":
     case "straight": {
       if (angle === 0) {
         return (
           <g opacity={opacity}>
             {/* Main solid border bar */}
             <rect
-              x={0}
+              x={xPos}
               y={positionY}
-              width={pageWidth}
+              width={w}
               height={thickness}
               fill={color}
               stroke={color}
@@ -519,6 +644,8 @@ function BottomBorderRenderer({
   border,
   pageWidth,
   pageHeight,
+  startX,
+  customWidth,
   positionFromBottom,
   thickness,
   minAllowedTopY,
@@ -528,6 +655,8 @@ function BottomBorderRenderer({
   border: PageDecorativeBorder;
   pageWidth: number;
   pageHeight: number;
+  startX?: number;
+  customWidth?: number;
   positionFromBottom: number;
   thickness: number;
   minAllowedTopY: number;
@@ -541,6 +670,8 @@ function BottomBorderRenderer({
 
   const startY = Math.max(minAllowedTopY, pageHeight - positionFromBottom - thickness);
   const actualHeight = Math.min(thickness, pageHeight - startY);
+  const xPos = startX ?? 0;
+  const w = customWidth ?? (pageWidth - xPos);
 
   const fillStyle: React.CSSProperties = {
     fill: color,
@@ -563,16 +694,56 @@ function BottomBorderRenderer({
     printColorAdjust: "exact",
   };
 
+  if (border.style === "dashed") {
+    return (
+      <line
+        x1={xPos}
+        y1={startY + actualHeight / 2}
+        x2={xPos + w}
+        y2={startY + actualHeight / 2}
+        stroke={color}
+        strokeWidth={actualHeight}
+        strokeDasharray="4 2"
+        opacity={opacity}
+      />
+    );
+  }
+  if (border.style === "dotted") {
+    return (
+      <line
+        x1={xPos}
+        y1={startY + actualHeight / 2}
+        x2={xPos + w}
+        y2={startY + actualHeight / 2}
+        stroke={color}
+        strokeWidth={actualHeight}
+        strokeDasharray="1 2"
+        strokeLinecap="round"
+        opacity={opacity}
+      />
+    );
+  }
+  if (border.style === "double") {
+    const t3 = Math.max(0.3, actualHeight / 3);
+    return (
+      <g opacity={opacity}>
+        <line x1={xPos} y1={startY} x2={xPos + w} y2={startY} stroke={color} strokeWidth={t3} />
+        <line x1={xPos} y1={startY + actualHeight - t3} x2={xPos + w} y2={startY + actualHeight - t3} stroke={color} strokeWidth={t3} />
+      </g>
+    );
+  }
+
   switch (border.style) {
+    case "solid":
     case "straight": {
       if (angle === 0) {
         return (
           <g opacity={opacity}>
             {/* Main solid bottom bar */}
             <rect
-              x={0}
+              x={xPos}
               y={startY}
-              width={pageWidth}
+              width={w}
               height={actualHeight}
               fill={color}
               stroke={color}
@@ -782,4 +953,76 @@ function BottomBorderRenderer({
         />
       );
   }
+}
+
+// ── Left & Right Side Border Renderer ──────────────────────────────────────────
+function SideBorderRenderer({
+  border,
+  startX,
+  startY,
+  thickness,
+  length,
+  color,
+}: {
+  border: PageDecorativeBorder;
+  startX: number;
+  startY: number;
+  thickness: number;
+  length: number;
+  color: string;
+}) {
+  const opacity = border.opacity ?? 1;
+  const style = border.style || "solid";
+
+  if (style === "dashed") {
+    return (
+      <line
+        x1={startX + thickness / 2}
+        y1={startY}
+        x2={startX + thickness / 2}
+        y2={startY + length}
+        stroke={color}
+        strokeWidth={thickness}
+        strokeDasharray="4 2"
+        opacity={opacity}
+      />
+    );
+  }
+
+  if (style === "dotted") {
+    return (
+      <line
+        x1={startX + thickness / 2}
+        y1={startY}
+        x2={startX + thickness / 2}
+        y2={startY + length}
+        stroke={color}
+        strokeWidth={thickness}
+        strokeDasharray="1 2"
+        strokeLinecap="round"
+        opacity={opacity}
+      />
+    );
+  }
+
+  if (style === "double") {
+    const t3 = Math.max(0.3, thickness / 3);
+    return (
+      <g opacity={opacity}>
+        <line x1={startX} y1={startY} x2={startX} y2={startY + length} stroke={color} strokeWidth={t3} />
+        <line x1={startX + thickness - t3} y1={startY} x2={startX + thickness - t3} y2={startY + length} stroke={color} strokeWidth={t3} />
+      </g>
+    );
+  }
+
+  return (
+    <rect
+      x={startX}
+      y={startY}
+      width={thickness}
+      height={length}
+      fill={color}
+      opacity={opacity}
+    />
+  );
 }

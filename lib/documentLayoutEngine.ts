@@ -31,6 +31,7 @@ const FALLBACK_SMART_FIT: SmartFitSettings = {
 export function prepareSavedAutoFit(layout: DocumentLayout): DocumentLayout {
   return {
     ...layout,
+    layoutMode: "auto_fit",
     page: {
       ...layout.page,
       smartFit: {
@@ -405,8 +406,9 @@ export function computeIntelligentFitProfile(
   const safetyBottom = footerY - 2.0;
   const partyInfoHeight = estimatePartyInfoHeight(layout, documentText);
 
+  const layoutMode = layout.layoutMode || "manual";
   const smartFit: SmartFitSettings = layout.page?.smartFit || FALLBACK_SMART_FIT;
-  const isSmartFitEnabled = smartFit.enabled !== false;
+  const isSmartFitEnabled = layoutMode === "auto_fit" && smartFit.enabled !== false;
   const configuredMinFont = Math.max(isSmartFitEnabled ? AUTO_FIT_MIN_FONT_PX : 0,
     Number.isFinite(smartFit.minFontSize) ? smartFit.minFontSize : AUTO_FIT_MIN_FONT_PX);
   const configuredMinRow = Number.isFinite(smartFit.minRowHeight) ? smartFit.minRowHeight : 4.8;
@@ -431,6 +433,52 @@ export function computeIntelligentFitProfile(
       cellPadding: "5px 8px",
       headerCompactionRatio: 1.0,
       smartFitApplied: false,
+    };
+  }
+
+  // In MANUAL DESIGN mode: strictly preserve user font sizes, row heights, and table position
+  if (layoutMode === "manual") {
+    const tableRowHeight = table.tableSettings?.rowHeight || 8.5;
+    const tableHeaderHeight = table.tableSettings?.headerHeight || 7.5;
+    const tableFontSize = table.tableSettings?.fontSize || 10;
+    const tableHeaderFontSize = table.tableSettings?.headerFontSize || 10;
+    const tableHeight = calculateTableRenderedHeight(
+      table,
+      totalItems,
+      itemsData,
+      tableRowHeight,
+      tableHeaderHeight,
+      tableFontSize
+    );
+    const followers = layout.elements.filter(
+      (el) => el.visible && isFollowerElement(el, table)
+    );
+    const followerSpan = calculateFollowerVerticalSpan(followers, 1.0, 3.0);
+    const tableY = table.y;
+    const totalContentBottom = tableY + tableHeight + (followerSpan > 0 ? 3.0 + followerSpan : 0);
+    const fits = totalContentBottom <= safetyBottom;
+
+    return {
+      fits,
+      level: "standard",
+      rowHeight: tableRowHeight,
+      headerHeight: tableHeaderHeight,
+      fontSize: tableFontSize,
+      headerFontSize: tableHeaderFontSize,
+      followerScale: 1.0,
+      gap: 3.0,
+      tableY,
+      tableHeight,
+      followerSpan,
+      totalContentBottom,
+      footerY,
+      partyInfoHeight,
+      cellPadding: "5px 8px",
+      headerCompactionRatio: 1.0,
+      smartFitApplied: false,
+      warning: fits
+        ? undefined
+        : `Manual layout: Content height (${totalContentBottom.toFixed(1)}mm) exceeds printable A4 limit (${safetyBottom.toFixed(1)}mm). Overflow warning only; manual design settings preserved.`,
     };
   }
 
@@ -797,13 +845,18 @@ export function computeEffectiveLayout(
       }
     : computedProfile;
 
-  let effectiveTableY = isSinglePage && fitProfile.tableY ? fitProfile.tableY : (table ? table.y : 95);
-  const effectiveRowHeight = fitProfile.rowHeight;
-  const effectiveHeaderHeight = fitProfile.headerHeight;
+  const layoutMode = layout.layoutMode || "manual";
+  const isManualMode = layoutMode === "manual";
+
+  let effectiveTableY = isManualMode
+    ? (table ? table.y : 95)
+    : (isSinglePage && fitProfile.tableY ? fitProfile.tableY : (table ? table.y : 95));
+  const effectiveRowHeight = isManualMode ? (table?.tableSettings?.rowHeight || 8.5) : fitProfile.rowHeight;
+  const effectiveHeaderHeight = isManualMode ? (table?.tableSettings?.headerHeight || 7.5) : fitProfile.headerHeight;
 
   // Check if header compaction is active (table shifted upwards to fit single A4 page)
   const originalTableY = table ? table.y : 95;
-  const tableShift = table && isSinglePage ? originalTableY - effectiveTableY : 0;
+  const tableShift = !isManualMode && table && isSinglePage ? originalTableY - effectiveTableY : 0;
 
   // Elements above table (ignoring watermark, footer, and table itself)
   const elementsAbove = layout.elements.filter(
@@ -812,7 +865,7 @@ export function computeEffectiveLayout(
   const minHeaderY = elementsAbove.length > 0 ? Math.min(...elementsAbove.map((el) => el.y)) : 10;
   const originalHeaderSpan = Math.max(20, originalTableY - minHeaderY);
   const targetHeaderSpan = Math.max(15, effectiveTableY - fitProfile.gap - minHeaderY);
-  const headerScale = tableShift > 0 && fitProfile.level !== "standard" && originalHeaderSpan > 0
+  const headerScale = !isManualMode && tableShift > 0 && fitProfile.level !== "standard" && originalHeaderSpan > 0
     ? Math.min(1.0, Math.max(0.75, targetHeaderSpan / originalHeaderSpan))
     : 1.0;
 
@@ -822,111 +875,118 @@ export function computeEffectiveLayout(
 
   const headerLayoutMap = new Map<string, { y: number; height: number }>();
 
-  // ── ZONE 1: CORPORATE BRANDING HEADER (Logo, English Name, Arabic Name, Address/TRN, Title Banner) ──
-  // Calculate dynamic text heights and sequential 2D clearance to prevent collision
-  // while strictly preserving saved positions and intentional placements.
-  if (zone1Elements.length > 0) {
-    const sortedZone1 = [...zone1Elements].sort((a, b) => a.y - b.y);
-    const placedZone1: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+  if (isManualMode) {
+    // In MANUAL DESIGN mode: strictly preserve exact user positions and heights
+    for (const el of elementsAbove) {
+      headerLayoutMap.set(el.id, { y: el.y, height: el.height });
+    }
+  } else {
+    // ── ZONE 1: CORPORATE BRANDING HEADER (Logo, English Name, Arabic Name, Address/TRN, Title Banner) ──
+    // Calculate dynamic text heights and sequential 2D clearance to prevent collision
+    // while strictly preserving saved positions and intentional placements.
+    if (zone1Elements.length > 0) {
+      const sortedZone1 = [...zone1Elements].sort((a, b) => a.y - b.y);
+      const placedZone1: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
 
-    for (const el of sortedZone1) {
-      const dynamicHeight = estimateHeaderElementHeight(el, documentText);
-      const scaledHeight = tableShift > 0 && fitProfile.level !== "standard"
-        ? Math.max(
-            el.type === "logo" ? 12 : el.type === "doc_title" ? 9.5 : 5.0,
-            Math.round(dynamicHeight * headerScale * 10) / 10
-          )
-        : dynamicHeight;
+      for (const el of sortedZone1) {
+        const dynamicHeight = estimateHeaderElementHeight(el, documentText);
+        const scaledHeight = tableShift > 0 && fitProfile.level !== "standard"
+          ? Math.max(
+              el.type === "logo" ? 12 : el.type === "doc_title" ? 9.5 : 5.0,
+              Math.round(dynamicHeight * headerScale * 10) / 10
+            )
+          : dynamicHeight;
 
-      const clearanceGap = tableShift > 0 && fitProfile.level !== "standard" ? 1.2 : 1.8;
+        const clearanceGap = tableShift > 0 && fitProfile.level !== "standard" ? 1.2 : 1.8;
 
-      let minAllowedY = minHeaderY;
-      for (const placed of placedZone1) {
-        const xOverlap = Math.max(0, Math.min(placed.x + placed.width, el.x + el.width) - Math.max(placed.x, el.x));
-        if (xOverlap > 3.0) {
-          if (placed.y <= el.y + 1.0) {
-            minAllowedY = Math.max(minAllowedY, placed.y + placed.height + clearanceGap);
+        let minAllowedY = minHeaderY;
+        for (const placed of placedZone1) {
+          const xOverlap = Math.max(0, Math.min(placed.x + placed.width, el.x + el.width) - Math.max(placed.x, el.x));
+          if (xOverlap > 3.0) {
+            if (placed.y <= el.y + 1.0) {
+              minAllowedY = Math.max(minAllowedY, placed.y + placed.height + clearanceGap);
+            }
           }
+        }
+
+        const effectiveY = Math.max(el.y, minAllowedY);
+
+        placedZone1.push({
+          id: el.id,
+          x: el.x,
+          y: effectiveY,
+          width: el.width,
+          height: scaledHeight,
+        });
+
+        headerLayoutMap.set(el.id, { y: effectiveY, height: scaledHeight });
+      }
+    }
+
+    // ── ZONE 2: TRANSACTION PARTY & DOCUMENT META CARDS ──
+    // Positioned below Zone 1 with synchronized horizontal alignment and equal visual card heights.
+    const partyElement = layout.elements.find(
+      (el) => el.visible && ["customer_info", "supplier_info", "project_info"].includes(el.type)
+    );
+    const metaElement = layout.elements.find((el) => el.visible && el.type === "doc_meta");
+
+    const zone1Bottom = zone1Elements.length > 0
+      ? Math.max(...zone1Elements.map((el) => {
+          const mapped = headerLayoutMap.get(el.id);
+          return mapped ? mapped.y + mapped.height : el.y + el.height;
+        }))
+      : minHeaderY;
+
+    const minZone2Y = zone1Bottom + (tableShift > 0 && fitProfile.level !== "standard" ? 1.5 : 2.5);
+
+    if (partyElement || metaElement) {
+      const rawPartyY = Math.min(partyElement?.y ?? 60, metaElement?.y ?? 60);
+      const targetPartyY = Math.max(minZone2Y, rawPartyY);
+
+      const estPartyH = fitProfile.partyInfoHeight || estimatePartyInfoHeight(layout, documentText) || 24;
+      let targetPartyHeight = Math.max(
+        estPartyH,
+        partyElement?.height ?? 0,
+        metaElement?.height ?? 0,
+        22.0
+      );
+
+      if (tableShift > 0 && fitProfile.level !== "standard") {
+        if (fitProfile.level === "ultra_dense") {
+          targetPartyHeight = Math.max(19.0, Math.min(targetPartyHeight, 20.5));
+        } else if (fitProfile.level === "dense") {
+          targetPartyHeight = Math.max(20.5, Math.min(targetPartyHeight, 22.0));
+        } else if (fitProfile.level === "compact") {
+          targetPartyHeight = Math.max(22.0, Math.min(targetPartyHeight, 24.0));
+        } else if (fitProfile.level === "comfortable") {
+          targetPartyHeight = Math.max(24.0, Math.min(targetPartyHeight, 26.0));
         }
       }
 
-      const effectiveY = Math.max(el.y, minAllowedY);
-
-      placedZone1.push({
-        id: el.id,
-        x: el.x,
-        y: effectiveY,
-        width: el.width,
-        height: scaledHeight,
-      });
-
-      headerLayoutMap.set(el.id, { y: effectiveY, height: scaledHeight });
-    }
-  }
-
-  // ── ZONE 2: TRANSACTION PARTY & DOCUMENT META CARDS ──
-  // Positioned below Zone 1 with synchronized horizontal alignment and equal visual card heights.
-  const partyElement = layout.elements.find(
-    (el) => el.visible && ["customer_info", "supplier_info", "project_info"].includes(el.type)
-  );
-  const metaElement = layout.elements.find((el) => el.visible && el.type === "doc_meta");
-
-  const zone1Bottom = zone1Elements.length > 0
-    ? Math.max(...zone1Elements.map((el) => {
-        const mapped = headerLayoutMap.get(el.id);
-        return mapped ? mapped.y + mapped.height : el.y + el.height;
-      }))
-    : minHeaderY;
-
-  const minZone2Y = zone1Bottom + (tableShift > 0 && fitProfile.level !== "standard" ? 1.5 : 2.5);
-
-  if (partyElement || metaElement) {
-    const rawPartyY = Math.min(partyElement?.y ?? 60, metaElement?.y ?? 60);
-    const targetPartyY = Math.max(minZone2Y, rawPartyY);
-
-    const estPartyH = fitProfile.partyInfoHeight || estimatePartyInfoHeight(layout, documentText) || 24;
-    let targetPartyHeight = Math.max(
-      estPartyH,
-      partyElement?.height ?? 0,
-      metaElement?.height ?? 0,
-      22.0
-    );
-
-    if (tableShift > 0 && fitProfile.level !== "standard") {
-      if (fitProfile.level === "ultra_dense") {
-        targetPartyHeight = Math.max(19.0, Math.min(targetPartyHeight, 20.5));
-      } else if (fitProfile.level === "dense") {
-        targetPartyHeight = Math.max(20.5, Math.min(targetPartyHeight, 22.0));
-      } else if (fitProfile.level === "compact") {
-        targetPartyHeight = Math.max(22.0, Math.min(targetPartyHeight, 24.0));
-      } else if (fitProfile.level === "comfortable") {
-        targetPartyHeight = Math.max(24.0, Math.min(targetPartyHeight, 26.0));
+      if (partyElement) {
+        headerLayoutMap.set(partyElement.id, { y: targetPartyY, height: targetPartyHeight });
+      }
+      if (metaElement) {
+        headerLayoutMap.set(metaElement.id, { y: targetPartyY, height: targetPartyHeight });
       }
     }
 
-    if (partyElement) {
-      headerLayoutMap.set(partyElement.id, { y: targetPartyY, height: targetPartyHeight });
-    }
-    if (metaElement) {
-      headerLayoutMap.set(metaElement.id, { y: targetPartyY, height: targetPartyHeight });
-    }
-  }
+    // Ensure table strictly clears all elements above it (Zone 1 and Zone 2)
+    const allHeadersBottom = elementsAbove.length > 0
+      ? Math.max(...elementsAbove.map((el) => {
+          const mapped = headerLayoutMap.get(el.id);
+          return mapped ? mapped.y + mapped.height : el.y + el.height;
+        }))
+      : minHeaderY;
 
-  // Ensure table strictly clears all elements above it (Zone 1 and Zone 2)
-  const allHeadersBottom = elementsAbove.length > 0
-    ? Math.max(...elementsAbove.map((el) => {
-        const mapped = headerLayoutMap.get(el.id);
-        return mapped ? mapped.y + mapped.height : el.y + el.height;
-      }))
-    : minHeaderY;
-
-  const minTableY = allHeadersBottom + fitProfile.gap;
-  if (effectiveTableY < minTableY) {
-    effectiveTableY = minTableY;
+    const minTableY = allHeadersBottom + fitProfile.gap;
+    if (effectiveTableY < minTableY) {
+      effectiveTableY = minTableY;
+    }
   }
 
   const actualTableHeight = table
-    ? calculateTableRenderedHeight(table, pageItemsCount, itemsData, effectiveRowHeight, effectiveHeaderHeight, fitProfile.fontSize)
+    ? calculateTableRenderedHeight(table, pageItemsCount, itemsData, effectiveRowHeight, effectiveHeaderHeight, isManualMode ? (table.tableSettings?.fontSize || 10) : fitProfile.fontSize)
     : 0;
 
   const tableDesignedHeight = table ? table.height : 0;
@@ -941,7 +1001,17 @@ export function computeEffectiveLayout(
   let followerMap = new Map<string, { y: number; height: number }>();
 
   if (followers.length > 0 && isLastPage) {
-    followerMap = packContentRows(followers, actualTableBottom + fitProfile.gap, fitProfile.gap, fitProfile.followerScale);
+    if (isManualMode) {
+      for (const el of followers) {
+        if (el.flowMode === "fixed") {
+          followerMap.set(el.id, { y: el.y, height: el.height });
+        } else {
+          followerMap.set(el.id, { y: el.y + Math.max(0, deltaY), height: el.height });
+        }
+      }
+    } else {
+      followerMap = packContentRows(followers, actualTableBottom + fitProfile.gap, fitProfile.gap, fitProfile.followerScale);
+    }
   }
 
   const automaticSpacing = layout.page.smartFit?.enabled !== false && layout.page.smartFit?.automaticSpacing !== false;

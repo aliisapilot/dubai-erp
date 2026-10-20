@@ -13,7 +13,6 @@ import { preserveDesignDraft } from './documentDesignBackup';
 import {
   type DocNumberingConfig,
   DEFAULT_NUMBERING_CONFIGS,
-  getCachedDocNumberingConfig,
 } from "./documentNumbering";
 
 export type { DocNumberingConfig } from "./documentNumbering";
@@ -278,6 +277,8 @@ export interface LayoutElement {
     subtotalAr?: string;
     vatAr?: string;
     grandTotalAr?: string;
+    balanceDue?: string;
+    balanceDueAr?: string;
   };
 
   // Flow & Dynamic Spacing Controls
@@ -286,7 +287,15 @@ export interface LayoutElement {
   minGapMm?: number;
 }
 
-export type DecorativeBorderStyle = "straight" | "diagonal" | "custom";
+export type DecorativeBorderStyle =
+  | "straight"
+  | "diagonal"
+  | "custom"
+  | "solid"
+  | "dashed"
+  | "dotted"
+  | "double";
+
 export type CustomDecorativeBorderSubtype =
   | "geometric_ribbon"
   | "accent_corner"
@@ -301,8 +310,16 @@ export interface PageDecorativeBorder {
   color: string;
   thickness: number; // in mm
   position: number;  // offset in mm from edge (0 = flush with edge)
+  x?: number;        // X position in mm
+  y?: number;        // Y position in mm (starting Y for left/right borders)
+  width?: number;    // Width in mm (for top/bottom borders)
+  length?: number;   // Length in mm (for left/right borders)
+  widthMode?: "full" | "margins" | "custom";
+  align?: "left" | "center" | "right";
   angle: number;     // degrees (-45 to +45)
   opacity: number;   // 0.0 to 1.0 (default 1)
+  locked?: boolean;
+  zIndex?: number;
   customSubtype?: CustomDecorativeBorderSubtype;
   customSvgPath?: string;
   secondaryColor?: string;
@@ -311,6 +328,8 @@ export interface PageDecorativeBorder {
 export interface PageBorderSettings {
   top: PageDecorativeBorder;
   bottom: PageDecorativeBorder;
+  left?: PageDecorativeBorder;
+  right?: PageDecorativeBorder;
 }
 
 export const DEFAULT_PAGE_BORDERS: PageBorderSettings = {
@@ -324,6 +343,8 @@ export const DEFAULT_PAGE_BORDERS: PageBorderSettings = {
     opacity: 1,
     customSubtype: "geometric_ribbon",
     secondaryColor: "#173C64",
+    widthMode: "full",
+    align: "center",
   },
   bottom: {
     enabled: true,
@@ -335,10 +356,37 @@ export const DEFAULT_PAGE_BORDERS: PageBorderSettings = {
     opacity: 1,
     customSubtype: "geometric_ribbon",
     secondaryColor: "#E0AC23",
+    widthMode: "full",
+    align: "center",
+  },
+  left: {
+    enabled: false,
+    style: "solid",
+    color: "#CBD5E1",
+    thickness: 1,
+    position: 0,
+    y: 0,
+    length: 297,
+    angle: 0,
+    opacity: 1,
+  },
+  right: {
+    enabled: false,
+    style: "solid",
+    color: "#CBD5E1",
+    thickness: 1,
+    position: 0,
+    y: 0,
+    length: 297,
+    angle: 0,
+    opacity: 1,
   },
 };
 
-export function normalizePageBorders(borders?: Partial<PageBorderSettings> | null): PageBorderSettings {
+export function normalizePageBorders(borders?: Partial<PageBorderSettings> | null): Required<PageBorderSettings> {
+  const defLeft = DEFAULT_PAGE_BORDERS.left!;
+  const defRight = DEFAULT_PAGE_BORDERS.right!;
+
   return {
     top: {
       enabled: borders?.top?.enabled ?? DEFAULT_PAGE_BORDERS.top.enabled,
@@ -346,8 +394,16 @@ export function normalizePageBorders(borders?: Partial<PageBorderSettings> | nul
       color: borders?.top?.color || DEFAULT_PAGE_BORDERS.top.color,
       thickness: Number.isFinite(borders?.top?.thickness) ? borders!.top!.thickness : DEFAULT_PAGE_BORDERS.top.thickness,
       position: Number.isFinite(borders?.top?.position) ? borders!.top!.position : DEFAULT_PAGE_BORDERS.top.position,
+      x: borders?.top?.x,
+      y: borders?.top?.y,
+      width: borders?.top?.width,
+      length: borders?.top?.length,
+      widthMode: borders?.top?.widthMode || "full",
+      align: borders?.top?.align || "center",
       angle: Number.isFinite(borders?.top?.angle) ? borders!.top!.angle : DEFAULT_PAGE_BORDERS.top.angle,
       opacity: Number.isFinite(borders?.top?.opacity) ? borders!.top!.opacity : DEFAULT_PAGE_BORDERS.top.opacity,
+      locked: borders?.top?.locked ?? false,
+      zIndex: borders?.top?.zIndex,
       customSubtype: borders?.top?.customSubtype || DEFAULT_PAGE_BORDERS.top.customSubtype,
       customSvgPath: borders?.top?.customSvgPath,
       secondaryColor: borders?.top?.secondaryColor || DEFAULT_PAGE_BORDERS.top.secondaryColor,
@@ -358,13 +414,162 @@ export function normalizePageBorders(borders?: Partial<PageBorderSettings> | nul
       color: borders?.bottom?.color || DEFAULT_PAGE_BORDERS.bottom.color,
       thickness: Number.isFinite(borders?.bottom?.thickness) ? borders!.bottom!.thickness : DEFAULT_PAGE_BORDERS.bottom.thickness,
       position: Number.isFinite(borders?.bottom?.position) ? borders!.bottom!.position : DEFAULT_PAGE_BORDERS.bottom.position,
+      x: borders?.bottom?.x,
+      y: borders?.bottom?.y,
+      width: borders?.bottom?.width,
+      length: borders?.bottom?.length,
+      widthMode: borders?.bottom?.widthMode || "full",
+      align: borders?.bottom?.align || "center",
       angle: Number.isFinite(borders?.bottom?.angle) ? borders!.bottom!.angle : DEFAULT_PAGE_BORDERS.bottom.angle,
       opacity: Number.isFinite(borders?.bottom?.opacity) ? borders!.bottom!.opacity : DEFAULT_PAGE_BORDERS.bottom.opacity,
+      locked: borders?.bottom?.locked ?? false,
+      zIndex: borders?.bottom?.zIndex,
       customSubtype: borders?.bottom?.customSubtype || DEFAULT_PAGE_BORDERS.bottom.customSubtype,
       customSvgPath: borders?.bottom?.customSvgPath,
       secondaryColor: borders?.bottom?.secondaryColor || DEFAULT_PAGE_BORDERS.bottom.secondaryColor,
     },
+    left: {
+      enabled: borders?.left?.enabled ?? defLeft.enabled,
+      style: borders?.left?.style ?? defLeft.style,
+      color: borders?.left?.color || defLeft.color,
+      thickness: Number.isFinite(borders?.left?.thickness) ? borders!.left!.thickness : defLeft.thickness,
+      position: Number.isFinite(borders?.left?.position) ? borders!.left!.position : defLeft.position,
+      x: borders?.left?.x,
+      y: Number.isFinite(borders?.left?.y) ? borders!.left!.y : defLeft.y,
+      width: borders?.left?.width,
+      length: Number.isFinite(borders?.left?.length) ? borders!.left!.length : defLeft.length,
+      angle: Number.isFinite(borders?.left?.angle) ? borders!.left!.angle : defLeft.angle,
+      opacity: Number.isFinite(borders?.left?.opacity) ? borders!.left!.opacity : defLeft.opacity,
+      locked: borders?.left?.locked ?? false,
+      zIndex: borders?.left?.zIndex,
+    },
+    right: {
+      enabled: borders?.right?.enabled ?? defRight.enabled,
+      style: borders?.right?.style ?? defRight.style,
+      color: borders?.right?.color || defRight.color,
+      thickness: Number.isFinite(borders?.right?.thickness) ? borders!.right!.thickness : defRight.thickness,
+      position: Number.isFinite(borders?.right?.position) ? borders!.right!.position : defRight.position,
+      x: borders?.right?.x,
+      y: Number.isFinite(borders?.right?.y) ? borders!.right!.y : defRight.y,
+      width: borders?.right?.width,
+      length: Number.isFinite(borders?.right?.length) ? borders!.right!.length : defRight.length,
+      angle: Number.isFinite(borders?.right?.angle) ? borders!.right!.angle : defRight.angle,
+      opacity: Number.isFinite(borders?.right?.opacity) ? borders!.right!.opacity : defRight.opacity,
+      locked: borders?.right?.locked ?? false,
+      zIndex: borders?.right?.zIndex,
+    },
   };
+}
+
+export function getBorderAsLayoutElement(
+  borderId: string,
+  layout: DocumentLayout
+): LayoutElement | null {
+  const borders = normalizePageBorders(layout.page?.borders);
+  const pw = layout.page?.widthMm || 210;
+  const ph = layout.page?.heightMm || 297;
+  const margins = layout.page?.margins || { top: 10, bottom: 10, left: 10, right: 10 };
+
+  if (borderId === "border_top") {
+    const b = borders.top;
+    let x = b.x ?? 0;
+    let w = b.width;
+    if (b.widthMode === "margins") {
+      x = margins.left;
+      w = pw - margins.left - margins.right;
+    } else if (b.widthMode === "full" || w === undefined) {
+      x = b.x ?? 0;
+      w = w ?? (pw - x);
+    }
+    return {
+      id: "border_top",
+      type: "divider",
+      label: "Top Page Border",
+      x,
+      y: b.position ?? 0,
+      width: w,
+      height: Math.max(0.5, b.thickness ?? 4),
+      visible: b.enabled,
+      locked: b.locked ?? false,
+      color: b.color,
+      opacity: b.opacity,
+      zIndex: b.zIndex ?? 5,
+    };
+  }
+
+  if (borderId === "border_bottom") {
+    const b = borders.bottom;
+    let x = b.x ?? 0;
+    let w = b.width;
+    if (b.widthMode === "margins") {
+      x = margins.left;
+      w = pw - margins.left - margins.right;
+    } else if (b.widthMode === "full" || w === undefined) {
+      x = b.x ?? 0;
+      w = w ?? (pw - x);
+    }
+    const h = Math.max(0.5, b.thickness ?? 4);
+    const y = ph - (b.position ?? 0) - h;
+    return {
+      id: "border_bottom",
+      type: "divider",
+      label: "Bottom Page Border",
+      x,
+      y,
+      width: w,
+      height: h,
+      visible: b.enabled,
+      locked: b.locked ?? false,
+      color: b.color,
+      opacity: b.opacity,
+      zIndex: b.zIndex ?? 5,
+    };
+  }
+
+  if (borderId === "border_left") {
+    const b = borders.left;
+    const y = b.y ?? 0;
+    const len = b.length ?? (ph - y);
+    const w = Math.max(0.5, b.thickness ?? 1);
+    return {
+      id: "border_left",
+      type: "divider",
+      label: "Left Page Border",
+      x: b.position ?? 0,
+      y,
+      width: w,
+      height: len,
+      visible: b.enabled,
+      locked: b.locked ?? false,
+      color: b.color,
+      opacity: b.opacity,
+      zIndex: b.zIndex ?? 5,
+    };
+  }
+
+  if (borderId === "border_right") {
+    const b = borders.right;
+    const y = b.y ?? 0;
+    const len = b.length ?? (ph - y);
+    const w = Math.max(0.5, b.thickness ?? 1);
+    const x = pw - (b.position ?? 0) - w;
+    return {
+      id: "border_right",
+      type: "divider",
+      label: "Right Page Border",
+      x,
+      y,
+      width: w,
+      height: len,
+      visible: b.enabled,
+      locked: b.locked ?? false,
+      color: b.color,
+      opacity: b.opacity,
+      zIndex: b.zIndex ?? 5,
+    };
+  }
+
+  return null;
 }
 
 export type SmartFitMode = "compact" | "balanced" | "readability";
@@ -660,10 +865,13 @@ export const BUILT_IN_COLOR_PRESETS: ColorPreset[] = [
   },
 ];
 
+export type DesignerLayoutMode = "manual" | "assisted" | "auto_fit";
+
 export interface DocumentLayout {
   version: number;
   documentType: DocumentTypeId;
   templateName: string;
+  layoutMode?: DesignerLayoutMode;
   documentTitle?: string;
   documentTitleAr?: string;
   numberingConfig?: DocNumberingConfig;
@@ -1744,6 +1952,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
     version: CURRENT_LAYOUT_VERSION,
     documentType: docType,
     templateName: "Default UAE Corporate Template",
+    layoutMode: "manual",
     page: {
       paper: "A4",
       orientation: "portrait",
@@ -1759,12 +1968,9 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
     branding: documentStyle,
     documentTitle: docConfig.defaultTitle,
     documentTitleAr: docConfig.defaultTitleAr,
-    numberingConfig:
-      typeof window !== "undefined"
-        ? getCachedDocNumberingConfig("", docType)
-        : JSON.parse(
-            JSON.stringify(DEFAULT_NUMBERING_CONFIGS[docType] || DEFAULT_NUMBERING_CONFIGS.quotation)
-          ),
+    numberingConfig: JSON.parse(
+      JSON.stringify(DEFAULT_NUMBERING_CONFIGS[docType] || DEFAULT_NUMBERING_CONFIGS.quotation)
+    ),
     elements: applyDocumentBusinessProfile(elements, docType),
   };
 }
@@ -1856,15 +2062,21 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
       el.lockAspectRatio = true;
     }
 
-    const width = Math.max(1, Math.min(pageWidth, Number.isFinite(el.width) ? el.width : 20));
-    const height = Math.max(1, Math.min(pageHeight, Number.isFinite(el.height) ? el.height : 10));
-    const x = Math.max(0, Math.min(pageWidth - width, Number.isFinite(el.x) ? el.x : 0));
-    const y = Math.max(0, Math.min(pageHeight - height, Number.isFinite(el.y) ? el.y : 0));
+    const width = Number.isFinite(el.width) ? Math.max(1, el.width) : 20;
+    const height = Number.isFinite(el.height) ? Math.max(1, el.height) : 10;
+    const isManualMode = (layout.layoutMode || "manual") === "manual";
+    const x = isManualMode
+      ? (Number.isFinite(el.x) ? el.x : 0)
+      : Math.max(0, Math.min(pageWidth - width, Number.isFinite(el.x) ? el.x : 0));
+    const y = isManualMode
+      ? (Number.isFinite(el.y) ? el.y : 0)
+      : Math.max(0, Math.min(pageHeight - height, Number.isFinite(el.y) ? el.y : 0));
     return { ...el, x, y, width, height };
   });
 
   // Header collision detection and self-healing:
-  // Detect if header elements (logo, en name, ar name, address, title, or custom header texts) overlap or collide vertically.
+  // ONLY run in "auto_fit" mode. In "manual" and "assisted" modes, NEVER override user positions.
+  const isAutoFitMode = layout.layoutMode === "auto_fit";
   const logoEl = elements.find((e) => e.id === "logo" && e.visible);
   const enEl = elements.find((e) => e.id === "company_name_en" && e.visible);
   const arEl = elements.find((e) => e.id === "company_name_ar" && e.visible);
@@ -1872,7 +2084,7 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
   const titleEl = elements.find((e) => e.id === "doc_title" && e.visible);
   const headerCustomTexts = elements.filter((e) => e.type === "custom_text" && e.visible && e.y < 65);
 
-  const hasHeaderCollision = (() => {
+  const hasHeaderCollision = isAutoFitMode && (() => {
     if (logoEl && enEl) {
       const horizontalOverlap = !(logoEl.x + logoEl.width <= enEl.x || enEl.x + enEl.width <= logoEl.x);
       if (horizontalOverlap && logoEl.y + logoEl.height > enEl.y - 0.5) return true;
@@ -1892,7 +2104,7 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
     return false;
   })();
 
-  if (hasHeaderCollision) {
+  if (isAutoFitMode && hasHeaderCollision) {
     let curY = 10;
     const healed = elements.map((e) => ({ ...e }));
     const getEl = (id: string) => healed.find((e) => e.id === id);
@@ -1983,6 +2195,7 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
 
   return {
     ...layout,
+    layoutMode: layout.layoutMode || "manual",
     version: CURRENT_LAYOUT_VERSION,
     page: {
       ...layout.page,
@@ -1997,14 +2210,12 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
     branding: sourceVersion < 7 ? DOCUMENT_STYLES[layout.documentType] : layout.branding,
     numberingConfig:
       layout.numberingConfig ||
-      (typeof window !== "undefined"
-        ? getCachedDocNumberingConfig("", layout.documentType)
-        : JSON.parse(
-            JSON.stringify(
-              DEFAULT_NUMBERING_CONFIGS[layout.documentType] ||
-                DEFAULT_NUMBERING_CONFIGS.quotation
-            )
-          )),
+      JSON.parse(
+        JSON.stringify(
+          DEFAULT_NUMBERING_CONFIGS[layout.documentType] ||
+            DEFAULT_NUMBERING_CONFIGS.quotation
+        )
+      ),
     elements,
   };
 }

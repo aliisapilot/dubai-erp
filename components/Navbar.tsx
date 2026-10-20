@@ -58,9 +58,12 @@ function getPageMeta(pathname: string): { title: string; icon: LucideIcon } {
   if (pathname.startsWith("/purchase-orders")) return { title: "Purchase Orders", icon: ShoppingBag };
   if (pathname.startsWith("/supplier-bills")) return { title: "Supplier Bills", icon: FileSignature };
   if (pathname.startsWith("/supplier-payments")) return { title: "Supplier Payments", icon: CreditCard };
-  if (pathname.startsWith("/inventory/movements")) return { title: "Stock Movements", icon: ArrowDownRight };
-  if (pathname.startsWith("/inventory")) return { title: "Inventory", icon: Package };
-  if (pathname.startsWith("/products")) return { title: "Products & Services", icon: Package };
+  if (pathname.startsWith("/inventory/customer-usage")) return { title: "Customer Material Usage", icon: Users };
+  if (pathname.startsWith("/inventory/stock-in")) return { title: "Stock In / Goods Receipt", icon: ArrowDownRight };
+  if (pathname.startsWith("/inventory/stock-out")) return { title: "Material Used / Stock Out", icon: ArrowDownRight };
+  if (pathname.startsWith("/inventory/movements")) return { title: "Stock Movements & Audit Ledger", icon: ArrowDownRight };
+  if (pathname.startsWith("/inventory")) return { title: "Fabric & Material Inventory", icon: Package };
+  if (pathname.startsWith("/products")) return { title: "Material Master & Catalog", icon: Package };
   if (pathname.startsWith("/projects")) return { title: "Projects", icon: Briefcase };
   if (pathname.startsWith("/employees")) return { title: "Employees", icon: Users2 };
   if (pathname.startsWith("/attendance")) return { title: "Attendance", icon: CalendarCheck };

@@ -74,9 +74,9 @@ export interface MockDocumentData {
 
 export const SAMPLE_DOCUMENT_DATA: MockDocumentData = {
   document_number: "INV-2026-0042",
-  document_date: new Date().toISOString(),
-  supply_date: new Date().toISOString(),
-  due_date: new Date(Date.now() + 30 * 86400000).toISOString(),
+  document_date: "2026-09-24T08:00:00.000Z",
+  supply_date: "2026-09-24T08:00:00.000Z",
+  due_date: "2026-10-24T08:00:00.000Z",
   status: "approved",
   customer_name: "AL NABOODAH CONTRACTING CO. L.L.C",
   customer_trn: "100345678900003",
@@ -159,7 +159,7 @@ export function getSampleDocumentData(
   numberingConfig?: DocNumberingConfig
 ): MockDocumentData {
   const sampleDocNum = numberingConfig
-    ? formatDocNumber(numberingConfig, numberingConfig.nextSequence || 1)
+    ? formatDocNumber(numberingConfig, numberingConfig.nextSequence || 1, new Date(2026, 8, 24))
     : SAMPLE_NUMBERS[docType];
 
   const base: MockDocumentData = {
@@ -466,10 +466,14 @@ export default function DynamicDocumentRenderer({
   totalPages,
 }: DynamicDocumentRendererProps) {
   const rawData = providedData || getSampleDocumentData(savedLayout.documentType, savedLayout.numberingConfig);
-  const effectiveDocNumber = savedLayout.numberingConfig
-    ? (isDesignerPreview || !providedData || Object.values(SAMPLE_NUMBERS).includes(rawData.document_number)
-        ? formatDocNumber(savedLayout.numberingConfig, savedLayout.numberingConfig.nextSequence || 1)
-        : rawData.document_number)
+  const effectiveDocNumber = (!isDesignerPreview && providedData?.document_number)
+    ? providedData.document_number
+    : savedLayout.numberingConfig
+    ? formatDocNumber(
+        savedLayout.numberingConfig,
+        savedLayout.numberingConfig.nextSequence || 1,
+        rawData.document_date ? new Date(rawData.document_date) : new Date(2026, 8, 24)
+      )
     : rawData.document_number;
   const data = { ...rawData, document_number: effectiveDocNumber };
   const layout = fitMeasurementSummaryLayout(savedLayout, data);
@@ -556,9 +560,9 @@ export default function DynamicDocumentRenderer({
     return weight === "normal" ? 400 : undefined;
   };
 
-  const resolvePt = (customPt: number | undefined, fallbackPt: number, maxPt: number = 28): number => {
-    if (customPt === undefined || !Number.isFinite(customPt)) return fallbackPt;
-    return Math.max(5, Math.min(maxPt, customPt));
+  const resolvePt = (customPt: number | undefined, fallbackPt: number): number => {
+    if (customPt !== undefined && Number.isFinite(customPt)) return Math.max(4, customPt);
+    return fallbackPt;
   };
 
   const elementAppearance = (elem: LayoutElement): CSSProperties => ({
@@ -647,7 +651,7 @@ export default function DynamicDocumentRenderer({
       }
 
       case "company_name_en": {
-        const enPt = resolvePt(elem.fontSize, 11.0, 13.5);
+        const enPt = resolvePt(elem.fontSize, 11.0);
         const textAlign = elem.textAlign || "center";
         const justifyClass = textAlign === "left" ? "justify-start" : textAlign === "right" ? "justify-end" : "justify-center";
         return (
@@ -679,7 +683,7 @@ export default function DynamicDocumentRenderer({
       }
 
       case "company_name_ar": {
-        const arPt = resolvePt(elem.fontSize, 12.5, 15.0);
+        const arPt = resolvePt(elem.fontSize, 12.5);
         const textAlign = elem.textAlign || "center";
         const justifyClass = textAlign === "left" ? "justify-start" : textAlign === "right" ? "justify-end" : "justify-center";
         return (
@@ -714,7 +718,7 @@ export default function DynamicDocumentRenderer({
       }
 
       case "company_address": {
-        const addrPt = resolvePt(elem.fontSize, 7.8, 9.5);
+        const addrPt = resolvePt(elem.fontSize, 7.8);
         const textAlign = elem.textAlign || "center";
         const alignClass = textAlign === "left" ? "items-start text-left" : textAlign === "right" ? "items-end text-right" : "items-center text-center";
         return (
@@ -763,7 +767,7 @@ export default function DynamicDocumentRenderer({
           : elem.borderWidth
           ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}`
           : undefined;
-        const titlePt = resolvePt(elem.fontSize, 12, 14.5);
+        const titlePt = resolvePt(elem.fontSize, 12);
 
         return (
           <div
@@ -1456,6 +1460,8 @@ export default function DynamicDocumentRenderer({
         const vatLabelAr = elem.totalsLabels?.vatAr;
         const grandTotalLabel = elem.totalsLabels?.grandTotal || "Grand Total";
         const grandTotalLabelAr = elem.totalsLabels?.grandTotalAr;
+        const balanceDueLabel = elem.totalsLabels?.balanceDue || "Balance Due";
+        const balanceDueLabelAr = elem.totalsLabels?.balanceDueAr;
 
         return (
           <div
@@ -1468,7 +1474,7 @@ export default function DynamicDocumentRenderer({
               fontSize: `${totalsPt}pt`,
             }}
           >
-            <div className={`flex justify-between items-center ${rowPy} ${rowPx} bg-slate-50 border-b`} style={{ borderColor: colors.border }}>
+            <div data-totals-row="subtotal" className={`flex justify-between items-center ${rowPy} ${rowPx} bg-slate-50 border-b`} style={{ borderColor: colors.border }}>
               <div className="flex flex-col">
                 <span className="font-bold" style={{ color: colors.muted }}>{subtotalLabel}:</span>
                 {subtotalLabelAr && (
@@ -1478,7 +1484,7 @@ export default function DynamicDocumentRenderer({
               <span className="font-mono font-bold">{fmtAED(data.subtotal)}</span>
             </div>
             {usesVat && (
-              <div className={`flex justify-between items-center ${rowPy} ${rowPx} border-b`} style={{ borderColor: colors.border }}>
+              <div data-totals-row="vat" className={`flex justify-between items-center ${rowPy} ${rowPx} border-b`} style={{ borderColor: colors.border }}>
                 <div className="flex flex-col">
                   <span className="font-bold" style={{ color: colors.muted }}>{vatLabel}:</span>
                   {vatLabelAr && (
@@ -1489,6 +1495,7 @@ export default function DynamicDocumentRenderer({
               </div>
             )}
             <div
+              data-totals-row="grandTotal"
               className={`flex justify-between items-center ${rowPy} ${rowPx} font-bold text-slate-900 border-b`}
               style={{
                 backgroundColor: colors.totalHighlight,
@@ -1504,8 +1511,13 @@ export default function DynamicDocumentRenderer({
               <span className="font-mono" style={{ color: colors.primary }}>{fmtAED(data.total_amount)}</span>
             </div>
             {advance > 0 && (
-              <div className={`flex justify-between ${rowPy} ${rowPx} bg-slate-50`} style={{ fontSize: `${Math.max(6, totalsPt * 0.9)}pt` }}>
-                <span className="font-bold" style={{ color: colors.muted }}>Balance Due:</span>
+              <div data-totals-row="balanceDue" className={`flex justify-between items-center ${rowPy} ${rowPx} bg-slate-50`} style={{ fontSize: `${Math.max(6, totalsPt * 0.9)}pt` }}>
+                <div className="flex flex-col">
+                  <span className="font-bold" style={{ color: colors.muted }}>{balanceDueLabel}:</span>
+                  {balanceDueLabelAr && (
+                    <span dir="rtl" className="font-arabic text-[9px] text-slate-400 font-normal leading-none mt-0.5">{balanceDueLabelAr}</span>
+                  )}
+                </div>
                 <span className="font-mono font-bold text-slate-900">{fmtAED(balanceDue)}</span>
               </div>
             )}
@@ -1745,33 +1757,58 @@ export default function DynamicDocumentRenderer({
 
       case "footer": {
         const footerPt = resolvePt(elem.fontSize, 8);
+        const hasCustom = Boolean(elem.customText && elem.customText.trim());
+        const formattedCustomText = hasCustom ? replaceTokens(elem.customText!) : "";
+
         return (
           <div
-            className="w-full h-full flex flex-col items-center justify-center select-text"
+            className="w-full h-full flex flex-col justify-center select-text px-2"
             style={{
               textAlign: elem.textAlign || "center",
+              alignItems:
+                elem.textAlign === "left"
+                  ? "flex-start"
+                  : elem.textAlign === "right"
+                  ? "flex-end"
+                  : "center",
               color: elem.color || colors.footerText,
               fontSize: `${footerPt}pt`,
+              fontWeight: elem.fontWeight === "bold" ? 700 : elem.fontWeight === "semibold" ? 600 : elem.fontWeight === "medium" ? 500 : 400,
               fontStyle: elem.fontStyle || "normal",
               fontFamily: elem.fontFamily || "inherit",
               letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
-              lineHeight: elem.lineHeight ? elem.lineHeight : undefined,
+              lineHeight: elem.lineHeight ? elem.lineHeight : 1.35,
               backgroundColor: elem.backgroundColor || colors.footerBg,
-              borderTop: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+              borderTop: `${elem.borderWidth !== undefined ? elem.borderWidth : 1}px solid ${elem.borderColor || colors.border}`,
               borderBottom: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
               borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
               opacity: elem.opacity ?? 1,
+              padding: elem.padding !== undefined ? `${elem.padding}mm` : undefined,
+              boxSizing: "border-box",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              overflowWrap: "break-word",
               ...elementAppearance(elem),
             }}
           >
-            <div>{elem.customText || `${brand.legal_name} | Tel: ${brand.phone} | Email: ${brand.email} | Web: ${brand.website}`}</div>
-            <div className="text-slate-400 mt-0.5" style={{ fontSize: `${Math.max(5.5, footerPt * 0.9)}pt` }}>
-              {usesVat
-                ? "This is a computer generated document issued in accordance with UAE VAT regulations."
-                : "This is a computer generated business document and does not require a physical signature unless stated."}
-            </div>
-            {resolvedTotalPages > 1 && (
-              <div className="mt-0.5 font-mono text-slate-400" style={{ fontSize: `${Math.max(5.5, footerPt * 0.9)}pt` }}>
+            {hasCustom ? (
+              <div className="w-full leading-normal" style={{ whiteSpace: "pre-wrap" }}>
+                {formattedCustomText}
+              </div>
+            ) : (
+              <>
+                <div className="w-full">
+                  {brand.legal_name} | Tel: {brand.phone} | Email: {brand.email} | Web: {brand.website}
+                </div>
+                <div className="text-slate-400 mt-0.5" style={{ fontSize: `${Math.max(5.5, footerPt * 0.9)}pt` }}>
+                  {usesVat
+                    ? "This is a computer generated document issued in accordance with UAE VAT regulations."
+                    : "This is a computer generated business document and does not require a physical signature unless stated."}
+                </div>
+              </>
+            )}
+            {resolvedTotalPages > 1 && !formattedCustomText.includes("{page_number}") && (
+              <div className="mt-0.5 font-mono text-slate-400 text-center" style={{ fontSize: `${Math.max(5.5, footerPt * 0.85)}pt` }}>
                 Page {pageNumber} of {resolvedTotalPages}
               </div>
             )}
@@ -1917,10 +1954,11 @@ export default function DynamicDocumentRenderer({
         })
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((elem) => {
-          const posX = isDesignerPreview ? elem.x : elem.effectiveX;
-          const posY = elem.effectiveY ?? elem.y;
-          const width = isDesignerPreview ? elem.width : elem.effectiveWidth;
-          const height = elem.effectiveHeight ?? elem.height;
+          const isManual = (layout.layoutMode || "manual") === "manual";
+          const posX = isDesignerPreview || isManual ? elem.x : elem.effectiveX;
+          const posY = isDesignerPreview || isManual ? elem.y : (elem.effectiveY ?? elem.y);
+          const width = isDesignerPreview || isManual ? elem.width : elem.effectiveWidth;
+          const height = isDesignerPreview || isManual ? elem.height : (elem.effectiveHeight ?? elem.height);
 
           return (
             <div

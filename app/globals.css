@@ -193,6 +193,40 @@ div::-webkit-scrollbar-thumb:hover {
 }
 
 /* ==========================================================================
+   UNIVERSAL SELECT & DROPDOWN ACCESSIBILITY (DARK BUSINESS THEME)
+   Ensures native <select> and <option> tags render dark background with
+   high-contrast readable text across Windows Chrome, Edge, and macOS.
+   Prevents white-on-white text issues in Chromium on Windows.
+   ========================================================================== */
+select {
+  color-scheme: dark !important;
+  background-color: #0f172a;
+  color: #f8fafc;
+}
+
+select option {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  padding: 6px 10px;
+}
+
+select option:checked,
+select option:hover {
+  background-color: #1e293b !important;
+  color: #e0ac23 !important;
+}
+
+select option:disabled {
+  color: #64748b !important;
+  background-color: #070b14 !important;
+}
+
+select:focus {
+  outline: none;
+  border-color: #e0ac23 !important;
+}
+
+/* ==========================================================================
    REMOVE NUMBER INPUT SPINNER ARROWS GLOBALLY
    Hides browser up/down arrows while allowing standard numeric typing
    ========================================================================== */

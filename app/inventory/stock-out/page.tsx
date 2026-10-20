@@ -4,426 +4,805 @@ import { useEffect, useState, FormEvent, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getCompanyId, generateDocNumber } from "@/lib/helpers";
-import { ArrowUpRight, ArrowLeft, Loader2, Save, CheckCircle2, History, AlertTriangle, ShieldAlert } from "lucide-react";
+import { getCompanyId, generateDocNumber, todayISO, fmtAED, fmtDate } from "@/lib/helpers";
+import {
+  ArrowUpRight,
+  ArrowLeft,
+  Loader2,
+  CheckCircle2,
+  History,
+  Package,
+  Printer,
+  Ruler,
+  AlertCircle,
+  Briefcase,
+  Layers,
+  Scissors,
+  Sparkles,
+  Warehouse,
+} from "lucide-react";
+import {
+  getMaterialsList,
+  executeStockOut,
+  calculateSqmFromRm,
+  calculateRmFromSqm,
+  roundDecimal,
+  WAREHOUSE_LOCATIONS,
+  USAGE_PURPOSES,
+  type MaterialItem,
+  type StockOutPayload,
+  type CustomerSelection,
+} from "@/lib/materialInventory";
+import CustomerForWhomSelector from "@/components/inventory/CustomerForWhomSelector";
+import PrintModal from "@/components/documents/PrintModal";
+import MaterialIssueNoteTemplate, { MaterialIssueNoteData } from "@/components/documents/MaterialIssueNoteTemplate";
+import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
-type ProductOption = {
+type ProjectOption = {
   id: string;
   name: string;
-  sku: string | null;
-  unit: string | null;
-  cost_price: number | null;
-  current_stock: number | null;
-};
-
-type StockOutRecord = {
-  id: string;
-  created_at: string;
-  quantity: number;
-  previous_stock: number;
-  new_stock: number;
-  reference_type: string | null;
-  reference_number: string | null;
-  notes: string | null;
-  products?: { name: string; sku: string | null; unit: string | null };
+  project_number: string;
 };
 
 function StockOutForm() {
   const searchParams = useSearchParams();
   const initialProductId = searchParams.get("productId") || "";
+  const initialRmParam = searchParams.get("rm") || "";
+  const initialSqmParam = searchParams.get("sqm") || "";
+  const initialPurposeParam = searchParams.get("purpose") || "";
 
-  const [products, setProducts] = useState<ProductOption[]>([]);
-  const [selectedProductId, setSelectedProductId] = useState(initialProductId);
-  const [quantity, setQuantity] = useState("");
-  const [referenceType, setReferenceType] = useState("Site Issue / Project Consumption");
+  const [company, setCompany] = useState<CompanyDocInfo | null>(null);
+  const [materials, setMaterials] = useState<MaterialItem[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Form State
+  const [selectedMaterialId, setSelectedMaterialId] = useState(initialProductId);
+  const [dispatchDate, setDispatchDate] = useState(todayISO());
+
+  // Customer / For Whom (Option A, B, C)
+  const [customer, setCustomer] = useState<CustomerSelection>({
+    type: "custom",
+    customer_id: null,
+    customer_name: "Workshop Usage",
+  });
+
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [purpose, setPurpose] = useState(initialPurposeParam || "Project Fabrication");
+  const [warehouse, setWarehouse] = useState<string>(WAREHOUSE_LOCATIONS[0]);
+  const [issuedBy, setIssuedBy] = useState("Storekeeper");
+  const [receivedBy, setReceivedBy] = useState("");
   const [referenceNumber, setReferenceNumber] = useState("");
   const [notes, setNotes] = useState("");
-  const [allowNegative, setAllowNegative] = useState(false);
 
+  // Quantities & Wastage
+  const [runningMetresUsed, setRunningMetresUsed] = useState(initialRmParam);
+  const [squareMetresUsed, setSquareMetresUsed] = useState(initialSqmParam);
+  const [wastageQuantity, setWastageQuantity] = useState("0");
+  const [unitCost, setUnitCost] = useState("");
+
+  // Submission & Print State
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
-  const [recentMovements, setRecentMovements] = useState<StockOutRecord[]>([]);
+  const [printMinData, setPrintMinData] = useState<MaterialIssueNoteData | null>(null);
+  const [recentDispatches, setRecentDispatches] = useState<any[]>([]);
 
   useEffect(() => {
-    loadData();
+    loadInitialData();
   }, []);
 
-  async function loadData() {
+  async function loadInitialData() {
+    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
 
-      const { data: prods } = await supabase
-        .from("products")
-        .select("id, name, sku, unit, cost_price, current_stock")
-        .eq("active", true)
-        .order("name", { ascending: true });
+      const { data: coData } = await supabase.from("companies").select("*").eq("id", companyId).maybeSingle();
+      if (coData) setCompany(coData);
 
-      setProducts(prods || []);
+      const [mats, prjRes] = await Promise.all([
+        getMaterialsList(companyId),
+        supabase.from("projects").select("id, name, project_number").eq("company_id", companyId).order("name"),
+      ]);
 
-      // Recent Stock Out movements
-      const { data: recents } = await supabase
-        .from("stock_movements")
-        .select("id, created_at, quantity, previous_stock, new_stock, reference_type, reference_number, notes, products(name, sku, unit)")
-        .eq("company_id", companyId)
-        .eq("movement_type", "OUT")
-        .order("created_at", { ascending: false })
-        .limit(10);
+      setMaterials(mats);
+      setProjects(prjRes.data || []);
 
-      setRecentMovements((recents as unknown as StockOutRecord[]) || []);
+      if (initialProductId) {
+        const found = mats.find((m) => m.id === initialProductId);
+        if (found) selectMaterial(found);
+      }
+
+      await loadRecentDispatches(companyId);
     } catch (err) {
       console.error("Error loading stock out data:", err);
     } finally {
+      setLoading(false);
     }
   }
 
-  const selectedProduct = products.find((p) => p.id === selectedProductId);
+  async function loadRecentDispatches(companyId: string) {
+    const { data } = await supabase
+      .from("stock_movements")
+      .select("id, created_at, quantity, previous_stock, new_stock, unit_cost, reference_type, reference_number, notes, products(name, sku, unit, category)")
+      .eq("company_id", companyId)
+      .eq("movement_type", "OUT")
+      .order("created_at", { ascending: false })
+      .limit(8);
+    setRecentDispatches(data || []);
+  }
+
+  const selectedMaterial = materials.find((m) => m.id === selectedMaterialId);
+  const fabricWidth = selectedMaterial?.fabric_width || 3.0;
+  const isFabric = selectedMaterial?.is_fabric ?? true;
+  const availableStock = selectedMaterial?.current_stock || 0;
+
+  function selectMaterial(mat: MaterialItem) {
+    setSelectedMaterialId(mat.id);
+    if (mat.cost_price > 0) {
+      setUnitCost(mat.cost_price.toString());
+    }
+    // If running metres is entered, recalculate square metres
+    if (runningMetresUsed && mat.fabric_width > 0) {
+      const rm = parseFloat(runningMetresUsed);
+      if (!isNaN(rm)) {
+        setSquareMetresUsed(calculateSqmFromRm(mat.fabric_width, rm).toString());
+      }
+    }
+  }
+
+  function handleRmChange(rmStr: string) {
+    setRunningMetresUsed(rmStr);
+    const rm = parseFloat(rmStr);
+    if (!isNaN(rm) && rm >= 0 && fabricWidth > 0) {
+      setSquareMetresUsed(calculateSqmFromRm(fabricWidth, rm).toString());
+    } else {
+      setSquareMetresUsed("");
+    }
+  }
+
+  function handleSqmChange(sqmStr: string) {
+    setSquareMetresUsed(sqmStr);
+    const sqm = parseFloat(sqmStr);
+    if (!isNaN(sqm) && sqm >= 0 && fabricWidth > 0) {
+      setRunningMetresUsed(calculateRmFromSqm(fabricWidth, sqm).toString());
+    } else {
+      setRunningMetresUsed("");
+    }
+  }
+
+  // Calculations
+  const parsedRm = parseFloat(runningMetresUsed) || 0;
+  const parsedSqm = parseFloat(squareMetresUsed) || (isFabric ? calculateSqmFromRm(fabricWidth, parsedRm) : parsedRm);
+  const parsedWastage = parseFloat(wastageQuantity) || 0;
+  const totalStockReduction = roundDecimal(parsedSqm + parsedWastage, 3);
+  const remainingStock = roundDecimal(availableStock - totalStockReduction, 3);
+  const parsedCost = parseFloat(unitCost) || selectedMaterial?.cost_price || 0;
+  const totalMaterialCost = roundDecimal(totalStockReduction * parsedCost, 2);
+
+  const selectedProject = projects.find((p) => p.id === selectedProjectId);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErrorMsg("");
     setSuccessMsg("");
 
-    const qtyNum = parseFloat(quantity);
-    if (!selectedProductId) {
-      setErrorMsg("Please select an inventory item.");
+    if (!selectedMaterialId) {
+      setErrorMsg("Please select a material to issue.");
       return;
     }
-    if (isNaN(qtyNum) || qtyNum <= 0) {
-      setErrorMsg("Please enter a valid dispatch quantity greater than 0.");
+
+    if (totalStockReduction <= 0) {
+      setErrorMsg("Please enter consumed quantity greater than zero.");
+      return;
+    }
+
+    if (totalStockReduction > availableStock) {
+      setErrorMsg(
+        `Insufficient stock: Total reduction of ${totalStockReduction} ${selectedMaterial?.unit || "m²"} exceeds available stock (${availableStock} ${selectedMaterial?.unit || "m²"}). Negative stock prevented.`
+      );
+      return;
+    }
+
+    if (!customer.customer_name?.trim()) {
+      setErrorMsg("Please specify the Customer or Material Recipient (or select Workshop Usage).");
       return;
     }
 
     setSubmitting(true);
     try {
       const companyId = await getCompanyId();
-      if (!companyId) throw new Error("No active company found.");
+      if (!companyId) throw new Error("Active company session not found.");
 
-      // Fetch fresh current stock
-      const { data: prodData, error: prodErr } = await supabase
-        .from("products")
-        .select("current_stock, cost_price")
-        .eq("id", selectedProductId)
-        .single();
+      const payload: StockOutPayload = {
+        company_id: companyId,
+        material_id: selectedMaterialId,
+        dispatch_date: dispatchDate,
+        customer,
+        project_id: selectedProjectId || undefined,
+        project_name: selectedProject ? `${selectedProject.project_number} — ${selectedProject.name}` : undefined,
+        purpose,
+        running_metres_used: parsedRm,
+        square_metres_used: parsedSqm,
+        wastage_quantity: parsedWastage,
+        unit_cost: parsedCost,
+        total_material_cost: totalMaterialCost,
+        warehouse,
+        issued_by: issuedBy.trim() || "Storekeeper",
+        received_by: receivedBy.trim() || undefined,
+        reference_number: referenceNumber.trim() || undefined,
+        notes: notes.trim() || undefined,
+      };
 
-      if (prodErr || !prodData) throw new Error("Could not retrieve current product stock.");
+      const result = await executeStockOut(payload);
 
-      const prevStock = Number(prodData.current_stock || 0);
+      setSuccessMsg(
+        `✓ Material successfully issued! MIN: ${result.docNumber}. Remaining Stock: ${result.newStock} ${selectedMaterial?.unit || "m²"}.`
+      );
 
-      // Negative stock validation
-      if (qtyNum > prevStock && !allowNegative) {
-        throw new Error(
-          `Cannot dispatch ${qtyNum} units. Available stock is only ${prevStock} units. (Negative stock prevented)`
-        );
-      }
+      // Prepare print data
+      const printDoc: MaterialIssueNoteData = {
+        document_number: result.docNumber,
+        issue_date: dispatchDate,
+        customer_name: customer.customer_name,
+        customer_type: customer.type,
+        project_name: selectedProject ? `${selectedProject.project_number} — ${selectedProject.name}` : undefined,
+        purpose,
+        warehouse,
+        issued_by: issuedBy,
+        received_by: receivedBy.trim() || undefined,
+        items: [
+          {
+            material_name: selectedMaterial?.name || "Material",
+            brand: selectedMaterial?.brand || "Fabric",
+            specification: selectedMaterial?.specification || undefined,
+            width: fabricWidth,
+            running_metres_used: parsedRm,
+            square_metres_used: parsedSqm,
+            wastage_quantity: parsedWastage,
+            total_deduction: totalStockReduction,
+            unit_cost: parsedCost,
+            total_cost: totalMaterialCost,
+          },
+        ],
+        total_square_metres: parsedSqm,
+        total_running_metres: parsedRm,
+        total_wastage: parsedWastage,
+        total_deduction: totalStockReduction,
+        total_material_cost: totalMaterialCost,
+        notes: notes.trim() || undefined,
+      };
+      setPrintMinData(printDoc);
 
-      const newStock = prevStock - qtyNum;
-      const costVal = Number(prodData.cost_price || 0);
-
-      const refNo = referenceNumber.trim() || await generateDocNumber(companyId, "GIN");
-
-      // Update product current stock
-      const { error: updateErr } = await supabase
-        .from("products")
-        .update({ current_stock: newStock })
-        .eq("id", selectedProductId);
-
-      if (updateErr) throw updateErr;
-
-
-
-      // Log movement
-      const { error: moveErr } = await supabase
-        .from("stock_movements")
-        .insert({
-          company_id: companyId,
-          product_id: selectedProductId,
-          movement_type: "OUT",
-          quantity: qtyNum,
-          previous_stock: prevStock,
-          new_stock: newStock,
-          unit_cost: costVal,
-          reference_type: referenceType,
-          reference_number: refNo,
-          notes: notes.trim() || null,
-        });
-
-      if (moveErr) throw moveErr;
-
-      setSuccessMsg(`Successfully issued ${qtyNum} ${selectedProduct?.unit || "units"}. Remaining stock: ${newStock}.`);
-      setQuantity("");
+      // Reset quantities
+      setRunningMetresUsed("");
+      setSquareMetresUsed("");
+      setWastageQuantity("0");
       setReferenceNumber("");
       setNotes("");
 
-      // Reload
-      loadData();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to record stock out.";
-      setErrorMsg(msg);
+      // Refresh data
+      const mats = await getMaterialsList(companyId);
+      setMaterials(mats);
+      await loadRecentDispatches(companyId);
+    } catch (err: any) {
+      console.error("Stock Out submission error:", err);
+      setErrorMsg(err.message || "Failed to confirm material dispatch.");
     } finally {
       setSubmitting(false);
     }
   }
 
-  const currentAvailable = selectedProduct?.current_stock ?? 0;
-  const dispatchQty = parseFloat(quantity) || 0;
-  const willBeNegative = selectedProduct && dispatchQty > currentAvailable;
-
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Link
             href="/inventory"
-            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
+            className="p-2 rounded-lg border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 transition-colors"
           >
             <ArrowLeft size={16} />
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-amber-100 text-amber-700">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
                 <ArrowUpRight size={20} />
               </span>
-              Stock Out / Dispatch Issue
-            </h1>
-            <p className="text-sm text-slate-500 mt-0.5">Issue inventory to project sites, record customer deliveries, and scrap damaged stock</p>
+              <h1 className="text-2xl font-bold text-white tracking-tight">Material Used / Stock Out (MIN)</h1>
+            </div>
+            <p className="text-sm text-slate-400 mt-0.5">
+              Record fabric consumption, cutting wastage, and material issuance to customers, projects, or workshop
+            </p>
           </div>
         </div>
 
-        <Link
-          href="/inventory/movements"
-          className="text-sm text-slate-600 hover:text-slate-900 flex items-center gap-1.5"
-        >
-          <History size={16} /> View All Movements
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/inventory/customer-usage"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-sky-600 text-white hover:bg-sky-700 text-xs font-semibold shadow-sm transition-colors"
+          >
+            Customer Usage Report
+          </Link>
+          <Link
+            href="/inventory/movements"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 text-xs font-medium transition-colors"
+          >
+            <History size={15} /> Movements Ledger
+          </Link>
+        </div>
       </div>
 
-      {errorMsg && (
-        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium flex items-center gap-2">
-          <ShieldAlert size={18} className="text-rose-600 shrink-0" />
-          {errorMsg}
-        </div>
-      )}
-
+      {/* Success Notification */}
       {successMsg && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-medium flex items-center gap-2">
-          <CheckCircle2 size={18} className="text-emerald-600" />
-          {successMsg}
+        <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+            <span className="text-sm font-semibold">{successMsg}</span>
+          </div>
+          {printMinData && (
+            <button
+              type="button"
+              onClick={() => {}}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 self-start sm:self-auto"
+            >
+              <Printer size={14} /> Print Material Issue Note (MIN)
+            </button>
+          )}
         </div>
       )}
 
+      {/* Error Notification */}
+      {errorMsg && (
+        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-center gap-2.5 text-sm">
+          <AlertCircle size={18} className="shrink-0 text-rose-400" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      {/* Main Grid: Form + Live Stock Reduction Preview */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Form */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Left Column: Form (2 Cols) */}
+        <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-6">
+          {/* Section 1: Material Selection */}
+          <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-5 space-y-4">
+            <div className="flex items-center gap-2 text-amber-400 border-b border-slate-800 pb-3">
+              <Package size={17} />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                1. Select Material &amp; Specification to Dispatch
+              </h3>
+            </div>
+
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Product / Item to Issue *
+              <label className="text-xs font-medium text-slate-300 block mb-1">
+                Material Item <span className="text-rose-400">*</span>
               </label>
               <select
-                value={selectedProductId}
-                onChange={(e) => setSelectedProductId(e.target.value)}
                 required
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-amber-500 focus:outline-none"
+                value={selectedMaterialId}
+                onChange={(e) => {
+                  const m = materials.find((item) => item.id === e.target.value);
+                  if (m) selectMaterial(m);
+                }}
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white focus:border-amber-500 focus:outline-none"
               >
-                <option value="">-- Select an item to dispatch --</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} {p.sku ? `(${p.sku})` : ""} — Available: {p.current_stock ?? 0} {p.unit || ""}
+                <option value="">-- Select Material to Dispatch --</option>
+                {materials.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} | Available: {m.current_stock} {m.unit} {m.fabric_width ? `(${m.fabric_width}m width)` : ""}
                   </option>
                 ))}
               </select>
             </div>
 
-            {selectedProduct && (
-              <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
+            {selectedMaterial && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-lg bg-slate-950 border border-slate-800 text-xs">
                 <div>
-                  <span className="font-semibold text-slate-800">Available Stock:</span>{" "}
-                  <span className={`font-mono font-bold ${currentAvailable <= 0 ? "text-rose-600" : "text-slate-900"}`}>
-                    {currentAvailable} {selectedProduct.unit || "units"}
+                  <span className="text-[10px] text-slate-500 uppercase block">Brand</span>
+                  <span className="font-bold text-white">{selectedMaterial.brand}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase block">Fabric Width</span>
+                  <span className="font-bold text-sky-400 font-mono">
+                    {selectedMaterial.fabric_width > 0 ? `${selectedMaterial.fabric_width} m` : "Standard"}
                   </span>
                 </div>
                 <div>
-                  <span className="font-semibold text-slate-800">Unit Cost Valuation:</span> AED {(selectedProduct.cost_price || 0).toFixed(2)}
+                  <span className="text-[10px] text-slate-500 uppercase block">Available Stock</span>
+                  <span className="font-bold text-emerald-400 font-mono text-sm">
+                    {availableStock} {selectedMaterial.unit}
+                    {selectedMaterial.is_fabric && (
+                      <span className="text-[10px] text-slate-400 block font-normal">
+                        ≈ {selectedMaterial.running_metres_available} RM
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase block">Inventory Cost Rate</span>
+                  <span className="font-bold text-slate-300 font-mono">
+                    AED {fmtAED(selectedMaterial.cost_price)}
+                  </span>
                 </div>
               </div>
             )}
+          </section>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Section 2: CUSTOMER / FOR WHOM (Option A, B, C) */}
+          <CustomerForWhomSelector value={customer} onChange={setCustomer} required />
+
+          {/* Section 3: Usage Purpose & Project Linkage */}
+          <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-5 space-y-4">
+            <div className="flex items-center gap-2 text-sky-400 border-b border-slate-800 pb-3">
+              <Briefcase size={17} />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                2. Project Linkage &amp; Purpose of Usage
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Quantity to Issue *
+                <label className="text-xs font-medium text-slate-300 block mb-1">
+                  Link to Project / Job (Optional)
+                </label>
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none"
+                >
+                  <option value="">-- General / Non-Project Usage --</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.project_number} — {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">Purpose of Usage</label>
+                <select
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none"
+                >
+                  {USAGE_PURPOSES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </section>
+
+          {/* Section 4: Material Quantities, Wastage & Costing */}
+          <section className="rounded-xl border border-amber-500/30 bg-slate-900/80 p-5 space-y-4">
+            <div className="flex items-center gap-2 text-amber-400 border-b border-slate-800 pb-3">
+              <Scissors size={17} />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                3. Quantities Used, Cutting Wastage &amp; Stock Deduction
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">
+                  Running Metres Used (m)
                 </label>
                 <input
                   type="number"
-                  step="any"
-                  min="0.001"
-                  required
-                  placeholder="e.g. 10"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-amber-500 focus:outline-none font-mono"
+                  step="0.001"
+                  min="0"
+                  placeholder="0.000"
+                  value={runningMetresUsed}
+                  onChange={(e) => handleRmChange(e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-mono text-white focus:border-amber-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Issue Reason / Purpose
+                <label className="text-xs font-bold text-blue-400 block mb-1">
+                  Net Used Area (m²) <span className="text-rose-400">*</span>
                 </label>
+                <input
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  required
+                  placeholder="0.000"
+                  value={squareMetresUsed}
+                  onChange={(e) => handleSqmChange(e.target.value)}
+                  className="w-full rounded-lg border border-blue-500/50 bg-slate-950 px-3 py-2 text-sm font-mono font-bold text-blue-300 focus:border-blue-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-amber-400 block mb-1">
+                  Cutting Wastage (m²)
+                </label>
+                <input
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  placeholder="0.000"
+                  value={wastageQuantity}
+                  onChange={(e) => setWastageQuantity(e.target.value)}
+                  className="w-full rounded-lg border border-amber-500/50 bg-slate-950 px-3 py-2 text-sm font-mono text-amber-300 focus:border-amber-400 focus:outline-none"
+                />
+                <span className="text-[10px] text-slate-400">Recorded separately for waste tracking</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">
+                  Material Cost Rate (AED / m²)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={unitCost}
+                  onChange={(e) => setUnitCost(e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-mono text-white focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">
+                  Total Material Cost (AED)
+                </label>
+                <div className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm font-mono font-bold text-amber-300">
+                  AED {fmtAED(totalMaterialCost)}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">Dispatching Warehouse</label>
                 <select
-                  value={referenceType}
-                  onChange={(e) => setReferenceType(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-amber-500 focus:outline-none"
+                  value={warehouse}
+                  onChange={(e) => setWarehouse(e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
                 >
-                  <option value="Site Issue / Project Consumption">Site Issue / Project Consumption</option>
-                  <option value="Delivery Note / Dispatch">Delivery Note / Dispatch</option>
-                  <option value="Damage / Scrap / Wastage">Damage / Scrap / Wastage</option>
-                  <option value="Sample / Marketing">Sample / Marketing</option>
-                  <option value="Internal Transfer">Internal Transfer</option>
-                  <option value="Other">Other</option>
+                  {WAREHOUSE_LOCATIONS.map((w) => (
+                    <option key={w} value={w}>
+                      {w}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
 
-            {willBeNegative && (
-              <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 space-y-2">
-                <div className="flex items-center gap-2 font-semibold text-rose-800">
-                  <AlertTriangle size={15} /> Negative Stock Warning
-                </div>
-                <p>
-                  Requested dispatch ({dispatchQty}) exceeds currently available inventory ({currentAvailable}).
-                  This will result in a negative stock balance of {currentAvailable - dispatchQty}.
-                </p>
-                <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={allowNegative}
-                    onChange={(e) => setAllowNegative(e.target.checked)}
-                    className="rounded border-rose-300 text-rose-600 focus:ring-rose-500"
-                  />
-                  <span className="font-medium text-rose-900">Explicitly allow negative stock dispatch</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">
+                  Issued By Staff <span className="text-rose-400">*</span>
                 </label>
+                <input
+                  type="text"
+                  required
+                  value={issuedBy}
+                  onChange={(e) => setIssuedBy(e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+                />
               </div>
-            )}
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Reference # (DN, Project Job #, Task)
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. DN-2026-0045 or PRJ-BURJ-01"
-                value={referenceNumber}
-                onChange={(e) => setReferenceNumber(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-amber-500 focus:outline-none"
-              />
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">
+                  Received By (Site Rep / Supervisor)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Foreman Ali"
+                  value={receivedBy}
+                  onChange={(e) => setReceivedBy(e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">
+                  Dispatch Ref / MIN Number
+                </label>
+                <input
+                  type="text"
+                  placeholder="Auto MIN-XXXX"
+                  value={referenceNumber}
+                  onChange={(e) => setReferenceNumber(e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+                />
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Remarks / Issued To / Site Location
+              <label className="text-xs font-medium text-slate-300 block mb-1">
+                Cutting Instructions / Dispatch Notes
               </label>
               <textarea
                 rows={2}
-                placeholder="Issued to Site Foreman Ahmad for Level 14 HVAC ducting..."
+                placeholder="Specific roll numbers, cut panels, overlap allowances..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-amber-500 focus:outline-none resize-none"
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none resize-none"
               />
             </div>
+          </section>
 
+          {/* Submit Action */}
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <Link
+              href="/inventory"
+              className="px-4 py-2.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 text-sm font-medium transition-colors"
+            >
+              Cancel
+            </Link>
             <button
               type="submit"
-              disabled={submitting || (willBeNegative && !allowNegative)}
-              className="w-full py-2.5 px-4 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-sm transition-colors"
+              disabled={submitting || totalStockReduction > availableStock}
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-amber-600 text-white font-semibold text-sm hover:bg-amber-700 disabled:opacity-50 transition-colors shadow-lg shadow-amber-950"
             >
               {submitting ? (
                 <>
-                  <Loader2 size={16} className="animate-spin" /> Recording Dispatch...
+                  <Loader2 size={16} className="animate-spin" /> Confirming Stock Out...
                 </>
               ) : (
                 <>
-                  <Save size={16} /> Confirm Stock Out
+                  <CheckCircle2 size={16} /> Confirm Material Used (Stock Out)
                 </>
               )}
             </button>
-          </form>
-        </div>
+          </div>
+        </form>
 
-        {/* Info panel */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
-          <h3 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-            <ShieldAlert size={16} className="text-amber-600" /> Stock Integrity Controls
-          </h3>
-          <ul className="text-xs text-slate-500 space-y-2.5 list-disc pl-4 leading-relaxed">
-            <li>Stock Out transactions reduce on-hand physical inventory immediately.</li>
-            <li>By default, negative stock balances are strictly blocked to prevent discrepancies between physical and recorded assets.</li>
-            <li>For project job allocations, reference the project ID or delivery note so material expenses can be traced back.</li>
-            <li>All dispatches create immutable stock movement audit entries.</li>
-          </ul>
+        {/* Right Column: Real-Time Stock Impact Preview Card (Part 5 Example Spec) */}
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-b from-slate-900 to-slate-950 p-5 shadow-xl space-y-4 sticky top-6">
+            <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+              <span className="p-1 rounded bg-amber-500/10 text-amber-400">
+                <Scissors size={16} />
+              </span>
+              <h3 className="font-bold text-white text-sm">Stock Reduction Impact</h3>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Material:</span>
+                <span className="font-bold text-white text-right truncate max-w-[180px]">
+                  {selectedMaterial?.name || "None Selected"}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Fabric Width:</span>
+                <span className="font-mono font-semibold text-sky-400">
+                  {selectedMaterial?.fabric_width ? `${selectedMaterial.fabric_width} m` : "—"}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Available Stock:</span>
+                <span className="font-mono font-bold text-emerald-400">
+                  {availableStock} {selectedMaterial?.unit || "m²"}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Running Metres Used:</span>
+                <span className="font-mono font-semibold text-white">
+                  {parsedRm > 0 ? `${parsedRm.toFixed(2)} m` : "0.00 m"}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1.5 bg-blue-950/30 px-2 rounded border border-blue-500/20">
+                <span className="text-blue-300 font-semibold">Net Used Area:</span>
+                <span className="font-mono font-bold text-blue-400 text-sm">
+                  {parsedSqm.toFixed(2)} m²
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1.5 bg-amber-950/30 px-2 rounded border border-amber-500/20">
+                <span className="text-amber-300 font-semibold">Cutting Wastage:</span>
+                <span className="font-mono font-bold text-amber-400 text-sm">
+                  {parsedWastage.toFixed(2)} m²
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-2 bg-rose-950/30 px-2 rounded border border-rose-500/30">
+                <span className="text-rose-300 font-bold">Total Stock Reduction:</span>
+                <span className="font-mono font-extrabold text-rose-400 text-base">
+                  -{totalStockReduction.toFixed(2)} m²
+                </span>
+              </div>
+
+              {/* Exact Formula Remaining Stock Preview */}
+              <div
+                className={`flex justify-between items-center py-2.5 px-3 rounded-lg border font-mono ${
+                  remainingStock < 0
+                    ? "bg-rose-950/80 border-rose-500 text-rose-300"
+                    : remainingStock <= (selectedMaterial?.minimum_stock || 0)
+                    ? "bg-amber-950/40 border-amber-500/40 text-amber-300"
+                    : "bg-slate-950 border-emerald-500/30 text-emerald-400"
+                }`}
+              >
+                <div>
+                  <span className="font-sans text-[11px] block uppercase font-bold text-slate-400">
+                    Remaining Stock Balance
+                  </span>
+                  <span className="text-lg font-black">{remainingStock.toFixed(2)} {selectedMaterial?.unit || "m²"}</span>
+                </div>
+                {selectedMaterial?.is_fabric && fabricWidth > 0 && remainingStock >= 0 && (
+                  <span className="text-xs text-slate-400">
+                    ≈ {(remainingStock / fabricWidth).toFixed(1)} RM
+                  </span>
+                )}
+              </div>
+
+              <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-400 space-y-1">
+                <div>Customer: <strong className="text-slate-200">{customer.customer_name}</strong></div>
+                {selectedProject && (
+                  <div>Project: <strong className="text-sky-300">{selectedProject.name}</strong></div>
+                )}
+                <div>Total Cost: <strong className="text-amber-300">AED {fmtAED(totalMaterialCost)}</strong></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Dispatches */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+              <History size={14} className="text-amber-400" /> Recent Material Issues
+            </h4>
+
+            {recentDispatches.length === 0 ? (
+              <p className="text-xs text-slate-500">No recent dispatch history found.</p>
+            ) : (
+              <div className="space-y-2">
+                {recentDispatches.slice(0, 5).map((m) => (
+                  <div
+                    key={m.id}
+                    className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 text-xs flex justify-between items-center"
+                  >
+                    <div>
+                      <p className="font-bold text-slate-200 truncate max-w-[160px]">{m.products?.name}</p>
+                      <p className="text-[10px] text-slate-500">{fmtDate(m.created_at)} • {m.reference_number}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-mono font-bold text-rose-400">-{m.quantity} {m.products?.unit || "m²"}</p>
+                      <p className="text-[10px] font-mono text-slate-400">AED {fmtAED(m.unit_cost)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Recent Stock Out Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="font-semibold text-slate-900 text-sm">Recent Dispatches / Issues (Last 10)</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 text-[11px] uppercase font-semibold text-slate-700 border-b border-slate-200">
-              <tr>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Product</th>
-                <th className="px-4 py-3 text-right">Qty Issued</th>
-                <th className="px-4 py-3 text-right">Prev &rarr; New Stock</th>
-                <th className="px-4 py-3">Reference Type</th>
-                <th className="px-4 py-3">Notes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {recentMovements.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
-                    No stock out records logged yet.
-                  </td>
-                </tr>
-              ) : (
-                recentMovements.map((m) => (
-                  <tr key={m.id} className="hover:bg-slate-50/50">
-                    <td className="px-4 py-2.5 font-mono text-slate-500">
-                      {new Date(m.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-2.5 font-medium text-slate-900">
-                      {m.products?.name || "Product"}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-semibold text-amber-600 font-mono">
-                      -{m.quantity} {m.products?.unit || ""}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-slate-500">
-                      {m.previous_stock} &rarr; {m.new_stock}
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-600">
-                      {m.reference_type} {m.reference_number ? `(${m.reference_number})` : ""}
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-400 truncate max-w-xs">
-                      {m.notes || "-"}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Print Material Issue Note (MIN) Modal */}
+      {printMinData && (
+        <PrintModal isOpen={Boolean(printMinData)} onClose={() => setPrintMinData(null)}>
+          <MaterialIssueNoteTemplate
+            company={company}
+            data={printMinData}
+            onClose={() => setPrintMinData(null)}
+          />
+        </PrintModal>
+      )}
     </div>
   );
 }
 
 export default function StockOutPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-slate-400">Loading Stock Out form...</div>}>
+    <Suspense
+      fallback={
+        <div className="p-8 text-center text-slate-400 flex items-center justify-center gap-2">
+          <Loader2 className="animate-spin text-amber-400" size={20} /> Loading stock out module...
+        </div>
+      }
+    >
       <StockOutForm />
     </Suspense>
   );

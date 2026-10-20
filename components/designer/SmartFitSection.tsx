@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useId } from "react";
+import React, { useId, useState } from "react";
 import {
   DocumentLayout,
   SmartFitSettings,
@@ -8,6 +8,7 @@ import {
   PreferredDensity,
   DEFAULT_SMART_FIT_SETTINGS,
   normalizeSmartFit,
+  DesignerLayoutMode,
 } from "@/lib/documentDesigner";
 import { computeIntelligentFitProfile } from "@/lib/documentLayoutEngine";
 import {
@@ -16,6 +17,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   Eye,
+  ShieldCheck,
+  ChevronDown,
+  ChevronRight,
+  Sliders,
 } from "lucide-react";
 
 interface SmartFitSectionProps {
@@ -23,6 +28,7 @@ interface SmartFitSectionProps {
   onUpdatePageSettings: (pagePatch: Partial<DocumentLayout["page"]>) => void;
   sampleItemCount?: number;
   onPreviewActualSize?: () => void;
+  onChangeLayoutMode?: (mode: DesignerLayoutMode) => void;
 }
 
 export default function SmartFitSection({
@@ -30,10 +36,18 @@ export default function SmartFitSection({
   onUpdatePageSettings,
   sampleItemCount = 4,
   onPreviewActualSize,
+  onChangeLayoutMode,
 }: SmartFitSectionProps) {
   const smartFit = normalizeSmartFit(layout.page?.smartFit);
   const minFontId = useId();
   const minRowId = useId();
+  const layoutMode: DesignerLayoutMode = layout.layoutMode || "manual";
+  const isManual = layoutMode === "manual";
+  const isAssisted = layoutMode === "assisted";
+  const isAutoFit = layoutMode === "auto_fit";
+
+  // In manual mode, collapse auto-fit controls by default so they do not distract
+  const [showAutoFitConfig, setShowAutoFitConfig] = useState(!isManual);
 
   const updateSmartFit = (patch: Partial<SmartFitSettings>) => {
     onUpdatePageSettings({
@@ -55,22 +69,34 @@ export default function SmartFitSection({
   const fit30 = computeIntelligentFitProfile(layout, 30);
 
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3.5 space-y-4 text-xs">
+    <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3.5 space-y-3.5 text-xs">
       {/* ── Section Header ──────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="p-1 rounded bg-amber-500/10 text-amber-400">
+          <div className={`p-1 rounded ${isManual ? "bg-amber-500/10 text-amber-400" : isAssisted ? "bg-blue-500/10 text-blue-400" : "bg-emerald-500/10 text-emerald-400"}`}>
             <Sparkles size={15} />
           </div>
           <div>
             <h3 className="text-xs font-bold text-slate-100 tracking-wide flex items-center gap-1.5">
               <span>Smart One-Page Fit (A4)</span>
-              <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                Auto
-              </span>
+              {isManual ? (
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  Manual Mode
+                </span>
+              ) : isAssisted ? (
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                  Assisted
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                  Auto Active
+                </span>
+              )}
             </h3>
             <p className="text-[10px] text-slate-400">
-              Fits one A4 page when readable, then continues onto additional pages
+              {isManual
+                ? "Manual mode: Elements and fonts retain exact positions & sizes"
+                : "Fits one A4 page when readable, then continues onto additional pages"}
             </p>
           </div>
         </div>
@@ -86,31 +112,78 @@ export default function SmartFitSection({
         </button>
       </div>
 
-      {/* ── Master Enable Toggle ────────────────────────────────────────── */}
-      <div className="flex items-center justify-between p-2.5 rounded-lg border border-slate-800 bg-slate-900/80">
-        <div>
-          <span className="text-[11px] font-bold text-slate-200 block">
-            Smart One-Page Auto-Fitting
-          </span>
-          <span className="text-[10px] text-slate-400">
-            {smartFit.enabled
-              ? "Active — Respects your minimum text size and row height"
-              : "Disabled — Standard fixed row heights and static pagination"}
-          </span>
+      {/* ── Manual Mode Prominent Status Banner ─────────────────────────── */}
+      {isManual && (
+        <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-amber-300 font-bold text-[11px]">
+              <ShieldCheck size={14} />
+              <span>Manual Design Mode Active</span>
+            </div>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-semibold border border-amber-500/40">
+              Fixed Dimensions
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-300 leading-relaxed">
+            All user-defined font sizes, exact coordinates, row heights, and table dimensions are strictly preserved. Automatic fitting calculations are completely bypassed.
+          </p>
+          {onChangeLayoutMode && (
+            <div className="pt-0.5 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onChangeLayoutMode("auto_fit")}
+                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-[10px] font-semibold transition cursor-pointer"
+              >
+                Switch to Auto-Fit Mode
+              </button>
+            </div>
+          )}
         </div>
+      )}
 
-        <label className="relative inline-flex items-center cursor-pointer">
-          <input
-            type="checkbox"
-            checked={smartFit.enabled}
-            onChange={(e) => updateSmartFit({ enabled: e.target.checked })}
-            className="sr-only peer"
-          />
-          <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-        </label>
-      </div>
+      {/* ── Master Enable Toggle (Only prominent in Auto Fit mode) ───────── */}
+      {!isManual && (
+        <div className="flex items-center justify-between p-2.5 rounded-lg border border-slate-800 bg-slate-900/80">
+          <div>
+            <span className="text-[11px] font-bold text-slate-200 block">
+              Smart One-Page Auto-Fitting
+            </span>
+            <span className="text-[10px] text-slate-400">
+              {smartFit.enabled
+                ? "Active — Respects your minimum text size and row height"
+                : "Disabled — Standard fixed row heights and static pagination"}
+            </span>
+          </div>
 
-      {smartFit.enabled && (
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={smartFit.enabled}
+              onChange={(e) => updateSmartFit({ enabled: e.target.checked })}
+              className="sr-only peer"
+            />
+            <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+          </label>
+        </div>
+      )}
+
+      {/* ── Collapsible Auto Fit Configuration Header for Manual Mode ──── */}
+      {isManual && (
+        <button
+          type="button"
+          onClick={() => setShowAutoFitConfig(!showAutoFitConfig)}
+          className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-slate-400 hover:text-slate-200 transition text-[10px] font-semibold cursor-pointer"
+        >
+          <div className="flex items-center gap-1.5">
+            <Sliders size={12} className="text-amber-400" />
+            <span>Auto-Fit Settings (Preserved for Auto Mode)</span>
+          </div>
+          {showAutoFitConfig ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+      )}
+
+      {/* ── Auto-Fit Controls (expanded in Auto Fit mode, or when requested in Manual mode) ── */}
+      {(!isManual ? smartFit.enabled : showAutoFitConfig) && (
         <div className="space-y-3.5 pt-1">
           {/* ── Mode Selector: Compact / Balanced / Readability ──────────── */}
           <div>
@@ -363,7 +436,7 @@ export default function SmartFitSection({
                 {currentFit.fits ? (
                   <>
                     <CheckCircle2 size={11} />
-                    <span>1 Page A4 Guaranteed</span>
+                    <span>{isManual ? "Fits on 1 Page A4" : "1 Page A4 Guaranteed"}</span>
                   </>
                 ) : (
                   <>

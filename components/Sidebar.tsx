@@ -287,12 +287,13 @@ export default function Sidebar() {
           </button>
           {inventoryOpen && (
             <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
-              <SubLink href="/products" icon={<Package size={14} />} label="Products &amp; Services" />
+              <SubLink href="/products" icon={<Package size={14} />} label="Materials &amp; Products" />
               <SubLink href="/inventory" icon={<ClipboardList size={14} />} label="Stock Overview" exact />
               <SubLink href="/inventory/stock-in" icon={<ArrowDownRight size={14} />} label="Stock In" />
-              <SubLink href="/inventory/stock-out" icon={<ArrowUpRight size={14} />} label="Stock Out" />
+              <SubLink href="/inventory/stock-out" icon={<ArrowUpRight size={14} />} label="Material Used / Stock Out" />
               <SubLink href="/inventory/adjustments" icon={<RefreshCw size={14} />} label="Stock Adjustments" />
               <SubLink href="/inventory/movements" icon={<History size={14} />} label="Stock Movements" />
+              <SubLink href="/inventory/customer-usage" icon={<Users size={14} />} label="Customer Material Usage" />
             </div>
           )}
         </div>

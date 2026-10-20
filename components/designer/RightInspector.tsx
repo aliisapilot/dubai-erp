@@ -33,11 +33,14 @@ import {
   Info,
   AlertTriangle,
   Hash,
+  Maximize2,
+  ShieldCheck,
 } from "lucide-react";
 import {
   DocumentLayout,
   LayoutElement,
   ElementType,
+  DesignerLayoutMode,
 } from "@/lib/documentDesigner";
 import { type DocNumberingConfig } from "@/lib/documentNumbering";
 import PageBorderSection from "./PageBorderSection";
@@ -305,7 +308,14 @@ interface RightInspectorProps {
   onPreviewActualSize?: () => void;
   onOpenTestSheet?: () => void;
   onUpdateNumberingConfig?: (patch: Partial<DocNumberingConfig>) => void;
+  onChangeLayoutMode?: (mode: DesignerLayoutMode) => void;
+  snapGrid?: boolean;
+  onToggleSnapGrid?: () => void;
+  snapMargins?: boolean;
+  onToggleSnapMargins?: () => void;
 }
+
+export type InspectorTab = "text" | "layout" | "table" | "image" | "doc_settings" | "page_borders";
 
 const QUICK_SWATCHES = [
   "#0F172A", // Navy Primary
@@ -343,19 +353,14 @@ export default function RightInspector({
   onPreviewActualSize,
   onOpenTestSheet,
   onUpdateNumberingConfig,
+  onChangeLayoutMode,
+  snapGrid = true,
+  onToggleSnapGrid,
+  snapMargins = true,
+  onToggleSnapMargins,
 }: RightInspectorProps) {
   const imageReplaceInputRef = useRef<HTMLInputElement>(null);
-  const [activeTabOverride, setActiveTabOverride] = useState<"element" | "doc_settings" | "page_borders" | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        if (params.get("tab") === "numbering" || params.get("tab") === "doc_settings") {
-          return "doc_settings";
-        }
-      } catch {}
-    }
-    return null;
-  });
+  const [activeTabOverride, setActiveTabOverride] = useState<InspectorTab | null>(null);
   const currentElementId = selectedElement ? selectedElement.id : null;
   const [prevElementId, setPrevElementId] = useState<string | null>(currentElementId);
 
@@ -364,84 +369,25 @@ export default function RightInspector({
     setActiveTabOverride(null);
   }
 
-  const activeTab = activeTabOverride || (selectedElement ? "element" : "page_borders");
-
   const renderPageAndBordersContent = () => (
     <div className="p-4 space-y-5 text-xs">
-      {/* Page Margins */}
-      <div>
-        <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">
-          Page Margins (mm)
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Top Margin</label>
-            <input
-              type="number"
-              min={0}
-              max={50}
-              value={layout.page.margins.top}
-              onChange={(e) =>
-                onUpdatePageSettings({
-                  margins: { ...layout.page.margins, top: Number(e.target.value) || 0 },
-                })
-              }
-              className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Bottom Margin</label>
-            <input
-              type="number"
-              min={0}
-              max={50}
-              value={layout.page.margins.bottom}
-              onChange={(e) =>
-                onUpdatePageSettings({
-                  margins: { ...layout.page.margins, bottom: Number(e.target.value) || 0 },
-                })
-              }
-              className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Left Margin</label>
-            <input
-              type="number"
-              min={0}
-              max={50}
-              value={layout.page.margins.left}
-              onChange={(e) =>
-                onUpdatePageSettings({
-                  margins: { ...layout.page.margins, left: Number(e.target.value) || 0 },
-                })
-              }
-              className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Right Margin</label>
-            <input
-              type="number"
-              min={0}
-              max={50}
-              value={layout.page.margins.right}
-              onChange={(e) =>
-                onUpdatePageSettings({
-                  margins: { ...layout.page.margins, right: Number(e.target.value) || 0 },
-                })
-              }
-              className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
-            />
-          </div>
-        </div>
-      </div>
+      {/* Page Border, Background & Margins Design */}
+      <PageBorderSection
+        layout={layout}
+        onUpdatePageSettings={onUpdatePageSettings}
+        selectedBorderId={selectedElement?.id}
+        snapGrid={snapGrid}
+        onToggleSnapGrid={onToggleSnapGrid}
+        snapMargins={snapMargins}
+        onToggleSnapMargins={onToggleSnapMargins}
+      />
 
       {/* Dynamic Fitting & Adaptive Layout (A4) */}
       <SmartFitSection
         layout={layout}
         onUpdatePageSettings={onUpdatePageSettings}
         onPreviewActualSize={onPreviewActualSize}
+        onChangeLayoutMode={onChangeLayoutMode}
       />
 
       {/* Printing & Physical Output Settings (A4) */}
@@ -450,12 +396,6 @@ export default function RightInspector({
         onUpdatePageSettings={onUpdatePageSettings}
         onPreviewActualSize={onPreviewActualSize}
         onOpenTestSheet={onOpenTestSheet}
-      />
-
-      {/* Page Border & Background Design */}
-      <PageBorderSection
-        layout={layout}
-        onUpdatePageSettings={onUpdatePageSettings}
       />
 
       {/* Document Branding Palette */}
@@ -533,14 +473,15 @@ export default function RightInspector({
 
   // If NO element is selected, allow switching between Document Numbering and Page Settings
   if (!selectedElement) {
+    const pageTab = activeTabOverride === "page_borders" ? "page_borders" : "doc_settings";
     return (
-      <aside className="designer-scrollbar flex h-full min-h-0 w-84 sm:w-88 md:w-96 min-w-[320px] max-w-[420px] shrink-0 select-none flex-col overflow-x-hidden overflow-y-auto border-l border-slate-800 bg-slate-900 text-white" tabIndex={0} aria-label="Page and branding settings">
+      <aside className="designer-scrollbar flex h-full min-h-0 w-full shrink-0 select-none flex-col overflow-x-hidden overflow-y-auto border-l border-slate-800 bg-slate-900 text-white" tabIndex={0} aria-label="Page and branding settings">
         <div className="flex border-b border-slate-800 bg-slate-950/80 p-1.5 gap-1 shrink-0">
           <button
             type="button"
             onClick={() => setActiveTabOverride("doc_settings")}
             className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-1.5 rounded-md text-[11px] font-bold transition cursor-pointer ${
-              activeTab === "doc_settings"
+              pageTab === "doc_settings"
                 ? "bg-emerald-500/20 text-emerald-300 shadow-sm border border-emerald-500/40"
                 : "text-slate-400 hover:text-slate-200"
             }`}
@@ -553,7 +494,7 @@ export default function RightInspector({
             type="button"
             onClick={() => setActiveTabOverride("page_borders")}
             className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-1.5 rounded-md text-[11px] font-bold transition cursor-pointer ${
-              activeTab === "page_borders"
+              pageTab === "page_borders"
                 ? "bg-amber-500/20 text-amber-300 shadow-sm border border-amber-500/40"
                 : "text-slate-400 hover:text-slate-200"
             }`}
@@ -563,7 +504,7 @@ export default function RightInspector({
           </button>
         </div>
 
-        {activeTab === "doc_settings" ? (
+        {pageTab === "doc_settings" ? (
           <DocumentNumberingSection
             layout={layout}
             onUpdateNumberingConfig={onUpdateNumberingConfig}
@@ -595,72 +536,132 @@ export default function RightInspector({
   const isDataOnlyElement = contentConfig !== null && !isContentEditable && !isTotalsElement && !isLineItemsElement;
   const aspectRatio = elem.imageAspectRatio || elem.width / Math.max(1, elem.height);
 
+  const isOverflowX = elem.x < 0 || elem.x + elem.width > layout.page.widthMm;
+  const isOverflowY = elem.y < 0 || elem.y + elem.height > layout.page.heightMm;
+  const isBoundaryOverflow = isOverflowX || isOverflowY;
+
+  const defaultTab: InspectorTab = elem.id.startsWith("border_")
+    ? "page_borders"
+    : isLineItemsElement
+    ? "table"
+    : isImageElement
+    ? "image"
+    : isTextElement
+    ? "text"
+    : "layout";
+
+  const activeTab: InspectorTab = activeTabOverride || defaultTab;
+
   const updateWidth = (rawWidth: number) => {
-    let width = Math.max(5, Math.min(layout.page.widthMm - elem.x, rawWidth || 5));
+    const width = Math.max(2, rawWidth || 2);
     let height = elem.height;
     if (elem.lockAspectRatio && aspectRatio > 0) {
-      height = width / aspectRatio;
-      if (height > layout.page.heightMm - elem.y) {
-        height = layout.page.heightMm - elem.y;
-        width = height * aspectRatio;
-      }
+      height = Math.round((width / aspectRatio) * 10) / 10;
     }
     onUpdateElement(elem.id, { width, height });
   };
 
   const updateHeight = (rawHeight: number) => {
-    let height = Math.max(5, Math.min(layout.page.heightMm - elem.y, rawHeight || 5));
+    const height = Math.max(2, rawHeight || 2);
     let width = elem.width;
     if (elem.lockAspectRatio && aspectRatio > 0) {
-      width = height * aspectRatio;
-      if (width > layout.page.widthMm - elem.x) {
-        width = layout.page.widthMm - elem.x;
-        height = width / aspectRatio;
-      }
+      width = Math.round((height * aspectRatio) * 10) / 10;
     }
     onUpdateElement(elem.id, { width, height });
   };
 
   return (
-    <aside className="designer-scrollbar flex h-full min-h-0 w-84 sm:w-88 md:w-96 min-w-[320px] max-w-[420px] shrink-0 select-none flex-col overflow-x-hidden overflow-y-auto border-l border-slate-800 bg-slate-900 text-white" tabIndex={0} aria-label="Element and page settings">
+    <aside className="designer-scrollbar flex h-full min-h-0 w-full shrink-0 select-none flex-col overflow-x-hidden overflow-y-auto border-l border-slate-800 bg-slate-900 text-white" tabIndex={0} aria-label="Element and page settings">
       {/* Top Inspector Tab Switcher */}
-      <div className="flex border-b border-slate-800 bg-slate-950/80 p-1.5 gap-1 shrink-0">
+      <div className="flex border-b border-slate-800 bg-slate-950/80 p-1.5 gap-1 shrink-0 overflow-x-auto">
+        {isTextElement && (
+          <button
+            type="button"
+            onClick={() => setActiveTabOverride("text")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-bold transition cursor-pointer ${
+              activeTab === "text"
+                ? "bg-amber-500/20 text-amber-300 shadow-sm border border-amber-500/40"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+            title="Text typography, content, styling and coordinates"
+          >
+            <Type size={13} className="shrink-0" />
+            <span>Text</span>
+          </button>
+        )}
+
+        {isLineItemsElement && (
+          <button
+            type="button"
+            onClick={() => setActiveTabOverride("table")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-bold transition cursor-pointer ${
+              activeTab === "table"
+                ? "bg-emerald-500/20 text-emerald-300 shadow-sm border border-emerald-500/40"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+            title="Table columns, headers and row heights"
+          >
+            <TableIcon size={13} className="shrink-0" />
+            <span>Table</span>
+          </button>
+        )}
+
+        {isImageElement && (
+          <button
+            type="button"
+            onClick={() => setActiveTabOverride("image")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-bold transition cursor-pointer ${
+              activeTab === "image"
+                ? "bg-blue-500/20 text-blue-300 shadow-sm border border-blue-500/40"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+            title="Image properties, replacement and aspect ratio"
+          >
+            <ImageIcon size={13} className="shrink-0" />
+            <span>Image</span>
+          </button>
+        )}
+
         <button
           type="button"
-          onClick={() => setActiveTabOverride("element")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-1.5 rounded-md text-[11px] font-bold transition cursor-pointer ${
-            activeTab === "element"
+          onClick={() => setActiveTabOverride("layout")}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-bold transition cursor-pointer ${
+            activeTab === "layout"
               ? "bg-slate-800 text-white shadow-sm border border-slate-700"
               : "text-slate-400 hover:text-slate-200"
           }`}
+          title="Position, size, and layer ordering"
         >
-          <Sliders size={13} className="text-blue-400 shrink-0" />
-          <span className="truncate">{elem.label}</span>
+          <Sliders size={13} className="shrink-0" />
+          <span>Layout</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTabOverride("page_borders")}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-bold transition cursor-pointer ${
+            activeTab === "page_borders"
+              ? "bg-amber-500/20 text-amber-300 shadow-sm border border-amber-500/40"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+          title="Page margins, borders, smart fit, and branding"
+        >
+          <Sparkles size={13} className="shrink-0" />
+          <span>Page</span>
+        </button>
+
         <button
           type="button"
           onClick={() => setActiveTabOverride("doc_settings")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-1.5 rounded-md text-[11px] font-bold transition cursor-pointer ${
+          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-bold transition cursor-pointer ${
             activeTab === "doc_settings"
               ? "bg-emerald-500/20 text-emerald-300 shadow-sm border border-emerald-500/40"
               : "text-slate-400 hover:text-slate-200"
           }`}
           title="Customizable Document Title and Number Format"
         >
-          <Hash size={13} className="text-emerald-400 shrink-0" />
-          <span className="truncate">Title &amp; Number</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTabOverride("page_borders")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-1.5 rounded-md text-[11px] font-bold transition cursor-pointer ${
-            activeTab === "page_borders"
-              ? "bg-amber-500/20 text-amber-300 shadow-sm border border-amber-500/40"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <Sparkles size={13} className="text-amber-400 shrink-0" />
-          <span className="truncate">Borders</span>
+          <Hash size={13} className="shrink-0" />
+          <span className="truncate">Title</span>
         </button>
       </div>
 
@@ -693,78 +694,97 @@ export default function RightInspector({
               </div>
             </div>
 
-        {/* Quick Element Actions */}
-        <div className="flex items-center gap-1">
-          {onApplyElementToOthers && (
-            <button
-              onClick={() => onApplyElementToOthers(elem)}
-              className="p-1.5 rounded hover:bg-slate-800 text-amber-400 hover:text-amber-300 transition"
-              title="Apply this element to other documents"
-            >
-              <Copy size={14} />
-            </button>
-          )}
-          {onResetElement && (
-            <button
-              onClick={() => onResetElement(elem.id)}
-              className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-amber-400 transition"
-              title="Reset this element to default"
-            >
-              <RotateCcw size={14} />
-            </button>
-          )}
-          <button
-            onClick={() => onUpdateElement(elem.id, { locked: !elem.locked })}
-            className={`p-1.5 rounded hover:bg-slate-800 transition ${
-              elem.locked ? "text-amber-400" : "text-slate-400"
-            }`}
-            title={elem.locked ? "Unlock element" : "Lock position"}
-          >
-            {elem.locked ? <Lock size={15} /> : <Unlock size={15} />}
-          </button>
-          <button
-            onClick={() => onUpdateElement(elem.id, { visible: !elem.visible })}
-            className={`p-1.5 rounded hover:bg-slate-800 transition ${
-              elem.visible ? "text-slate-300" : "text-red-400"
-            }`}
-            title={elem.visible ? "Hide element" : "Show element"}
-          >
-            {elem.visible ? <Eye size={15} /> : <EyeOff size={15} />}
-          </button>
-          {(elem.type === "custom_text" || elem.type === "divider" || elem.type === "custom_image") && onDeleteElement && (
-            <button
-              onClick={() => onDeleteElement(elem.id)}
-              className="p-1.5 rounded hover:bg-slate-800 text-red-400 hover:text-red-300 transition"
-              title="Delete element"
-            >
-              <Trash2 size={15} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Prominent Locked Alert Banner */}
-      {elem.locked && (
-        <div className="mx-4 mt-3 p-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2 text-amber-300">
-            <Lock size={14} className="shrink-0" />
-            <span className="font-semibold text-[11px]">Element is locked</span>
+            {/* Quick Element Actions */}
+            <div className="flex items-center gap-1">
+              {onApplyElementToOthers && (
+                <button
+                  type="button"
+                  onClick={() => onApplyElementToOthers(elem)}
+                  className="p-1.5 rounded hover:bg-slate-800 text-amber-400 hover:text-amber-300 transition cursor-pointer"
+                  title="Apply this element to other documents"
+                >
+                  <Copy size={14} />
+                </button>
+              )}
+              {onResetElement && (
+                <button
+                  type="button"
+                  onClick={() => onResetElement(elem.id)}
+                  className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-amber-400 transition cursor-pointer"
+                  title="Reset this element to default"
+                >
+                  <RotateCcw size={14} />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onUpdateElement(elem.id, { locked: !elem.locked })}
+                className={`p-1.5 rounded hover:bg-slate-800 transition cursor-pointer ${
+                  elem.locked ? "text-amber-400" : "text-slate-400"
+                }`}
+                title={elem.locked ? "Unlock element" : "Lock position"}
+              >
+                {elem.locked ? <Lock size={15} /> : <Unlock size={15} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => onUpdateElement(elem.id, { visible: !elem.visible })}
+                className={`p-1.5 rounded hover:bg-slate-800 transition cursor-pointer ${
+                  elem.visible ? "text-slate-300" : "text-red-400"
+                }`}
+                title={elem.visible ? "Hide element" : "Show element"}
+              >
+                {elem.visible ? <Eye size={15} /> : <EyeOff size={15} />}
+              </button>
+              {(elem.type === "custom_text" || elem.type === "divider" || elem.type === "custom_image") && onDeleteElement && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteElement(elem.id)}
+                  className="p-1.5 rounded hover:bg-slate-800 text-red-400 hover:text-red-300 transition cursor-pointer"
+                  title="Delete element"
+                >
+                  <Trash2 size={15} />
+                </button>
+              )}
+            </div>
           </div>
-          <button
-            onClick={() => onUpdateElement(elem.id, { locked: false })}
-            className="text-[10px] px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition"
-          >
-            Unlock
-          </button>
-        </div>
-      )}
+
+          {/* Prominent Locked Alert Banner */}
+          {elem.locked && (
+            <div className="mx-4 mt-3 p-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 text-amber-300">
+                <Lock size={14} className="shrink-0" />
+                <span className="font-semibold text-[11px]">Element is locked</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onUpdateElement(elem.id, { locked: false })}
+                className="text-[10px] px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition cursor-pointer"
+              >
+                Unlock
+              </button>
+            </div>
+          )}
+
+          {/* Prominent Printable Boundary Overflow Alert */}
+          {isBoundaryOverflow && (
+            <div className="mx-4 mt-3 p-2.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
+              <AlertTriangle size={15} className="shrink-0 mt-0.5 text-rose-400" />
+              <div className="space-y-0.5">
+                <span className="font-bold text-[11px] block">A4 Printable Boundary Warning</span>
+                <p className="text-[10px] text-rose-200/90 leading-snug">
+                  Element extends beyond page ({Math.round(elem.x + elem.width)}mm / {layout.page.widthMm}mm W, {Math.round(elem.y + elem.height)}mm / {layout.page.heightMm}mm H). Coordinates are preserved, but excess will be cropped when printed.
+                </p>
+              </div>
+            </div>
+          )}
 
       <div className="p-4 space-y-5 text-xs">
         {/* ══════════════════════════════════════════════════════════════════════
             UNIVERSAL TEXT EDITOR — Edit Content Section (appears at TOP)
             Shows for ALL elements that have text content (editable or dynamic).
             ══════════════════════════════════════════════════════════════════════ */}
-        {contentConfig && (
+        {(activeTab === "text" || !activeTab) && contentConfig && (
           <div className="rounded-xl border border-indigo-500/30 bg-gradient-to-b from-indigo-950/40 to-slate-900/60 overflow-hidden">
             {/* Section Header */}
             <div className="flex items-center gap-2 px-3 py-2 border-b border-indigo-500/20 bg-indigo-950/30">
@@ -798,19 +818,182 @@ export default function RightInspector({
                 </div>
               </div>
 
-              {/* Text Editor Area — only for content-editable elements */}
-              {isContentEditable && (
+              {/* Totals Hierarchy & Labels Editor when elem.type === "totals" */}
+              {elem.type === "totals" ? (
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-500/10 px-2.5 py-1.5 rounded-lg border border-emerald-500/20">
+                    <ShieldCheck size={12} className="shrink-0 text-emerald-400" />
+                    <span>Calculations bound to document data (Protected). Customize display labels below.</span>
+                  </div>
+
+                  {/* Subtotal Row */}
+                  <div className="p-2.5 bg-slate-800/80 rounded-lg border border-slate-700 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-300">Subtotal Row</span>
+                      <span className="font-mono text-[9px] font-bold text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">AED 138,400.00 (Calc)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">English Label</label>
+                        <input
+                          type="text"
+                          value={elem.totalsLabels?.subtotal ?? "Subtotal"}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              totalsLabels: { ...elem.totalsLabels, subtotal: e.target.value },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-amber-400"
+                          placeholder="Subtotal"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">Arabic Label (العربية)</label>
+                        <input
+                          type="text"
+                          value={elem.totalsLabels?.subtotalAr ?? ""}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              totalsLabels: { ...elem.totalsLabels, subtotalAr: e.target.value || undefined },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-amber-400 font-arabic text-right"
+                          placeholder="المجموع الفرعي"
+                          dir="rtl"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* VAT Total Row */}
+                  <div className="p-2.5 bg-slate-800/80 rounded-lg border border-slate-700 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-300">VAT Total (5%) Row</span>
+                      <span className="font-mono text-[9px] font-bold text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">AED 6,920.00 (Calc)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">English Label</label>
+                        <input
+                          type="text"
+                          value={elem.totalsLabels?.vat ?? "VAT Total (5%)"}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              totalsLabels: { ...elem.totalsLabels, vat: e.target.value },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-amber-400"
+                          placeholder="VAT Total (5%)"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">Arabic Label (العربية)</label>
+                        <input
+                          type="text"
+                          value={elem.totalsLabels?.vatAr ?? ""}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              totalsLabels: { ...elem.totalsLabels, vatAr: e.target.value || undefined },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-amber-400 font-arabic text-right"
+                          placeholder="ضريبة القيمة المضافة"
+                          dir="rtl"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Grand Total Row */}
+                  <div className="p-2.5 bg-slate-800/80 rounded-lg border border-slate-700 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-300">Grand Total Row</span>
+                      <span className="font-mono text-[9px] font-bold text-emerald-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">AED 145,320.00 (Calc)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">English Label</label>
+                        <input
+                          type="text"
+                          value={elem.totalsLabels?.grandTotal ?? "Grand Total"}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              totalsLabels: { ...elem.totalsLabels, grandTotal: e.target.value },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-amber-400"
+                          placeholder="Grand Total"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">Arabic Label (العربية)</label>
+                        <input
+                          type="text"
+                          value={elem.totalsLabels?.grandTotalAr ?? ""}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              totalsLabels: { ...elem.totalsLabels, grandTotalAr: e.target.value || undefined },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-amber-400 font-arabic text-right"
+                          placeholder="المبلغ الإجمالي"
+                          dir="rtl"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Balance Due Row */}
+                  <div className="p-2.5 bg-slate-800/80 rounded-lg border border-slate-700 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-300">Balance Due Row</span>
+                      <span className="font-mono text-[9px] font-bold text-slate-200 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">AED 135,320.00 (Calc)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">English Label</label>
+                        <input
+                          type="text"
+                          value={elem.totalsLabels?.balanceDue ?? "Balance Due"}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              totalsLabels: { ...elem.totalsLabels, balanceDue: e.target.value },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-amber-400"
+                          placeholder="Balance Due"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">Arabic Label (العربية)</label>
+                        <input
+                          type="text"
+                          value={elem.totalsLabels?.balanceDueAr ?? ""}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              totalsLabels: { ...elem.totalsLabels, balanceDueAr: e.target.value || undefined },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-amber-400 font-arabic text-right"
+                          placeholder="الرصيد المستحق"
+                          dir="rtl"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : isContentEditable ? (
                 <>
                   <div className="relative">
                     <textarea
                       id="element-content-editor-textarea"
-                      rows={contentConfig.rows || 3}
+                      rows={contentConfig?.rows || 3}
                       value={elem.customText || ""}
                       onChange={(e) => onUpdateElement(elem.id, { customText: e.target.value || undefined })}
-                      placeholder={contentConfig.placeholder}
-                      dir={contentConfig.isRtl ? "rtl" : "ltr"}
+                      placeholder={contentConfig?.placeholder}
+                      dir={contentConfig?.isRtl ? "rtl" : "ltr"}
                       className={`w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/30 transition placeholder:text-slate-500 resize-y min-h-[32px] ${
-                        contentConfig.isRtl ? "text-right font-arabic" : ""
+                        contentConfig?.isRtl ? "text-right font-arabic" : ""
                       }`}
                     />
                     {elem.customText && (
@@ -826,11 +1009,11 @@ export default function RightInspector({
                     )}
                   </div>
 
-                  {/* Status: Custom override vs Default */}
+                  {/* Direct Content Editor Status */}
                   {elem.customText ? (
                     <div className="flex items-center gap-1.5 text-[10px] text-amber-400 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
-                      <AlertTriangle size={10} className="shrink-0" />
-                      <span className="font-medium">Custom override active — default data is hidden.</span>
+                      <PencilLine size={10} className="shrink-0 text-amber-400" />
+                      <span className="font-medium">Custom content active — live preview updated.</span>
                     </div>
                   ) : elem.type === "doc_title" ? (
                     <button
@@ -841,18 +1024,18 @@ export default function RightInspector({
                       <Hash size={13} />
                       <span>Configure Document Title &amp; Number Format</span>
                     </button>
-                  ) : contentConfig.isDynamic ? (
+                  ) : contentConfig?.isDynamic ? (
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-500/8 px-2 py-1 rounded border border-emerald-500/20">
                         <Database size={10} className="shrink-0" />
-                        <span>Using live data from your records. Type above to override.</span>
+                        <span>Live Document Content — Type directly in editor or canvas to customize.</span>
                       </div>
-                      {contentConfig.defaultTemplate && (
+                      {contentConfig?.defaultTemplate && (
                         <button
                           type="button"
                           onClick={() => onUpdateElement(elem.id, { customText: contentConfig.defaultTemplate })}
                           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-medium bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/25 hover:border-indigo-400/50 transition w-full justify-center"
-                          title="Load the standard template format with dynamic tokens into the editor to customize it"
+                          title="Load standard template format with dynamic tokens into the editor to customize it"
                         >
                           <FileText size={11} className="shrink-0" />
                           <span>Pre-fill Standard Format to Edit</span>
@@ -887,7 +1070,7 @@ export default function RightInspector({
                     </div>
                   )}
                 </>
-              )}
+              ) : null}
 
               {/* Data-only elements: show info but no editable textarea */}
               {isDataOnlyElement && (
@@ -901,7 +1084,7 @@ export default function RightInspector({
         )}
 
         {/* Quick action: Apply This Element to Other Documents */}
-        {onApplyElementToOthers && (
+        {(activeTab === "text" || activeTab === "layout") && onApplyElementToOthers && (
           <div className="mb-4">
             <button
               type="button"
@@ -915,6 +1098,7 @@ export default function RightInspector({
         )}
 
         {/* ── Position & Dimensions (in mm) ─────────────────────────────────── */}
+        {(activeTab === "text" || activeTab === "layout" || activeTab === "image" || activeTab === "table") && (
         <div>
           <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2 flex items-center justify-between">
             <span>Position &amp; Size (mm)</span>
@@ -999,8 +1183,8 @@ export default function RightInspector({
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  disabled={elem.locked || elem.x <= 0}
-                  onClick={() => onUpdateElement(elem.id, { x: Math.max(0, Math.round((elem.x - 1) * 10) / 10) })}
+                  disabled={elem.locked}
+                  onClick={() => onUpdateElement(elem.id, { x: Math.round((elem.x - 1) * 10) / 10 })}
                   className="px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition border border-slate-700"
                   title="Nudge Left 1mm"
                 >
@@ -1008,22 +1192,20 @@ export default function RightInspector({
                 </button>
                 <input
                   type="number"
-                  min={0}
-                  max={layout.page.widthMm - elem.width}
                   step={0.5}
                   value={Math.round(elem.x * 10) / 10}
                   disabled={elem.locked}
                   onChange={(e) =>
                     onUpdateElement(elem.id, {
-                      x: Math.max(0, Math.min(layout.page.widthMm - elem.width, Number(e.target.value) || 0)),
+                      x: Number(e.target.value) || 0,
                     })
                   }
                   className="w-full bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-xs text-white text-center font-mono disabled:opacity-50"
                 />
                 <button
                   type="button"
-                  disabled={elem.locked || elem.x >= layout.page.widthMm - elem.width}
-                  onClick={() => onUpdateElement(elem.id, { x: Math.min(layout.page.widthMm - elem.width, Math.round((elem.x + 1) * 10) / 10) })}
+                  disabled={elem.locked}
+                  onClick={() => onUpdateElement(elem.id, { x: Math.round((elem.x + 1) * 10) / 10 })}
                   className="px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition border border-slate-700"
                   title="Nudge Right 1mm"
                 >
@@ -1039,8 +1221,8 @@ export default function RightInspector({
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  disabled={elem.locked || elem.y <= 0}
-                  onClick={() => onUpdateElement(elem.id, { y: Math.max(0, Math.round((elem.y - 1) * 10) / 10) })}
+                  disabled={elem.locked}
+                  onClick={() => onUpdateElement(elem.id, { y: Math.round((elem.y - 1) * 10) / 10 })}
                   className="px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition border border-slate-700"
                   title="Nudge Up 1mm"
                 >
@@ -1048,22 +1230,20 @@ export default function RightInspector({
                 </button>
                 <input
                   type="number"
-                  min={0}
-                  max={layout.page.heightMm - elem.height}
                   step={0.5}
                   value={Math.round(elem.y * 10) / 10}
                   disabled={elem.locked}
                   onChange={(e) =>
                     onUpdateElement(elem.id, {
-                      y: Math.max(0, Math.min(layout.page.heightMm - elem.height, Number(e.target.value) || 0)),
+                      y: Number(e.target.value) || 0,
                     })
                   }
                   className="w-full bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-xs text-white text-center font-mono disabled:opacity-50"
                 />
                 <button
                   type="button"
-                  disabled={elem.locked || elem.y >= layout.page.heightMm - elem.height}
-                  onClick={() => onUpdateElement(elem.id, { y: Math.min(layout.page.heightMm - elem.height, Math.round((elem.y + 1) * 10) / 10) })}
+                  disabled={elem.locked}
+                  onClick={() => onUpdateElement(elem.id, { y: Math.round((elem.y + 1) * 10) / 10 })}
                   className="px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition border border-slate-700"
                   title="Nudge Down 1mm"
                 >
@@ -1079,8 +1259,8 @@ export default function RightInspector({
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  disabled={elem.locked || elem.width <= 5}
-                  onClick={() => updateWidth(Math.max(5, Math.round((elem.width - 1) * 10) / 10))}
+                  disabled={elem.locked || elem.width <= 2}
+                  onClick={() => updateWidth(Math.max(2, Math.round((elem.width - 1) * 10) / 10))}
                   className="px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition border border-slate-700"
                   title="Shrink Width 1mm"
                 >
@@ -1088,8 +1268,7 @@ export default function RightInspector({
                 </button>
                 <input
                   type="number"
-                  min={5}
-                  max={layout.page.widthMm - elem.x}
+                  min={2}
                   step={0.5}
                   value={Math.round(elem.width * 10) / 10}
                   disabled={elem.locked}
@@ -1098,8 +1277,8 @@ export default function RightInspector({
                 />
                 <button
                   type="button"
-                  disabled={elem.locked || elem.width >= layout.page.widthMm - elem.x}
-                  onClick={() => updateWidth(Math.min(layout.page.widthMm - elem.x, Math.round((elem.width + 1) * 10) / 10))}
+                  disabled={elem.locked}
+                  onClick={() => updateWidth(Math.round((elem.width + 1) * 10) / 10)}
                   className="px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition border border-slate-700"
                   title="Expand Width 1mm"
                 >
@@ -1115,8 +1294,8 @@ export default function RightInspector({
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  disabled={elem.locked || elem.height <= 5}
-                  onClick={() => updateHeight(Math.max(5, Math.round((elem.height - 1) * 10) / 10))}
+                  disabled={elem.locked || elem.height <= 2}
+                  onClick={() => updateHeight(Math.max(2, Math.round((elem.height - 1) * 10) / 10))}
                   className="px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition border border-slate-700"
                   title="Shrink Height 1mm"
                 >
@@ -1124,8 +1303,7 @@ export default function RightInspector({
                 </button>
                 <input
                   type="number"
-                  min={5}
-                  max={layout.page.heightMm - elem.y}
+                  min={2}
                   step={0.5}
                   value={Math.round(elem.height * 10) / 10}
                   disabled={elem.locked}
@@ -1134,8 +1312,8 @@ export default function RightInspector({
                 />
                 <button
                   type="button"
-                  disabled={elem.locked || elem.height >= layout.page.heightMm - elem.y}
-                  onClick={() => updateHeight(Math.min(layout.page.heightMm - elem.y, Math.round((elem.height + 1) * 10) / 10))}
+                  disabled={elem.locked}
+                  onClick={() => updateHeight(Math.round((elem.height + 1) * 10) / 10)}
                   className="px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition border border-slate-700"
                   title="Expand Height 1mm"
                 >
@@ -1144,10 +1322,38 @@ export default function RightInspector({
               </div>
             </div>
           </div>
+
+          {/* Universal Fit Box to Content Action */}
+          <div className="mt-2.5">
+            <button
+              type="button"
+              disabled={elem.locked}
+              onClick={() => {
+                const domEl = document.querySelector(`[data-element-id="${elem.id}"]`) as HTMLElement | null;
+                if (!domEl) return;
+                const contentEl = (domEl.firstElementChild as HTMLElement) || domEl;
+                const pxPerMm = 3.7795296;
+                const contentHPx = Math.max(contentEl.scrollHeight, contentEl.offsetHeight, domEl.scrollHeight);
+                const contentWPx = Math.max(contentEl.scrollWidth, contentEl.offsetWidth, domEl.scrollWidth);
+                const requiredHeightMm = Math.ceil((contentHPx / pxPerMm) * 10) / 10;
+                const requiredWidthMm = Math.max(elem.width, Math.ceil((contentWPx / pxPerMm) * 10) / 10);
+                onUpdateElement(elem.id, {
+                  width: requiredWidthMm,
+                  height: Math.max(elem.height, requiredHeightMm),
+                });
+              }}
+              className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-indigo-500/50 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 hover:text-white font-bold text-xs transition cursor-pointer shadow-sm disabled:opacity-50"
+              title="Measure actual rendered text and rows, and expand the editable box to fit content without clipping"
+            >
+              <Maximize2 size={13} className="text-indigo-400" />
+              <span>FIT BOX TO CONTENT</span>
+            </button>
+          </div>
         </div>
+        )}
 
         {/* ── Flow & Dynamic Spacing Controls ───────────────────────────────── */}
-        {elem.type !== "watermark" && elem.type !== "footer" && (
+        {(activeTab === "layout" || activeTab === "table") && elem.type !== "watermark" && elem.type !== "footer" && (
           <div className="pt-3 border-t border-slate-800">
             <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2 flex items-center justify-between">
               <span>Dynamic Spacing &amp; Flow</span>
@@ -1197,52 +1403,54 @@ export default function RightInspector({
         )}
 
         {/* ── Layer Order Controls ─────────────────────────────────────────── */}
-        <div className="pt-3 border-t border-slate-800">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">
-            Layer Hierarchy (Z-Index: {elem.zIndex})
+        {(activeTab === "layout" || activeTab === "image") && (
+          <div className="pt-3 border-t border-slate-800">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">
+              Layer Hierarchy (Z-Index: {elem.zIndex})
+            </div>
+            <div className="grid grid-cols-4 gap-1">
+              <button
+                onClick={() => onMoveLayer(elem.id, "top")}
+                disabled={elem.locked}
+                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded flex flex-col items-center gap-1 text-[10px] disabled:opacity-40"
+                title="Bring to Front"
+              >
+                <ArrowUpToLine size={13} />
+                <span>Front</span>
+              </button>
+              <button
+                onClick={() => onMoveLayer(elem.id, "up")}
+                disabled={elem.locked}
+                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded flex flex-col items-center gap-1 text-[10px] disabled:opacity-40"
+                title="Bring Forward"
+              >
+                <ArrowUp size={13} />
+                <span>Forward</span>
+              </button>
+              <button
+                onClick={() => onMoveLayer(elem.id, "down")}
+                disabled={elem.locked}
+                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded flex flex-col items-center gap-1 text-[10px] disabled:opacity-40"
+                title="Send Backward"
+              >
+                <ArrowDown size={13} />
+                <span>Backward</span>
+              </button>
+              <button
+                onClick={() => onMoveLayer(elem.id, "bottom")}
+                disabled={elem.locked}
+                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded flex flex-col items-center gap-1 text-[10px] disabled:opacity-40"
+                title="Send to Back"
+              >
+                <ArrowDownToLine size={13} />
+                <span>Back</span>
+              </button>
+            </div>
           </div>
-          <div className="grid grid-cols-4 gap-1">
-            <button
-              onClick={() => onMoveLayer(elem.id, "top")}
-              disabled={elem.locked}
-              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded flex flex-col items-center gap-1 text-[10px] disabled:opacity-40"
-              title="Bring to Front"
-            >
-              <ArrowUpToLine size={13} />
-              <span>Front</span>
-            </button>
-            <button
-              onClick={() => onMoveLayer(elem.id, "up")}
-              disabled={elem.locked}
-              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded flex flex-col items-center gap-1 text-[10px] disabled:opacity-40"
-              title="Bring Forward"
-            >
-              <ArrowUp size={13} />
-              <span>Forward</span>
-            </button>
-            <button
-              onClick={() => onMoveLayer(elem.id, "down")}
-              disabled={elem.locked}
-              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded flex flex-col items-center gap-1 text-[10px] disabled:opacity-40"
-              title="Send Backward"
-            >
-              <ArrowDown size={13} />
-              <span>Backward</span>
-            </button>
-            <button
-              onClick={() => onMoveLayer(elem.id, "bottom")}
-              disabled={elem.locked}
-              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded flex flex-col items-center gap-1 text-[10px] disabled:opacity-40"
-              title="Send to Back"
-            >
-              <ArrowDownToLine size={13} />
-              <span>Back</span>
-            </button>
-          </div>
-        </div>
+        )}
 
         {/* ── Typography & Content ─────────────────────────────────────────── */}
-        {isTextElement && (
+        {activeTab === "text" && isTextElement && (
           <div className="pt-3 border-t border-slate-800 space-y-3">
             <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 flex items-center justify-between">
               <span>Text &amp; Typography</span>
@@ -1294,7 +1502,7 @@ export default function RightInspector({
                   type="button"
                   onClick={() => {
                     const current = elem.fontSize ?? 10;
-                    onUpdateElement(elem.id, { fontSize: Math.max(4, Math.round((current - 0.5) * 10) / 10) });
+                    onUpdateElement(elem.id, { fontSize: Math.max(3, Math.round((current - 0.5) * 10) / 10) });
                   }}
                   className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition"
                   title="Decrease 0.5 PT"
@@ -1303,13 +1511,13 @@ export default function RightInspector({
                 </button>
                 <input
                   type="number"
-                  min={4}
-                  max={72}
+                  min={3}
+                  max={120}
                   step={0.5}
                   value={elem.fontSize !== undefined ? elem.fontSize : ""}
                   placeholder="Default"
                   onChange={(e) => {
-                    const val = e.target.value === "" ? undefined : Math.max(4, Math.min(96, Number(e.target.value) || 10));
+                    const val = e.target.value === "" ? undefined : Math.max(3, Math.min(120, Number(e.target.value) || 10));
                     onUpdateElement(elem.id, { fontSize: val });
                   }}
                   className="flex-1 bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-white text-center font-mono font-bold focus:border-amber-400"
@@ -1318,7 +1526,7 @@ export default function RightInspector({
                   type="button"
                   onClick={() => {
                     const current = elem.fontSize ?? 10;
-                    onUpdateElement(elem.id, { fontSize: Math.min(72, Math.round((current + 0.5) * 10) / 10) });
+                    onUpdateElement(elem.id, { fontSize: Math.min(120, Math.round((current + 0.5) * 10) / 10) });
                   }}
                   className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition"
                   title="Increase 0.5 PT"
@@ -1333,18 +1541,18 @@ export default function RightInspector({
                 <input
                   type="range"
                   min={6}
-                  max={48}
+                  max={72}
                   step={0.5}
                   value={elem.fontSize ?? 10}
                   onChange={(e) => onUpdateElement(elem.id, { fontSize: Number(e.target.value) })}
                   className="flex-1 accent-amber-500 cursor-pointer h-1 bg-slate-800 rounded-lg"
                 />
-                <span className="text-[9px] text-slate-500 font-mono">48pt</span>
+                <span className="text-[9px] text-slate-500 font-mono">72pt</span>
               </div>
 
               {/* Quick Preset Chips */}
               <div className="flex flex-wrap gap-1 pt-1 border-t border-slate-800/80">
-                {[8, 9, 10, 11, 12, 14, 16, 18, 24, 32].map((pt) => (
+                {[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48].map((pt) => (
                   <button
                     key={pt}
                     type="button"
@@ -1656,7 +1864,7 @@ export default function RightInspector({
         )}
 
         {/* ── Image Specific Controls ──────────────────────────────────────── */}
-        {isImageElement && (
+        {activeTab === "image" && isImageElement && (
           <div className="pt-3 border-t border-slate-800 space-y-3">
             <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1.5">
               <ImageIcon size={14} className="text-blue-400" />
@@ -1754,97 +1962,99 @@ export default function RightInspector({
         )}
 
         {/* ── General Styles (Background, Border, Radius, Opacity) ──────────── */}
-        <div className="pt-3 border-t border-slate-800 space-y-3">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1.5">
-            <Sparkles size={14} className="text-amber-400" />
-            <span>Card Styling &amp; Border</span>
-          </div>
+        {(activeTab === "text" || activeTab === "layout") && (
+          <div className="pt-3 border-t border-slate-800 space-y-3">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1.5">
+              <Sparkles size={14} className="text-amber-400" />
+              <span>Card Styling &amp; Border</span>
+            </div>
 
-          {/* Background Color */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] text-slate-400">Background Color</label>
-              {elem.backgroundColor && (
-                <button
-                  type="button"
-                  onClick={() => onUpdateElement(elem.id, { backgroundColor: undefined })}
-                  className="text-[10px] text-amber-400 hover:underline"
-                >
-                  Clear (Transparent)
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={elem.backgroundColor || "#FFFFFF"}
-                onChange={(e) => onUpdateElement(elem.id, { backgroundColor: e.target.value })}
-                className="w-8 h-8 rounded border border-slate-700 bg-transparent cursor-pointer shrink-0"
-              />
-              <input
-                type="text"
-                value={elem.backgroundColor || ""}
-                onChange={(e) => onUpdateElement(elem.id, { backgroundColor: e.target.value })}
-                placeholder="transparent"
-                className="flex-1 bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs font-mono text-white"
-              />
-            </div>
-          </div>
-
-          {/* Border Width & Color */}
-          <div className="grid grid-cols-2 gap-2">
+            {/* Background Color */}
             <div>
-              <label className="text-[10px] text-slate-400 block mb-1">Border Width (px)</label>
-              <input
-                type="number"
-                min={0}
-                max={8}
-                value={elem.borderWidth ?? 0}
-                onChange={(e) =>
-                  onUpdateElement(elem.id, { borderWidth: Number(e.target.value) || 0 })
-                }
-                className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] text-slate-400 block mb-1">Corner Radius (px)</label>
-              <input
-                type="number"
-                min={0}
-                max={24}
-                value={elem.borderRadius ?? 0}
-                onChange={(e) =>
-                  onUpdateElement(elem.id, { borderRadius: Number(e.target.value) || 0 })
-                }
-                className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
-              />
-            </div>
-          </div>
-
-          {elem.borderWidth ? (
-            <div>
-              <label className="text-[10px] text-slate-400 block mb-1">Border Color</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] text-slate-400">Background Color</label>
+                {elem.backgroundColor && (
+                  <button
+                    type="button"
+                    onClick={() => onUpdateElement(elem.id, { backgroundColor: undefined })}
+                    className="text-[10px] text-amber-400 hover:underline"
+                  >
+                    Clear (Transparent)
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
-                  value={elem.borderColor || "#CBD5E1"}
-                  onChange={(e) => onUpdateElement(elem.id, { borderColor: e.target.value })}
-                  className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer shrink-0"
+                  value={elem.backgroundColor || "#FFFFFF"}
+                  onChange={(e) => onUpdateElement(elem.id, { backgroundColor: e.target.value })}
+                  className="w-8 h-8 rounded border border-slate-700 bg-transparent cursor-pointer shrink-0"
                 />
                 <input
                   type="text"
-                  value={elem.borderColor || ""}
-                  onChange={(e) => onUpdateElement(elem.id, { borderColor: e.target.value })}
-                  placeholder="#CBD5E1"
-                  className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-white"
+                  value={elem.backgroundColor || ""}
+                  onChange={(e) => onUpdateElement(elem.id, { backgroundColor: e.target.value })}
+                  placeholder="transparent"
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs font-mono text-white"
                 />
               </div>
             </div>
-          ) : null}
-        </div>
+
+            {/* Border Width & Color */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-slate-400 block mb-1">Border Width (px)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={8}
+                  value={elem.borderWidth ?? 0}
+                  onChange={(e) =>
+                    onUpdateElement(elem.id, { borderWidth: Number(e.target.value) || 0 })
+                  }
+                  className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-400 block mb-1">Corner Radius (px)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={24}
+                  value={elem.borderRadius ?? 0}
+                  onChange={(e) =>
+                    onUpdateElement(elem.id, { borderRadius: Number(e.target.value) || 0 })
+                  }
+                  className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+                />
+              </div>
+            </div>
+
+            {elem.borderWidth ? (
+              <div>
+                <label className="text-[10px] text-slate-400 block mb-1">Border Color</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={elem.borderColor || "#CBD5E1"}
+                    onChange={(e) => onUpdateElement(elem.id, { borderColor: e.target.value })}
+                    className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer shrink-0"
+                  />
+                  <input
+                    type="text"
+                    value={elem.borderColor || ""}
+                    onChange={(e) => onUpdateElement(elem.id, { borderColor: e.target.value })}
+                    placeholder="#CBD5E1"
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-white"
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {/* ── Table Designer (When Line-Item Table selected) ───────────────── */}
-        {elem.type === "line_items" && elem.tableSettings && (
+        {activeTab === "table" && elem.type === "line_items" && elem.tableSettings && (
           <div className="pt-3 border-t border-slate-800 space-y-3">
             <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
@@ -2619,48 +2829,71 @@ export default function RightInspector({
                   />
                 </div>
               </div>
+
+              <div className="p-2 bg-slate-800/50 rounded border border-slate-700">
+                <div className="text-[9px] font-bold text-slate-400 mb-1">Balance Due</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={elem.totalsLabels?.balanceDue || "Balance Due"}
+                    onChange={(e) => onUpdateElement(elem.id, { totalsLabels: { ...elem.totalsLabels, balanceDue: e.target.value } })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-amber-400"
+                    placeholder="English"
+                  />
+                  <input
+                    type="text"
+                    value={elem.totalsLabels?.balanceDueAr || ""}
+                    onChange={(e) => onUpdateElement(elem.id, { totalsLabels: { ...elem.totalsLabels, balanceDueAr: e.target.value || undefined } })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-amber-400"
+                    placeholder="العربية"
+                    dir="rtl"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         )}
 
         {/* ── Actions Group ───────────────────────────────────── */}
-        <div className="pt-4 border-t border-slate-800 space-y-2">
-          {onDuplicateElement && (
-            <button
-              type="button"
-              onClick={() => onDuplicateElement(elem)}
-              className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition font-semibold text-xs cursor-pointer"
-              title="Duplicate this element with all settings"
-            >
-              <Copy size={13} className="text-blue-400" />
-              <span>Duplicate Element</span>
-            </button>
-          )}
+        {(activeTab === "text" || activeTab === "layout" || activeTab === "table" || activeTab === "image") && (
+          <div className="pt-4 border-t border-slate-800 space-y-2">
+            {onDuplicateElement && (
+              <button
+                type="button"
+                onClick={() => onDuplicateElement(elem)}
+                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition font-semibold text-xs cursor-pointer"
+                title="Duplicate this element with all settings"
+              >
+                <Copy size={13} className="text-blue-400" />
+                <span>Duplicate Element</span>
+              </button>
+            )}
 
-          {onResetElement && (
-            <button
-              type="button"
-              onClick={() => onResetElement(elem.id)}
-              className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-amber-300 transition font-semibold text-xs cursor-pointer"
-              title="Reset this element to UAE Corporate Professional Default"
-            >
-              <RotateCcw size={13} />
-              <span>Reset Element to Default Layout</span>
-            </button>
-          )}
+            {onResetElement && (
+              <button
+                type="button"
+                onClick={() => onResetElement(elem.id)}
+                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-amber-300 transition font-semibold text-xs cursor-pointer"
+                title="Reset this element to UAE Corporate Professional Default"
+              >
+                <RotateCcw size={13} />
+                <span>Reset Element to Default Layout</span>
+              </button>
+            )}
 
-          {(elem.type === "custom_text" || elem.type === "divider" || elem.type === "custom_image") && onDeleteElement && (
-            <button
-              type="button"
-              onClick={() => onDeleteElement(elem.id)}
-              className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 transition font-semibold text-xs cursor-pointer"
-              title="Delete element from document"
-            >
-              <Trash2 size={13} />
-              <span>Delete Element</span>
-            </button>
-          )}
-        </div>
+            {(elem.type === "custom_text" || elem.type === "divider" || elem.type === "custom_image") && onDeleteElement && (
+              <button
+                type="button"
+                onClick={() => onDeleteElement(elem.id)}
+                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 transition font-semibold text-xs cursor-pointer"
+                title="Delete element from document"
+              >
+                <Trash2 size={13} />
+                <span>Delete Element</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
       </>
       )}

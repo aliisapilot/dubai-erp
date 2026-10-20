@@ -19,12 +19,18 @@ import {
   Printer,
   Loader2,
   Ruler,
+  Package,
+  Scissors,
+  ArrowUpRight,
+  Download,
 } from "lucide-react";
-import { fmtAED, statusClass, todayISO, getCurrentCompany, generateDocNumber } from "@/lib/helpers";
+import { fmtAED, statusClass, todayISO, getCurrentCompany, generateDocNumber, fmtDate } from "@/lib/helpers";
 import WorkMethodStatementTemplate, { WMSData, RiskAssessmentRow, QAQCChecklistItem } from "@/components/documents/WorkMethodStatementTemplate";
 import ProjectHandoverTemplate, { HandoverData } from "@/components/documents/ProjectHandoverTemplate";
+import ProjectMaterialConsumptionTemplate, { ProjectMaterialConsumptionData } from "@/components/documents/ProjectMaterialConsumptionTemplate";
 import ReportLoadState from "@/components/ReportLoadState";
 import { readProjectResult, writeProjectResult, unsavedProjectExpenses, saveProjectWmsDraft, type ProjectWmsDraft } from "@/lib/projectPersistence";
+import { getProjectMaterialConsumption, type MaterialMovementRecord } from "@/lib/materialInventory";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 
@@ -137,7 +143,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const loadVersion = useRef(0);
   const actionInFlight = useRef(false);
   const pendingWms = useRef<ProjectWmsDraft | null>(null);
-  const [activeTab, setActiveTab] = useState<"costing" | "manpower" | "equipment" | "wms" | "handover" | "documents">("costing");
+  const [activeTab, setActiveTab] = useState<"costing" | "materials" | "manpower" | "equipment" | "wms" | "handover" | "documents">("costing");
 
   // Costing & Data Lists
   const [manpower, setManpower] = useState<Manpower[]>([]);
@@ -147,9 +153,18 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [handovers, setHandovers] = useState<Handover[]>([]);
   const [linkedDocs, setLinkedDocs] = useState<LinkedDoc[]>([]);
 
+  // Project Material Consumption (Part 8)
+  const [projectMovements, setProjectMovements] = useState<MaterialMovementRecord[]>([]);
+  const [projectMaterialsSummary, setProjectMaterialsSummary] = useState<any[]>([]);
+  const [totalProjectActualCost, setTotalProjectActualCost] = useState(0);
+  const [totalProjectActualSqm, setTotalProjectActualSqm] = useState(0);
+  const [totalProjectActualRm, setTotalProjectActualRm] = useState(0);
+  const [totalProjectWastageSqm, setTotalProjectWastageSqm] = useState(0);
+
   // Print Modals
   const [printWms, setPrintWms] = useState<WMSData | null>(null);
   const [printHandover, setPrintHandover] = useState<HandoverData | null>(null);
+  const [printMaterialReport, setPrintMaterialReport] = useState<ProjectMaterialConsumptionData | null>(null);
 
   // New item states
   const [savingItem, setSavingItem] = useState(false);
@@ -310,6 +325,19 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       (dns || []).forEach(d => docs.push({id:d.id,type:"Delivery Note",ref_number:d.delivery_note_number,date:d.delivery_date,status:d.status}));
       (pos || []).forEach(po => docs.push({id:po.id,type:"Purchase Order",ref_number:po.purchase_order_number,date:po.order_date,amount:po.total_amount,status:po.status}));
       setLinkedDocs(docs);
+
+      // Fetch actual material consumption for this project
+      try {
+        const matConsumption = await getProjectMaterialConsumption(co.id, projectId);
+        setProjectMovements(matConsumption.issuedMovements);
+        setProjectMaterialsSummary(matConsumption.materialsBreakdown);
+        setTotalProjectActualCost(matConsumption.totalActualCost);
+        setTotalProjectActualSqm(matConsumption.totalActualSqm);
+        setTotalProjectActualRm(matConsumption.totalActualRm);
+        setTotalProjectWastageSqm(matConsumption.totalWastageSqm);
+      } catch (matErr) {
+        console.error("Error loading project material consumption:", matErr);
+      }
     } catch (error) {
       if (version === loadVersion.current) setLoadError(error instanceof Error ? error.message : "Could not load saved project data.");
     } finally {
@@ -590,6 +618,14 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             }`}
           >
             <TrendingUp size={15} /> Costing & Profitability
+          </button>
+          <button
+            onClick={() => setActiveTab("materials")}
+            className={`py-3 border-b-2 transition flex items-center gap-1.5 ${
+              activeTab === "materials" ? "border-slate-900 text-slate-900 font-bold" : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <Package size={15} className="text-emerald-600" /> Materials &amp; Consumption ({projectMovements.length})
           </button>
           <button
             onClick={() => setActiveTab("manpower")}
@@ -875,6 +911,230 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     </tfoot>
                   </table>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 1B: Materials & Fabric Consumption (Part 8) */}
+        {activeTab === "materials" && (
+          <div className="space-y-6">
+            {/* Header & Quick Action */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <div>
+                <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <span className="p-1 rounded bg-emerald-50 text-emerald-700">
+                    <Package size={18} />
+                  </span>
+                  Project Fabric &amp; Material Consumption
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Track actual fabric issued, running &amp; square metres consumed, cutting wastage, and material costs against {project.project_number}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <Link
+                  href={`/inventory/stock-out?projectId=${project.id}`}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 text-xs font-semibold shadow-sm transition-colors"
+                >
+                  <ArrowUpRight size={14} /> Issue Material to Project
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const printDoc: ProjectMaterialConsumptionData = {
+                      project_number: project.project_number,
+                      project_name: project.name,
+                      customer_name: customer?.name || "Client",
+                      location: project.location,
+                      report_date: todayISO(),
+                      materials_summary: projectMaterialsSummary.map((m) => ({
+                        material_name: m.materialName,
+                        brand: m.brand,
+                        specification: m.specification,
+                        width: m.width,
+                        total_rm_used: m.usedRm,
+                        total_sqm_used: m.usedSqm,
+                        total_wastage_sqm: m.wastageSqm,
+                        unit_cost: m.usedSqm > 0 ? Math.round((m.totalCost / m.usedSqm) * 100) / 100 : 0,
+                        total_cost: m.totalCost,
+                      })),
+                      movement_history: projectMovements.map((pm) => ({
+                        issue_date: pm.created_at,
+                        reference_number: pm.reference_number || "MIN",
+                        material_name: pm.product?.name || "Material",
+                        sqm_used: pm.square_metres || 0,
+                        wastage_sqm: pm.wastage_quantity || 0,
+                        total_cost: pm.total_cost || 0,
+                        issued_by: pm.issued_by || "Storekeeper",
+                      })),
+                      total_actual_sqm: totalProjectActualSqm,
+                      total_actual_rm: totalProjectActualRm,
+                      total_wastage_sqm: totalProjectWastageSqm,
+                      total_actual_cost: totalProjectActualCost,
+                    };
+                    setPrintMaterialReport(printDoc);
+                  }}
+                  disabled={projectMovements.length === 0}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
+                >
+                  <Printer size={14} /> Print Material Report
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <span className="text-xs text-slate-500 block font-medium uppercase tracking-wider">
+                  Fabric Area Consumed
+                </span>
+                <span className="text-2xl font-black font-mono text-blue-700 mt-2 block">
+                  {totalProjectActualSqm.toFixed(2)} m²
+                </span>
+                <span className="text-xs text-slate-400 mt-1 block">
+                  {totalProjectActualRm > 0 ? `Equivalent: ${totalProjectActualRm.toFixed(2)} RM` : "Primary Area Calculation"}
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-5 shadow-sm">
+                <span className="text-xs text-amber-800 block font-medium uppercase tracking-wider">
+                  Cutting Wastage
+                </span>
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-2xl font-black font-mono text-amber-700">
+                    {totalProjectWastageSqm.toFixed(2)} m²
+                  </span>
+                  <Scissors size={20} className="text-amber-500" />
+                </div>
+                <span className="text-xs text-amber-600 mt-1 block">
+                  Recorded on cutting &amp; seams
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <span className="text-xs text-slate-500 block font-medium uppercase tracking-wider">
+                  Total Material Cost
+                </span>
+                <span className="text-2xl font-black font-mono text-slate-900 mt-2 block">
+                  AED {fmtAED(totalProjectActualCost)}
+                </span>
+                <span className="text-xs text-slate-400 mt-1 block">At warehouse inventory cost rates</span>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <span className="text-xs text-slate-500 block font-medium uppercase tracking-wider">
+                  Material Issue Notes
+                </span>
+                <span className="text-2xl font-black font-mono text-slate-900 mt-2 block">
+                  {projectMovements.length}
+                </span>
+                <span className="text-xs text-slate-400 mt-1 block">Dispatches logged to site</span>
+              </div>
+            </div>
+
+            {/* Materials Breakdown Table */}
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                <h4 className="font-bold text-slate-900 text-sm">Consumed Materials by Brand &amp; Specification</h4>
+                <span className="text-xs text-slate-500">{projectMaterialsSummary.length} material types</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                      <th className="p-3">Material Name</th>
+                      <th className="p-3">Brand / Spec</th>
+                      <th className="p-3 text-center">Width</th>
+                      <th className="p-3 text-right">Used RM</th>
+                      <th className="p-3 text-right bg-blue-50 font-bold text-blue-900">Used Area (m²)</th>
+                      <th className="p-3 text-right text-amber-700">Wastage (m²)</th>
+                      <th className="p-3 text-right">Total Material Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {projectMaterialsSummary.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-6 text-center text-slate-400">
+                          No materials issued to this project yet. Click &quot;Issue Material to Project&quot; above to dispatch fabrics.
+                        </td>
+                      </tr>
+                    ) : (
+                      projectMaterialsSummary.map((m, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="p-3 font-bold text-slate-900">{m.materialName}</td>
+                          <td className="p-3 text-slate-600">
+                            {m.brand} {m.specification ? `• ${m.specification}` : ""}
+                          </td>
+                          <td className="p-3 text-center font-mono">{m.width ? `${m.width} m` : "—"}</td>
+                          <td className="p-3 text-right font-mono">{m.usedRm > 0 ? `${m.usedRm.toFixed(2)} m` : "—"}</td>
+                          <td className="p-3 text-right font-mono font-bold text-blue-800 bg-blue-50/40">
+                            {m.usedSqm.toFixed(2)} m²
+                          </td>
+                          <td className="p-3 text-right font-mono text-amber-700">
+                            {m.wastageSqm > 0 ? `${m.wastageSqm.toFixed(2)} m²` : "0.00"}
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold text-slate-900">
+                            AED {fmtAED(m.totalCost)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Dispatch History Table */}
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                <h4 className="font-bold text-slate-900 text-sm">Material Issue Notes (MIN) Dispatch Ledger</h4>
+                <span className="text-xs text-slate-500">{projectMovements.length} dispatches</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                      <th className="p-3">Date</th>
+                      <th className="p-3">MIN Ref</th>
+                      <th className="p-3">Material</th>
+                      <th className="p-3 text-right">Area Consumed</th>
+                      <th className="p-3 text-right">Wastage</th>
+                      <th className="p-3 text-right">Cost Rate</th>
+                      <th className="p-3 text-right">Total Cost</th>
+                      <th className="p-3">Issued By</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {projectMovements.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-6 text-center text-slate-400">
+                          No dispatches found for this project.
+                        </td>
+                      </tr>
+                    ) : (
+                      projectMovements.map((pm) => (
+                        <tr key={pm.id} className="hover:bg-slate-50">
+                          <td className="p-3 whitespace-nowrap text-slate-600">{fmtDate(pm.created_at)}</td>
+                          <td className="p-3 font-mono font-bold text-blue-700">{pm.reference_number || "MIN"}</td>
+                          <td className="p-3 font-semibold text-slate-900">{pm.product?.name || "Material"}</td>
+                          <td className="p-3 text-right font-mono font-bold text-blue-800">
+                            {pm.square_metres ? `${pm.square_metres.toFixed(2)} m²` : "—"}
+                          </td>
+                          <td className="p-3 text-right font-mono text-amber-700">
+                            {pm.wastage_quantity && pm.wastage_quantity > 0 ? `${pm.wastage_quantity.toFixed(2)} m²` : "0.00"}
+                          </td>
+                          <td className="p-3 text-right font-mono text-slate-600">{fmtAED(pm.unit_cost)}</td>
+                          <td className="p-3 text-right font-mono font-bold text-slate-900">AED {fmtAED(pm.total_cost)}</td>
+                          <td className="p-3 text-slate-600">{pm.issued_by || "Storekeeper"}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -2015,6 +2275,17 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           />
         )}
       </PrintModal>
+
+      {/* Project Material Consumption Print Modal (Part 8 & 11) */}
+      {printMaterialReport && (
+        <PrintModal isOpen={Boolean(printMaterialReport)} onClose={() => setPrintMaterialReport(null)}>
+          <ProjectMaterialConsumptionTemplate
+            company={company}
+            data={printMaterialReport}
+            onClose={() => setPrintMaterialReport(null)}
+          />
+        </PrintModal>
+      )}
     </main>
   );
 }

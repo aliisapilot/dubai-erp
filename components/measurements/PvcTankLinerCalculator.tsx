@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Calculator,
   ChevronDown,
@@ -20,9 +21,14 @@ import {
   TrendingUp,
   Truck,
   Wrench,
+  ArrowUpRight,
+  CheckCircle2,
+  Warehouse,
 } from "lucide-react";
 import NumericInput from "@/components/NumericInput";
 import type { PvcTankLinerInput, PvcTankLinerResult } from "@/lib/measurementTypes";
+import { getMaterialsList, type MaterialItem } from "@/lib/materialInventory";
+import { getCompanyId } from "@/lib/helpers";
 
 type Props = {
   value: PvcTankLinerInput;
@@ -59,6 +65,28 @@ export default function PvcTankLinerCalculator({
 }: Props) {
   const [showFormulaAnalysis, setShowFormulaAnalysis] = useState<boolean>(true);
   const [showWeldingDetails, setShowWeldingDetails] = useState<boolean>(true);
+
+  // Material Inventory Availability Check State
+  const [inventoryMaterials, setInventoryMaterials] = useState<MaterialItem[]>([]);
+  const [selectedInventoryMaterialId, setSelectedInventoryMaterialId] = useState<string>("");
+
+  useEffect(() => {
+    async function loadInventory() {
+      try {
+        const companyId = await getCompanyId();
+        if (!companyId) return;
+        const mats = await getMaterialsList(companyId);
+        const fabricMats = mats.filter((m) => m.is_fabric || m.fabric_width > 0);
+        setInventoryMaterials(fabricMats);
+        if (fabricMats.length > 0) {
+          setSelectedInventoryMaterialId((curr) => curr || fabricMats[0].id);
+        }
+      } catch (e) {
+        console.error("Error loading inventory fabrics for calculator:", e);
+      }
+    }
+    loadInventory();
+  }, []);
 
   const tankCount = value.tankQuantity && value.tankQuantity > 0 ? value.tankQuantity : 1;
 
@@ -257,6 +285,153 @@ export default function PvcTankLinerCalculator({
           </label>
         </div>
       </section>
+
+      {/* 2B. CHECK MATERIAL AVAILABILITY & WAREHOUSE STOCK RESERVATION */}
+      {(() => {
+        const selectedInventoryMaterial = inventoryMaterials.find((m) => m.id === selectedInventoryMaterialId);
+        const requiredRmAllTanks =
+          value.fabricWidth > 0
+            ? Math.round((result.approvedFabricSqmAllTanks / value.fabricWidth) * 100) / 100
+            : 0;
+        const requiredSqmAllTanks = result.approvedFabricSqmAllTanks;
+        const availableSqm = selectedInventoryMaterial?.current_stock ?? 0;
+        const availableRm = selectedInventoryMaterial?.running_metres_available ?? 0;
+        const estimatedWastageSqm = Math.max(
+          0,
+          Math.round((result.approvedFabricSqmAllTanks - (result.wallFabricSqm + result.baseFabricSqm) * tankCount) * 100) / 100
+        );
+        const surplusOrShortage = Math.round((availableSqm - requiredSqmAllTanks) * 100) / 100;
+        const isSurplus = surplusOrShortage >= 0;
+
+        return (
+          <section className="rounded-xl border border-emerald-500/40 bg-gradient-to-br from-emerald-950/20 via-slate-950 to-slate-950 p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2 text-emerald-400">
+                <Warehouse size={16} />
+                <h4 className="text-xs font-black uppercase tracking-wider">
+                  Check Material Availability &amp; Warehouse Stock (No Auto-Deduction)
+                </h4>
+              </div>
+              <span className="text-[10px] text-slate-400">
+                Live Warehouse Verification
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-slate-300 font-medium block mb-1">
+                  Select Fabric from Warehouse Inventory:
+                </label>
+                <select
+                  value={selectedInventoryMaterialId}
+                  onChange={(e) => {
+                    const nextId = e.target.value;
+                    setSelectedInventoryMaterialId(nextId);
+                    const mat = inventoryMaterials.find((m) => m.id === nextId);
+                    if (mat && mat.fabric_width > 0 && mat.fabric_width !== value.fabricWidth) {
+                      update("fabricWidth", mat.fabric_width);
+                    }
+                  }}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-500 focus:outline-none"
+                >
+                  {inventoryMaterials.length === 0 ? (
+                    <option value="">No fabric materials found in warehouse</option>
+                  ) : (
+                    inventoryMaterials.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} | {m.brand} ({m.fabric_width}m width) [In Stock: {m.current_stock} m²]
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              <div className="flex items-end">
+                {selectedInventoryMaterial && (
+                  <div className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-xs flex justify-between items-center">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block">Available in Warehouse</span>
+                      <strong className="font-mono text-emerald-400 text-sm">
+                        {availableSqm.toFixed(2)} m²
+                      </strong>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400 block">Equivalent RM</span>
+                      <strong className="font-mono text-slate-200">
+                        ≈ {availableRm.toFixed(2)} m
+                      </strong>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 4-Metric Grid: Required RM, Required m², Available m², Estimated Wastage */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+              <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-center">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Required RM</span>
+                <span className="font-mono font-bold text-sm text-white mt-0.5 block">
+                  {requiredRmAllTanks.toFixed(2)} m
+                </span>
+                <span className="text-[9px] text-slate-500">at {value.fabricWidth}m width</span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-blue-950/30 border border-blue-500/30 text-center">
+                <span className="text-[10px] uppercase font-bold text-blue-300 block">Required Area</span>
+                <span className="font-mono font-black text-base text-blue-400 mt-0.5 block">
+                  {requiredSqmAllTanks.toFixed(2)} m²
+                </span>
+                <span className="text-[9px] text-blue-300/70">{tankCount} Tank{tankCount > 1 ? "s" : ""}</span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-500/30 text-center">
+                <span className="text-[10px] uppercase font-bold text-amber-300 block">Estimated Wastage</span>
+                <span className="font-mono font-bold text-sm text-amber-400 mt-0.5 block">
+                  {estimatedWastageSqm.toFixed(2)} m²
+                </span>
+                <span className="text-[9px] text-amber-300/70">Cuttings &amp; scrap</span>
+              </div>
+
+              <div
+                className={`p-2.5 rounded-lg border text-center ${
+                  isSurplus
+                    ? "bg-emerald-950/30 border-emerald-500/40 text-emerald-300"
+                    : "bg-rose-950/30 border-rose-500/40 text-rose-300"
+                }`}
+              >
+                <span className="text-[10px] uppercase font-bold block">
+                  {isSurplus ? "Stock Surplus" : "Stock Shortage"}
+                </span>
+                <span className="font-mono font-black text-base mt-0.5 block">
+                  {isSurplus ? `+${surplusOrShortage.toFixed(2)} m²` : `${surplusOrShortage.toFixed(2)} m²`}
+                </span>
+                <span className="text-[9px] block">
+                  {isSurplus ? "Sufficient Stock" : "Reorder Needed"}
+                </span>
+              </div>
+            </div>
+
+            {/* Quick Link to Issue Material (Stock Out) */}
+            <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-slate-800/80">
+              <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+                <span>
+                  Quotation calculations do not deduct stock. To physically dispatch rolls for this job, confirm a Material Issue.
+                </span>
+              </p>
+
+              {selectedInventoryMaterial && (
+                <Link
+                  href={`/inventory/stock-out?productId=${selectedInventoryMaterial.id}&rm=${requiredRmAllTanks}&sqm=${requiredSqmAllTanks}&purpose=PVC+Tank+Liner+Production`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shrink-0 transition-colors shadow-sm"
+                >
+                  <ArrowUpRight size={13} /> Issue Material in Stock Out
+                </Link>
+              )}
+            </div>
+          </section>
+        );
+      })()}
 
       {/* 3. HANDWRITTEN REFERENCE CALCULATION VS THEORETICAL MINIMUM ANALYSIS */}
       <section className="rounded-xl border border-indigo-500/40 bg-gradient-to-br from-indigo-950/20 via-slate-950 to-slate-950 p-4">

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Palette, RotateCcw } from "lucide-react";
 import {
   DocumentLayout,
@@ -60,18 +60,19 @@ export default function DocumentColorsSection({
   defaultBranding,
 }: DocumentColorsSectionProps) {
   const branding = layout.branding || defaultBranding;
-  const [customPresets, setCustomPresets] = useState<ColorPreset[]>(() => {
-    if (typeof window === "undefined") return [];
+  const [customPresets, setCustomPresets] = useState<ColorPreset[]>([]);
+
+  useEffect(() => {
     try {
       const stored = localStorage.getItem(CUSTOM_PRESETS_STORAGE_KEY);
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        queueMicrotask(() => setCustomPresets(parsed));
       }
     } catch (e) {
       console.warn("Failed to read custom color presets from localStorage", e);
     }
-    return [];
-  });
+  }, []);
   const [newPresetName, setNewPresetName] = useState("");
   const [showSavePreset, setShowSavePreset] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState("");

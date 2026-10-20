@@ -146,7 +146,7 @@ export default function LeftSidebar({
     .sort((a, b) => b.zIndex - a.zIndex);
 
   return (
-    <aside className="w-68 min-h-0 bg-slate-900 border-r border-slate-800 flex flex-col h-full text-white select-none shrink-0 overflow-hidden shadow-lg">
+    <aside className="w-full min-h-0 bg-slate-900 border-r border-slate-800 flex flex-col h-full text-white select-none shrink-0 overflow-hidden shadow-lg">
       {/* Sidebar Header with Mode Switcher */}
       <div className="p-3 border-b border-slate-800 flex flex-col gap-2 shrink-0">
         <div className="flex items-center justify-between">
