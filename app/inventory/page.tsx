@@ -369,7 +369,7 @@ export default function InventoryStockPage() {
                         {m.colour && <span className="text-[10px] text-slate-400">Colour: {m.colour}</span>}
                       </td>
 
-                      <td className="p-3 text-center font-mono text-sky-400 font-semibold">
+                      <td className="p-3 text-center font-mono text-sky-400 font-semibold whitespace-nowrap">
                         {m.fabric_width > 0 ? `${m.fabric_width} m` : "—"}
                       </td>
 

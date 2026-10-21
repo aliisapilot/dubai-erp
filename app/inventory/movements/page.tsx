@@ -308,7 +308,7 @@ export default function StockMovementsPage() {
                         )}
                       </td>
 
-                      <td className="p-3 text-center font-mono text-slate-300">
+                      <td className="p-3 text-center font-mono text-slate-300 whitespace-nowrap">
                         {m.fabric_width ? `${m.fabric_width} m` : "—"}
                       </td>
 

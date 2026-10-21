@@ -681,7 +681,7 @@ export default function ProductsPage() {
                     <th className="px-4 py-3 font-semibold">SKU / Code</th>
                     <th className="px-4 py-3 font-semibold">Material Specification</th>
                     <th className="px-4 py-3 font-semibold">Brand / Category</th>
-                    <th className="px-4 py-3 font-semibold text-center">Width</th>
+                    <th className="px-4 py-3 font-semibold text-center min-w-[5rem]">Width</th>
                     <th className="px-4 py-3 font-semibold text-right">Cost Rate</th>
                     <th className="px-4 py-3 font-semibold text-right">Selling Rate</th>
                     <th className="px-4 py-3 font-semibold text-center">Current Stock</th>
@@ -732,10 +732,10 @@ export default function ProductsPage() {
                           <span className="font-medium text-slate-200">{mat.brand}</span>
                           <div className="text-[11px] text-slate-500">{mat.category}</div>
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-4 py-3 text-center min-w-[5rem]">
                           {mat.is_fabric && mat.fabric_width > 0 ? (
-                            <span className="rounded-full bg-slate-800 px-2 py-0.5 font-mono text-indigo-300 border border-slate-700">
-                              {mat.fabric_width.toFixed(2)} m
+                            <span className="inline-flex items-center whitespace-nowrap gap-1 rounded-full bg-slate-800 px-2.5 py-0.5 font-mono text-indigo-300 border border-slate-700">
+                              {mat.fabric_width.toFixed(2)}&nbsp;m
                             </span>
                           ) : (
                             <span className="text-slate-600">—</span>
