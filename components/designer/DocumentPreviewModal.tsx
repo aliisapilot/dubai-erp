@@ -36,6 +36,79 @@ const TEST_DATASETS: Record<string, { label: string; count: number; data: MockDo
       total_amount: SAMPLE_DOCUMENT_DATA.items.slice(0, 2).reduce((s, i) => s + i.line_total + i.vat_amount, 0),
     },
   },
+  inv_008: {
+    label: "INV-008 (Real 6-Item)",
+    count: 6,
+    data: {
+      document_number: "INV-008",
+      document_date: "2026-10-26T00:00:00.000Z",
+      supply_date: "2026-10-26T00:00:00.000Z",
+      customer_name: "Al Karwan Solution FZC",
+      customer_trn: "104337393300003",
+      contact_person: "Mr. Mohammed Ayaz",
+      payment_terms: "30 days",
+      notes: "No additional remarks.\n30 days",
+      items: [
+        {
+          description: "Fabrication of PVC Water tank liner Size:\n5700x7750mm (Qty – 3)",
+          quantity: 720,
+          unit: "Mtr",
+          unit_price: 8.0,
+          vat_rate: 5,
+          vat_amount: 288.0,
+          line_total: 6048.0,
+        },
+        {
+          description: "SS Eyelet 14mm",
+          quantity: 561,
+          unit: "Pcs",
+          unit_price: 1.5,
+          vat_rate: 5,
+          vat_amount: 42.08,
+          line_total: 883.58,
+        },
+        {
+          description: "Pvc Fabric Korean 900 GSM",
+          quantity: 657,
+          unit: "Sqm",
+          unit_price: 15.0,
+          vat_rate: 5,
+          vat_amount: 492.75,
+          line_total: 10347.75,
+        },
+        {
+          description: "Fabrication of PVC Water tank liner Size:\n7390x6650mm (Qty – 3)",
+          quantity: 852,
+          unit: "Mtr",
+          unit_price: 8.0,
+          vat_rate: 5,
+          vat_amount: 340.8,
+          line_total: 7156.8,
+        },
+        {
+          description: "SS Eyelet 14mm",
+          quantity: 693,
+          unit: "Pcs",
+          unit_price: 1.5,
+          vat_rate: 5,
+          vat_amount: 51.98,
+          line_total: 1091.48,
+        },
+        {
+          description: "Pvc Fabric Korean 900 GSM",
+          quantity: 891,
+          unit: "Sqm",
+          unit_price: 15.0,
+          vat_rate: 5,
+          vat_amount: 668.25,
+          line_total: 14033.25,
+        },
+      ],
+      subtotal: 37677.0,
+      vat_amount: 1883.86,
+      total_amount: 39560.86,
+    },
+  },
   sample_4: {
     label: "4 Items",
     count: 4,
@@ -138,7 +211,7 @@ export default function DocumentPreviewModal({
   company,
   docTitle,
 }: DocumentPreviewModalProps) {
-  const [selectedDatasetKey, setSelectedDatasetKey] = useState<string>("sample_4");
+  const [selectedDatasetKey, setSelectedDatasetKey] = useState<string>("inv_008");
   const [scale, setScale] = useState<number>(() => {
     if (typeof window !== "undefined") {
       const vh = window.innerHeight;
