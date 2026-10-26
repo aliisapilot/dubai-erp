@@ -1,9 +1,10 @@
 "use client";
 
-import React, { ReactNode } from "react";
-import { Printer } from "lucide-react";
+import React, { ReactNode, useState } from "react";
+import { Download, Printer } from "lucide-react";
 import { getBrandConfig, BrandColors, CompanyBrandInput } from "@/lib/brandConfig";
 import { printCurrentDocument } from "@/lib/print";
+import { exportDocumentToPdf } from "@/lib/exportDocumentPdf";
 import PageDecorativeBorders from "./PageDecorativeBorders";
 import { DEFAULT_PAGE_BORDERS, PageBorderSettings, DocumentLayout } from "@/lib/documentDesigner";
 
@@ -50,11 +51,25 @@ export default function DocumentContainer({
   borders,
   layout,
 }: DocumentContainerProps) {
+  const [isExporting, setIsExporting] = useState(false);
   const handlePrint = async () => {
     if (onPrint) {
       onPrint();
     } else {
       await printCurrentDocument();
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    setIsExporting(true);
+    try {
+      await exportDocumentToPdf({
+        filename: docNumber ? `${docNumber}.pdf` : undefined,
+      });
+    } catch (err) {
+      console.error("PDF Export error:", err);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -108,6 +123,16 @@ export default function DocumentContainer({
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadPdf}
+              type="button"
+              disabled={isExporting}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm cursor-pointer disabled:opacity-50"
+              title="Download pure A4 PDF directly without browser headers or margins"
+            >
+              <Download size={15} className="text-blue-600" />
+              <span>{isExporting ? "Exporting..." : "Download PDF"}</span>
+            </button>
             <button
               onClick={handlePrint}
               type="button"

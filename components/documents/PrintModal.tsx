@@ -3,8 +3,9 @@ import { printCurrentDocument } from "@/lib/print";
 
 import React, { ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { Maximize, Printer, Sliders, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Download, Maximize, Printer, Sliders, X, ZoomIn, ZoomOut } from "lucide-react";
 import { getDocumentPreviewScale } from "@/lib/documentPreview";
+import { exportDocumentToPdf } from "@/lib/exportDocumentPdf";
 
 interface PrintModalProps {
   isOpen: boolean;
@@ -115,7 +116,22 @@ export default function PrintModal({ isOpen, onClose, children, editorHref, extr
               <span className="hidden min-[480px]:inline">PDF Editor</span>
             </a>
           )}
-          <button type="button" onClick={() => void printCurrentDocument()} className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-500" aria-label="Print or save as PDF" title="Print or save as PDF">
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await exportDocumentToPdf({ scopeElement: previewRef.current });
+              } catch (e) {
+                console.error(e);
+              }
+            }}
+            className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white hover:bg-blue-500 cursor-pointer"
+            aria-label="Download A4 PDF"
+            title="Download clean A4 PDF directly"
+          >
+            <Download size={16} /><span className="hidden min-[380px]:inline">Download PDF</span>
+          </button>
+          <button type="button" onClick={() => void printCurrentDocument()} className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-500 cursor-pointer" aria-label="Print or save as PDF" title="Print or save as PDF">
             <Printer size={16} /><span className="hidden min-[380px]:inline">Print / Save</span>
           </button>
           <button type="button" onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-slate-800" aria-label="Close document preview" title="Close preview">

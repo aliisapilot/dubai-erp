@@ -14,8 +14,8 @@ import type {
   SmartFitSettings,
 } from "./documentDesigner";
 
-// Automatic fitting paginates before shrinking body text below approximately 8pt.
-export const AUTO_FIT_MIN_FONT_PX = 10.5;
+// Automatic fitting paginates before shrinking body text below approximately 7.2pt.
+export const AUTO_FIT_MIN_FONT_PX = 7.5;
 
 const FALLBACK_SMART_FIT: SmartFitSettings = {
   enabled: true,
@@ -152,11 +152,11 @@ export function fitDocumentContentBoxes(layout: DocumentLayout, text?: DocumentF
     if (!element.visible || element.flowMode === "fixed" || element.type !== "payment_terms") return element;
     // Tokenized custom text may include company fields unavailable to this estimator.
     if (element.customText?.includes("{{")) return element;
-    const fontSize = Math.max(11, element.fontSize || 10);
+    const fontSize = Math.max(9, element.fontSize || 10);
     const values = element.customText ? [element.customText] : [text.notes, text.payment_terms];
     const lines = values.filter((value): value is string => Boolean(value?.trim())).reduce(
       (count, value) => count + estimateWrappedLines(value, Math.max(20, element.width - 12), fontSize), 0);
-    const requiredHeight = Math.max(28, (lines + 4) * fontSize * 1.6 / 3.7795 + 8);
+    const requiredHeight = Math.max(14, Math.ceil((lines + 1.2) * (fontSize * 1.3) / 3.7795 + 5));
     return { ...element, height: Math.min(element.height, Math.ceil(requiredHeight)) };
   }) };
 }
@@ -344,7 +344,7 @@ function packContentRows(elements: LayoutElement[], startY: number, gap: number,
   const isSignature = (element: LayoutElement) => ["company_signature", "company_stamp"].includes(element.type);
   for (const element of [...elements].sort((a, b) =>
     (signaturesLast ? Number(isSignature(a)) - Number(isSignature(b)) : 0) || a.y - b.y)) {
-    const row = rows.find((candidate) => Math.abs(candidate[0].y - element.y) < 5 &&
+    const row = rows.find((candidate) => Math.abs(candidate[0].y - element.y) <= 9 &&
       (!signaturesLast || isSignature(candidate[0]) === isSignature(element)));
     if (row) row.push(element);
     else rows.push([element]);
@@ -409,8 +409,7 @@ export function computeIntelligentFitProfile(
   const layoutMode = layout.layoutMode || "manual";
   const smartFit: SmartFitSettings = layout.page?.smartFit || FALLBACK_SMART_FIT;
   const isSmartFitEnabled = layoutMode === "auto_fit" && smartFit.enabled !== false;
-  const configuredMinFont = Math.max(isSmartFitEnabled ? AUTO_FIT_MIN_FONT_PX : 0,
-    Number.isFinite(smartFit.minFontSize) ? smartFit.minFontSize : AUTO_FIT_MIN_FONT_PX);
+  const configuredMinFont = Number.isFinite(smartFit.minFontSize) ? smartFit.minFontSize : AUTO_FIT_MIN_FONT_PX;
   const configuredMinRow = Number.isFinite(smartFit.minRowHeight) ? smartFit.minRowHeight : 4.8;
   const mode = smartFit.mode || "balanced";
 
@@ -747,7 +746,7 @@ export function computePaginationPlan(
   const finalPageCapacity = Math.max(rowHeight * 2, spaceForTableWithFollowers - headerHeight);
   const spaceForTableWithoutFollowers = Math.max(
     rowHeight * 3,
-    maxContentY - fit.tableY - 2
+    maxContentY - 22
   );
   const regularPageCapacity = Math.max(rowHeight * 3, spaceForTableWithoutFollowers - headerHeight);
   const rowHeights = Array.from({ length: totalItems }, (_, index) =>
@@ -772,7 +771,7 @@ export function computePaginationPlan(
 
     let endIndex = currentIndex;
     let usedHeight = 0;
-    while (endIndex < totalItems - 1 && usedHeight + rowHeights[endIndex] <= regularPageCapacity) {
+    while (endIndex < totalItems && usedHeight + rowHeights[endIndex] <= regularPageCapacity) {
       usedHeight += rowHeights[endIndex];
       endIndex += 1;
     }
@@ -848,7 +847,9 @@ export function computeEffectiveLayout(
   const layoutMode = layout.layoutMode || "manual";
   const isManualMode = layoutMode === "manual";
 
-  let effectiveTableY = isManualMode
+  let effectiveTableY = pageNumber > 1
+    ? 22
+    : isManualMode
     ? (table ? table.y : 95)
     : (isSinglePage && fitProfile.tableY ? fitProfile.tableY : (table ? table.y : 95));
   const effectiveRowHeight = isManualMode ? (table?.tableSettings?.rowHeight || 8.5) : fitProfile.rowHeight;
@@ -1029,6 +1030,48 @@ export function computeEffectiveLayout(
 
   const elements: EffectiveLayoutElement[] = layout.elements.map((el) => {
     const pageMatches = el.pageNumber === undefined || el.pageNumber === pageNumber;
+
+    // On continuation pages (page 2+), suppress corporate header branding and party cards
+    // to avoid duplicating company header and customer info
+    const isCorporateBranding = [
+      "logo",
+      "company_name_en",
+      "company_name_ar",
+      "company_address",
+      "company_trn",
+    ].includes(el.type);
+    const isPartyCard = [
+      "customer_info",
+      "supplier_info",
+      "project_info",
+      "doc_meta",
+    ].includes(el.type);
+
+    if (pageNumber > 1 && (isCorporateBranding || isPartyCard) && el.pageNumber === undefined) {
+      return {
+        ...el,
+        effectiveX: el.x,
+        effectiveY: el.y,
+        effectiveWidth: el.width,
+        effectiveHeight: el.height,
+        isFollower: false,
+        shiftY: 0,
+        effectiveVisible: false,
+      };
+    }
+
+    if (el.type === "doc_title" && pageNumber > 1 && el.pageNumber === undefined) {
+      return {
+        ...el,
+        effectiveX: el.x,
+        effectiveY: 10,
+        effectiveWidth: el.width,
+        effectiveHeight: 8,
+        isFollower: false,
+        shiftY: 10 - el.y,
+        effectiveVisible: el.visible,
+      };
+    }
 
     const noTablePosition = !table ? followerMap.get(el.id) : undefined;
     if (noTablePosition) return {

@@ -1250,7 +1250,7 @@ export default function DynamicDocumentRenderer({
                         return (
                           <td
                             key={col.key}
-                            className={`${cellPadding} break-words ${col.key === "dimensions" || col.key === "calc_type" || col.key === "description" ? "whitespace-pre-line" : ""}`}
+                            className={`${cellPadding} break-words ${col.key === "dimensions" || col.key === "calc_type" || col.key === "description" ? "whitespace-pre-line" : ""} ${isMonetary ? "whitespace-nowrap font-mono" : ""}`}
                             style={{
                               ...customPaddingStyle,
                               fontSize: `${colBodyPt}pt`,
@@ -1954,11 +1954,10 @@ export default function DynamicDocumentRenderer({
         })
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((elem) => {
-          const isManual = (layout.layoutMode || "manual") === "manual";
-          const posX = isDesignerPreview || isManual ? elem.x : elem.effectiveX;
-          const posY = isDesignerPreview || isManual ? elem.y : (elem.effectiveY ?? elem.y);
-          const width = isDesignerPreview || isManual ? elem.width : elem.effectiveWidth;
-          const height = isDesignerPreview || isManual ? elem.height : (elem.effectiveHeight ?? elem.height);
+          const posX = isDesignerPreview ? elem.x : (elem.effectiveX ?? elem.x);
+          const posY = isDesignerPreview ? elem.y : (elem.effectiveY ?? elem.y);
+          const width = isDesignerPreview ? elem.width : (elem.effectiveWidth ?? elem.width);
+          const height = isDesignerPreview ? elem.height : (elem.effectiveHeight ?? elem.height);
 
           return (
             <div

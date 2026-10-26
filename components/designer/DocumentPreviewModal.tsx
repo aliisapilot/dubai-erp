@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Printer, X, ZoomIn, ZoomOut, Maximize2, FileText, ChevronLeft } from "lucide-react";
+import { Download, Printer, X, ZoomIn, ZoomOut, Maximize2, FileText, ChevronLeft } from "lucide-react";
 import { DocumentLayout, formatDocNumber } from "@/lib/documentDesigner";
+import { exportDocumentToPdf } from "@/lib/exportDocumentPdf";
 import DynamicDocumentRenderer, {
   SAMPLE_DOCUMENT_DATA,
   getDocumentPageCount,
@@ -272,6 +273,22 @@ export default function DocumentPreviewModal({
           >
             <ChevronLeft size={14} />
             <span>Back to Designer</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await exportDocumentToPdf();
+              } catch (e) {
+                console.error(e);
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow cursor-pointer"
+            title="Download clean A4 PDF directly without browser print dialog"
+          >
+            <Download size={15} />
+            <span>Download PDF</span>
           </button>
 
           <button

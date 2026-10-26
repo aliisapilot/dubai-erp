@@ -927,9 +927,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     page-break-after: always !important;
   }
 
+  .single-page-doc .dynamic-document-page,
+  .dynamic-document-page:only-child,
   .dynamic-document-page:last-child {
-    break-after: auto !important;
-    page-break-after: auto !important;
+    break-after: avoid !important;
+    page-break-after: avoid !important;
   }
 
   /* 6. Dedicated Print Background Image Layer (Prints even if Background Graphics is OFF) */

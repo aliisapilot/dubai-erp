@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { loadDocumentLayout, peekDocumentPreview, createDefaultLayout, type DocumentTypeId, type DocumentLayout } from '@/lib/documentDesigner';
+import { prepareSavedAutoFit } from '@/lib/documentLayoutEngine';
 
 export function usePersistedDocumentDesign(companyId: string | null | undefined, documentType: DocumentTypeId) {
   const key = `${companyId}:${documentType}`;
@@ -21,9 +22,14 @@ export function usePersistedDocumentDesign(companyId: string | null | undefined,
     return () => { cancelled = true; };
   }, [companyId, documentType, key, retry]);
   // Never expose another company's/type's previous layout during a prop change.
-  return {layout: state.key === key ? state.layout : createDefaultLayout(documentType),
-    ready: state.key === key && state.ready, error: state.key === key ? state.error : undefined,
-    retry: () => setRetry(value => value + 1)};
+  const activeLayout = state.key === key ? state.layout : createDefaultLayout(documentType);
+  return {
+    layout: prepareSavedAutoFit(activeLayout),
+    rawLayout: activeLayout,
+    ready: state.key === key && state.ready,
+    error: state.key === key ? state.error : undefined,
+    retry: () => setRetry(value => value + 1)
+  };
 }
 export function DesignLoadState({ error, retry }: {error?: string; retry: () => void}) {
   return <div data-design-print-blocked="true" role="status" className="bg-white p-8 text-slate-800">
