@@ -9,6 +9,7 @@ import StatementOfAccountTemplate, { StatementData, StatementEntry } from "@/com
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { getCurrentCompany, todayISO } from "@/lib/helpers";
+import { CustomPartyData } from "@/lib/documentCustomer";
 
 type Customer = {
   id: string;
@@ -57,6 +58,16 @@ export default function StatementOfAccountPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState(todayISO());
   const [openingBalance, setOpeningBalance] = useState(0);
+  const [partyMode, setPartyMode] = useState<"existing" | "custom">("existing");
+  const [customCustomer, setCustomCustomer] = useState<CustomPartyData>({
+    name: "",
+    address: "",
+    contact_person: "",
+    phone: "",
+    email: "",
+    trn: "",
+    project_name: "",
+  });
 
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
@@ -94,41 +105,80 @@ export default function StatementOfAccountPage() {
   }
 
   async function generateStatement() {
-    if (!selectedCustomerId) return;
+    if (partyMode === "existing" && !selectedCustomerId) return;
+    if (partyMode === "custom" && !customCustomer.name.trim()) return;
+
     const version = ++requestVersion.current;
     setCalculating(true);
     setLoadError("");
     setStatement(null);
     try {
+      let custName = "";
+      let custTrn: string | null = null;
+      let custAddress: string | null = null;
+      let custPhone: string | null = null;
+      let custCode = "";
 
-    const cust = customers.find(c => c.id === selectedCustomerId);
-    if (!cust) {
-      setCalculating(false);
-      return;
-    }
+      let invsPromise;
+      let paysPromise;
+      let rcvsPromise;
 
-    // Fetch Invoices, Payments, and Receipt Vouchers for this customer
-    const [{ data: invs, error: invoiceError }, { data: pays, error: paymentError }, { data: rcvs, error: receiptError }] = await Promise.all([
-      supabase
-        .from("tax_invoices")
-        .select("id, customer_id, invoice_number, invoice_date, total_amount, status")
-        .eq("customer_id", selectedCustomerId)
-        .order("invoice_date", { ascending: true }),
-      supabase
-        .from("payments")
-        .select("id, customer_id, payment_number, payment_date, amount, payment_method, reference_number")
-        .eq("customer_id", selectedCustomerId)
-        .order("payment_date", { ascending: true }),
-      supabase
-        .from("receipt_vouchers")
-        .select("id, customer_id, voucher_number, voucher_date, amount, payment_method, cheque_number")
-        .eq("customer_id", selectedCustomerId)
-        .order("voucher_date", { ascending: true }),
-    ]);
+      if (partyMode === "existing") {
+        const cust = customers.find(c => c.id === selectedCustomerId);
+        if (!cust) {
+          setCalculating(false);
+          return;
+        }
+        custName = cust.name || "Customer";
+        custTrn = cust.trn;
+        custAddress = cust.address;
+        custPhone = cust.phone;
+        custCode = cust.customer_code || cust.id.slice(0, 4).toUpperCase();
 
-    const queryError = invoiceError || paymentError || receiptError;
-    if (queryError) throw new Error(queryError.message);
-    if (version !== requestVersion.current) return;
+        invsPromise = supabase
+          .from("tax_invoices")
+          .select("id, customer_id, invoice_number, invoice_date, total_amount, status")
+          .eq("customer_id", selectedCustomerId)
+          .order("invoice_date", { ascending: true });
+        paysPromise = supabase
+          .from("payments")
+          .select("id, customer_id, payment_number, payment_date, amount, payment_method, reference_number")
+          .eq("customer_id", selectedCustomerId)
+          .order("payment_date", { ascending: true });
+        rcvsPromise = supabase
+          .from("receipt_vouchers")
+          .select("id, customer_id, voucher_number, voucher_date, amount, payment_method, cheque_number")
+          .eq("customer_id", selectedCustomerId)
+          .order("voucher_date", { ascending: true });
+      } else {
+        custName = customCustomer.name.trim();
+        custTrn = customCustomer.trn?.trim() || null;
+        custAddress = customCustomer.address?.trim() || null;
+        custPhone = customCustomer.phone?.trim() || null;
+        custCode = "CUST-DIRECT";
+
+        invsPromise = supabase
+          .from("tax_invoices")
+          .select("id, customer_id, invoice_number, invoice_date, total_amount, status, customer_name")
+          .ilike("customer_name", custName)
+          .order("invoice_date", { ascending: true });
+        paysPromise = Promise.resolve({ data: [] as any[], error: null });
+        rcvsPromise = supabase
+          .from("receipt_vouchers")
+          .select("id, customer_id, voucher_number, voucher_date, amount, payment_method, cheque_number, customer_name, received_from")
+          .or(`customer_name.ilike.%${custName}%,received_from.ilike.%${custName}%`)
+          .order("voucher_date", { ascending: true });
+      }
+
+      const [{ data: invs, error: invoiceError }, { data: pays, error: paymentError }, { data: rcvs, error: receiptError }] = await Promise.all([
+        invsPromise,
+        paysPromise,
+        rcvsPromise,
+      ]);
+
+      const queryError = invoiceError || paymentError || receiptError;
+      if (queryError) throw new Error(queryError.message);
+      if (version !== requestVersion.current) return;
 
     // Build unified transactions list
     type RawTx = {
@@ -214,17 +264,17 @@ export default function StatementOfAccountPage() {
     });
 
     const now = new Date();
-    const stNumber = `SOA-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}-${cust.customer_code || cust.id.slice(0, 4).toUpperCase()}`;
+    const stNumber = `SOA-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}-${custCode}`;
 
     const statementData: StatementData = {
       statement_number: stNumber,
       statement_date: todayISO(),
       from_date: fromDate || null,
       to_date: toDate || null,
-      customer_name: cust.name || "Customer",
-      customer_trn: cust.trn,
-      customer_address: cust.address,
-      customer_phone: cust.phone,
+      customer_name: custName,
+      customer_trn: custTrn,
+      customer_address: custAddress,
+      customer_phone: custPhone,
       opening_balance: computedOpening,
       entries,
       closing_balance: currentBalance,
@@ -243,15 +293,11 @@ export default function StatementOfAccountPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedCustomerId) {
+    if ((partyMode === "existing" && selectedCustomerId) || (partyMode === "custom" && customCustomer.name.trim())) {
       void Promise.resolve().then(generateStatement);
     }
-    // This ref is a request counter, not a DOM node. Invalidate the newest pending request.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { requestVersion.current++; };
-  // Inputs intentionally define when a statement is regenerated.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCustomerId, fromDate, toDate, openingBalance]);
+  }, [selectedCustomerId, fromDate, toDate, openingBalance, partyMode, customCustomer.name, customCustomer.trn, customCustomer.address, customCustomer.phone]);
 
   if (loading || calculating || loadError) return <ReportLoadState loading={loading || calculating} error={loadError} onRetry={() => void (customers.length ? generateStatement() : loadInitialData())} />;
 
@@ -289,54 +335,164 @@ export default function StatementOfAccountPage() {
 
       <div className="mx-auto max-w-7xl px-6 py-8">
         {/* Filter Controls Card */}
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm mb-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <label className="mb-1 block font-semibold text-slate-700">Select Customer</label>
-              <select
-                value={selectedCustomerId}
-                onChange={e => setSelectedCustomerId(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer Mode</span>
+              <p className="text-[11px] text-slate-400">Select an existing account or enter custom customer details directly</p>
+            </div>
+            <div className="flex items-center rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-xs">
+              <button
+                type="button"
+                onClick={() => setPartyMode("existing")}
+                className={`px-3 py-1 rounded-md font-medium transition ${
+                  partyMode === "existing"
+                    ? "bg-white text-slate-900 font-semibold shadow-sm"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
               >
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} {c.customer_code ? `(${c.customer_code})` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-1 block font-semibold text-slate-700">From Date</label>
-              <input
-                type="date"
-                value={fromDate}
-                onChange={e => setFromDate(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block font-semibold text-slate-700">To Date</label>
-              <input
-                type="date"
-                value={toDate}
-                onChange={e => setToDate(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block font-semibold text-slate-700">Initial Opening Balance (AED)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={openingBalance}
-                onChange={e => setOpeningBalance(Number(e.target.value))}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
-              />
+                Existing Customer
+              </button>
+              <button
+                type="button"
+                onClick={() => setPartyMode("custom")}
+                className={`px-3 py-1 rounded-md font-medium transition ${
+                  partyMode === "custom"
+                    ? "bg-white text-slate-900 font-semibold shadow-sm"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
+              >
+                Custom Customer
+              </button>
             </div>
           </div>
+
+          {partyMode === "existing" ? (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+              <div>
+                <label className="mb-1 block font-semibold text-slate-700">Select Customer</label>
+                <select
+                  value={selectedCustomerId}
+                  onChange={e => setSelectedCustomerId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                >
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.customer_code ? `(${c.customer_code})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-slate-700">From Date</label>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={e => setFromDate(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-slate-700">To Date</label>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={e => setToDate(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-slate-700">Initial Opening Balance (AED)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={openingBalance}
+                  onChange={e => setOpeningBalance(Number(e.target.value))}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+                ✍️ <strong>Custom Customer Statement</strong>: Enter customer details directly. No entry will be added to your customer directory.
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+                <div className="md:col-span-2">
+                  <label className="mb-1 block font-semibold text-slate-700">Customer / Company Name <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={customCustomer.name}
+                    onChange={e => setCustomCustomer(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g. Al-Futtaim Engineering LLC"
+                    required
+                    className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">TRN (Optional)</label>
+                  <input
+                    type="text"
+                    value={customCustomer.trn}
+                    onChange={e => setCustomCustomer(prev => ({ ...prev, trn: e.target.value }))}
+                    placeholder="100XXXXXXXXX003"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">Phone (Optional)</label>
+                  <input
+                    type="text"
+                    value={customCustomer.phone}
+                    onChange={e => setCustomCustomer(prev => ({ ...prev, phone: e.target.value }))}
+                    placeholder="+971 50 123 4567"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block font-semibold text-slate-700">Address / Location (Optional)</label>
+                  <input
+                    type="text"
+                    value={customCustomer.address}
+                    onChange={e => setCustomCustomer(prev => ({ ...prev, address: e.target.value }))}
+                    placeholder="Plot / Street / Emirate"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">From Date</label>
+                  <input
+                    type="date"
+                    value={fromDate}
+                    onChange={e => setFromDate(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">To Date</label>
+                  <input
+                    type="date"
+                    value={toDate}
+                    onChange={e => setToDate(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block font-semibold text-slate-700">Initial Opening Balance (AED)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={openingBalance}
+                    onChange={e => setOpeningBalance(Number(e.target.value))}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Live Statement Preview Table */}

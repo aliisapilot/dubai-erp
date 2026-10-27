@@ -928,6 +928,11 @@ export default function DynamicDocumentRenderer({
                     {data.contact_email && (
                       <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${Math.max(6, cardPt * 0.92)}pt`, overflowWrap: "anywhere" }}>Email: {data.contact_email}</div>
                     )}
+                    {data.project_name && (layout.documentType as string) !== "measurement_sheet" && (
+                      <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${Math.max(6, cardPt * 0.92)}pt`, overflowWrap: "anywhere" }}>
+                        Project: <span className="font-semibold text-slate-900">{data.project_name}</span>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -963,14 +968,30 @@ export default function DynamicDocumentRenderer({
             ) : (
               <div className="space-y-0.5 mt-1.5 leading-tight select-text" style={{ fontSize: `${suppPt}pt` }}>
                 <div className="font-bold text-slate-900 break-words leading-tight">{data.supplier_name || data.customer_name || "Supplier Name"}</div>
+                {data.customer_trn && (
+                  <div style={{ fontSize: `${Math.max(6, suppPt * 0.92)}pt` }}>
+                    <span style={{ color: colors.muted }}>TRN: </span>
+                    <span className="font-mono font-bold text-slate-900">{data.customer_trn}</span>
+                  </div>
+                )}
                 {data.contact_person && (
-                  <div className="break-words" style={{ color: colors.muted, fontSize: `${Math.max(6, suppPt * 0.92)}pt` }}>
+                  <div className="break-words" style={{ color: colors.muted, fontSize: `${Math.max(6, suppPt * 0.92)}pt`, overflowWrap: "anywhere" }}>
                     Attn: {data.contact_person} {data.contact_number ? `(${data.contact_number})` : ""}
                   </div>
                 )}
                 {data.customer_address && (
                   <div className="break-words" style={{ color: colors.muted, overflowWrap: "anywhere", fontSize: `${Math.max(6, suppPt * 0.92)}pt` }}>
                     {data.customer_address}
+                  </div>
+                )}
+                {data.contact_email && (
+                  <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${Math.max(6, suppPt * 0.92)}pt`, overflowWrap: "anywhere" }}>
+                    Email: {data.contact_email}
+                  </div>
+                )}
+                {data.project_name && (
+                  <div className="break-words leading-tight" style={{ color: colors.muted, fontSize: `${Math.max(6, suppPt * 0.92)}pt`, overflowWrap: "anywhere" }}>
+                    Project: <span className="font-semibold text-slate-900">{data.project_name}</span>
                   </div>
                 )}
               </div>

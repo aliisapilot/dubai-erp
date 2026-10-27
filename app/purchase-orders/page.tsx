@@ -11,6 +11,7 @@ import DocumentSplitScreenEditor, {
   DocumentEditorFormState,
   EditorLineItem,
 } from "@/components/documents/DocumentSplitScreenEditor";
+import { withSupplierDocumentDetails, serializeCustomPartyNotes } from "@/lib/documentCustomer";
 import {
   PurchaseOrderStatus,
   PURCHASE_ORDER_STATUS_OPTIONS,
@@ -25,7 +26,30 @@ type Supplier = { id: string; name: string | null; supplier_code: string | null;
 type Project = { id: string; project_number: string; name: string };
 type Product = { id: string; name: string | null; sku: string | null; cost_price: number | null; vat_rate: number | null; unit: string | null };
 type POLine = { id?: string; product_id: string; description: string; quantity: number; unit_price: number; discount_pct: number; vat_rate: number; line_total: number; vat_amount: number; sort_order: number };
-type PO = { id: string; company_id: string; purchase_order_number: string | null; supplier_id: string | null; project_id?: string | null; order_date: string | null; expected_date: string | null; status: string | null; subtotal: number | null; vat_amount: number | null; total_amount: number | null; notes: string | null; created_at: string | null };
+type PO = {
+  id: string;
+  company_id: string;
+  purchase_order_number: string | null;
+  supplier_id: string | null;
+  supplier_name?: string;
+  supplier_trn?: string;
+  supplier_address?: string;
+  contact_person?: string;
+  contact_number?: string;
+  contact_email?: string;
+  custom_project_name?: string | null;
+  is_custom_supplier?: boolean | null;
+  custom_supplier?: any;
+  project_id?: string | null;
+  order_date: string | null;
+  expected_date: string | null;
+  status: string | null;
+  subtotal: number | null;
+  vat_amount: number | null;
+  total_amount: number | null;
+  notes: string | null;
+  created_at: string | null;
+};
 type POForm = { supplier_id: string; project_id: string; order_date: string; expected_date: string; status: PurchaseOrderStatus; notes: string };
 const emptyForm: POForm = { supplier_id:"", project_id:"", order_date: todayISO(), expected_date:"", status:"draft", notes:"" };
 const emptyLine = (): POLine => ({ product_id:"", description:"", quantity:1, unit_price:0, discount_pct:0, vat_rate:5, line_total:0, vat_amount:0, sort_order:0 });
@@ -63,15 +87,16 @@ export default function PurchaseOrdersPage() {
       supabase.from("products").select("id, name, sku, cost_price, vat_rate, unit").eq("active", true).order("name"),
       getCurrentCompany(),
     ]);
-    setOrders((po||[]) as PO[]); setSuppliers((s||[]) as Supplier[]); setProjects((pr||[]) as Project[]); setProducts((p||[]) as Product[]);
+    setOrders(((po||[]) as PO[]).map(item => withSupplierDocumentDetails(item) as PO)); setSuppliers((s||[]) as Supplier[]); setProjects((pr||[]) as Project[]); setProducts((p||[]) as Product[]);
     setCompany(comp);
     setLoading(false);
   }
 
   async function handlePrintPO(po: PO) {
-    const { data: items } = await supabase.from("purchase_order_items").select("*").eq("purchase_order_id", po.id).order("sort_order");
-    const supp = suppMap[po.supplier_id || ""];
-    const proj = projMap[po.project_id || ""];
+    const enrichedPO = withSupplierDocumentDetails(po) as PO;
+    const { data: items } = await supabase.from("purchase_order_items").select("*").eq("purchase_order_id", enrichedPO.id).order("sort_order");
+    const supp = suppMap[enrichedPO.supplier_id || ""];
+    const proj = projMap[enrichedPO.project_id || ""];
 
     type DBPOItem = { id?: string; product_id?: string; description?: string; quantity?: number; unit_price?: number; discount_percent?: number; vat_rate?: number; line_total?: number; vat_amount?: number; unit?: string };
 
@@ -87,17 +112,17 @@ export default function PurchaseOrdersPage() {
     }));
 
     const poDoc: PurchaseOrderData = {
-      id: po.id,
-      po_number: po.purchase_order_number || po.id.slice(0, 8).toUpperCase(),
-      po_date: po.order_date || todayISO(),
-      supplier_name: supp?.name || "Supplier",
-      supplier_trn: supp?.trn || null,
-      supplier_address: supp?.address || null,
+      id: enrichedPO.id,
+      po_number: enrichedPO.purchase_order_number || enrichedPO.id.slice(0, 8).toUpperCase(),
+      po_date: enrichedPO.order_date || todayISO(),
+      supplier_name: enrichedPO.supplier_name || supp?.name || "Supplier",
+      supplier_trn: enrichedPO.supplier_trn || supp?.trn || null,
+      supplier_address: enrichedPO.supplier_address || supp?.address || null,
       vendor_reference: null,
-      vendor_contact: supp?.phone || null,
-      vendor_mobile: supp?.phone || null,
-      vendor_email: supp?.email || null,
-      project_name: proj?.name || null,
+      vendor_contact: enrichedPO.contact_person || supp?.phone || null,
+      vendor_mobile: enrichedPO.contact_number || supp?.phone || null,
+      vendor_email: enrichedPO.contact_email || supp?.email || null,
+      project_name: enrichedPO.custom_project_name || proj?.name || null,
       project_number: proj?.project_number || null,
       delivery_terms: po.expected_date ? `Expected Delivery: ${fmtDate(po.expected_date)}` : null,
       payment_terms: "Standard 30 Days Credit / Cash on Delivery",
@@ -120,23 +145,28 @@ export default function PurchaseOrdersPage() {
   const ff = (k: keyof POForm, v: string) => setForm(c => ({...c,[k]:v}));
   function openAdd() { setError(""); setSuccess(""); setEditing(null); setForm(emptyForm); setLines([emptyLine()]); setShowForm(true); }
   async function openEdit(po: PO) {
-    setError(""); setSuccess(""); setEditing(po);
+    setError(""); setSuccess("");
+    const enriched = withSupplierDocumentDetails(po) as PO;
+    setEditing(enriched);
     setForm({
-      supplier_id: po.supplier_id||"",
-      project_id: po.project_id||"",
-      order_date: po.order_date||todayISO(),
-      expected_date: po.expected_date||"",
-      status: normalizePurchaseOrderStatus(po.status),
-      notes: po.notes||""
+      supplier_id: enriched.supplier_id||"",
+      project_id: enriched.project_id||"",
+      order_date: enriched.order_date||todayISO(),
+      expected_date: enriched.expected_date||"",
+      status: normalizePurchaseOrderStatus(enriched.status),
+      notes: enriched.notes||""
     });
     // DB FK: purchase_order_id (not po_id)
     const { data: items } = await supabase.from("purchase_order_items").select("*").eq("purchase_order_id", po.id).order("sort_order");
-    // Map DB discount_percent â†’ UI discount_pct
+    // Map DB discount_percent → UI discount_pct
     type DBPOItem = { id?: string; purchase_order_id?: string; product_id?: string; description?: string; quantity?: number; unit_price?: number; discount_percent?: number; vat_rate?: number; line_total?: number; vat_amount?: number; sort_order?: number };
     setLines((items||[]).length>0?(items as DBPOItem[]).map(it => ({ product_id: it.product_id||"", description: it.description||"", quantity: Number(it.quantity)||1, unit_price: Number(it.unit_price)||0, discount_pct: Number(it.discount_percent??0), vat_rate: Number(it.vat_rate ?? 5), line_total: Number(it.line_total)||0, vat_amount: Number(it.vat_amount)||0, sort_order: Number(it.sort_order)||0 })):[emptyLine()]);
     setShowForm(true);
   }
-  async function openView(po: PO) { const { data: items } = await supabase.from("purchase_order_items").select("*").eq("purchase_order_id", po.id).order("sort_order"); setViewing({ po, lines: (items||[]) as POLine[] }); }
+  async function openView(po: PO) {
+    const { data: items } = await supabase.from("purchase_order_items").select("*").eq("purchase_order_id", po.id).order("sort_order");
+    setViewing({ po: withSupplierDocumentDetails(po) as PO, lines: (items||[]) as POLine[] });
+  }
   function closeForm() { if (saving) return; setShowForm(false); setEditing(null); setError(""); }
 
   async function save(e: FormEvent) {
@@ -223,11 +253,44 @@ export default function PurchaseOrdersPage() {
   }) {
     setError("");
     setSuccess("");
+    const isCustom = Boolean(payload.form.is_custom_supplier);
+    if (!isCustom && !payload.form.customer_id) {
+      setError("Please select an existing supplier or enter custom supplier details.");
+      return;
+    }
+    if (isCustom && !payload.form.customer_name?.trim()) {
+      setError("Please enter the custom supplier / vendor name.");
+      return;
+    }
     setSaving(true);
     try {
       const normStatus = normalizePurchaseOrderStatus(payload.form.status);
-      const dataPayload = {
-        supplier_id: payload.form.customer_id,
+      const customPayload = isCustom
+        ? {
+            name: payload.form.customer_name?.trim() || "",
+            address: payload.form.customer_address || "",
+            contact_person: payload.form.contact_person || "",
+            phone: payload.form.contact_number || "",
+            email: payload.form.contact_email || "",
+            trn: payload.form.customer_trn || "",
+            project_name: payload.form.custom_project_name || "",
+          }
+        : null;
+
+      const rawNotes = payload.form.notes?.trim() || "";
+      const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
+
+      const dataPayload: Record<string, any> = {
+        supplier_id: isCustom ? null : payload.form.customer_id || null,
+        supplier_name: isCustom ? payload.form.customer_name?.trim() : null,
+        supplier_address: isCustom ? payload.form.customer_address || null : null,
+        supplier_trn: isCustom ? payload.form.customer_trn || null : null,
+        contact_person: isCustom ? payload.form.contact_person || null : null,
+        contact_number: isCustom ? payload.form.contact_number || null : null,
+        contact_email: isCustom ? payload.form.contact_email || null : null,
+        custom_project_name: isCustom ? payload.form.custom_project_name || null : null,
+        is_custom_supplier: isCustom,
+        custom_supplier: customPayload,
         project_id: payload.form.project_id || null,
         order_date: payload.form.invoice_date || null,
         expected_date: payload.form.supply_date || null,
@@ -236,26 +299,52 @@ export default function PurchaseOrdersPage() {
         vat_amount: payload.vat_amount,
         total_amount: payload.total_amount,
         payment_terms: payload.form.payment_terms || null,
-        notes: payload.form.notes.trim() || null,
+        notes: serializedNotes || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const executeSave = async (recordPayload: Record<string, any>) => {
+        if (editing) {
+          const { error: err } = await supabase.from("purchase_orders").update(recordPayload).eq("id", editing.id);
+          if (err) throw err;
+          const { error: delErr } = await supabase.from("purchase_order_items").delete().eq("purchase_order_id", editing.id);
+          if (delErr) throw delErr;
+          return editing.id;
+        } else {
+          const cid = await getCompanyId();
+          const pno = await generateDocNumber(cid, "PO");
+          const { data: ins, error: err } = await supabase.from("purchase_orders").insert({
+            ...recordPayload,
+            company_id: cid,
+            purchase_order_number: pno,
+          }).select("id").single();
+          if (err) throw err;
+          return ins.id;
+        }
       };
 
       let poid: string;
-      if (editing) {
-        const { error: err } = await supabase.from("purchase_orders").update(dataPayload).eq("id", editing.id);
-        if (err) throw err;
-        poid = editing.id;
-        const { error: delErr } = await supabase.from("purchase_order_items").delete().eq("purchase_order_id", poid);
-        if (delErr) throw delErr;
-      } else {
-        const cid = await getCompanyId();
-        const pno = await generateDocNumber(cid, "PO");
-        const { data: ins, error: err } = await supabase.from("purchase_orders").insert({
-          ...dataPayload,
-          company_id: cid,
-          purchase_order_number: pno,
-        }).select("id").single();
-        if (err) throw err;
-        poid = ins.id;
+      try {
+        poid = await executeSave(dataPayload);
+      } catch (saveErr: any) {
+        if (saveErr?.message && (saveErr.message.includes("column") || saveErr.code === "PGRST204" || saveErr.code === "42703")) {
+          const minimalPayload = {
+            supplier_id: isCustom ? null : payload.form.customer_id || null,
+            project_id: payload.form.project_id || null,
+            order_date: payload.form.invoice_date || null,
+            expected_date: payload.form.supply_date || null,
+            status: normStatus,
+            subtotal: payload.subtotal,
+            vat_amount: payload.vat_amount,
+            total_amount: payload.total_amount,
+            payment_terms: payload.form.payment_terms || null,
+            notes: serializedNotes || null,
+            updated_at: new Date().toISOString(),
+          };
+          poid = await executeSave(minimalPayload);
+        } else {
+          throw saveErr;
+        }
       }
 
       // If Received, update stock
@@ -308,14 +397,13 @@ export default function PurchaseOrdersPage() {
       setSaving(false);
     }
   }
-
   const suppMap = Object.fromEntries(suppliers.map(s=>[s.id,s]));
   const projMap = Object.fromEntries(projects.map(p=>[p.id,p]));
   const filtered = orders.filter(po => {
     const norm = normalizePurchaseOrderStatus(po.status);
     if (filterStatus && norm !== filterStatus) return false;
-    const sn = suppMap[po.supplier_id||""]?.name || "";
-    const pn = projMap[po.project_id||""]?.project_number || "";
+    const sn = po.supplier_name || suppMap[po.supplier_id||""]?.name || "";
+    const pn = po.custom_project_name || projMap[po.project_id||""]?.project_number || "";
     const stLabel = formatPurchaseOrderStatus(po.status);
     return [po.purchase_order_number, sn, pn, po.status, stLabel].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
@@ -354,7 +442,7 @@ export default function PurchaseOrdersPage() {
           <div className="mb-6 flex gap-3">
             <div className="relative flex-1">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
-              <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search POsâ€¦" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/>
+              <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search POs…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/>
             </div>
             <select
               value={filterStatus}
@@ -381,12 +469,23 @@ export default function PurchaseOrdersPage() {
                     <tr key={po.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3 font-mono text-xs text-slate-500">{po.purchase_order_number || po.id.slice(0,8).toUpperCase()}</td>
                       <td className="px-4 py-3">
-                        <div className="font-semibold text-slate-900">{suppMap[po.supplier_id||""]?.name||"â€”"}</div>
-                        {po.project_id && projMap[po.project_id] && (
+                        <div className="flex items-center gap-1.5 flex-wrap font-semibold text-slate-900">
+                          <span>{po.supplier_name || suppMap[po.supplier_id||""]?.name||"—"}</span>
+                          {po.is_custom_supplier && (
+                            <span className="inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 border border-amber-200">
+                              Custom
+                            </span>
+                          )}
+                        </div>
+                        {po.custom_project_name ? (
                           <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">
-                            ðŸ“ {projMap[po.project_id].project_number}
+                            📁 {po.custom_project_name}
                           </span>
-                        )}
+                        ) : po.project_id && projMap[po.project_id] ? (
+                          <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">
+                            📁 {projMap[po.project_id].project_number}
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3 text-slate-600">{fmtDate(po.order_date)}</td>
                       <td className="px-4 py-3 text-slate-600">{fmtDate(po.expected_date)}</td>
@@ -433,24 +532,18 @@ export default function PurchaseOrdersPage() {
           suppliers={suppliers}
           initialInvoice={
             editing
-              ? {
-                  id: editing.id,
-                  purchase_order_number: editing.purchase_order_number,
-                  supplier_id: editing.supplier_id,
-                  customer_id: editing.supplier_id,
-                  order_date: editing.order_date,
-                  invoice_date: editing.order_date,
-                  expected_date: editing.expected_date,
-                  supply_date: editing.expected_date,
-                  status: editing.status,
-                  notes: editing.notes,
-                  subtotal: editing.subtotal,
-                  vat_amount: editing.vat_amount,
-                  total_amount: editing.total_amount,
-                }
+              ? editing
               : {
                   customer_id: form.supplier_id,
                   supplier_id: form.supplier_id,
+                  customer_name: (form as any).supplier_name || (form as any).customer_name,
+                  customer_trn: (form as any).supplier_trn || (form as any).customer_trn,
+                  customer_address: (form as any).supplier_address || (form as any).customer_address,
+                  contact_person: (form as any).contact_person,
+                  contact_number: (form as any).contact_number,
+                  contact_email: (form as any).contact_email,
+                  custom_project_name: (form as any).custom_project_name,
+                  is_custom_supplier: (form as any).is_custom_supplier,
                   order_date: form.order_date,
                   invoice_date: form.order_date,
                   expected_date: form.expected_date,

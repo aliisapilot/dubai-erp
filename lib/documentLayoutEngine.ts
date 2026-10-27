@@ -223,6 +223,8 @@ export interface DocumentFitText {
   contact_number?: string;
   contact_email?: string;
   supplier_name?: string;
+  supplier_trn?: string;
+  supplier_address?: string;
   project_name?: string;
   location?: string;
   scope_of_work?: string;
@@ -323,10 +325,10 @@ export function estimatePartyInfoHeight(layout: DocumentLayout, text?: DocumentF
   let partyHeight = 0;
   if (party) {
     const fields = party.type === "supplier_info"
-      ? [text.supplier_name || text.customer_name, text.contact_person, text.customer_address]
+      ? [text.supplier_name || text.customer_name, text.supplier_trn || text.customer_trn, text.contact_person, text.contact_number, text.contact_email, text.supplier_address || text.customer_address, text.project_name]
       : party.type === "project_info"
       ? [text.project_name, text.location, text.scope_of_work]
-      : [text.customer_name, text.customer_trn, text.customer_address, text.contact_person, text.contact_number, text.contact_email];
+      : [text.customer_name, text.customer_trn, text.customer_address, text.contact_person, text.contact_number, text.contact_email, text.project_name];
     const fontSize = Math.max(9.5, party.fontSize || 10.5);
     const textLines = fields.filter((value): value is string => Boolean(value?.trim())).reduce(
       (count, value) => count + estimateWrappedLines(value, party.width - (party.padding || 3) * 2, fontSize),

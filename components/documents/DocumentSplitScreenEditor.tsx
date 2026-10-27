@@ -20,6 +20,8 @@ import {
   Minimize2,
   ChevronUp,
   ChevronDown,
+  Building2,
+  UserCheck,
 } from "lucide-react";
 import { DocumentTypeId } from "@/lib/documentDesigner";
 import { CompanyDocInfo } from "./DocHeader";
@@ -54,6 +56,19 @@ export interface DocumentEditorFormState {
   status: string;
   notes: string;
   terms?: string;
+  party_mode?: "existing" | "custom";
+  is_custom_customer?: boolean;
+  is_custom_supplier?: boolean;
+  customer_name?: string;
+  customer_trn?: string | null;
+  customer_address?: string | null;
+  contact_person?: string | null;
+  contact_number?: string | null;
+  contact_email?: string | null;
+  custom_project_name?: string | null;
+  supplier_name?: string;
+  supplier_trn?: string | null;
+  supplier_address?: string | null;
 }
 
 export const PRESET_PAYMENT_TERMS = [
@@ -120,6 +135,21 @@ export interface DocumentSplitScreenEditorProps {
     subtotal?: number | null;
     vat_amount?: number | null;
     total_amount?: number | null;
+    customer_name?: string | null;
+    customer_address?: string | null;
+    customer_trn?: string | null;
+    contact_person?: string | null;
+    contact_number?: string | null;
+    contact_mobile?: string | null;
+    contact_email?: string | null;
+    custom_project_name?: string | null;
+    is_custom_customer?: boolean | null;
+    supplier_name?: string | null;
+    supplier_address?: string | null;
+    supplier_trn?: string | null;
+    is_custom_supplier?: boolean | null;
+    custom_customer?: unknown;
+    custom_supplier?: unknown;
   } | null;
   initialLines?: EditorLineItem[];
   customers?: Array<{
@@ -260,6 +290,37 @@ function DocumentSplitScreenEditorWorkspace({
     terms: initialInvoice?.terms || "",
   }));
 
+  const isSupplierParty = partyType === "supplier";
+  const partyLabelSingle = isSupplierParty ? "Supplier" : "Customer";
+
+  const initiallyCustom = Boolean(
+    initialInvoice?.is_custom_customer ||
+    initialInvoice?.is_custom_supplier ||
+    (!initialInvoice?.customer_id && !initialInvoice?.supplier_id && (initialInvoice?.customer_name || initialInvoice?.supplier_name))
+  );
+
+  const [partyMode, setPartyMode] = useState<"existing" | "custom">(
+    initiallyCustom ? "custom" : "existing"
+  );
+
+  const [customParty, setCustomParty] = useState<{
+    name: string;
+    address: string;
+    contact_person: string;
+    phone: string;
+    email: string;
+    trn: string;
+    project_name: string;
+  }>(() => ({
+    name: initialInvoice?.customer_name || initialInvoice?.supplier_name || "",
+    address: initialInvoice?.customer_address || initialInvoice?.supplier_address || "",
+    contact_person: initialInvoice?.contact_person || (initialInvoice as Record<string, unknown>)?.vendor_contact as string || "",
+    phone: initialInvoice?.contact_number || (initialInvoice as Record<string, unknown>)?.contact_mobile as string || (initialInvoice as Record<string, unknown>)?.vendor_mobile as string || "",
+    email: initialInvoice?.contact_email || (initialInvoice as Record<string, unknown>)?.vendor_email as string || "",
+    trn: initialInvoice?.customer_trn || initialInvoice?.supplier_trn || (initialInvoice as Record<string, unknown>)?.vendor_trn as string || "",
+    project_name: (initialInvoice as Record<string, unknown>)?.custom_project_name as string || "",
+  }));
+
   // Editable bullet terms state
   const [termsList, setTermsList] = useState<string[]>(() => {
     const parsed = parseTermsToList(initialInvoice?.payment_terms);
@@ -395,35 +456,47 @@ function DocumentSplitScreenEditorWorkspace({
     const isNew = !effectiveDocNumber;
     const effectiveNumber = isNew ? "[DRAFT - Assigned on Save]" : effectiveDocNumber;
 
-    const partyName =
-      partyType === "supplier"
-        ? selectedSupplier?.name || "Supplier / Vendor Name"
-        : selectedCustomer?.name || "Customer / Client Name";
+    const isCustom = partyMode === "custom";
 
-    const partyTrn =
-      partyType === "supplier"
-        ? selectedSupplier?.trn || undefined
-        : selectedCustomer?.trn || undefined;
+    const partyName = isCustom
+      ? customParty.name.trim() || (isSupplierParty ? "Supplier / Vendor Name" : "Customer / Client Name")
+      : isSupplierParty
+      ? selectedSupplier?.name || "Supplier / Vendor Name"
+      : selectedCustomer?.name || "Customer / Client Name";
 
-    const partyAddress =
-      partyType === "supplier"
-        ? selectedSupplier?.address || undefined
-        : selectedCustomer?.address || undefined;
+    const partyTrn = isCustom
+      ? customParty.trn.trim() || undefined
+      : isSupplierParty
+      ? selectedSupplier?.trn || undefined
+      : selectedCustomer?.trn || undefined;
 
-    const partyContact =
-      partyType === "supplier"
-        ? selectedSupplier?.contact_person || undefined
-        : selectedCustomer?.contact_person || undefined;
+    const partyAddress = isCustom
+      ? customParty.address.trim() || undefined
+      : isSupplierParty
+      ? selectedSupplier?.address || undefined
+      : selectedCustomer?.address || undefined;
 
-    const partyPhone =
-      partyType === "supplier"
-        ? selectedSupplier?.phone || undefined
-        : selectedCustomer?.phone || selectedCustomer?.mobile || undefined;
+    const partyContact = isCustom
+      ? customParty.contact_person.trim() || undefined
+      : isSupplierParty
+      ? selectedSupplier?.contact_person || undefined
+      : selectedCustomer?.contact_person || undefined;
 
-    const partyEmail =
-      partyType === "supplier"
-        ? selectedSupplier?.email || undefined
-        : selectedCustomer?.email || undefined;
+    const partyPhone = isCustom
+      ? customParty.phone.trim() || undefined
+      : isSupplierParty
+      ? selectedSupplier?.phone || undefined
+      : selectedCustomer?.phone || selectedCustomer?.mobile || undefined;
+
+    const partyEmail = isCustom
+      ? customParty.email.trim() || undefined
+      : isSupplierParty
+      ? selectedSupplier?.email || undefined
+      : selectedCustomer?.email || undefined;
+
+    const effectiveProjectName = isCustom && customParty.project_name.trim()
+      ? customParty.project_name.trim()
+      : selectedProject?.name || undefined;
 
     return {
       document_number: effectiveNumber,
@@ -434,10 +507,11 @@ function DocumentSplitScreenEditorWorkspace({
       customer_name: partyName,
       customer_trn: partyTrn,
       customer_address: partyAddress,
+      supplier_name: isSupplierParty ? partyName : undefined,
       contact_person: partyContact,
       contact_number: partyPhone,
       contact_email: partyEmail,
-      project_name: selectedProject?.name || undefined,
+      project_name: effectiveProjectName,
       project_number: selectedProject?.project_number || undefined,
       payment_terms: form.payment_terms,
       notes: form.notes,
@@ -458,6 +532,9 @@ function DocumentSplitScreenEditorWorkspace({
   }, [
     effectiveDocNumber,
     partyType,
+    partyMode,
+    customParty,
+    isSupplierParty,
     selectedCustomer,
     selectedSupplier,
     selectedProject,
@@ -486,9 +563,17 @@ function DocumentSplitScreenEditorWorkspace({
   };
 
   const handleSaveDocument = async (targetStatus?: string) => {
-    if (!form.customer_id) {
-      setError(`Please select a ${partyLabel || (partyType === "supplier" ? "supplier" : "customer")}.`);
-      return;
+    const isCustom = partyMode === "custom";
+    if (isCustom) {
+      if (!customParty.name.trim()) {
+        setError(`Please enter ${partyLabelSingle} Name.`);
+        return;
+      }
+    } else {
+      if (!form.customer_id) {
+        setError(`Please select an existing ${partyLabelSingle}.`);
+        return;
+      }
     }
     if (lines.length === 0 || !lines[0].description) {
       setError("Please add at least one line item with a description.");
@@ -497,8 +582,58 @@ function DocumentSplitScreenEditorWorkspace({
 
     setError("");
     const finalStatus = targetStatus || form.status;
+    const finalCustomerName = isCustom
+      ? customParty.name.trim()
+      : isSupplierParty
+      ? selectedSupplier?.name || ""
+      : selectedCustomer?.name || "";
+    const finalTrn = isCustom
+      ? customParty.trn.trim() || null
+      : isSupplierParty
+      ? selectedSupplier?.trn || null
+      : selectedCustomer?.trn || null;
+    const finalAddress = isCustom
+      ? customParty.address.trim() || null
+      : isSupplierParty
+      ? selectedSupplier?.address || null
+      : selectedCustomer?.address || null;
+    const finalContact = isCustom
+      ? customParty.contact_person.trim() || null
+      : isSupplierParty
+      ? selectedSupplier?.contact_person || null
+      : selectedCustomer?.contact_person || null;
+    const finalPhone = isCustom
+      ? customParty.phone.trim() || null
+      : isSupplierParty
+      ? selectedSupplier?.phone || null
+      : selectedCustomer?.phone || selectedCustomer?.mobile || null;
+    const finalEmail = isCustom
+      ? customParty.email.trim() || null
+      : isSupplierParty
+      ? selectedSupplier?.email || null
+      : selectedCustomer?.email || null;
+    const finalProjectName = isCustom
+      ? customParty.project_name.trim() || null
+      : selectedProject?.name || null;
+
     await onSave({
-      form: { ...form, status: finalStatus },
+      form: {
+        ...form,
+        status: finalStatus,
+        party_mode: partyMode,
+        is_custom_customer: isCustom && !isSupplierParty,
+        is_custom_supplier: isCustom && isSupplierParty,
+        customer_name: finalCustomerName,
+        customer_trn: finalTrn,
+        customer_address: finalAddress,
+        contact_person: finalContact,
+        contact_number: finalPhone,
+        contact_email: finalEmail,
+        custom_project_name: finalProjectName,
+        supplier_name: isSupplierParty ? finalCustomerName : undefined,
+        supplier_trn: isSupplierParty ? finalTrn : undefined,
+        supplier_address: isSupplierParty ? finalAddress : undefined,
+      },
       lines,
       subtotal: totals.sub,
       vat_amount: totals.vat,
@@ -721,43 +856,213 @@ function DocumentSplitScreenEditorWorkspace({
 
                 {/* Party (Customer / Supplier) Selection */}
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    {partyLabel || (partyType === "supplier" ? "Supplier / Vendor" : "Customer / Client")}{" "}
-                    <span className="text-rose-400">*</span>
-                  </label>
-                  <select
-                    value={form.customer_id}
-                    onChange={(e) => handleFormChange("customer_id", e.target.value)}
-                    disabled={isFormDisabled}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
-                  >
-                    <option value="">
-                      — Select {partyLabel || (partyType === "supplier" ? "Supplier" : "Customer")} —
-                    </option>
-                    {partyType === "supplier"
-                      ? suppliers.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name} {s.trn ? `(TRN: ${s.trn})` : ""}
-                          </option>
-                        ))
-                      : customers.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} {c.trn ? `(TRN: ${c.trn})` : ""}
-                          </option>
-                        ))}
-                  </select>
-                  {partyType === "supplier" && selectedSupplier && (
-                    <div className="mt-1.5 flex flex-wrap gap-2 text-[10px] text-slate-400">
-                      {selectedSupplier.trn && <span>TRN: <strong className="text-slate-200">{selectedSupplier.trn}</strong></span>}
-                      {selectedSupplier.phone && <span>Tel: {selectedSupplier.phone}</span>}
-                      {selectedSupplier.address && <span className="truncate max-w-xs">{selectedSupplier.address}</span>}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-medium text-slate-300">
+                      {partyLabel || (partyType === "supplier" ? "Supplier / Vendor" : "Customer / Client")}{" "}
+                      <span className="text-rose-400">*</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400">
+                      {partyMode === "custom" ? "Direct Manual Entry" : "Saved Database"}
+                    </span>
+                  </div>
+
+                  {/* Mode Toggle Switcher */}
+                  <div className="flex rounded-lg border border-slate-700 bg-slate-900/90 p-1 mb-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPartyMode("existing");
+                        setDirty(true);
+                      }}
+                      disabled={isFormDisabled}
+                      className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        partyMode === "existing"
+                          ? "bg-amber-500 text-slate-950 font-bold shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <Building2 size={13} />
+                      <span>Existing {partyLabelSingle}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPartyMode("custom");
+                        setDirty(true);
+                      }}
+                      disabled={isFormDisabled}
+                      className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        partyMode === "custom"
+                          ? "bg-amber-500 text-slate-950 font-bold shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <UserCheck size={13} />
+                      <span>Custom {partyLabelSingle}</span>
+                    </button>
+                  </div>
+
+                  {partyMode === "existing" ? (
+                    <div>
+                      <select
+                        value={form.customer_id}
+                        onChange={(e) => handleFormChange("customer_id", e.target.value)}
+                        disabled={isFormDisabled}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
+                      >
+                        <option value="">
+                          — Select {partyLabel || (partyType === "supplier" ? "Supplier" : "Customer")} —
+                        </option>
+                        {partyType === "supplier"
+                          ? suppliers.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name} {s.trn ? `(TRN: ${s.trn})` : ""}
+                              </option>
+                            ))
+                          : customers.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name} {c.trn ? `(TRN: ${c.trn})` : ""}
+                              </option>
+                            ))}
+                      </select>
+                      {partyType === "supplier" && selectedSupplier && (
+                        <div className="mt-1.5 flex flex-wrap gap-2 text-[10px] text-slate-400">
+                          {selectedSupplier.trn && <span>TRN: <strong className="text-slate-200">{selectedSupplier.trn}</strong></span>}
+                          {selectedSupplier.phone && <span>Tel: {selectedSupplier.phone}</span>}
+                          {selectedSupplier.address && <span className="truncate max-w-xs">{selectedSupplier.address}</span>}
+                        </div>
+                      )}
+                      {partyType === "customer" && selectedCustomer && (
+                        <div className="mt-1.5 flex flex-wrap gap-2 text-[10px] text-slate-400">
+                          {selectedCustomer.trn && <span>TRN: <strong className="text-slate-200">{selectedCustomer.trn}</strong></span>}
+                          {selectedCustomer.phone && <span>Tel: {selectedCustomer.phone}</span>}
+                          {selectedCustomer.address && <span className="truncate max-w-xs">{selectedCustomer.address}</span>}
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {partyType === "customer" && selectedCustomer && (
-                    <div className="mt-1.5 flex flex-wrap gap-2 text-[10px] text-slate-400">
-                      {selectedCustomer.trn && <span>TRN: <strong className="text-slate-200">{selectedCustomer.trn}</strong></span>}
-                      {selectedCustomer.phone && <span>Tel: {selectedCustomer.phone}</span>}
-                      {selectedCustomer.address && <span className="truncate max-w-xs">{selectedCustomer.address}</span>}
+                  ) : (
+                    /* Custom Party Direct Manual Entry */
+                    <div className="space-y-2.5 rounded-lg border border-amber-500/30 bg-slate-900/60 p-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                          {partyLabelSingle} / Company Name <span className="text-rose-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={customParty.name}
+                          onChange={(e) => {
+                            setCustomParty((prev) => ({ ...prev, name: e.target.value }));
+                            setDirty(true);
+                          }}
+                          disabled={isFormDisabled}
+                          placeholder={`Enter full ${partyLabelSingle.toLowerCase()} or company name`}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                            Contact Person
+                          </label>
+                          <input
+                            type="text"
+                            value={customParty.contact_person}
+                            onChange={(e) => {
+                              setCustomParty((prev) => ({ ...prev, contact_person: e.target.value }));
+                              setDirty(true);
+                            }}
+                            disabled={isFormDisabled}
+                            placeholder="e.g. John Doe"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                            Mobile / Phone
+                          </label>
+                          <input
+                            type="text"
+                            value={customParty.phone}
+                            onChange={(e) => {
+                              setCustomParty((prev) => ({ ...prev, phone: e.target.value }));
+                              setDirty(true);
+                            }}
+                            disabled={isFormDisabled}
+                            placeholder="+971 50 123 4567"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                            Email
+                          </label>
+                          <input
+                            type="email"
+                            value={customParty.email}
+                            onChange={(e) => {
+                              setCustomParty((prev) => ({ ...prev, email: e.target.value }));
+                              setDirty(true);
+                            }}
+                            disabled={isFormDisabled}
+                            placeholder="accounts@company.com"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                            TRN (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={customParty.trn}
+                            onChange={(e) => {
+                              setCustomParty((prev) => ({ ...prev, trn: e.target.value }));
+                              setDirty(true);
+                            }}
+                            disabled={isFormDisabled}
+                            placeholder="100XXXXXXXXX00003"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-mono text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                          Address
+                        </label>
+                        <input
+                          type="text"
+                          value={customParty.address}
+                          onChange={(e) => {
+                            setCustomParty((prev) => ({ ...prev, address: e.target.value }));
+                            setDirty(true);
+                          }}
+                          disabled={isFormDisabled}
+                          placeholder="Office / Building, Street, Area, Emirate, UAE"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                          Project Name (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={customParty.project_name}
+                          onChange={(e) => {
+                            setCustomParty((prev) => ({ ...prev, project_name: e.target.value }));
+                            setDirty(true);
+                          }}
+                          disabled={isFormDisabled}
+                          placeholder="e.g. Warehouse Tension Structure"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
                     </div>
                   )}
                 </div>

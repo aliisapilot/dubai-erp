@@ -13,6 +13,12 @@ import DynamicDocumentRenderer, {
   getDocumentPageCount,
 } from "@/components/documents/DynamicDocumentRenderer";
 import { usePersistedDocumentDesign } from "@/components/documents/usePersistedDocumentDesign";
+import {
+  CustomPartyData,
+  withCustomerDocumentDetails,
+  serializeCustomPartyNotes,
+  parseCustomPartyFromNotes,
+} from "@/lib/documentCustomer";
 
 type Customer = { id: string; name: string | null; trn: string | null };
 type Invoice = { id: string; invoice_number: string | null; total_amount: number | null };
@@ -36,6 +42,15 @@ type RCV = {
   accountant_name: string | null;
   notes: string | null;
   created_at: string | null;
+  customer_name?: string | null;
+  customer_address?: string | null;
+  customer_trn?: string | null;
+  contact_person?: string | null;
+  contact_number?: string | null;
+  contact_email?: string | null;
+  custom_project_name?: string | null;
+  is_custom_customer?: boolean | null;
+  custom_customer?: CustomPartyData | null;
 };
 
 type RCVForm = {
@@ -94,6 +109,17 @@ export default function ReceiptVouchersPage() {
 
   const [printVoucher, setPrintVoucher] = useState<ReceiptVoucherData | null>(null);
 
+  const [partyMode, setPartyMode] = useState<"existing" | "custom">("existing");
+  const [customCustomer, setCustomCustomer] = useState<CustomPartyData>({
+    name: "",
+    address: "",
+    contact_person: "",
+    phone: "",
+    email: "",
+    trn: "",
+    project_name: "",
+  });
+
   const design = usePersistedDocumentDesign(company?.id, "receipt_voucher");
   const [activeTabMobile, setActiveTabMobile] = useState<"form" | "preview">("form");
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
@@ -102,12 +128,27 @@ export default function ReceiptVouchersPage() {
   const previewData: MockDocumentData = useMemo(() => {
     const cust = customers.find((c) => c.id === form.customer_id);
     const amountVal = parseFloat(form.amount) || 0;
+    const resolvedName = partyMode === "custom"
+      ? (customCustomer.name || "Custom Customer")
+      : (form.received_from || cust?.name || "Payer Name / Customer");
+    const resolvedAddress = partyMode === "custom" ? customCustomer.address : undefined;
+    const resolvedTrn = partyMode === "custom" ? customCustomer.trn : (cust?.trn || undefined);
+    const resolvedContact = partyMode === "custom" ? customCustomer.contact_person : undefined;
+    const resolvedPhone = partyMode === "custom" ? customCustomer.phone : undefined;
+    const resolvedEmail = partyMode === "custom" ? customCustomer.email : undefined;
+    const resolvedProject = partyMode === "custom" ? customCustomer.project_name : undefined;
+
     return {
       document_number: form.voucher_number || editing?.voucher_number || "[Draft - Generated on Save]",
       document_date: form.voucher_date || todayISO(),
       status: "posted",
-      customer_name: form.received_from || cust?.name || "Payer Name / Customer",
-      customer_trn: cust?.trn || undefined,
+      customer_name: resolvedName,
+      customer_address: resolvedAddress || undefined,
+      customer_trn: resolvedTrn || undefined,
+      contact_person: resolvedContact || undefined,
+      contact_number: resolvedPhone || undefined,
+      contact_email: resolvedEmail || undefined,
+      project_name: resolvedProject || undefined,
       notes: form.notes || undefined,
       payment_terms: `${form.payment_method}${
         form.cheque_number
@@ -134,7 +175,7 @@ export default function ReceiptVouchersPage() {
         },
       ],
     };
-  }, [form, editing, customers, invoices]);
+  }, [form, editing, customers, invoices, partyMode, customCustomer]);
 
   const totalPreviewPages = useMemo(() => {
     if (!design.layout) return 1;
@@ -154,7 +195,8 @@ export default function ReceiptVouchersPage() {
       getCurrentCompany(),
     ]);
 
-    setVouchers((vchs || []) as RCV[]);
+    const enriched = (vchs || []).map((v: any) => withCustomerDocumentDetails(v));
+    setVouchers(enriched as RCV[]);
     setCustomers((custs || []) as Customer[]);
     setInvoices((invs || []) as Invoice[]);
     if (co) setCompany(co as CompanyDocInfo);
@@ -165,6 +207,16 @@ export default function ReceiptVouchersPage() {
     setError("");
     setSuccess("");
     setEditing(null);
+    setPartyMode("existing");
+    setCustomCustomer({
+      name: "",
+      address: "",
+      contact_person: "",
+      phone: "",
+      email: "",
+      trn: "",
+      project_name: "",
+    });
     setForm({ ...emptyForm, voucher_date: todayISO() });
     setShowModal(true);
   }
@@ -173,11 +225,22 @@ export default function ReceiptVouchersPage() {
     setError("");
     setSuccess("");
     setEditing(v);
+    const isCustom = Boolean(v.is_custom_customer || (!v.customer_id && (v.customer_name || v.custom_customer)));
+    setPartyMode(isCustom ? "custom" : "existing");
+    setCustomCustomer({
+      name: v.customer_name || v.custom_customer?.name || (isCustom ? v.received_from : "") || "",
+      address: v.customer_address || v.custom_customer?.address || "",
+      contact_person: v.contact_person || v.custom_customer?.contact_person || "",
+      phone: v.contact_number || v.custom_customer?.phone || "",
+      email: v.contact_email || v.custom_customer?.email || "",
+      trn: v.customer_trn || v.custom_customer?.trn || "",
+      project_name: v.custom_project_name || v.custom_customer?.project_name || "",
+    });
     setForm({
       voucher_number: v.voucher_number,
       voucher_date: v.voucher_date || todayISO(),
       customer_id: v.customer_id || "",
-      received_from: v.received_from || "",
+      received_from: v.customer_name || v.received_from || "",
       amount: String(v.amount ?? 0),
       payment_method: v.payment_method || "Cash",
       cheque_number: v.cheque_number || "",
@@ -204,18 +267,23 @@ export default function ReceiptVouchersPage() {
 
   async function saveVoucher(e: FormEvent) {
     e.preventDefault();
-    if (!form.received_from.trim() || Number(form.amount) <= 0) {
-      setError("Please provide a valid payer name and amount greater than 0.");
+    const effectivePayer = partyMode === "custom" ? customCustomer.name.trim() : form.received_from.trim();
+    if (!effectivePayer || Number(form.amount) <= 0) {
+      setError("Please provide a valid customer/payer name and an amount greater than 0.");
       return;
     }
     setSaving(true);
     setError("");
     setSuccess("");
     try {
-      const payload: Record<string, unknown> = {
+      const serializedNotes = partyMode === "custom"
+        ? serializeCustomPartyNotes(form.notes.trim() || null, customCustomer)
+        : (form.notes.trim() || null);
+
+      const basePayload: Record<string, unknown> = {
         voucher_date: form.voucher_date || todayISO(),
-        customer_id: form.customer_id || null,
-        received_from: form.received_from.trim(),
+        customer_id: partyMode === "custom" ? null : (form.customer_id || null),
+        received_from: effectivePayer,
         amount: Number(form.amount) || 0,
         payment_method: form.payment_method,
         cheque_number: form.cheque_number.trim() || null,
@@ -226,24 +294,47 @@ export default function ReceiptVouchersPage() {
         advance_amount: Number(form.advance_amount) || 0,
         balance_amount: Number(form.balance_amount) || 0,
         accountant_name: form.accountant_name.trim() || null,
-        notes: form.notes.trim() || null,
+        notes: serializedNotes,
+      };
+
+      const fullPayload: Record<string, unknown> = {
+        ...basePayload,
+        customer_name: partyMode === "custom" ? customCustomer.name.trim() : null,
+        customer_address: partyMode === "custom" ? customCustomer.address?.trim() || null : null,
+        customer_trn: partyMode === "custom" ? customCustomer.trn?.trim() || null : null,
+        contact_person: partyMode === "custom" ? customCustomer.contact_person?.trim() || null : null,
+        contact_number: partyMode === "custom" ? customCustomer.phone?.trim() || null : null,
+        contact_email: partyMode === "custom" ? customCustomer.email?.trim() || null : null,
+        custom_project_name: partyMode === "custom" ? customCustomer.project_name?.trim() || null : null,
+        is_custom_customer: partyMode === "custom",
+        custom_customer: partyMode === "custom" ? customCustomer : null,
       };
 
       if (editing) {
-        // Preserve existing voucher number — editing never changes or regenerates numbers
-        const { error: err } = await supabase.from("receipt_vouchers").update(payload).eq("id", editing.id);
-        if (err) throw err;
+        let updateErr = (await supabase.from("receipt_vouchers").update(fullPayload).eq("id", editing.id)).error;
+        if (updateErr) {
+          console.warn("[ReceiptVoucher] Full update error, falling back to base columns + serialized notes:", updateErr.message);
+          const fallbackRes = await supabase.from("receipt_vouchers").update(basePayload).eq("id", editing.id);
+          if (fallbackRes.error) throw fallbackRes.error;
+        }
         setSuccess("Receipt voucher updated successfully.");
       } else {
         const cid = await getCompanyId();
-        // Automatic sequential numbering via centralized generateDocNumber -> next_doc_number RPC
         const vno = await generateDocNumber(cid, "RCV");
-        const { error: err } = await supabase.from("receipt_vouchers").insert({
-          ...payload,
+        let insertErr = (await supabase.from("receipt_vouchers").insert({
+          ...fullPayload,
           company_id: cid,
           voucher_number: vno,
-        });
-        if (err) throw err;
+        })).error;
+        if (insertErr) {
+          console.warn("[ReceiptVoucher] Full insert error, falling back to base columns + serialized notes:", insertErr.message);
+          const fallbackRes = await supabase.from("receipt_vouchers").insert({
+            ...basePayload,
+            company_id: cid,
+            voucher_number: vno,
+          });
+          if (fallbackRes.error) throw fallbackRes.error;
+        }
         setSuccess("Receipt voucher issued successfully.");
       }
 
@@ -263,8 +354,13 @@ export default function ReceiptVouchersPage() {
     const vData: ReceiptVoucherData = {
       voucher_number: v.voucher_number,
       voucher_date: v.voucher_date,
-      received_from: v.received_from,
-      customer_trn: cust?.trn,
+      received_from: v.customer_name || v.received_from || cust?.name || "",
+      customer_address: v.customer_address || v.custom_customer?.address || undefined,
+      customer_trn: v.customer_trn || v.custom_customer?.trn || cust?.trn || undefined,
+      contact_person: v.contact_person || v.custom_customer?.contact_person || undefined,
+      contact_number: v.contact_number || v.custom_customer?.phone || undefined,
+      contact_email: v.contact_email || v.custom_customer?.email || undefined,
+      project_name: v.custom_project_name || v.custom_customer?.project_name || undefined,
       amount: Number(v.amount) || 0,
       payment_method: v.payment_method,
       cheque_number: v.cheque_number,
@@ -300,7 +396,7 @@ export default function ReceiptVouchersPage() {
   }
 
   const filtered = vouchers.filter(v =>
-    [v.voucher_number, v.received_from, v.payment_method, v.cheque_number]
+    [v.voucher_number, v.customer_name, v.received_from, v.payment_method, v.cheque_number, v.custom_project_name]
       .filter(Boolean)
       .join(" ")
       .toLowerCase()
@@ -374,7 +470,21 @@ export default function ReceiptVouchersPage() {
                   <tr key={v.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-mono text-xs font-bold text-slate-800">{v.voucher_number}</td>
                     <td className="px-4 py-3 text-slate-600">{v.voucher_date}</td>
-                    <td className="px-4 py-3 font-semibold text-slate-900">{v.received_from}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-900">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{v.customer_name || v.received_from}</span>
+                        {(v.is_custom_customer || (!v.customer_id && v.customer_name)) && (
+                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
+                            Custom
+                          </span>
+                        )}
+                      </div>
+                      {v.custom_project_name && (
+                        <span className="inline-block mt-0.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 border border-slate-200">
+                          Project: {v.custom_project_name}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-600">{v.payment_method}</td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-600">{v.cheque_number || "—"}</td>
                     <td className="px-4 py-3 text-right font-mono font-bold text-emerald-700 text-sm">
@@ -529,29 +639,141 @@ export default function ReceiptVouchersPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="mb-1 block font-semibold text-slate-300">Customer (Optional Link)</label>
-                        <select
-                          value={form.customer_id}
-                          onChange={e => onCustomerSelect(e.target.value)}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
-                        >
-                          <option value="">— Select Customer —</option>
-                          {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
+                    {/* Customer Selection: Existing vs Custom */}
+                    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3.5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Customer / Payer</div>
+                        <div className="flex items-center rounded-lg bg-slate-900 p-0.5 border border-slate-800 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setPartyMode("existing")}
+                            className={`px-2.5 py-1 rounded font-medium transition ${
+                              partyMode === "existing"
+                                ? "bg-amber-500 text-slate-950 font-semibold shadow-sm"
+                                : "text-slate-400 hover:text-white"
+                            }`}
+                          >
+                            Existing Customer
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPartyMode("custom")}
+                            className={`px-2.5 py-1 rounded font-medium transition ${
+                              partyMode === "custom"
+                                ? "bg-amber-500 text-slate-950 font-semibold shadow-sm"
+                                : "text-slate-400 hover:text-white"
+                            }`}
+                          >
+                            Custom Customer
+                          </button>
+                        </div>
                       </div>
-                      <div>
-                        <label className="mb-1 block font-semibold text-slate-300">Received From (Payer) <span className="text-red-500">*</span></label>
-                        <input
-                          type="text"
-                          value={form.received_from}
-                          onChange={e => setForm({ ...form, received_from: e.target.value })}
-                          placeholder="Full payer name"
-                          required
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                        />
-                      </div>
+
+                      {partyMode === "existing" ? (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="mb-1 block font-semibold text-slate-300">Customer (Optional Link)</label>
+                            <select
+                              value={form.customer_id}
+                              onChange={e => onCustomerSelect(e.target.value)}
+                              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
+                            >
+                              <option value="">— Select Customer —</option>
+                              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="mb-1 block font-semibold text-slate-300">Received From (Payer) <span className="text-red-500">*</span></label>
+                            <input
+                              type="text"
+                              value={form.received_from}
+                              onChange={e => setForm({ ...form, received_from: e.target.value })}
+                              placeholder="Full payer name"
+                              required={partyMode === "existing"}
+                              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-200">
+                            ✍️ <strong>Custom Customer Mode</strong>: Enter customer details manually for this receipt voucher. No record will be created in your customer database.
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="col-span-2">
+                              <label className="mb-1 block font-semibold text-slate-300">Customer / Company Name <span className="text-red-500">*</span></label>
+                              <input
+                                type="text"
+                                value={customCustomer.name}
+                                onChange={e => setCustomCustomer(prev => ({ ...prev, name: e.target.value }))}
+                                required
+                                placeholder="e.g. Al-Futtaim Engineering LLC"
+                                className="w-full rounded-lg border border-amber-500/50 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block font-semibold text-slate-300">Project / Site Name (Optional)</label>
+                              <input
+                                type="text"
+                                value={customCustomer.project_name}
+                                onChange={e => setCustomCustomer(prev => ({ ...prev, project_name: e.target.value }))}
+                                placeholder="e.g. Dubai Marina Phase 1"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block font-semibold text-slate-300">TRN (Optional)</label>
+                              <input
+                                type="text"
+                                value={customCustomer.trn}
+                                onChange={e => setCustomCustomer(prev => ({ ...prev, trn: e.target.value }))}
+                                placeholder="100XXXXXXXXX003"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none font-mono"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="mb-1 block font-semibold text-slate-300">Address / Location</label>
+                              <input
+                                type="text"
+                                value={customCustomer.address}
+                                onChange={e => setCustomCustomer(prev => ({ ...prev, address: e.target.value }))}
+                                placeholder="Office / Street / City"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block font-semibold text-slate-300">Contact Person</label>
+                              <input
+                                type="text"
+                                value={customCustomer.contact_person}
+                                onChange={e => setCustomCustomer(prev => ({ ...prev, contact_person: e.target.value }))}
+                                placeholder="Contact name"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block font-semibold text-slate-300">Contact Mobile / Phone</label>
+                              <input
+                                type="text"
+                                value={customCustomer.phone}
+                                onChange={e => setCustomCustomer(prev => ({ ...prev, phone: e.target.value }))}
+                                placeholder="+971 50 123 4567"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="mb-1 block font-semibold text-slate-300">Contact Email</label>
+                              <input
+                                type="email"
+                                value={customCustomer.email}
+                                onChange={e => setCustomCustomer(prev => ({ ...prev, email: e.target.value }))}
+                                placeholder="accounts@customer.ae"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-3 gap-3">

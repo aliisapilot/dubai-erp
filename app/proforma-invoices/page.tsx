@@ -9,7 +9,7 @@ import ProformaInvoiceTemplate from "@/components/documents/ProformaInvoiceTempl
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails, serializeCustomPartyNotes } from "@/lib/documentCustomer";
 import DocumentSplitScreenEditor, {
   DocumentEditorFormState,
   EditorLineItem,
@@ -19,7 +19,30 @@ type Customer = { id: string; name: string | null; customer_code: string | null;
 type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; unit?: string | null };
 type LineItem = { id?: string; product_id: string; description: string; quantity: number; unit?: string; unit_price: number; discount_pct: number; vat_rate: number; line_total: number; vat_amount: number; sort_order: number };
 // DB: proforma_invoices has: valid_until (not due_date), no project_id, no payment_terms
-type PI = { id: string; company_id: string; proforma_number: string | null; customer_id: string | null; customer_name?: string; customer_trn?: string; customer_address?: string; contact_person?: string; contact_number?: string; contact_email?: string; quotation_id: string | null; proforma_date: string | null; valid_until: string | null; status: string | null; subtotal: number | null; vat_amount: number | null; total_amount: number | null; notes: string | null; created_at: string | null };
+type PI = {
+  id: string;
+  company_id: string;
+  proforma_number: string | null;
+  customer_id: string | null;
+  customer_name?: string;
+  customer_trn?: string;
+  customer_address?: string;
+  contact_person?: string;
+  contact_number?: string;
+  contact_email?: string;
+  custom_project_name?: string | null;
+  is_custom_customer?: boolean | null;
+  custom_customer?: any;
+  quotation_id: string | null;
+  proforma_date: string | null;
+  valid_until: string | null;
+  status: string | null;
+  subtotal: number | null;
+  vat_amount: number | null;
+  total_amount: number | null;
+  notes: string | null;
+  created_at: string | null;
+};
 type PIForm = { customer_id: string; proforma_date: string; valid_until: string; status: string; payment_terms: string; notes: string };
 const emptyForm: PIForm = { customer_id:"", proforma_date: todayISO(), valid_until:"", status:"draft", payment_terms:"30 days", notes:"" };
 const emptyLine = (): LineItem => ({ product_id:"", description:"", quantity:1, unit:"Nos", unit_price:0, discount_pct:0, vat_rate:5, line_total:0, vat_amount:0, sort_order:0 });
@@ -68,7 +91,7 @@ function PIContent() {
       supabase.from("products").select("id, name, sku, selling_price, vat_rate, unit").eq("active", true).order("name"),
       getCurrentCompany(),
     ]);
-    setInvoices((pi || []) as PI[]);
+    setInvoices(((pi || []) as PI[]).map(item => withCustomerDocumentDetails(item) as PI));
     setCustomers((c || []) as Customer[]);
     setProducts((p || []) as Product[]);
     if (co) setCompany(co as CompanyDocInfo);
@@ -91,6 +114,13 @@ function PIContent() {
     const { data: q } = await supabase.from("quotations").select("*").eq("id", quotationId).single();
     const { data: items } = await supabase.from("quotation_items").select("*").eq("quotation_id", quotationId).order("sort_order");
     if (q) {
+      const enrichedQ = withCustomerDocumentDetails(q);
+      setForm(f => ({
+        ...f,
+        customer_id: enrichedQ.customer_id || "",
+        notes: enrichedQ.notes || "",
+        payment_terms: enrichedQ.payment_terms || (enrichedQ as any).terms || "30 days",
+      }));
       type QuotationItemSource = { product_id?: string; description?: string; quantity?: number; unit_price?: number; discount_percent?: number; vat_rate?: number; line_total?: number; vat_amount?: number; sort_order?: number };
       setLines(((items || []) as QuotationItemSource[]).map((it) => ({
         product_id: it.product_id || "",
@@ -124,15 +154,27 @@ function PIContent() {
   const ff = (k: keyof PIForm, v: string) => setForm(c => ({...c,[k]:v}));
   function openAdd() { setError(""); setSuccess(""); setEditing(null); setForm(emptyForm); setLines([emptyLine()]); setShowForm(true); }
   async function openEdit(pi: PI) {
-    setError(""); setSuccess(""); setEditing(pi);
-    setForm({ customer_id: pi.customer_id||"", proforma_date: pi.proforma_date||todayISO(), valid_until: pi.valid_until||"", status: (pi.status||"draft").toLowerCase(), payment_terms: (pi as { terms_conditions?: string | null }).terms_conditions||"", notes: pi.notes||"" });
+    setError(""); setSuccess("");
+    const enriched = withCustomerDocumentDetails(pi) as PI;
+    setEditing(enriched);
+    setForm({
+      customer_id: enriched.customer_id||"",
+      proforma_date: enriched.proforma_date||todayISO(),
+      valid_until: enriched.valid_until||"",
+      status: (enriched.status||"draft").toLowerCase(),
+      payment_terms: (enriched as { terms_conditions?: string | null }).terms_conditions||"",
+      notes: enriched.notes||""
+    });
     const { data: items } = await supabase.from("proforma_invoice_items").select("*").eq("proforma_invoice_id", pi.id).order("sort_order");
     // Map DB discount_percent back to UI discount_pct
     type DBItem = { id?: string; proforma_invoice_id?: string; product_id?: string; description?: string; quantity?: number; unit_price?: number; discount_percent?: number; vat_rate?: number; line_total?: number; vat_amount?: number; sort_order?: number };
     setLines((items||[]).length>0?(items as DBItem[]).map(it => ({ ...it, discount_pct: Number(it.discount_percent ?? 0) } as LineItem)):[emptyLine()]);
     setShowForm(true);
   }
-  async function openView(pi: PI) { const { data: items } = await supabase.from("proforma_invoice_items").select("*").eq("proforma_invoice_id", pi.id).order("sort_order"); setViewing({ pi, lines: (items||[]) as LineItem[] }); }
+  async function openView(pi: PI) {
+    const { data: items } = await supabase.from("proforma_invoice_items").select("*").eq("proforma_invoice_id", pi.id).order("sort_order");
+    setViewing({ pi: withCustomerDocumentDetails(pi) as PI, lines: (items||[]) as LineItem[] });
+  }
   function closeForm() { if (saving) return; setShowForm(false); setEditing(null); setError(""); }
 
   async function save(e: FormEvent) {
@@ -188,35 +230,91 @@ function PIContent() {
   }) {
     setError("");
     setSuccess("");
+    const isCustom = Boolean(payload.form.is_custom_customer);
+    if (!isCustom && !payload.form.customer_id) {
+      setError("Please select an existing customer or enter custom customer details.");
+      return;
+    }
+    if (isCustom && !payload.form.customer_name?.trim()) {
+      setError("Please enter the custom customer / company name.");
+      return;
+    }
     setSaving(true);
     try {
-      const dbPayload = {
-        customer_id: payload.form.customer_id,
+      const customPayload = isCustom
+        ? {
+            name: payload.form.customer_name?.trim() || "",
+            address: payload.form.customer_address || "",
+            contact_person: payload.form.contact_person || "",
+            phone: payload.form.contact_number || "",
+            email: payload.form.contact_email || "",
+            trn: payload.form.customer_trn || "",
+            project_name: payload.form.custom_project_name || "",
+          }
+        : null;
+
+      const rawNotes = payload.form.notes.trim() || payload.form.payment_terms || "";
+      const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
+
+      const dbPayload: Record<string, any> = {
+        customer_id: isCustom ? null : payload.form.customer_id || null,
+        customer_name: isCustom ? payload.form.customer_name?.trim() : null,
+        customer_address: isCustom ? payload.form.customer_address || null : null,
+        customer_trn: isCustom ? payload.form.customer_trn || null : null,
+        contact_person: isCustom ? payload.form.contact_person || null : null,
+        contact_number: isCustom ? payload.form.contact_number || null : null,
+        contact_email: isCustom ? payload.form.contact_email || null : null,
+        custom_project_name: isCustom ? payload.form.custom_project_name || null : null,
+        is_custom_customer: isCustom,
+        custom_customer: customPayload,
         proforma_date: payload.form.invoice_date || null,
         valid_until: payload.form.supply_date || null,
         status: payload.form.status || "draft",
         subtotal: payload.subtotal,
         vat_amount: payload.vat_amount,
         total_amount: payload.total_amount,
-        notes: payload.form.notes.trim() || payload.form.payment_terms || null,
+        notes: serializedNotes || null,
         updated_at: new Date().toISOString(),
       };
 
+      const executeSave = async (recordPayload: Record<string, any>) => {
+        if (editing) {
+          const { error: err } = await supabase.from("proforma_invoices").update(recordPayload).eq("id", editing.id);
+          if (err) throw err;
+          return editing.id;
+        } else {
+          const cid = await getCompanyId();
+          const pno = await generateDocNumber(cid, "PRO");
+          const { data: ins, error: err } = await supabase.from("proforma_invoices").insert({
+            company_id: cid,
+            proforma_number: pno,
+            ...recordPayload,
+          }).select("id").single();
+          if (err) throw err;
+          return ins.id;
+        }
+      };
+
       let pid: string;
-      if (editing) {
-        const { error: err } = await supabase.from("proforma_invoices").update(dbPayload).eq("id", editing.id);
-        if (err) throw err;
-        pid = editing.id;
-      } else {
-        const cid = await getCompanyId();
-        const pno = await generateDocNumber(cid, "PRO");
-        const { data: ins, error: err } = await supabase.from("proforma_invoices").insert({
-          company_id: cid,
-          proforma_number: pno,
-          ...dbPayload,
-        }).select("id").single();
-        if (err) throw err;
-        pid = ins.id;
+      try {
+        pid = await executeSave(dbPayload);
+      } catch (saveErr: any) {
+        if (saveErr?.message && (saveErr.message.includes("column") || saveErr.code === "PGRST204" || saveErr.code === "42703")) {
+          const minimalPayload = {
+            customer_id: isCustom ? null : payload.form.customer_id || null,
+            proforma_date: payload.form.invoice_date || null,
+            valid_until: payload.form.supply_date || null,
+            status: payload.form.status || "draft",
+            subtotal: payload.subtotal,
+            vat_amount: payload.vat_amount,
+            total_amount: payload.total_amount,
+            notes: serializedNotes || null,
+            updated_at: new Date().toISOString(),
+          };
+          pid = await executeSave(minimalPayload);
+        } else {
+          throw saveErr;
+        }
       }
 
       // Upsert proforma line items
@@ -268,7 +366,12 @@ function PIContent() {
 
   const custMap = Object.fromEntries(customers.map(c=>[c.id,c]));
   const selectableCustomers = customers.filter(c => c.active !== false || c.id === form.customer_id);
-  const filtered = invoices.filter(pi => { if (filterStatus && pi.status?.toLowerCase()!==filterStatus.toLowerCase()) return false; const cn=custMap[pi.customer_id||""]?.name||""; return [pi.proforma_number, cn, pi.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase()); });
+  const filtered = invoices.filter(pi => {
+    if (filterStatus && pi.status?.toLowerCase()!==filterStatus.toLowerCase()) return false;
+    const cn = pi.customer_name || custMap[pi.customer_id||""]?.name||"";
+    const pn = pi.custom_project_name || "";
+    return [pi.proforma_number, cn, pn, pi.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
+  });
   const { sub: fSub, vat: fVAT, total: fTotal } = totals();
 
   async function deleteProforma(pi: PI) {
@@ -303,7 +406,7 @@ function PIContent() {
       <div className="mx-auto max-w-7xl px-6 py-8">
         {success && <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
         {error && !showForm && <div className="mb-5 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button onClick={()=>setError("")}><X size={16}/></button></div>}
-        <div className="mb-6 flex gap-3"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search proformasâ€¦" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/></div><select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm appearance-none focus:outline-none"><option value="">All Status</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="invoiced">Invoiced</option><option value="cancelled">Cancelled</option></select></div>
+        <div className="mb-6 flex gap-3"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search proformas…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/></div><select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm appearance-none focus:outline-none"><option value="">All Status</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="invoiced">Invoiced</option><option value="cancelled">Cancelled</option></select></div>
         {loading ? <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-slate-400"/></div> : filtered.length===0 ? (
           <div className="rounded-xl border border-slate-200 bg-white py-20 text-center"><FileSpreadsheet size={40} className="mx-auto mb-3 text-slate-300"/><p className="text-sm text-slate-500">No proforma invoices.</p></div>
         ) : (
@@ -312,9 +415,21 @@ function PIContent() {
               <thead><tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><th className="px-4 py-3">No.</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Valid Until</th><th className="px-4 py-3 text-right">Total (AED)</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Actions</th></tr></thead>
               <tbody className="divide-y divide-slate-100">{filtered.map(pi=>(
                 <tr key={pi.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{pi.proforma_number||"â€”"}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{pi.proforma_number||"—"}</td>
                   <td className="px-4 py-3">
-                    <div className="font-semibold text-slate-900">{custMap[pi.customer_id||""]?.name||"â€”"}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap font-semibold text-slate-900">
+                      <span>{pi.customer_name || custMap[pi.customer_id||""]?.name||"—"}</span>
+                      {pi.is_custom_customer && (
+                        <span className="inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 border border-amber-200">
+                          Custom
+                        </span>
+                      )}
+                    </div>
+                    {pi.custom_project_name && (
+                      <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">
+                        📁 {pi.custom_project_name}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{fmtDate(pi.proforma_date)}</td>
                   <td className="px-4 py-3 text-slate-600">{fmtDate(pi.valid_until)}</td>
@@ -344,21 +459,17 @@ function PIContent() {
           company={company}
           initialInvoice={
             editing
-              ? {
-                  id: editing.id,
-                  proforma_number: editing.proforma_number,
-                  customer_id: editing.customer_id,
-                  proforma_date: editing.proforma_date,
-                  valid_until: editing.valid_until,
-                  status: editing.status,
-                  payment_terms: form.payment_terms || "30 days",
-                  notes: editing.notes,
-                  subtotal: editing.subtotal,
-                  vat_amount: editing.vat_amount,
-                  total_amount: editing.total_amount,
-                }
+              ? editing
               : {
                   customer_id: form.customer_id,
+                  customer_name: (form as any).customer_name,
+                  customer_trn: (form as any).customer_trn,
+                  customer_address: (form as any).customer_address,
+                  contact_person: (form as any).contact_person,
+                  contact_number: (form as any).contact_number,
+                  contact_email: (form as any).contact_email,
+                  custom_project_name: (form as any).custom_project_name,
+                  is_custom_customer: (form as any).is_custom_customer,
                   proforma_date: form.proforma_date,
                   valid_until: form.valid_until,
                   status: form.status,

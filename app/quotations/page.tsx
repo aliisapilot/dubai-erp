@@ -8,7 +8,7 @@ import QuotationTemplate from "@/components/documents/QuotationTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails, serializeCustomPartyNotes } from "@/lib/documentCustomer";
 import DocumentSplitScreenEditor, {
   DocumentEditorFormState,
   EditorLineItem,
@@ -34,7 +34,34 @@ type RawItemRecord = {
   sort_order?: number;
 };
 
-type Quotation = { id: string; company_id: string; quotation_number: string | null; customer_id: string | null; customer_name?: string; customer_trn?: string; customer_address?: string; contact_person?: string | null; contact_mobile?: string | null; contact_number?: string; contact_email?: string | null; project_id?: string | null; quotation_date: string | null; expiry_date: string | null; status: string | null; subtotal: number | null; discount_amount: number | null; vat_amount: number | null; total_amount: number | null; notes: string | null; terms: string | null; payment_terms?: string | null; created_at: string | null };
+type Quotation = {
+  id: string;
+  company_id: string;
+  quotation_number: string | null;
+  customer_id: string | null;
+  customer_name?: string;
+  customer_trn?: string;
+  customer_address?: string;
+  contact_person?: string | null;
+  contact_mobile?: string | null;
+  contact_number?: string;
+  contact_email?: string | null;
+  custom_project_name?: string | null;
+  is_custom_customer?: boolean | null;
+  custom_customer?: any;
+  project_id?: string | null;
+  quotation_date: string | null;
+  expiry_date: string | null;
+  status: string | null;
+  subtotal: number | null;
+  discount_amount: number | null;
+  vat_amount: number | null;
+  total_amount: number | null;
+  notes: string | null;
+  terms: string | null;
+  payment_terms?: string | null;
+  created_at: string | null;
+};
 type QForm = { customer_id: string; project_id: string; quotation_date: string; expiry_date: string; status: string; notes: string; terms: string };
 
 type QuotationStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
@@ -103,7 +130,7 @@ export default function QuotationsPage() {
       supabase.from("projects").select("id, name, project_number").order("created_at", { ascending: false }),
       getCurrentCompany(),
     ]);
-    setQuotations((q || []) as Quotation[]);
+    setQuotations(((q || []) as Quotation[]).map(item => withCustomerDocumentDetails(item) as Quotation));
     setCustomers((c || []) as Customer[]);
     setProducts((p || []) as Product[]);
     setProjects((prjs || []) as Project[]);
@@ -165,15 +192,16 @@ export default function QuotationsPage() {
   async function openEdit(q: Quotation) {
     setError("");
     setSuccess("");
-    setEditing(q);
+    const enriched = withCustomerDocumentDetails(q) as Quotation;
+    setEditing(enriched);
     setForm({
-      customer_id: q.customer_id || "",
-      project_id: q.project_id || "",
-      quotation_date: q.quotation_date || todayISO(),
-      expiry_date: q.expiry_date || "",
-      status: normalizeQuotationStatus(q.status),
-      notes: q.notes || "",
-      terms: q.terms || ""
+      customer_id: enriched.customer_id || "",
+      project_id: enriched.project_id || "",
+      quotation_date: enriched.quotation_date || todayISO(),
+      expiry_date: enriched.expiry_date || "",
+      status: normalizeQuotationStatus(enriched.status),
+      notes: enriched.notes || "",
+      terms: enriched.terms || ""
     });
     const { data: items } = await supabase.from("quotation_items").select("*").eq("quotation_id", q.id).order("sort_order");
     const rawItems = (items || []) as RawItemRecord[];
@@ -212,7 +240,7 @@ export default function QuotationsPage() {
       sort_order: Number(it.sort_order) || 0,
       unit: it.unit || "Nos",
     }));
-    setViewing({ q, lines: mapped });
+    setViewing({ q: withCustomerDocumentDetails(q) as Quotation, lines: mapped });
   }
 
   function closeForm() { if (saving) return; setShowForm(false); setEditing(null); setError(""); }
@@ -334,11 +362,44 @@ export default function QuotationsPage() {
   }) {
     setError("");
     setSuccess("");
+    const isCustom = Boolean(payload.form.is_custom_customer);
+    if (!isCustom && !payload.form.customer_id) {
+      setError("Please select an existing customer or enter custom customer details.");
+      return;
+    }
+    if (isCustom && !payload.form.customer_name?.trim()) {
+      setError("Please enter the custom customer / company name.");
+      return;
+    }
     setSaving(true);
     try {
       const dbStatus = normalizeQuotationStatus(payload.form.status);
-      const dataPayload = {
-        customer_id: payload.form.customer_id,
+      const customPayload = isCustom
+        ? {
+            name: payload.form.customer_name?.trim() || "",
+            address: payload.form.customer_address || "",
+            contact_person: payload.form.contact_person || "",
+            phone: payload.form.contact_number || "",
+            email: payload.form.contact_email || "",
+            trn: payload.form.customer_trn || "",
+            project_name: payload.form.custom_project_name || "",
+          }
+        : null;
+
+      const rawNotes = payload.form.notes?.trim() || "";
+      const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
+
+      const dataPayload: Record<string, any> = {
+        customer_id: isCustom ? null : payload.form.customer_id || null,
+        customer_name: isCustom ? payload.form.customer_name?.trim() : null,
+        customer_address: isCustom ? payload.form.customer_address || null : null,
+        customer_trn: isCustom ? payload.form.customer_trn || null : null,
+        contact_person: isCustom ? payload.form.contact_person || null : null,
+        contact_number: isCustom ? payload.form.contact_number || null : null,
+        contact_email: isCustom ? payload.form.contact_email || null : null,
+        custom_project_name: isCustom ? payload.form.custom_project_name || null : null,
+        is_custom_customer: isCustom,
+        custom_customer: customPayload,
         project_id: payload.form.project_id || null,
         quotation_date: payload.form.invoice_date || null,
         expiry_date: payload.form.supply_date || null,
@@ -348,26 +409,53 @@ export default function QuotationsPage() {
         vat_amount: payload.vat_amount,
         total_amount: payload.total_amount,
         payment_terms: payload.form.payment_terms || null,
-        notes: payload.form.notes.trim() || null,
+        notes: serializedNotes || null,
         terms: payload.form.terms?.trim() || payload.form.payment_terms || null,
         updated_at: new Date().toISOString(),
       };
 
+      const executeSave = async (recordPayload: Record<string, any>) => {
+        if (editing) {
+          const { error: err } = await supabase.from("quotations").update(recordPayload).eq("id", editing.id);
+          if (err) throw err;
+          return editing.id;
+        } else {
+          const cid = await getCompanyId();
+          const qno = await generateDocNumber(cid, "QUO");
+          const { data: ins, error: err } = await supabase.from("quotations").insert({
+            company_id: cid,
+            quotation_number: qno,
+            ...recordPayload,
+          }).select("id").single();
+          if (err) throw err;
+          return ins.id;
+        }
+      };
+
       let qid: string;
-      if (editing) {
-        const { error: err } = await supabase.from("quotations").update(dataPayload).eq("id", editing.id);
-        if (err) throw new Error(err.message);
-        qid = editing.id;
-      } else {
-        const cid = await getCompanyId();
-        const qno = await generateDocNumber(cid, "QUO");
-        const { data: ins, error: err } = await supabase.from("quotations").insert({
-          company_id: cid,
-          quotation_number: qno,
-          ...dataPayload,
-        }).select("id").single();
-        if (err) throw new Error(err.message);
-        qid = ins.id;
+      try {
+        qid = await executeSave(dataPayload);
+      } catch (saveErr: any) {
+        if (saveErr?.message && (saveErr.message.includes("column") || saveErr.code === "PGRST204" || saveErr.code === "42703")) {
+          const minimalPayload = {
+            customer_id: isCustom ? null : payload.form.customer_id || null,
+            project_id: payload.form.project_id || null,
+            quotation_date: payload.form.invoice_date || null,
+            expiry_date: payload.form.supply_date || null,
+            status: String(dbStatus),
+            subtotal: payload.subtotal,
+            discount_amount: 0,
+            vat_amount: payload.vat_amount,
+            total_amount: payload.total_amount,
+            payment_terms: payload.form.payment_terms || null,
+            notes: serializedNotes || null,
+            terms: payload.form.terms?.trim() || payload.form.payment_terms || null,
+            updated_at: new Date().toISOString(),
+          };
+          qid = await executeSave(minimalPayload);
+        } else {
+          throw saveErr;
+        }
       }
 
       // Upsert line items
@@ -539,15 +627,26 @@ export default function QuotationsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-mono text-xs font-semibold text-blue-700">{q.quotation_number || "—"}</p>
-                    <h2 className="mt-1 break-words text-sm font-bold leading-snug text-slate-900">{custMap[q.customer_id || ""]?.name || "—"}</h2>
+                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                      <h2 className="break-words text-sm font-bold leading-snug text-slate-900">{q.customer_name || custMap[q.customer_id || ""]?.name || "—"}</h2>
+                      {q.is_custom_customer && (
+                        <span className="inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 border border-amber-200">
+                          Custom
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(formatStatus(q.status))}`}>{formatStatus(q.status)}</span>
                 </div>
-                {q.project_id && prjMap[q.project_id] && (
+                {q.custom_project_name ? (
+                  <p className="mt-2 break-words rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700">
+                    📁 {q.custom_project_name}
+                  </p>
+                ) : q.project_id && prjMap[q.project_id] ? (
                   <p className="mt-2 break-words rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700">
                     {prjMap[q.project_id]?.project_number}: {prjMap[q.project_id]?.name}
                   </p>
-                )}
+                ) : null}
                 <dl className="mt-3 grid grid-cols-3 gap-2 border-y border-slate-100 py-3 text-xs">
                   <div><dt className="text-[10px] uppercase tracking-wide text-slate-400">Date</dt><dd className="mt-0.5 font-medium text-slate-700">{fmtDate(q.quotation_date)}</dd></div>
                   <div><dt className="text-[10px] uppercase tracking-wide text-slate-400">Expiry</dt><dd className="mt-0.5 font-medium text-slate-700">{fmtDate(q.expiry_date)}</dd></div>
@@ -569,12 +668,23 @@ export default function QuotationsPage() {
                   <tr key={q.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-mono text-xs text-slate-500">{q.quotation_number||"—"}</td>
                     <td className="px-4 py-3 font-semibold text-slate-900">
-                      <div>{custMap[q.customer_id||""]?.name||"—"}</div>
-                      {q.project_id && prjMap[q.project_id] && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{q.customer_name || custMap[q.customer_id||""]?.name||"—"}</span>
+                        {q.is_custom_customer && (
+                          <span className="inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 border border-amber-200">
+                            Custom
+                          </span>
+                        )}
+                      </div>
+                      {q.custom_project_name ? (
+                        <span className="inline-block mt-0.5 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 border border-blue-100">
+                          📁 {q.custom_project_name}
+                        </span>
+                      ) : q.project_id && prjMap[q.project_id] ? (
                         <span className="inline-block mt-0.5 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 border border-blue-100">
                           {prjMap[q.project_id]?.project_number}: {prjMap[q.project_id]?.name}
                         </span>
-                      )}
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-slate-600">{fmtDate(q.quotation_date)}</td>
                     <td className="px-4 py-3 text-slate-600">{fmtDate(q.expiry_date)}</td>
@@ -601,23 +711,17 @@ export default function QuotationsPage() {
           company={company}
           initialInvoice={
             editing
-              ? {
-                  id: editing.id,
-                  quotation_number: editing.quotation_number,
-                  customer_id: editing.customer_id,
-                  project_id: editing.project_id,
-                  quotation_date: editing.quotation_date,
-                  expiry_date: editing.expiry_date,
-                  status: editing.status,
-                  payment_terms: editing.payment_terms || editing.terms || "30 days",
-                  notes: editing.notes,
-                  terms: editing.terms,
-                  subtotal: editing.subtotal,
-                  vat_amount: editing.vat_amount,
-                  total_amount: editing.total_amount,
-                }
+              ? editing
               : {
                   customer_id: form.customer_id,
+                  customer_name: (form as any).customer_name,
+                  customer_trn: (form as any).customer_trn,
+                  customer_address: (form as any).customer_address,
+                  contact_person: (form as any).contact_person,
+                  contact_number: (form as any).contact_number,
+                  contact_email: (form as any).contact_email,
+                  custom_project_name: (form as any).custom_project_name,
+                  is_custom_customer: (form as any).is_custom_customer,
                   project_id: form.project_id,
                   quotation_date: form.quotation_date,
                   expiry_date: form.expiry_date,

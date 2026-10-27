@@ -10,7 +10,7 @@ import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { parseDatabaseError } from "@/lib/paymentTypes";
-import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails, serializeCustomPartyNotes } from "@/lib/documentCustomer";
 import DynamicDocumentRenderer, {
   MockDocumentData,
   getDocumentPageCount,
@@ -27,12 +27,18 @@ type DN = {
   company_id: string;
   delivery_note_number: string | null; // DB: delivery_note_number (not dn_number)
   customer_id: string | null;
+  customer_name?: string;
+  customer_trn?: string;
+  customer_address?: string;
+  contact_person?: string | null;
+  contact_number?: string | null;
+  contact_email?: string | null;
+  custom_project_name?: string | null;
+  is_custom_customer?: boolean | null;
+  custom_customer?: any;
   project_id?: string | null;
   delivery_date: string | null; // DB: delivery_date (not dn_date or dispatch_date)
   status: string | null;
-  customer_address: string | null;
-  contact_person: string | null;
-  contact_number: string | null;
   order_ref: string | null;
   driver_name: string | null;
   driver_number: string | null;
@@ -95,6 +101,24 @@ export default function DeliveryNotesPage() {
 
   const [form, setForm] = useState<DNForm>(emptyForm);
   const [lines, setLines] = useState<DNLine[]>([emptyLine()]);
+  const [partyMode, setPartyMode] = useState<"existing" | "custom">("existing");
+  const [customCustomer, setCustomCustomer] = useState<{
+    name: string;
+    address: string;
+    contact_person: string;
+    phone: string;
+    email: string;
+    trn: string;
+    project_name: string;
+  }>({
+    name: "",
+    address: "",
+    contact_person: "",
+    phone: "",
+    email: "",
+    trn: "",
+    project_name: "",
+  });
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -114,6 +138,7 @@ export default function DeliveryNotesPage() {
   const [zoom, setZoom] = useState(0.85);
 
   const previewData: MockDocumentData = useMemo(() => {
+    const isCustom = partyMode === "custom";
     const cust = customers.find((c) => c.id === form.customer_id);
     const prj = projects.find((p) => p.id === form.project_id);
     return {
@@ -121,13 +146,25 @@ export default function DeliveryNotesPage() {
       document_date: form.delivery_date || todayISO(),
       supply_date: form.dispatch_date || form.delivery_date || todayISO(),
       status: form.status,
-      customer_name: cust?.name || "Customer / Client Name",
-      customer_trn: cust?.trn || undefined,
-      customer_address: form.customer_address || cust?.address || undefined,
-      contact_person: form.contact_person || cust?.contact_person || undefined,
-      contact_number: form.contact_number || cust?.phone || cust?.mobile || undefined,
-      contact_email: cust?.email || undefined,
-      project_name: prj?.name || undefined,
+      customer_name: isCustom
+        ? customCustomer.name || "Custom Customer / Client"
+        : cust?.name || "Customer / Client Name",
+      customer_trn: isCustom ? customCustomer.trn || undefined : cust?.trn || undefined,
+      customer_address: isCustom
+        ? customCustomer.address || form.customer_address || undefined
+        : form.customer_address || cust?.address || undefined,
+      contact_person: isCustom
+        ? customCustomer.contact_person || form.contact_person || undefined
+        : form.contact_person || cust?.contact_person || undefined,
+      contact_number: isCustom
+        ? customCustomer.phone || form.contact_number || undefined
+        : form.contact_number || cust?.phone || cust?.mobile || undefined,
+      contact_email: isCustom
+        ? customCustomer.email || undefined
+        : cust?.email || undefined,
+      project_name: isCustom
+        ? customCustomer.project_name || prj?.name || undefined
+        : prj?.name || undefined,
       project_number: prj?.project_number || undefined,
       notes: form.notes,
       payment_terms: `Dispatch: ${form.dispatch_date || "—"} | Method: ${form.delivery_method} | Driver: ${form.driver_name || "—"} (${form.driver_number || "—"}) | Vehicle: ${form.vehicle_number || "—"} | Receiver: ${form.receiver_name || "—"}`,
@@ -145,7 +182,7 @@ export default function DeliveryNotesPage() {
         line_total: 0,
       })),
     };
-  }, [editing, form, lines, customers, projects]);
+  }, [editing, form, lines, customers, projects, partyMode, customCustomer]);
 
   const totalPreviewPages = useMemo(() => {
     if (!design.layout) return 1;
@@ -165,7 +202,7 @@ export default function DeliveryNotesPage() {
       getCurrentCompany(),
       supabase.from("projects").select("id, name, project_number").order("created_at", { ascending: false }),
     ]);
-    setNotes((dn || []) as DN[]);
+    setNotes(((dn || []) as DN[]).map(item => withCustomerDocumentDetails(item) as DN));
     setCustomers((c || []) as Customer[]);
     setProducts((p || []) as Product[]);
     if (co) setCompany(co as CompanyDocInfo);
@@ -212,6 +249,16 @@ export default function DeliveryNotesPage() {
     setError("");
     setSuccess("");
     setEditing(null);
+    setPartyMode("existing");
+    setCustomCustomer({
+      name: "",
+      address: "",
+      contact_person: "",
+      phone: "",
+      email: "",
+      trn: "",
+      project_name: "",
+    });
     setForm(emptyForm);
     setLines([emptyLine()]);
     setShowForm(true);
@@ -220,24 +267,36 @@ export default function DeliveryNotesPage() {
   async function openEdit(dn: DN) {
     setError("");
     setSuccess("");
-    setEditing(dn);
+    const enriched = withCustomerDocumentDetails(dn) as DN;
+    setEditing(enriched);
+    const isCustom = Boolean(enriched.is_custom_customer || (!enriched.customer_id && enriched.customer_name));
+    setPartyMode(isCustom ? "custom" : "existing");
+    setCustomCustomer({
+      name: enriched.customer_name || "",
+      address: enriched.customer_address || "",
+      contact_person: enriched.contact_person || "",
+      phone: enriched.contact_number || "",
+      email: enriched.contact_email || "",
+      trn: enriched.customer_trn || "",
+      project_name: enriched.custom_project_name || "",
+    });
     setForm({
-      customer_id: dn.customer_id || "",
-      project_id: dn.project_id || "",
-      delivery_date: dn.delivery_date || todayISO(),
-      dispatch_date: dn.delivery_date || todayISO(),
-      status: (dn.status || "draft").toLowerCase(),
-      customer_address: dn.customer_address || "",
-      contact_person: dn.contact_person || "",
-      contact_number: dn.contact_number || "",
-      order_ref: dn.order_ref || "",
-      driver_name: dn.driver_name || "",
-      driver_number: dn.driver_number || "",
-      vehicle_number: dn.vehicle_number || "",
-      delivery_method: dn.delivery_method || "Company Vehicle",
-      receiver_name: dn.receiver_name || "",
-      receiver_mobile: dn.receiver_mobile || "",
-      notes: dn.notes || "",
+      customer_id: enriched.customer_id || "",
+      project_id: enriched.project_id || "",
+      delivery_date: enriched.delivery_date || todayISO(),
+      dispatch_date: enriched.delivery_date || todayISO(),
+      status: (enriched.status || "draft").toLowerCase(),
+      customer_address: enriched.customer_address || "",
+      contact_person: enriched.contact_person || "",
+      contact_number: enriched.contact_number || "",
+      order_ref: enriched.order_ref || "",
+      driver_name: enriched.driver_name || "",
+      driver_number: enriched.driver_number || "",
+      vehicle_number: enriched.vehicle_number || "",
+      delivery_method: enriched.delivery_method || "Company Vehicle",
+      receiver_name: enriched.receiver_name || "",
+      receiver_mobile: enriched.receiver_mobile || "",
+      notes: enriched.notes || "",
     });
 
     const { data: items } = await supabase
@@ -286,7 +345,7 @@ export default function DeliveryNotesPage() {
       receiver_name: dn.receiver_name,
       receiver_mobile: dn.receiver_mobile,
       notes: dn.notes,
-      project_name: prj?.name || null,
+      project_name: customerDetails.custom_project_name || prj?.name || null,
       project_number: prj?.project_number || null,
       items: (items || []).map((it) => ({
         description: it.description,
@@ -303,8 +362,13 @@ export default function DeliveryNotesPage() {
     e.preventDefault();
     setError("");
     setSuccess("");
-    if (!form.customer_id) {
-      setError("Please select a customer.");
+    const isCustom = partyMode === "custom";
+    if (!isCustom && !form.customer_id) {
+      setError("Please select an existing customer or switch to Custom Customer.");
+      return;
+    }
+    if (isCustom && !customCustomer.name.trim()) {
+      setError("Please enter Customer / Company Name.");
       return;
     }
     setSaving(true);
@@ -323,14 +387,35 @@ export default function DeliveryNotesPage() {
         }
       }
 
-      const payload = {
-        customer_id: form.customer_id,
+      const customPayload = isCustom
+        ? {
+            name: customCustomer.name.trim(),
+            address: customCustomer.address,
+            contact_person: customCustomer.contact_person,
+            phone: customCustomer.phone,
+            email: customCustomer.email,
+            trn: customCustomer.trn,
+            project_name: customCustomer.project_name,
+          }
+        : null;
+
+      const rawNotes = form.notes.trim() || "";
+      const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
+
+      const payload: Record<string, any> = {
+        customer_id: isCustom ? null : form.customer_id || null,
+        customer_name: isCustom ? customCustomer.name.trim() : null,
+        customer_address: isCustom ? (customCustomer.address.trim() || form.customer_address.trim() || null) : (form.customer_address.trim() || null),
+        customer_trn: isCustom ? customCustomer.trn.trim() || null : null,
+        contact_person: isCustom ? (customCustomer.contact_person.trim() || form.contact_person.trim() || null) : (form.contact_person.trim() || null),
+        contact_number: isCustom ? (customCustomer.phone.trim() || form.contact_number.trim() || null) : (form.contact_number.trim() || null),
+        contact_email: isCustom ? customCustomer.email.trim() || null : null,
+        custom_project_name: isCustom ? customCustomer.project_name.trim() || null : null,
+        is_custom_customer: isCustom,
+        custom_customer: customPayload,
         project_id: form.project_id || null,
         delivery_date: form.delivery_date || null,
         status: form.status.toLowerCase(),
-        customer_address: form.customer_address.trim() || null,
-        contact_person: form.contact_person.trim() || null,
-        contact_number: form.contact_number.trim() || null,
         order_ref: form.order_ref.trim() || null,
         driver_name: form.driver_name.trim() || null,
         driver_number: form.driver_number.trim() || null,
@@ -338,49 +423,60 @@ export default function DeliveryNotesPage() {
         delivery_method: form.delivery_method || "Company Vehicle",
         receiver_name: form.receiver_name.trim() || null,
         receiver_mobile: form.receiver_mobile.trim() || null,
-        notes: form.notes.trim() || null,
+        notes: serializedNotes || null,
         updated_at: new Date().toISOString(),
+      };
+
+      const executeSave = async (recordPayload: Record<string, any>) => {
+        if (editing) {
+          const { error: updateErr } = await supabase.from("delivery_notes").update(recordPayload).eq("id", editing.id);
+          if (updateErr) throw updateErr;
+          return { id: editing.id, number: editing.delivery_note_number || editing.id };
+        } else {
+          const cid = await getCompanyId();
+          const dno = await generateDocNumber(cid, "DN");
+          const { data: ins, error: err } = await supabase
+            .from("delivery_notes")
+            .insert({ ...recordPayload, company_id: cid, delivery_note_number: dno })
+            .select("id")
+            .single();
+          if (err) throw new Error(err.message);
+          return { id: ins.id, number: dno };
+        }
       };
 
       let dnid: string;
       let dnNumber = "";
-
-      if (editing) {
-        const { error: updateErr } = await supabase.from("delivery_notes").update(payload).eq("id", editing.id);
-        if (updateErr) throw updateErr;
-        dnid = editing.id;
-        dnNumber = editing.delivery_note_number || editing.id; // DB: delivery_note_number
-        // Upsert line items: preserve existing IDs, insert new ones, delete removed ones
-        const { data: existingItems } = await supabase.from("delivery_note_items").select("id").eq("delivery_note_id", dnid);
-        const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
-        const currentIds = new Set<string>();
-        const validLines = lines.filter(l => l.description.trim());
-        for (const l of validLines) {
-          if (l.id && existingIds.has(l.id)) {
-            const { error: updErr } = await supabase.from("delivery_note_items").update({ product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit: l.unit||"Nos", remarks: l.remarks||null }).eq("id", l.id);
-            if (updErr) throw updErr;
-            currentIds.add(l.id);
-          } else {
-            const { error: insErr } = await supabase.from("delivery_note_items").insert({ delivery_note_id: dnid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit: l.unit||"Nos", remarks: l.remarks||null, sort_order: validLines.indexOf(l) });
-            if (insErr) throw insErr;
-          }
+      try {
+        const res = await executeSave(payload);
+        dnid = res.id;
+        dnNumber = res.number;
+      } catch (saveErr: any) {
+        if (saveErr?.message && (saveErr.message.includes("column") || saveErr.code === "PGRST204" || saveErr.code === "42703")) {
+          const minimalPayload = {
+            customer_id: isCustom ? null : form.customer_id || null,
+            project_id: form.project_id || null,
+            delivery_date: form.delivery_date || null,
+            status: form.status.toLowerCase(),
+            customer_address: form.customer_address.trim() || null,
+            contact_person: form.contact_person.trim() || null,
+            contact_number: form.contact_number.trim() || null,
+            order_ref: form.order_ref.trim() || null,
+            driver_name: form.driver_name.trim() || null,
+            driver_number: form.driver_number.trim() || null,
+            vehicle_number: form.vehicle_number.trim() || null,
+            delivery_method: form.delivery_method || "Company Vehicle",
+            receiver_name: form.receiver_name.trim() || null,
+            receiver_mobile: form.receiver_mobile.trim() || null,
+            notes: serializedNotes || null,
+            updated_at: new Date().toISOString(),
+          };
+          const res = await executeSave(minimalPayload);
+          dnid = res.id;
+          dnNumber = res.number;
+        } else {
+          throw saveErr;
         }
-        const toDelete = [...existingIds].filter(id => !currentIds.has(id));
-        if (toDelete.length > 0) {
-          const { error: delErr } = await supabase.from("delivery_note_items").delete().in("id", toDelete);
-          if (delErr) throw delErr;
-        }
-      } else {
-        const cid = await getCompanyId();
-        const dno = await generateDocNumber(cid, "DN");
-        dnNumber = dno;
-        const { data: ins, error: err } = await supabase
-          .from("delivery_notes")
-          .insert({ ...payload, company_id: cid, delivery_note_number: dno }) // DB: delivery_note_number
-          .select("id")
-          .single();
-        if (err) throw new Error(err.message);
-        dnid = ins.id;
       }
 
       // Apply the preflight plan: repeated product lines use cumulative balances.
@@ -420,8 +516,8 @@ export default function DeliveryNotesPage() {
   const prjMap = Object.fromEntries(projects.map(p => [p.id, p]));
   const filtered = notes.filter(n => {
     if (filterStatus && (n.status || "").toLowerCase() !== filterStatus.toLowerCase()) return false;
-    const cname = custMap[n.customer_id || ""]?.name || "";
-    const pname = prjMap[n.project_id || ""]?.name || "";
+    const cname = n.customer_name || custMap[n.customer_id || ""]?.name || "";
+    const pname = n.custom_project_name || prjMap[n.project_id || ""]?.name || "";
     return [n.delivery_note_number, cname, pname, n.order_ref, n.driver_name, n.vehicle_number, n.receiver_name, n.status]
       .filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
@@ -528,12 +624,23 @@ export default function DeliveryNotesPage() {
                   <tr key={dn.id} className="hover:bg-slate-50 transition">
                     <td className="px-4 py-3 font-mono text-xs font-bold text-slate-800">{dn.delivery_note_number || "—"}</td>
                     <td className="px-4 py-3 font-semibold text-slate-900">
-                      <div>{custMap[dn.customer_id || ""]?.name || "—"}</div>
-                      {dn.project_id && prjMap[dn.project_id] && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{dn.customer_name || custMap[dn.customer_id || ""]?.name || "—"}</span>
+                        {(dn.is_custom_customer || (!dn.customer_id && dn.customer_name)) && (
+                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
+                            Custom
+                          </span>
+                        )}
+                      </div>
+                      {dn.project_id && prjMap[dn.project_id] ? (
                         <span className="inline-block mt-0.5 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 border border-blue-100">
                           {prjMap[dn.project_id]?.project_number}: {prjMap[dn.project_id]?.name}
                         </span>
-                      )}
+                      ) : dn.custom_project_name ? (
+                        <span className="inline-block mt-0.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 border border-slate-200">
+                          Project: {dn.custom_project_name}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-slate-600">{fmtDate(dn.delivery_date)}</td>
                     <td className="px-4 py-3 text-slate-700">
@@ -685,72 +792,190 @@ export default function DeliveryNotesPage() {
 
                   {/* Customer & Site Reference */}
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-3">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Customer & Site Reference</div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-300">Customer <span className="text-red-500">*</span></label>
-                        <select
-                          value={form.customer_id}
-                          onChange={e => onCustomerChange(e.target.value)}
-                          required
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
+                    <div className="flex items-center justify-between">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Customer & Site Reference</div>
+                      <div className="flex items-center rounded-lg bg-slate-900 p-0.5 border border-slate-800 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setPartyMode("existing")}
+                          className={`px-2.5 py-1 rounded font-medium transition ${
+                            partyMode === "existing"
+                              ? "bg-amber-500 text-slate-950 font-semibold shadow-sm"
+                              : "text-slate-400 hover:text-white"
+                          }`}
                         >
-                          <option value="">— Select Customer —</option>
-                          {selectableCustomers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-300">Project / Job (Optional)</label>
-                        <select
-                          value={form.project_id}
-                          onChange={e => ff("project_id", e.target.value)}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                          Existing Customer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPartyMode("custom")}
+                          className={`px-2.5 py-1 rounded font-medium transition ${
+                            partyMode === "custom"
+                              ? "bg-amber-500 text-slate-950 font-semibold shadow-sm"
+                              : "text-slate-400 hover:text-white"
+                          }`}
                         >
-                          <option value="">— Select Project (Optional) —</option>
-                          {projects.map(p => <option key={p.id} value={p.id}>{p.project_number} - {p.name}</option>)}
-                        </select>
-                      </div>
-                      <div className="col-span-2">
-                        <label className="mb-1 block text-xs font-medium text-slate-300">Order / Invoice Ref</label>
-                        <input
-                          type="text"
-                          value={form.order_ref}
-                          onChange={e => ff("order_ref", e.target.value)}
-                          placeholder="e.g. PO-8492 / INV-1002"
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <label className="mb-1 block text-xs font-medium text-slate-300">Delivery Address / Project Site</label>
-                        <input
-                          type="text"
-                          value={form.customer_address}
-                          onChange={e => ff("customer_address", e.target.value)}
-                          placeholder="Delivery location details"
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-300">Contact Person</label>
-                        <input
-                          type="text"
-                          value={form.contact_person}
-                          onChange={e => ff("contact_person", e.target.value)}
-                          placeholder="Site contact name"
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-300">Contact Tel / Mobile</label>
-                        <input
-                          type="text"
-                          value={form.contact_number}
-                          onChange={e => ff("contact_number", e.target.value)}
-                          placeholder="+971 50 123 4567"
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                        />
+                          Custom Customer
+                        </button>
                       </div>
                     </div>
+
+                    {partyMode === "existing" ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-slate-300">Customer <span className="text-red-500">*</span></label>
+                          <select
+                            value={form.customer_id}
+                            onChange={e => onCustomerChange(e.target.value)}
+                            required={partyMode === "existing"}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
+                          >
+                            <option value="">— Select Customer —</option>
+                            {selectableCustomers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-slate-300">Project / Job (Optional)</label>
+                          <select
+                            value={form.project_id}
+                            onChange={e => ff("project_id", e.target.value)}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                          >
+                            <option value="">— Select Project (Optional) —</option>
+                            {projects.map(p => <option key={p.id} value={p.id}>{p.project_number} - {p.name}</option>)}
+                          </select>
+                        </div>
+                        <div className="col-span-2">
+                          <label className="mb-1 block text-xs font-medium text-slate-300">Order / Invoice Ref</label>
+                          <input
+                            type="text"
+                            value={form.order_ref}
+                            onChange={e => ff("order_ref", e.target.value)}
+                            placeholder="e.g. PO-8492 / INV-1002"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="mb-1 block text-xs font-medium text-slate-300">Delivery Address / Project Site</label>
+                          <input
+                            type="text"
+                            value={form.customer_address}
+                            onChange={e => ff("customer_address", e.target.value)}
+                            placeholder="Delivery location details"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-slate-300">Contact Person</label>
+                          <input
+                            type="text"
+                            value={form.contact_person}
+                            onChange={e => ff("contact_person", e.target.value)}
+                            placeholder="Site contact name"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-slate-300">Contact Tel / Mobile</label>
+                          <input
+                            type="text"
+                            value={form.contact_number}
+                            onChange={e => ff("contact_number", e.target.value)}
+                            placeholder="+971 50 123 4567"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-200">
+                          ✍️ <strong>Custom Customer Mode</strong>: Enter customer information manually for this delivery note. No entry will be created in your customer database.
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="col-span-2">
+                            <label className="mb-1 block text-xs font-medium text-slate-300">Customer / Company Name <span className="text-red-500">*</span></label>
+                            <input
+                              type="text"
+                              value={customCustomer.name}
+                              onChange={e => setCustomCustomer(prev => ({ ...prev, name: e.target.value }))}
+                              required
+                              placeholder="e.g. Al-Futtaim Engineering LLC"
+                              className="w-full rounded-lg border border-amber-500/50 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-300">Project / Site Name (Optional)</label>
+                            <input
+                              type="text"
+                              value={customCustomer.project_name}
+                              onChange={e => setCustomCustomer(prev => ({ ...prev, project_name: e.target.value }))}
+                              placeholder="e.g. Dubai Marina Tower Phase 2"
+                              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-300">TRN (Optional)</label>
+                            <input
+                              type="text"
+                              value={customCustomer.trn}
+                              onChange={e => setCustomCustomer(prev => ({ ...prev, trn: e.target.value }))}
+                              placeholder="100XXXXXXXXX003"
+                              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none font-mono"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="mb-1 block text-xs font-medium text-slate-300">Delivery Address / Site Location</label>
+                            <input
+                              type="text"
+                              value={customCustomer.address}
+                              onChange={e => setCustomCustomer(prev => ({ ...prev, address: e.target.value }))}
+                              placeholder="Plot / Street / Emirate"
+                              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-300">Contact Person</label>
+                            <input
+                              type="text"
+                              value={customCustomer.contact_person}
+                              onChange={e => setCustomCustomer(prev => ({ ...prev, contact_person: e.target.value }))}
+                              placeholder="Site contact name"
+                              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-300">Contact Mobile / Phone</label>
+                            <input
+                              type="text"
+                              value={customCustomer.phone}
+                              onChange={e => setCustomCustomer(prev => ({ ...prev, phone: e.target.value }))}
+                              placeholder="+971 50 123 4567"
+                              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="mb-1 block text-xs font-medium text-slate-300">Contact Email</label>
+                            <input
+                              type="email"
+                              value={customCustomer.email}
+                              onChange={e => setCustomCustomer(prev => ({ ...prev, email: e.target.value }))}
+                              placeholder="contact@company.ae"
+                              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="mb-1 block text-xs font-medium text-slate-300">Order / Invoice Ref</label>
+                            <input
+                              type="text"
+                              value={form.order_ref}
+                              onChange={e => ff("order_ref", e.target.value)}
+                              placeholder="e.g. PO-8492 / INV-1002"
+                              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Dispatch & Transport Details */}

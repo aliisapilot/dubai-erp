@@ -14,7 +14,12 @@ export type ReceiptVoucherData = {
   voucher_number: string;
   voucher_date: string;
   received_from: string;
+  customer_address?: string | null;
   customer_trn?: string | null;
+  contact_person?: string | null;
+  contact_number?: string | null;
+  contact_email?: string | null;
+  project_name?: string | null;
   amount: number;
   payment_method: string;
   cheque_number?: string | null;
@@ -47,7 +52,12 @@ export default function ReceiptVoucherTemplate({
     document_number: voucher.voucher_number,
     document_date: voucher.voucher_date,
     customer_name: voucher.received_from,
+    customer_address: voucher.customer_address || undefined,
     customer_trn: voucher.customer_trn || undefined,
+    contact_person: voucher.contact_person || undefined,
+    contact_number: voucher.contact_number || undefined,
+    contact_email: voucher.contact_email || undefined,
+    project_name: voucher.project_name || undefined,
     items: [
       {
         description: `Payment Received via ${voucher.payment_method}${voucher.cheque_number ? ` (Cheque #${voucher.cheque_number})` : ""}${voucher.reference_invoice ? ` for ${voucher.reference_invoice}` : ""}`,
@@ -110,10 +120,23 @@ export default function ReceiptVoucherTemplate({
           <div className="grid grid-cols-2 gap-4 pb-3 border-b border-slate-200">
             <div>
               <span className="text-slate-500 block text-[10px]">Received From (استلمنا من السيد/السادة):</span>
-              <span className="font-extrabold text-slate-900 text-sm">{voucher.received_from}</span>
+              <span className="font-extrabold text-slate-900 text-sm break-words">{voucher.received_from}</span>
+              {voucher.customer_address && (
+                <div className="text-[11px] text-slate-600 mt-0.5 whitespace-pre-line">{voucher.customer_address}</div>
+              )}
               {voucher.customer_trn && (
                 <div className="text-[11px] text-slate-600 mt-0.5">
                   TRN: <span className="font-mono font-semibold">{voucher.customer_trn}</span>
+                </div>
+              )}
+              {(voucher.contact_person || voucher.contact_number || voucher.contact_email) && (
+                <div className="text-[10px] text-slate-500 mt-0.5">
+                  {[voucher.contact_person, voucher.contact_number, voucher.contact_email].filter(Boolean).join(" • ")}
+                </div>
+              )}
+              {voucher.project_name && (
+                <div className="text-[10px] font-semibold text-blue-700 mt-0.5">
+                  Project: {voucher.project_name}
                 </div>
               )}
             </div>

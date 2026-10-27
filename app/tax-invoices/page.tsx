@@ -9,7 +9,7 @@ import TaxInvoiceTemplate from "@/components/documents/TaxInvoiceTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails, serializeCustomPartyNotes } from "@/lib/documentCustomer";
 import DocumentSplitScreenEditor, {
   EditorLineItem,
   DocumentEditorFormState,
@@ -22,7 +22,32 @@ type Company = { name: string | null; legal_name: string | null; trn: string | n
 type LineItem = { id?: string; product_id: string; description: string; quantity: number; unit: string; unit_price: number; discount_pct: number; vat_rate: number; taxable_amount: number; vat_amount: number; line_total: number; sort_order: number };
 // DB verified: tax_invoices has project_id, payment_terms, supply_date — NO due_date
 // DB verified: tax_invoice_items FK is tax_invoice_id (NOT invoice_id), uses discount_percent (NOT discount_pct), NO vat_category
-type TI = { id: string; company_id: string; invoice_number: string | null; customer_id: string | null; customer_name?: string; customer_trn?: string; customer_address?: string; contact_person?: string | null; contact_mobile?: string | null; contact_number?: string; contact_email?: string | null; project_id?: string | null; proforma_invoice_id: string | null; invoice_date: string | null; supply_date: string | null; status: string | null; subtotal: number | null; vat_amount: number | null; total_amount: number | null; payment_terms: string | null; notes: string | null; created_at: string | null };
+type TI = {
+  id: string;
+  company_id: string;
+  invoice_number: string | null;
+  customer_id: string | null;
+  customer_name?: string;
+  customer_trn?: string;
+  customer_address?: string;
+  contact_person?: string | null;
+  contact_mobile?: string | null;
+  contact_number?: string;
+  contact_email?: string | null;
+  custom_project_name?: string | null;
+  is_custom_customer?: boolean | null;
+  project_id?: string | null;
+  proforma_invoice_id: string | null;
+  invoice_date: string | null;
+  supply_date: string | null;
+  status: string | null;
+  subtotal: number | null;
+  vat_amount: number | null;
+  total_amount: number | null;
+  payment_terms: string | null;
+  notes: string | null;
+  created_at: string | null;
+};
 type TIForm = { customer_id: string; project_id: string; invoice_date: string; supply_date: string; status: string; payment_terms: string; notes: string };
 const emptyForm: TIForm = { customer_id:"", project_id:"", invoice_date: todayISO(), supply_date: todayISO(), status:"draft", payment_terms:"30 days", notes:"" };
 const emptyLine = (): LineItem => ({ product_id:"", description:"", quantity:1, unit:"", unit_price:0, discount_pct:0, vat_rate:5, taxable_amount:0, vat_amount:0, line_total:0, sort_order:0 });
@@ -110,7 +135,7 @@ function TIContent() {
       ]);
       if (tiErr) throw new Error(tiErr.message);
 
-      setInvoices((ti || []) as TI[]);
+      setInvoices(((ti || []) as TI[]).map((item) => withCustomerDocumentDetails(item) as TI));
       setCustomers((c || []) as Customer[]);
       setProjects((pr || []) as Project[]);
       setProducts((p || []) as Product[]);
@@ -130,7 +155,13 @@ function TIContent() {
     // proforma_invoice_items FK is proforma_invoice_id (not proforma_id)
     const { data: items } = await supabase.from("proforma_invoice_items").select("*").eq("proforma_invoice_id", proformaId).order("sort_order");
     if (pi) {
-      setForm(f => ({ ...f, customer_id: pi.customer_id||"", project_id: pi.project_id||"", notes: pi.notes||"" }));
+      const enrichedPi = withCustomerDocumentDetails(pi);
+      setForm(f => ({
+        ...f,
+        customer_id: enrichedPi.customer_id || "",
+        project_id: pi.project_id || "",
+        notes: pi.notes || "",
+      }));
       // Map DB discount_percent → UI discount_pct
       type DBProformaItem = { id?: string; proforma_invoice_id?: string; product_id?: string; description?: string; quantity?: number; unit_price?: number; discount_percent?: number; vat_rate?: number; taxable_amount?: number; vat_amount?: number; line_total?: number; sort_order?: number; unit?: string };
       setLines((items||[]).map((it: DBProformaItem) => ({ ...emptyLine(), product_id: it.product_id||"", description: it.description||"", quantity: Number(it.quantity)||1, unit_price: Number(it.unit_price)||0, discount_pct: Number(it.discount_percent??0), vat_rate: Number(it.vat_rate ?? 5), taxable_amount: Number(it.taxable_amount)||0, vat_amount: Number(it.vat_amount)||0, line_total: Number(it.line_total)||0, sort_order: Number(it.sort_order)||0, unit: it.unit||"", id: undefined })));
@@ -162,15 +193,16 @@ function TIContent() {
   async function openEdit(ti: TI) {
     setError("");
     setSuccess("");
-    setEditing(ti);
+    const enriched = withCustomerDocumentDetails(ti) as TI;
+    setEditing(enriched);
     setForm({
-      customer_id: ti.customer_id || "",
-      project_id: ti.project_id || "",
-      invoice_date: ti.invoice_date || todayISO(),
-      supply_date: ti.supply_date || todayISO(),
-      status: ti.status || "draft",
-      payment_terms: ti.payment_terms || "",
-      notes: ti.notes || "",
+      customer_id: enriched.customer_id || "",
+      project_id: enriched.project_id || "",
+      invoice_date: enriched.invoice_date || todayISO(),
+      supply_date: enriched.supply_date || todayISO(),
+      status: enriched.status || "draft",
+      payment_terms: enriched.payment_terms || "",
+      notes: enriched.notes || "",
     });
     // DB FK: tax_invoice_id (not invoice_id)
     const { data: items } = await supabase.from("tax_invoice_items").select("*").eq("tax_invoice_id", ti.id).order("sort_order");
@@ -256,14 +288,43 @@ function TIContent() {
   }) {
     setError("");
     setSuccess("");
-    if (!payload.form.customer_id) {
-      setError("Please select a customer.");
+    const isCustom = Boolean(payload.form.is_custom_customer);
+    if (!isCustom && !payload.form.customer_id) {
+      setError("Please select an existing customer or enter custom customer details.");
+      return;
+    }
+    if (isCustom && !payload.form.customer_name?.trim()) {
+      setError("Please enter the custom customer / company name.");
       return;
     }
     setSaving(true);
     try {
-      const dataPayload = {
-        customer_id: payload.form.customer_id,
+      const customPayload = isCustom
+        ? {
+            name: payload.form.customer_name?.trim() || "",
+            address: payload.form.customer_address || "",
+            contact_person: payload.form.contact_person || "",
+            phone: payload.form.contact_number || "",
+            email: payload.form.contact_email || "",
+            trn: payload.form.customer_trn || "",
+            project_name: payload.form.custom_project_name || "",
+          }
+        : null;
+
+      const rawNotes = payload.form.notes || "";
+      const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
+
+      const dataPayload: Record<string, any> = {
+        customer_id: isCustom ? null : payload.form.customer_id || null,
+        customer_name: isCustom ? payload.form.customer_name?.trim() : null,
+        customer_address: isCustom ? payload.form.customer_address || null : null,
+        customer_trn: isCustom ? payload.form.customer_trn || null : null,
+        contact_person: isCustom ? payload.form.contact_person || null : null,
+        contact_number: isCustom ? payload.form.contact_number || null : null,
+        contact_email: isCustom ? payload.form.contact_email || null : null,
+        custom_project_name: isCustom ? payload.form.custom_project_name || null : null,
+        is_custom_customer: isCustom,
+        custom_customer: customPayload,
         project_id: payload.form.project_id || null,
         invoice_date: payload.form.invoice_date || null,
         supply_date: payload.form.supply_date || null,
@@ -272,16 +333,54 @@ function TIContent() {
         vat_amount: payload.vat_amount,
         total_amount: payload.total_amount,
         payment_terms: payload.form.payment_terms || null,
-        notes: payload.form.notes || null,
+        notes: serializedNotes || null,
         updated_at: new Date().toISOString(),
       };
 
-      let iid: string;
-      if (editing) {
-        const { error: updateErr } = await supabase.from("tax_invoices").update(dataPayload).eq("id", editing.id);
-        if (updateErr) throw updateErr;
-        iid = editing.id;
+      const executeSave = async (recordPayload: Record<string, any>) => {
+        if (editing) {
+          const { error: updateErr } = await supabase.from("tax_invoices").update(recordPayload).eq("id", editing.id);
+          if (updateErr) throw updateErr;
+          return editing.id;
+        } else {
+          const cid = await getCompanyId();
+          const ino = await generateDocNumber(cid, "INV");
+          const { data: ins, error: err } = await supabase
+            .from("tax_invoices")
+            .insert({ ...recordPayload, company_id: cid, invoice_number: ino })
+            .select("id")
+            .single();
+          if (err) throw new Error(err.message);
+          return ins.id;
+        }
+      };
 
+      let iid: string;
+      try {
+        iid = await executeSave(dataPayload);
+      } catch (saveErr: any) {
+        // Safe fallback in case remote DB does not yet have newly added columns cached
+        if (saveErr?.message && (saveErr.message.includes("column") || saveErr.code === "PGRST204" || saveErr.code === "42703")) {
+          const minimalPayload = {
+            customer_id: isCustom ? null : payload.form.customer_id || null,
+            project_id: payload.form.project_id || null,
+            invoice_date: payload.form.invoice_date || null,
+            supply_date: payload.form.supply_date || null,
+            status: payload.form.status,
+            subtotal: payload.subtotal,
+            vat_amount: payload.vat_amount,
+            total_amount: payload.total_amount,
+            payment_terms: payload.form.payment_terms || null,
+            notes: serializedNotes || null,
+            updated_at: new Date().toISOString(),
+          };
+          iid = await executeSave(minimalPayload);
+        } else {
+          throw saveErr;
+        }
+      }
+
+      if (editing) {
         // Upsert line items: preserve existing IDs, insert new ones, delete removed ones
         const { data: existingItems } = await supabase.from("tax_invoice_items").select("id").eq("tax_invoice_id", iid);
         const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
@@ -348,16 +447,6 @@ function TIContent() {
           });
         } catch {}
       } else {
-        const cid = await getCompanyId();
-        const ino = await generateDocNumber(cid, "INV");
-        const { data: ins, error: err } = await supabase
-          .from("tax_invoices")
-          .insert({ ...dataPayload, company_id: cid, invoice_number: ino })
-          .select("id")
-          .single();
-        if (err) throw new Error(err.message);
-        iid = ins.id;
-
         const { error: itemErr } = await supabase.from("tax_invoice_items").insert(
           payload.lines.map((l, i) => ({
             tax_invoice_id: iid,
@@ -390,7 +479,12 @@ function TIContent() {
 
   const custMap = Object.fromEntries(customers.map(c=>[c.id,c]));
   const projMap = Object.fromEntries(projects.map(p=>[p.id,p]));
-  const filtered = invoices.filter(ti => { if (filterStatus && ti.status!==filterStatus) return false; const cn=custMap[ti.customer_id||""]?.name||""; const pn=projMap[ti.project_id||""]?.project_number||""; return [ti.invoice_number, cn, pn, ti.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase()); });
+  const filtered = invoices.filter(ti => {
+    if (filterStatus && ti.status!==filterStatus) return false;
+    const cn = ti.customer_name || custMap[ti.customer_id||""]?.name || "";
+    const pn = ti.custom_project_name || projMap[ti.project_id||""]?.project_number || "";
+    return [ti.invoice_number, cn, pn, ti.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
+  });
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -419,12 +513,23 @@ function TIContent() {
                 <tr key={ti.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-mono text-xs font-bold text-slate-700">{ti.invoice_number||"—"}</td>
                   <td className="px-4 py-3">
-                    <div className="font-semibold text-slate-900">{custMap[ti.customer_id||""]?.name||"—"}</div>
-                    {ti.project_id && projMap[ti.project_id] && (
+                    <div className="flex items-center gap-1.5 flex-wrap font-semibold text-slate-900">
+                      <span>{ti.customer_name || custMap[ti.customer_id||""]?.name || "—"}</span>
+                      {ti.is_custom_customer && (
+                        <span className="inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 border border-amber-200">
+                          Custom
+                        </span>
+                      )}
+                    </div>
+                    {ti.custom_project_name ? (
+                      <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">
+                        📁 {ti.custom_project_name}
+                      </span>
+                    ) : ti.project_id && projMap[ti.project_id] ? (
                       <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">
                         📁 {projMap[ti.project_id].project_number}
                       </span>
-                    )}
+                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{fmtDate(ti.invoice_date)}</td>
                   <td className="px-4 py-3 text-right text-slate-600">{fmtAED(ti.subtotal)}</td>
@@ -488,9 +593,17 @@ function TIContent() {
           initialInvoice={
             editing
               ? editing
-              : form.customer_id
+              : (form.customer_id || (form as any).customer_name)
               ? {
                   customer_id: form.customer_id,
+                  customer_name: (form as any).customer_name,
+                  customer_trn: (form as any).customer_trn,
+                  customer_address: (form as any).customer_address,
+                  contact_person: (form as any).contact_person,
+                  contact_number: (form as any).contact_number,
+                  contact_email: (form as any).contact_email,
+                  custom_project_name: (form as any).custom_project_name,
+                  is_custom_customer: (form as any).is_custom_customer,
                   project_id: form.project_id,
                   invoice_date: form.invoice_date,
                   supply_date: form.supply_date,

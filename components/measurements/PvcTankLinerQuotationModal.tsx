@@ -34,6 +34,7 @@ import NumericInput from "@/components/NumericInput";
 import type { PvcTankLinerResult } from "@/lib/measurementTypes";
 import type { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { useRouter } from "next/navigation";
+import { serializeCustomPartyNotes, CustomPartyData } from "@/lib/documentCustomer";
 
 export interface CustomerSummary {
   id: string;
@@ -104,7 +105,7 @@ export default function PvcTankLinerQuotationModal({
 
   // SECTION A: CUSTOMER QUOTATION STATE
   const [tankCount, setTankCount] = useState<number>(Math.max(1, initialTankQuantity));
-  const [customerMode, setCustomerMode] = useState<"existing" | "new">("existing");
+  const [customerMode, setCustomerMode] = useState<"existing" | "custom" | "new">("existing");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
 
   // New Customer Form
@@ -424,8 +425,24 @@ export default function PvcTankLinerQuotationModal({
       let customerId = selectedCustomerId;
       let customerRecord: CustomerSummary | undefined = customers.find((c) => c.id === customerId);
 
-      // Handle new customer mode
-      if (customerMode === "new") {
+      // Handle customer mode
+      if (customerMode === "custom") {
+        if (!newCustomerName.trim()) {
+          setError("Please provide customer name.");
+          setSubmitting(false);
+          return;
+        }
+        customerId = "";
+        customerRecord = {
+          id: "",
+          name: newCustomerName.trim(),
+          trn: newCustomerTrn.trim() || null,
+          address: newAddress.trim() || null,
+          contact_person: newContactPerson.trim() || null,
+          phone: newPhone.trim() || null,
+          email: newEmail.trim() || null,
+        };
+      } else if (customerMode === "new") {
         if (!newCustomerName.trim()) {
           setError("Please provide customer name.");
           setSubmitting(false);
@@ -440,8 +457,8 @@ export default function PvcTankLinerQuotationModal({
         customerRecord = created;
       }
 
-      if (!customerId) {
-        setError("Please select or create a customer.");
+      if (!customerRecord?.name?.trim()) {
+        setError("Please select or enter a customer.");
         setSubmitting(false);
         return;
       }
@@ -475,10 +492,23 @@ export default function PvcTankLinerQuotationModal({
       };
       const secureNotesPayload = `${subject}\n\n${notes.trim()}\n\n${INTERNAL_COSTING_TAG}:${JSON.stringify(internalCostingMetadata)}-->`;
 
+      const customParty: CustomPartyData = {
+        name: customerRecord?.name || "",
+        trn: customerRecord?.trn || "",
+        address: customerRecord?.address || "",
+        contact_person: customerRecord?.contact_person || "",
+        phone: customerRecord?.phone || customerRecord?.mobile || "",
+        email: customerRecord?.email || "",
+      };
+
+      const finalNotes = customerMode === "custom"
+        ? serializeCustomPartyNotes(secureNotesPayload, customParty)
+        : secureNotesPayload;
+
       const headerPayload = {
         company_id: coId,
         quotation_number: quotationNumber,
-        customer_id: customerId,
+        customer_id: customerId || null,
         project_id: null,
         quotation_date: todayISO(),
         expiry_date: expiryISO,
@@ -487,9 +517,16 @@ export default function PvcTankLinerQuotationModal({
         discount_amount: 0,
         vat_amount: vatTotal,
         total_amount: grandTotal,
-        notes: secureNotesPayload,
+        notes: finalNotes,
         terms:
           "1. 50% Advance with official Purchase Order, 50% upon delivery / installation.\n2. Delivery Period: 7-10 working days from approval.\n3. Quotation validity: 30 days from date of offer.",
+        customer_name: customerMode === "custom" ? customParty.name : null,
+        customer_address: customerMode === "custom" ? customParty.address || null : null,
+        customer_trn: customerMode === "custom" ? customParty.trn || null : null,
+        contact_person: customerMode === "custom" ? customParty.contact_person || null : null,
+        contact_number: customerMode === "custom" ? customParty.phone || null : null,
+        contact_email: customerMode === "custom" ? customParty.email || null : null,
+        is_custom_customer: customerMode === "custom",
       };
 
       const quoteLinesForDb = calculatedLines.map((l, i) => ({
@@ -532,7 +569,15 @@ export default function PvcTankLinerQuotationModal({
             id: quotationId,
             updated_at: new Date().toISOString(),
           });
-        if (insErr) throw new Error(insErr.message);
+        if (insErr) {
+          const { customer_name, customer_address, customer_trn, contact_person, contact_number, contact_email, is_custom_customer, ...baseHeader } = headerPayload;
+          const retry = await supabase.from("quotations").insert({
+            ...baseHeader,
+            id: quotationId,
+            updated_at: new Date().toISOString(),
+          });
+          if (retry.error) throw new Error(retry.error.message);
+        }
 
         const { error: itemsErr } = await supabase
           .from("quotation_items")
@@ -823,6 +868,17 @@ export default function PvcTankLinerQuotationModal({
                         </button>
                         <button
                           type="button"
+                          onClick={() => setCustomerMode("custom")}
+                          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                            customerMode === "custom"
+                              ? "bg-amber-600 text-white font-bold shadow"
+                              : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          Custom Customer (Direct)
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setCustomerMode("new")}
                           className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                             customerMode === "new"
@@ -831,10 +887,16 @@ export default function PvcTankLinerQuotationModal({
                           }`}
                         >
                           <UserPlus size={12} />
-                          <span>+ New Customer</span>
+                          <span>+ Add to CRM</span>
                         </button>
                       </div>
                     </div>
+
+                    {customerMode === "custom" && (
+                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-300">
+                        ✍️ <strong>Custom Customer Mode</strong>: Customer details will be saved directly on this quotation without creating a customer record in your database.
+                      </div>
+                    )}
 
                     {customerMode === "existing" ? (
                       <div>
