@@ -896,7 +896,7 @@ export interface DocumentLayout {
   elements: LayoutElement[];
 }
 
-export const CURRENT_LAYOUT_VERSION = 8;
+export const CURRENT_LAYOUT_VERSION = 9;
 
 const VAT_DOCUMENT_TYPES = new Set<DocumentTypeId>([
   "tax_invoice",
@@ -1208,7 +1208,7 @@ function applyDocumentBusinessProfile(
   const add = (...ids: string[]) => ids.forEach((id) => allowedIds.add(id));
   const compactTable = {
     x: 12,
-    y: 95,
+    y: 105,
     width: 186,
     height: 48,
     label: "Line Items Table",
@@ -1218,31 +1218,31 @@ function applyDocumentBusinessProfile(
     add("customer_info", "line_items", "amount_in_words", "totals", "bank_details", "payment_terms", "company_signature", "company_stamp");
     Object.assign(overrides, {
       line_items: compactTable,
-      amount_in_words: { x: 12, y: 145, width: 105, height: 26 },
-      totals: { x: 121, y: 145, width: 77, height: 30, label: "Subtotal, VAT & Grand Total" },
-      bank_details: { x: 12, y: 174, width: 105, height: 24 },
-      payment_terms: { x: 12, y: 201, width: 105, height: 34 },
-      company_signature: { x: 121, y: 179, width: 44, height: 41 },
-      company_stamp: { x: 167, y: 179, width: 31, height: 41 },
+      amount_in_words: { x: 12, y: 156, width: 105, height: 26 },
+      totals: { x: 121, y: 156, width: 77, height: 30, label: "Subtotal, VAT & Grand Total" },
+      bank_details: { x: 12, y: 185, width: 105, height: 24 },
+      payment_terms: { x: 12, y: 212, width: 105, height: 34 },
+      company_signature: { x: 121, y: 190, width: 44, height: 41 },
+      company_stamp: { x: 167, y: 190, width: 31, height: 41 },
     });
   } else if (docType === "purchase_order" || docType === "supplier_bill") {
     add("customer_info", "line_items", "amount_in_words", "totals", "payment_terms", "company_signature", "company_stamp");
     Object.assign(overrides, {
       customer_info: { type: "supplier_info", label: "Supplier / Vendor Information" },
       line_items: compactTable,
-      amount_in_words: { x: 12, y: 145, width: 105, height: 26 },
-      totals: { x: 121, y: 145, width: 77, height: 30, label: "Subtotal, VAT & Grand Total" },
-      payment_terms: { x: 12, y: 192, width: 105, height: 40 },
-      company_signature: { x: 121, y: 179, width: 44, height: 40 },
-      company_stamp: { x: 167, y: 179, width: 31, height: 40 },
+      amount_in_words: { x: 12, y: 156, width: 105, height: 26 },
+      totals: { x: 121, y: 156, width: 77, height: 30, label: "Subtotal, VAT & Grand Total" },
+      payment_terms: { x: 12, y: 200, width: 105, height: 40 },
+      company_signature: { x: 121, y: 190, width: 44, height: 40 },
+      company_stamp: { x: 167, y: 190, width: 31, height: 40 },
     });
   } else if (docType === "delivery_note") {
     add("customer_info", "line_items", "payment_terms", "company_signature", "company_stamp");
     Object.assign(overrides, {
-      line_items: { x: 12, y: 95, width: 186, height: 48, label: "Delivered Items Table" },
-      payment_terms: { x: 12, y: 146, width: 186, height: 45, label: "Delivery Notes & Condition", backgroundColor: "#F8FAFC", borderColor: style.borderColor, borderWidth: 1, borderRadius: 4, padding: 3 },
-      company_signature: { x: 121, y: 202, width: 44, height: 42, customText: "DELIVERED BY" },
-      company_stamp: { x: 167, y: 202, width: 31, height: 42 },
+      line_items: { x: 12, y: 105, width: 186, height: 48, label: "Delivered Items Table" },
+      payment_terms: { x: 12, y: 156, width: 186, height: 45, label: "Delivery Notes & Condition", backgroundColor: "#F8FAFC", borderColor: style.borderColor, borderWidth: 1, borderRadius: 4, padding: 3 },
+      company_signature: { x: 121, y: 205, width: 44, height: 42, customText: "DELIVERED BY" },
+      company_stamp: { x: 167, y: 205, width: 31, height: 42 },
     });
   } else if (docType === "receipt_voucher" || docType === "employee_payment_voucher") {
     add("customer_info", "amount_in_words", "totals", "payment_terms", "company_signature", "company_stamp");
@@ -1528,9 +1528,9 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "customer_info",
       label: "Customer Information Card",
       x: 12,
-      y: 63,
+      y: 64,
       width: 91,
-      height: 27,
+      height: 38,
       visible: true,
       locked: false,
       zIndex: 15,
@@ -1539,7 +1539,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       borderColor: "#CBD5E1",
       borderWidth: 1,
       borderRadius: 4,
-      padding: 3.2,
+      padding: 2.5,
     },
 
     // 7. Document Meta & Project Ref
@@ -1548,9 +1548,9 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       type: "doc_meta",
       label: "Document Date & Reference",
       x: 107,
-      y: 63,
+      y: 64,
       width: 91,
-      height: 27,
+      height: 38,
       visible: true,
       locked: false,
       zIndex: 16,
@@ -1559,18 +1559,18 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       borderColor: "#CBD5E1",
       borderWidth: 1,
       borderRadius: 4,
-      padding: 3.2,
+      padding: 2.5,
     },
 
-    // 8. Line Items Table (Generous height using available A4 space)
+    // 8. Line Items Table (Generous height using available A4 space with 3mm clearance)
     {
       id: "line_items",
       type: "line_items",
       label: "Line Items Table",
       x: 12,
-      y: 93,
+      y: 105,
       width: 186,
-      height: 70,
+      height: 60,
       visible: true,
       locked: false,
       zIndex: 17,
@@ -2057,6 +2057,17 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
       }
     }
 
+    if (sourceVersion < 9) {
+      if (["tax_invoice", "quotation", "proforma_invoice", "purchase_order", "supplier_bill"].includes(layout.documentType)) {
+        if (el.id === "doc_meta" && el.height < 38) {
+          el.height = 38;
+        }
+        if (el.id === "customer_info" && el.height < 38) {
+          el.height = 38;
+        }
+      }
+    }
+
     if (el.type === "watermark") {
       el.opacity = typeof el.opacity === "number" ? Math.max(0.01, Math.min(el.opacity, 0.6)) : (layout.page?.watermarkOpacity ?? 0.08);
       el.lockAspectRatio = true;
@@ -2073,6 +2084,34 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
       : Math.max(0, Math.min(pageHeight - height, Number.isFinite(el.y) ? el.y : 0));
     return { ...el, x, y, width, height };
   });
+
+  // ── Universal Physical Collision Clearance Guard ──
+  // Never allow header cards to penetrate or overlap the item table header, even in Manual mode.
+  const tableEl = elements.find(
+    (e) => e.visible && (e.type === "line_items" || e.id === "line_items" || e.id === "salary_statement")
+  );
+  if (tableEl) {
+    const headersAbove = elements.filter(
+      (e) => e.visible && e.id !== tableEl.id && e.type !== "watermark" && e.type !== "footer" && e.y < tableEl.y + 10
+    );
+    if (headersAbove.length > 0) {
+      const maxHeaderBottom = Math.max(...headersAbove.map((h) => h.y + h.height));
+      const minRequiredGap = 3.0; // Exact 3 mm required clearance
+      const minAllowedTableY = Math.round((maxHeaderBottom + minRequiredGap) * 10) / 10;
+      if (tableEl.y < minAllowedTableY) {
+        const tableShift = Math.round((minAllowedTableY - tableEl.y) * 10) / 10;
+        tableEl.y = minAllowedTableY;
+        // Reposition downstream followers safely by the exact same shift delta
+        elements.forEach((el) => {
+          if (el.id !== tableEl.id && !headersAbove.some((h) => h.id === el.id) && el.type !== "watermark" && el.type !== "footer") {
+            if (el.y >= tableEl.y - tableShift - 0.5) {
+              el.y = Math.round((el.y + tableShift) * 10) / 10;
+            }
+          }
+        });
+      }
+    }
+  }
 
   // Header collision detection and self-healing:
   // ONLY run in "auto_fit" mode. In "manual" and "assisted" modes, NEVER override user positions.

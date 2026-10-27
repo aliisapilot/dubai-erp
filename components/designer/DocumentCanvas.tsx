@@ -142,15 +142,16 @@ export default function DocumentCanvas({
           if (bottom > maxChildBottom) maxChildBottom = bottom;
         }
 
-        const scrollBasedH = contentEl.scrollHeight + padBottom + borderTop + borderBottom;
-        const childBasedH = maxChildBottom > 0 ? (maxChildBottom + padBottom + borderBottom) : 0;
-        const contentHPx = Math.max(scrollBasedH, childBasedH, contentEl.offsetHeight, domEl.scrollHeight);
-        const contentWPx = Math.max(contentEl.scrollWidth, contentEl.offsetWidth, domEl.scrollWidth);
+        // True required content height:
+        // contentEl.scrollHeight already measures full content height including padding.
+        // Also evaluate child bottoms + padBottom.
+        const contentHPx = Math.max(contentEl.scrollHeight, contentEl.offsetHeight, maxChildBottom > 0 ? maxChildBottom + padBottom : 0);
+        const contentWPx = Math.max(contentEl.scrollWidth, contentEl.offsetWidth);
 
-        const renderedHMm = contentHPx > 0 ? Math.round((contentHPx / pxPerMm) * 10) / 10 : elem.height;
-        const renderedWMm = contentWPx > 0 ? Math.round((contentWPx / pxPerMm) * 10) / 10 : elem.width;
+        const renderedHMm = contentHPx > 0 ? Math.ceil((contentHPx / pxPerMm) * 10) / 10 : elem.height;
+        const renderedWMm = contentWPx > 0 ? Math.ceil((contentWPx / pxPerMm) * 10) / 10 : elem.width;
 
-        const hasOverflow = renderedHMm > elem.height + 0.8 || renderedWMm > elem.width + 0.8;
+        const hasOverflow = renderedHMm > elem.height + 0.6 || renderedWMm > elem.width + 0.6;
 
         nextDims[elem.id] = {
           widthMm: renderedWMm,
@@ -185,18 +186,20 @@ export default function DocumentCanvas({
     (elem: LayoutElement) => {
       const dim = renderedDimensions[elem.id];
       if (!dim) return;
+      const targetHeightMm = Math.max(elem.height + 1, Math.ceil((dim.heightMm + 1.2) * 10) / 10);
+      const targetWidthMm = Math.max(elem.width, dim.widthMm);
       if (onUpdateLayout) {
         const nextLayout = applyFitBoxWithCollisionClearance(latestLayout.current, elem.id, {
-          widthMm: Math.max(elem.width, dim.widthMm),
-          heightMm: Math.max(elem.height, dim.heightMm),
+          widthMm: targetWidthMm,
+          heightMm: targetHeightMm,
         });
         onUpdateLayout(nextLayout);
       } else {
         latestOnUpdateElement.current(
           elem.id,
           {
-            width: Math.max(elem.width, dim.widthMm),
-            height: Math.max(elem.height, dim.heightMm),
+            width: targetWidthMm,
+            height: targetHeightMm,
           },
           true
         );
@@ -753,18 +756,13 @@ export default function DocumentCanvas({
                 const dim = renderedDimensions[elem.id];
                 const isManual = (layout.layoutMode || "manual") === "manual";
 
-                // Accurate rendered content box dimensions so the selection box completely covers
-                // the visible element (including Subtotal, VAT, Grand Total, Balance Due, padding and borders)
+                // True element box dimensions matching the stored geometry
                 const boxWidth = isBorder
                   ? (elem.id === "border_left" || elem.id === "border_right" ? Math.max(elem.width, 4) : elem.width)
-                  : isManual
-                  ? (dim ? Math.max(elem.width, dim.widthMm) : elem.width)
-                  : Math.max(elem.width, (elem as unknown as { effectiveWidth?: number }).effectiveWidth ?? elem.width);
+                  : elem.width;
                 const boxHeight = isBorder
                   ? (elem.id === "border_top" || elem.id === "border_bottom" ? Math.max(elem.height, 4) : elem.height)
-                  : isManual
-                  ? (dim ? Math.max(elem.height, dim.heightMm) : elem.height)
-                  : Math.max(elem.height, (elem as unknown as { effectiveHeight?: number }).effectiveHeight ?? elem.height);
+                  : elem.height;
 
                 // Overflow boundary calculation
                 const isOverflowX = elem.x < 0 || elem.x + elem.width > layout.page.widthMm;
@@ -778,6 +776,7 @@ export default function DocumentCanvas({
                 return (
                   <div
                     key={elem.id}
+                    data-canvas-element-id={elem.id}
                     onMouseDown={(e) => handleElementMouseDown(e, elem)}
                     onClick={(e) => e.stopPropagation()}
                     onDoubleClick={(e) => {

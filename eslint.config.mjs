@@ -18,6 +18,9 @@ const eslintConfig = defineConfig([
     "test-output/**",
     "test-results/**",
     "scripts/**",
+    ".chrome-test-profile*/**",
+    ".chrome-verify-profile*/**",
+    ".chrome-reset-verify-profile*/**",
   ]),
 ]);
 

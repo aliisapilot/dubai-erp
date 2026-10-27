@@ -233,7 +233,7 @@ export default function TopToolbar({
             {showTemplateDropdown && (
               <div
                 ref={templateDropdownRef}
-                className="designer-scrollbar fixed z-50 w-72 sm:w-80 max-h-[min(75dvh,380px)] overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-2xl text-xs text-slate-200 left-3 top-14 space-y-1.5"
+                className="designer-scrollbar absolute left-0 top-full mt-1.5 z-50 w-72 sm:w-80 max-h-[min(75dvh,380px)] overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-2xl text-xs text-slate-200 space-y-1.5"
                 role="listbox"
               >
                 {/* Search input for templates */}

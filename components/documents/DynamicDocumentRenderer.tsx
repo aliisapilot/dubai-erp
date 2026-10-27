@@ -832,13 +832,13 @@ export default function DynamicDocumentRenderer({
             : layout.documentType === "measurement_sheet"
             ? "Client"
             : "Buyer";
-        const configuredPaddingMm = elem.padding !== undefined ? elem.padding : 3.2;
+        const configuredPaddingMm = elem.padding !== undefined ? elem.padding : 2.5;
         const isUltraCompact = elem.height <= 22;
         const isCompactPartyCard = elem.height <= 28;
         const detailFontSize = isCompactPartyCard ? 9 : 9.5;
         void detailFontSize;
-        const padMm = isUltraCompact ? Math.min(configuredPaddingMm, 1.8) : isCompactPartyCard ? Math.min(configuredPaddingMm, 2.2) : configuredPaddingMm;
-        const cardPt = resolvePt(elem.fontSize, isUltraCompact ? 7 : isCompactPartyCard ? 7.5 : 8.5);
+        const padMm = isUltraCompact ? 1.8 : Math.min(configuredPaddingMm, 2.5);
+        const cardPt = resolvePt(elem.fontSize, isUltraCompact ? 7.2 : 8.0);
         return (
           <div
             className="w-full h-full min-h-0 overflow-hidden flex flex-col justify-start select-text"
@@ -1026,11 +1026,10 @@ export default function DynamicDocumentRenderer({
         const showSupplyDate = ["tax_invoice", "delivery_note", "purchase_order", "supplier_bill"].includes(layout.documentType);
         const showDueDate = ["tax_invoice", "quotation", "proforma_invoice", "supplier_bill"].includes(layout.documentType);
         const showTerms = ["tax_invoice", "quotation", "proforma_invoice", "purchase_order", "supplier_bill"].includes(layout.documentType);
-        const configuredPaddingMm = elem.padding !== undefined ? elem.padding : 3.2;
+        const configuredPaddingMm = elem.padding !== undefined ? elem.padding : 2.5;
         const isUltraCompact = elem.height <= 22;
-        const isCompactMetaCard = elem.height <= 28;
-        const padMm = isUltraCompact ? Math.min(configuredPaddingMm, 1.8) : isCompactMetaCard ? Math.min(configuredPaddingMm, 2.2) : configuredPaddingMm;
-        const metaPt = resolvePt(elem.fontSize, isUltraCompact ? 7 : isCompactMetaCard ? 7.5 : 8.5);
+        const padMm = isUltraCompact ? 1.8 : Math.min(configuredPaddingMm, 2.5);
+        const metaPt = resolvePt(elem.fontSize, isUltraCompact ? 7.2 : 8.0);
         return (
           <div
             className="w-full h-full flex flex-col justify-start select-text overflow-hidden"

@@ -72,8 +72,8 @@ export function applyFitBoxWithCollisionClearance(
 
   // Case 1: element is above the table
   if (table && elem.y < table.y) {
-    const minClearanceGap = 2.5; // mm
-    const minAllowedTableY = newBottom + minClearanceGap;
+    const minClearanceGap = 3.0; // mm minimum required clearance
+    const minAllowedTableY = Math.round((newBottom + minClearanceGap) * 10) / 10;
 
     if (minAllowedTableY > table.y) {
       const tableShift = Math.round((minAllowedTableY - table.y) * 10) / 10;
@@ -85,8 +85,20 @@ export function applyFitBoxWithCollisionClearance(
         if (el.id === table.id) {
           return { ...el, y: minAllowedTableY };
         }
-        if (isFollowerElement(el, table) || el.y >= table.y - 1) {
+        if (isFollowerElement(el, table) || el.y >= table.y - 0.5) {
           return { ...el, y: Math.round((el.y + tableShift) * 10) / 10 };
+        }
+        return el;
+      });
+
+      return {
+        ...layout,
+        elements: nextElements,
+      };
+    } else {
+      const nextElements = layout.elements.map((el) => {
+        if (el.id === elem.id) {
+          return { ...el, width: targetWidth, height: targetHeight };
         }
         return el;
       });

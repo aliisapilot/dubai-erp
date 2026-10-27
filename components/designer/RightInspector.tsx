@@ -1349,12 +1349,10 @@ export default function RightInspector({
                   if (bottom > maxChildBottom) maxChildBottom = bottom;
                 }
 
-                const scrollBasedH = contentEl.scrollHeight + padBottom + borderTop + borderBottom;
-                const childBasedH = maxChildBottom > 0 ? (maxChildBottom + padBottom + borderBottom) : 0;
-                const contentHPx = Math.max(scrollBasedH, childBasedH, contentEl.offsetHeight, domEl.scrollHeight);
-                const contentWPx = Math.max(contentEl.scrollWidth, contentEl.offsetWidth, domEl.scrollWidth);
+                const contentHPx = Math.max(contentEl.scrollHeight, contentEl.offsetHeight, maxChildBottom > 0 ? maxChildBottom + padBottom : 0);
+                const contentWPx = Math.max(contentEl.scrollWidth, contentEl.offsetWidth);
 
-                const requiredHeightMm = Math.ceil(((contentHPx / pxPerMm) + 0.4) * 10) / 10;
+                const requiredHeightMm = Math.max(elem.height + 1, Math.ceil(((contentHPx / pxPerMm) + 1.2) * 10) / 10);
                 const requiredWidthMm = Math.max(elem.width, Math.ceil((contentWPx / pxPerMm) * 10) / 10);
 
                 if (onUpdateLayout) {
@@ -1366,7 +1364,7 @@ export default function RightInspector({
                 } else {
                   onUpdateElement(elem.id, {
                     width: requiredWidthMm,
-                    height: Math.max(elem.height, requiredHeightMm),
+                    height: requiredHeightMm,
                   });
                 }
               }}
