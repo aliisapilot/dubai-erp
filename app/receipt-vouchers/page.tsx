@@ -1,13 +1,18 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
-import { Receipt, Plus, Search, Loader2, X, Printer, Pencil, Trash2 } from "lucide-react";
+import { Receipt, Plus, Search, Loader2, X, Printer, Pencil, Trash2, ZoomIn, ZoomOut, Maximize2, Minimize2, CheckCircle2 } from "lucide-react";
 import { getCompanyId, getCurrentCompany, fmtAED, statusClass, todayISO, generateDocNumber } from "@/lib/helpers";
 import ReceiptVoucherTemplate, { ReceiptVoucherData } from "@/components/documents/ReceiptVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { parseDatabaseError } from "@/lib/paymentTypes";
+import DynamicDocumentRenderer, {
+  MockDocumentData,
+  getDocumentPageCount,
+} from "@/components/documents/DynamicDocumentRenderer";
+import { usePersistedDocumentDesign } from "@/components/documents/usePersistedDocumentDesign";
 
 type Customer = { id: string; name: string | null; trn: string | null };
 type Invoice = { id: string; invoice_number: string | null; total_amount: number | null };
@@ -88,6 +93,53 @@ export default function ReceiptVouchersPage() {
   const [success, setSuccess] = useState("");
 
   const [printVoucher, setPrintVoucher] = useState<ReceiptVoucherData | null>(null);
+
+  const design = usePersistedDocumentDesign(company?.id, "receipt_voucher");
+  const [activeTabMobile, setActiveTabMobile] = useState<"form" | "preview">("form");
+  const [previewFullscreen, setPreviewFullscreen] = useState(false);
+  const [zoom, setZoom] = useState(0.85);
+
+  const previewData: MockDocumentData = useMemo(() => {
+    const cust = customers.find((c) => c.id === form.customer_id);
+    const amountVal = parseFloat(form.amount) || 0;
+    return {
+      document_number: form.voucher_number || editing?.voucher_number || "[Draft - Generated on Save]",
+      document_date: form.voucher_date || todayISO(),
+      status: "posted",
+      customer_name: form.received_from || cust?.name || "Payer Name / Customer",
+      customer_trn: cust?.trn || undefined,
+      notes: form.notes || undefined,
+      payment_terms: `${form.payment_method}${
+        form.cheque_number
+          ? ` (Cheque #${form.cheque_number}${form.cheque_date ? ` dt. ${form.cheque_date}` : ""}${
+              form.bank_name ? `, ${form.bank_name}` : ""
+            })`
+          : ""
+      }`,
+      subtotal: amountVal,
+      vat_amount: 0,
+      total_amount: amountVal,
+      items: [
+        {
+          description: form.tax_invoice_id
+            ? `Receipt towards Tax Invoice ${invoices.find((i) => i.id === form.tax_invoice_id)?.invoice_number || ""}`
+            : `Payment received via ${form.payment_method}${form.notes ? ` - ${form.notes}` : ""}`,
+          quantity: 1,
+          unit: "Voucher",
+          unit_price: amountVal,
+          discount: 0,
+          vat_rate: 0,
+          vat_amount: 0,
+          line_total: amountVal,
+        },
+      ],
+    };
+  }, [form, editing, customers, invoices]);
+
+  const totalPreviewPages = useMemo(() => {
+    if (!design.layout) return 1;
+    return getDocumentPageCount(design.layout, previewData.items.length, previewData.items, previewData);
+  }, [design.layout, previewData]);
 
   useEffect(() => {
     loadData();
@@ -366,109 +418,318 @@ export default function ReceiptVouchersPage() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Split-Screen Modal with Live PDF Preview */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowModal(false)} />
-          <div className="relative w-full max-w-xl rounded-2xl bg-white shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-slate-900">{editing ? "Edit Receipt Voucher" : "Issue Receipt Voucher"}</h2>
-                {editing && (
-                  <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
-                    {editing.voucher_number}
-                  </span>
-                )}
+        <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-150">
+          {/* Top Bar */}
+          <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900 px-4 text-white">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">
+                <Receipt size={18} />
               </div>
-              <button onClick={() => setShowModal(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={20} /></button>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold tracking-wide">
+                  {editing ? "Edit Receipt Voucher" : "Issue Receipt Voucher"}
+                </h2>
+                <span className="font-mono text-xs rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-slate-300">
+                  {editing?.voucher_number || form.voucher_number || "[Draft Preview]"}
+                </span>
+                <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                  <CheckCircle2 size={12} className="text-emerald-400" />
+                  Live Sync
+                </span>
+              </div>
             </div>
 
-            <form onSubmit={saveVoucher} className="p-6 space-y-3 max-h-[80vh] overflow-y-auto text-xs">
-              {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-red-700">{error}</div>}
+            {/* Mobile Tab Switcher */}
+            <div className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 p-0.5 lg:hidden">
+              <button
+                type="button"
+                onClick={() => setActiveTabMobile("form")}
+                className={`px-3 py-1 text-xs font-semibold rounded-md ${
+                  activeTabMobile === "form" ? "bg-amber-500 text-slate-950 font-bold" : "text-slate-300"
+                }`}
+              >
+                Editor Form
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTabMobile("preview")}
+                className={`px-3 py-1 text-xs font-semibold rounded-md ${
+                  activeTabMobile === "preview" ? "bg-blue-600 text-white font-bold" : "text-slate-300"
+                }`}
+              >
+                Live PDF
+              </button>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block font-semibold text-slate-700">Voucher Ref #</label>
-                  <input
-                    type="text"
-                    value={form.voucher_number}
-                    readOnly
-                    placeholder={editing ? editing.voucher_number : "Auto-generated on save (RCV-…)"}
-                    className={inp + " bg-slate-50 text-slate-500 cursor-not-allowed"}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block font-semibold text-slate-700">Receipt Date</label>
-                  <input type="date" value={form.voucher_date} onChange={e => setForm({ ...form, voucher_date: e.target.value })} required className={inp} />
-                </div>
-              </div>
+            {/* Actions */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700"
+              >
+                <Printer size={14} className="text-indigo-400" />
+                <span className="hidden sm:inline">Print / Export</span>
+              </button>
+              <button
+                type="submit"
+                form="rcv-form"
+                disabled={saving}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 text-xs font-bold text-white shadow-md transition"
+              >
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                <span>{saving ? "Saving…" : editing ? "Save Changes" : "Save Voucher"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </header>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block font-semibold text-slate-700">Customer (Optional Link)</label>
-                  <select value={form.customer_id} onChange={e => onCustomerSelect(e.target.value)} className={sel}>
-                    <option value="">— Select Customer —</option>
-                    {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block font-semibold text-slate-700">Received From (Payer) <span className="text-red-500">*</span></label>
-                  <input type="text" value={form.received_from} onChange={e => setForm({ ...form, received_from: e.target.value })} placeholder="Full payer name" required className={inp} />
-                </div>
-              </div>
+          {/* Split Workspace */}
+          <div className="relative flex flex-1 overflow-hidden">
+            {/* LEFT: Form Panel */}
+            <div
+              className={`flex flex-col border-r border-slate-800 bg-slate-900/90 text-slate-200 overflow-y-auto designer-scrollbar ${
+                previewFullscreen ? "hidden" : "w-full lg:w-1/2"
+              } ${activeTabMobile === "form" ? "block" : "hidden lg:flex"}`}
+            >
+              <div className="p-5 space-y-4">
+                <form id="rcv-form" onSubmit={saveVoucher} className="space-y-4 text-xs">
+                  {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-red-700">{error}</div>}
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="mb-1 block font-semibold text-slate-700">Amount Received (AED) <span className="text-red-500">*</span></label>
-                  <input type="number" step="0.01" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} required className={inp} />
-                </div>
-                <div>
-                  <label className="mb-1 block font-semibold text-slate-700">Payment Method</label>
-                  <select value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value })} className={sel}>
-                    <option>Cash</option>
-                    <option>Cheque</option>
-                    <option>Bank Transfer</option>
-                    <option>Credit Card</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block font-semibold text-slate-700">Invoice Link</label>
-                  <select value={form.tax_invoice_id} onChange={e => setForm({ ...form, tax_invoice_id: e.target.value })} className={sel}>
-                    <option value="">— Select Invoice —</option>
-                    {invoices.map(i => <option key={i.id} value={i.id}>{i.invoice_number}</option>)}
-                  </select>
-                </div>
-              </div>
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-3.5">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Voucher Details</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block font-semibold text-slate-300">Voucher Ref #</label>
+                        <input
+                          type="text"
+                          value={form.voucher_number}
+                          readOnly
+                          placeholder={editing ? editing.voucher_number : "Auto-generated on save"}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs font-mono font-bold text-emerald-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block font-semibold text-slate-300">Receipt Date</label>
+                        <input
+                          type="date"
+                          value={form.voucher_date}
+                          onChange={e => setForm({ ...form, voucher_date: e.target.value })}
+                          required
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                    </div>
 
-              {form.payment_method === "Cheque" && (
-                <div className="grid grid-cols-3 gap-3 rounded bg-slate-50 p-3 border border-slate-200">
-                  <div>
-                    <label className="mb-1 block font-semibold text-slate-700">Cheque Number</label>
-                    <input type="text" value={form.cheque_number} onChange={e => setForm({ ...form, cheque_number: e.target.value })} placeholder="000123" className={inp} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block font-semibold text-slate-300">Customer (Optional Link)</label>
+                        <select
+                          value={form.customer_id}
+                          onChange={e => onCustomerSelect(e.target.value)}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
+                        >
+                          <option value="">— Select Customer —</option>
+                          {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block font-semibold text-slate-300">Received From (Payer) <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          value={form.received_from}
+                          onChange={e => setForm({ ...form, received_from: e.target.value })}
+                          placeholder="Full payer name"
+                          required
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="mb-1 block font-semibold text-slate-300">Amount Received (AED) <span className="text-red-500">*</span></label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={form.amount}
+                          onChange={e => setForm({ ...form, amount: e.target.value })}
+                          required
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-center font-mono font-bold text-amber-300 focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block font-semibold text-slate-300">Payment Method</label>
+                        <select
+                          value={form.payment_method}
+                          onChange={e => setForm({ ...form, payment_method: e.target.value })}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
+                        >
+                          <option>Cash</option>
+                          <option>Cheque</option>
+                          <option>Bank Transfer</option>
+                          <option>Credit Card</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block font-semibold text-slate-300">Invoice Link</label>
+                        <select
+                          value={form.tax_invoice_id}
+                          onChange={e => setForm({ ...form, tax_invoice_id: e.target.value })}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        >
+                          <option value="">— Select Invoice —</option>
+                          {invoices.map(i => <option key={i.id} value={i.id}>{i.invoice_number}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    {form.payment_method === "Cheque" && (
+                      <div className="grid grid-cols-3 gap-3 rounded-lg border border-slate-700 bg-slate-850 p-3">
+                        <div>
+                          <label className="mb-1 block font-semibold text-slate-300">Cheque Number</label>
+                          <input
+                            type="text"
+                            value={form.cheque_number}
+                            onChange={e => setForm({ ...form, cheque_number: e.target.value })}
+                            placeholder="000123"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block font-semibold text-slate-300">Cheque Date</label>
+                          <input
+                            type="date"
+                            value={form.cheque_date}
+                            onChange={e => setForm({ ...form, cheque_date: e.target.value })}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block font-semibold text-slate-300">Bank Name</label>
+                          <input
+                            type="text"
+                            value={form.bank_name}
+                            onChange={e => setForm({ ...form, bank_name: e.target.value })}
+                            placeholder="e.g. ADCB / ENBD"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="mb-1 block font-semibold text-slate-300">Particulars / Payment Description</label>
+                      <textarea
+                        value={form.notes}
+                        onChange={e => setForm({ ...form, notes: e.target.value })}
+                        rows={2}
+                        placeholder="Being payment for..."
+                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="mb-1 block font-semibold text-slate-700">Cheque Date</label>
-                    <input type="date" value={form.cheque_date} onChange={e => setForm({ ...form, cheque_date: e.target.value })} className={inp} />
-                  </div>
-                  <div>
-                    <label className="mb-1 block font-semibold text-slate-700">Bank Name</label>
-                    <input type="text" value={form.bank_name} onChange={e => setForm({ ...form, bank_name: e.target.value })} placeholder="e.g. ADCB" className={inp} />
+                </form>
+              </div>
+            </div>
+
+            {/* RIGHT: Live A4 PDF Preview */}
+            <div
+              className={`flex-1 flex flex-col bg-slate-950 overflow-hidden relative ${
+                previewFullscreen ? "w-full" : ""
+              } ${activeTabMobile === "preview" ? "flex" : "hidden lg:flex"}`}
+            >
+              <div className="flex h-10 shrink-0 items-center justify-between border-b border-slate-800/80 bg-slate-900/60 px-4 text-xs text-slate-300 select-none">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="font-semibold text-slate-200">WYSIWYG Receipt Voucher Preview</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewFullscreen(f => !f)}
+                    className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                  >
+                    {previewFullscreen ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                    <span className="hidden sm:inline">{previewFullscreen ? "Split View" : "Full Screen"}</span>
+                  </button>
+                  <div className="flex items-center gap-1 rounded bg-slate-800 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setZoom(z => Math.max(0.4, Number((z - 0.1).toFixed(2))))}
+                      className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white"
+                    >
+                      <ZoomOut size={12} />
+                    </button>
+                    <span
+                      onClick={() => setZoom(0.85)}
+                      className="px-1.5 text-[10px] font-mono font-bold text-slate-300 cursor-pointer hover:text-amber-400"
+                    >
+                      {Math.round(zoom * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setZoom(z => Math.min(1.5, Number((z + 0.1).toFixed(2))))}
+                      className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white"
+                    >
+                      <ZoomIn size={12} />
+                    </button>
                   </div>
                 </div>
-              )}
-
-              <div>
-                <label className="mb-1 block font-semibold text-slate-700">Particulars / Payment Description</label>
-                <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} placeholder="Being payment for..." className={inp} />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
-                <button type="button" onClick={() => setShowModal(false)} className="rounded-lg border px-4 py-2 text-slate-600 hover:bg-slate-50">Cancel</button>
-                <button type="submit" disabled={saving} className="rounded-lg bg-slate-900 px-5 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
-                  {saving ? "Saving…" : editing ? "Save Changes" : "Issue Receipt Voucher"}
-                </button>
+              {/* Canvas View */}
+              <div
+                className="flex-1 overflow-auto designer-scrollbar p-6 sm:p-8 flex justify-center items-start overscroll-contain bg-slate-950"
+                style={{
+                  backgroundImage: "radial-gradient(circle at center, rgba(148,163,184,0.15) 1px, transparent 1px)",
+                  backgroundSize: "20px 20px",
+                }}
+              >
+                {design.ready && design.layout ? (
+                  <div
+                    style={{
+                      width: `${design.layout.page.widthMm * zoom * 3.7795296}px`,
+                      height: `${design.layout.page.heightMm * zoom * 3.7795296}px`,
+                      flexShrink: 0,
+                      position: "relative",
+                      margin: "0 auto",
+                    }}
+                  >
+                    <div
+                      className="erp-document-surface absolute top-0 left-0 origin-top-left bg-white shadow-2xl rounded-sm border border-slate-300"
+                      style={{
+                        width: `${design.layout.page.widthMm}mm`,
+                        height: `${design.layout.page.heightMm}mm`,
+                        transform: `scale(${zoom})`,
+                      }}
+                    >
+                      <DynamicDocumentRenderer
+                        layout={design.layout}
+                        company={company}
+                        data={previewData}
+                        isDesignerPreview={false}
+                        scale={1}
+                        pageNumber={1}
+                        totalPages={totalPreviewPages}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex h-64 items-center justify-center text-xs text-slate-400">
+                    <Loader2 size={24} className="animate-spin text-slate-500" />
+                  </div>
+                )}
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

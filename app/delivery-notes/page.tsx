@@ -1,9 +1,9 @@
 "use client";
 import { planDeliveryStock } from "@/lib/deliveryStock";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Search, X, Save, Loader2, Pencil, Printer, Trash2, ClipboardList } from "lucide-react";
+import { Plus, Search, X, Save, Loader2, Pencil, Printer, Trash2, ClipboardList, ZoomIn, ZoomOut, Maximize2, Minimize2, CheckCircle2 } from "lucide-react";
 import { getCompanyId, getCurrentCompany, statusClass, fmtDate, todayISO, generateDocNumber } from "@/lib/helpers";
 import DeliveryNoteTemplate, { DeliveryNoteData } from "@/components/documents/DeliveryNoteTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -11,6 +11,11 @@ import EditDocumentReferenceModal from "@/components/documents/EditDocumentRefer
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { parseDatabaseError } from "@/lib/paymentTypes";
 import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
+import DynamicDocumentRenderer, {
+  MockDocumentData,
+  getDocumentPageCount,
+} from "@/components/documents/DynamicDocumentRenderer";
+import { usePersistedDocumentDesign } from "@/components/documents/usePersistedDocumentDesign";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; address: string | null; contact_person: string | null; phone: string | null; mobile: string | null; email: string | null; active: boolean | null };
 type Product = { id: string; name: string | null; sku: string | null; unit: string | null; current_stock: number | null };
@@ -102,6 +107,50 @@ export default function DeliveryNotesPage() {
 
   // Print Modal State
   const [printDoc, setPrintDoc] = useState<DeliveryNoteData | null>(null);
+
+  const design = usePersistedDocumentDesign(company?.id, "delivery_note");
+  const [activeTabMobile, setActiveTabMobile] = useState<"form" | "preview">("form");
+  const [previewFullscreen, setPreviewFullscreen] = useState(false);
+  const [zoom, setZoom] = useState(0.85);
+
+  const previewData: MockDocumentData = useMemo(() => {
+    const cust = customers.find((c) => c.id === form.customer_id);
+    const prj = projects.find((p) => p.id === form.project_id);
+    return {
+      document_number: editing?.delivery_note_number || "[Draft - Generated on Save]",
+      document_date: form.delivery_date || todayISO(),
+      supply_date: form.dispatch_date || form.delivery_date || todayISO(),
+      status: form.status,
+      customer_name: cust?.name || "Customer / Client Name",
+      customer_trn: cust?.trn || undefined,
+      customer_address: form.customer_address || cust?.address || undefined,
+      contact_person: form.contact_person || cust?.contact_person || undefined,
+      contact_number: form.contact_number || cust?.phone || cust?.mobile || undefined,
+      contact_email: cust?.email || undefined,
+      project_name: prj?.name || undefined,
+      project_number: prj?.project_number || undefined,
+      notes: form.notes,
+      payment_terms: `Dispatch: ${form.dispatch_date || "—"} | Method: ${form.delivery_method} | Driver: ${form.driver_name || "—"} (${form.driver_number || "—"}) | Vehicle: ${form.vehicle_number || "—"} | Receiver: ${form.receiver_name || "—"}`,
+      subtotal: 0,
+      vat_amount: 0,
+      total_amount: 0,
+      items: lines.map((l) => ({
+        description: l.description ? `${l.description}${l.remarks ? ` (${l.remarks})` : ""}` : "Item Description",
+        quantity: l.quantity,
+        unit: l.unit || "Nos",
+        unit_price: 0,
+        discount: 0,
+        vat_rate: 0,
+        vat_amount: 0,
+        line_total: 0,
+      })),
+    };
+  }, [editing, form, lines, customers, projects]);
+
+  const totalPreviewPages = useMemo(() => {
+    if (!design.layout) return 1;
+    return getDocumentPageCount(design.layout, previewData.items.length, previewData.items, previewData);
+  }, [design.layout, previewData]);
 
   useEffect(() => {
     loadAll();
@@ -533,206 +582,471 @@ export default function DeliveryNotesPage() {
         )}
       </div>
 
-      {/* Edit/Create Drawer */}
+      {/* Split-Screen Edit/Create Workspace with Live Preview */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeForm} />
-          <div className="relative ml-auto flex h-full w-full max-w-3xl flex-col bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+        <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-150">
+          {/* Top Bar */}
+          <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900 px-4 text-white">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">
+                <ClipboardList size={18} />
+              </div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold">{editing ? "Edit Delivery Note" : "New Delivery Note"}</h2>
-                {!editing ? (
-                  <span className="text-xs font-mono bg-blue-50 text-blue-700 px-2.5 py-1 rounded font-medium border border-blue-200">
-                    DN #: Auto-generated on save
-                  </span>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
-                      DN #: {editing.delivery_note_number}
+                <h2 className="text-sm font-bold tracking-wide">
+                  {editing ? "Edit Delivery Note" : "New Delivery Note"}
+                </h2>
+                <span className="font-mono text-xs rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-slate-300">
+                  {editing?.delivery_note_number || "[Draft Preview]"}
+                </span>
+                {editing && (
+                  <button
+                    type="button"
+                    onClick={() => setShowRenameModal(true)}
+                    className="flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 px-2 py-0.5 text-xs font-bold text-amber-300 transition cursor-pointer"
+                  >
+                    <Pencil size={11} />
+                    <span>Edit #</span>
+                  </button>
+                )}
+                <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                  <CheckCircle2 size={12} className="text-emerald-400" />
+                  Live Sync
+                </span>
+              </div>
+            </div>
+
+            {/* Mobile Tab Switcher */}
+            <div className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 p-0.5 lg:hidden">
+              <button
+                type="button"
+                onClick={() => setActiveTabMobile("form")}
+                className={`px-3 py-1 text-xs font-semibold rounded-md ${
+                  activeTabMobile === "form" ? "bg-amber-500 text-slate-950 font-bold" : "text-slate-300"
+                }`}
+              >
+                Editor Form
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTabMobile("preview")}
+                className={`px-3 py-1 text-xs font-semibold rounded-md ${
+                  activeTabMobile === "preview" ? "bg-blue-600 text-white font-bold" : "text-slate-300"
+                }`}
+              >
+                Live PDF
+              </button>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700"
+              >
+                <Printer size={14} className="text-indigo-400" />
+                <span className="hidden sm:inline">Print / Export</span>
+              </button>
+              <button
+                type="submit"
+                form="dn-form"
+                disabled={saving}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 text-xs font-bold text-white shadow-md transition"
+              >
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                <span>{saving ? "Saving…" : editing ? "Save Changes" : "Save Delivery Note"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={closeForm}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </header>
+
+          {/* Main Split Body */}
+          <div className="relative flex flex-1 overflow-hidden">
+            {/* LEFT: Form Panel */}
+            <div
+              className={`flex flex-col border-r border-slate-800 bg-slate-900/90 text-slate-200 overflow-y-auto designer-scrollbar ${
+                previewFullscreen ? "hidden" : "w-full lg:w-1/2"
+              } ${activeTabMobile === "form" ? "block" : "hidden lg:flex"}`}
+            >
+              <div className="p-5 space-y-4">
+                <form id="dn-form" onSubmit={save} className="space-y-4">
+                  {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+                  {form.status === "delivered" && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-500/10 p-3 text-xs text-amber-300">
+                      ⚠️ When saved as Delivered, stock will be automatically deducted for product line items.
+                    </div>
+                  )}
+
+                  {/* Customer & Site Reference */}
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Customer & Site Reference</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Customer <span className="text-red-500">*</span></label>
+                        <select
+                          value={form.customer_id}
+                          onChange={e => onCustomerChange(e.target.value)}
+                          required
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
+                        >
+                          <option value="">— Select Customer —</option>
+                          {selectableCustomers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Project / Job (Optional)</label>
+                        <select
+                          value={form.project_id}
+                          onChange={e => ff("project_id", e.target.value)}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        >
+                          <option value="">— Select Project (Optional) —</option>
+                          {projects.map(p => <option key={p.id} value={p.id}>{p.project_number} - {p.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Order / Invoice Ref</label>
+                        <input
+                          type="text"
+                          value={form.order_ref}
+                          onChange={e => ff("order_ref", e.target.value)}
+                          placeholder="e.g. PO-8492 / INV-1002"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Delivery Address / Project Site</label>
+                        <input
+                          type="text"
+                          value={form.customer_address}
+                          onChange={e => ff("customer_address", e.target.value)}
+                          placeholder="Delivery location details"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Contact Person</label>
+                        <input
+                          type="text"
+                          value={form.contact_person}
+                          onChange={e => ff("contact_person", e.target.value)}
+                          placeholder="Site contact name"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Contact Tel / Mobile</label>
+                        <input
+                          type="text"
+                          value={form.contact_number}
+                          onChange={e => ff("contact_number", e.target.value)}
+                          placeholder="+971 50 123 4567"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dispatch & Transport Details */}
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Dispatch & Transport Details</div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Dispatch Date</label>
+                        <input
+                          type="date"
+                          value={form.dispatch_date}
+                          onChange={e => ff("dispatch_date", e.target.value)}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Delivery Method</label>
+                        <select
+                          value={form.delivery_method}
+                          onChange={e => ff("delivery_method", e.target.value)}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
+                        >
+                          <option>Company Vehicle</option>
+                          <option>Customer Pickup</option>
+                          <option>Third-Party Courier</option>
+                          <option>Freight Carrier</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Status</label>
+                        <select
+                          value={form.status}
+                          onChange={e => ff("status", e.target.value)}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
+                        >
+                          <option value="draft">Draft</option>
+                          <option value="delivered">Delivered</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Driver Name</label>
+                        <input
+                          type="text"
+                          value={form.driver_name}
+                          onChange={e => ff("driver_name", e.target.value)}
+                          placeholder="Driver full name"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Driver Mobile</label>
+                        <input
+                          type="text"
+                          value={form.driver_number}
+                          onChange={e => ff("driver_number", e.target.value)}
+                          placeholder="+971 55..."
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Vehicle Number</label>
+                        <input
+                          type="text"
+                          value={form.vehicle_number}
+                          onChange={e => ff("vehicle_number", e.target.value)}
+                          placeholder="e.g. DXB 84920"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Line Items */}
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Item Details</p>
+                      <span className="text-[11px] text-slate-400">{lines.length} Line(s)</span>
+                    </div>
+                    <div className="overflow-x-auto rounded-lg border border-slate-800">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-slate-800/80 text-[10px] font-semibold uppercase text-slate-400">
+                            <th className="px-2.5 py-2 text-left w-44">Product Item</th>
+                            <th className="px-2.5 py-2 text-left">Description</th>
+                            <th className="px-2.5 py-2 w-16 text-center">Qty</th>
+                            <th className="px-2.5 py-2 w-16 text-center">Unit</th>
+                            <th className="px-2.5 py-2 text-left w-36">Remarks</th>
+                            <th className="px-2.5 py-2 w-8"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                          {lines.map((l, i) => (
+                            <tr key={i} className="hover:bg-slate-800/30">
+                              <td className="p-1">
+                                <select
+                                  value={l.product_id}
+                                  onChange={e => onProductSelect(i, e.target.value)}
+                                  className="w-full rounded border border-slate-700 bg-slate-800 px-1.5 py-1 text-[11px] text-white focus:outline-none"
+                                >
+                                  <option value="">— Select Product —</option>
+                                  {products.map(p => <option key={p.id} value={p.id}>{p.name} (Stock: {p.current_stock ?? 0})</option>)}
+                                </select>
+                              </td>
+                              <td className="p-1">
+                                <input
+                                  type="text"
+                                  value={l.description}
+                                  onChange={e => updateLine(i, "description", e.target.value)}
+                                  placeholder="Description"
+                                  className="w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] font-sans text-white focus:outline-none"
+                                />
+                              </td>
+                              <td className="p-1">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  value={l.quantity}
+                                  onChange={e => updateLine(i, "quantity", Number(e.target.value))}
+                                  className="w-full rounded border border-slate-700 bg-slate-800 px-1 py-1 text-xs text-center text-white focus:outline-none"
+                                />
+                              </td>
+                              <td className="p-1">
+                                <input
+                                  type="text"
+                                  value={l.unit}
+                                  onChange={e => updateLine(i, "unit", e.target.value)}
+                                  placeholder="Nos"
+                                  className="w-full rounded border border-slate-700 bg-slate-800 px-1 py-1 text-xs text-center text-white focus:outline-none"
+                                />
+                              </td>
+                              <td className="p-1">
+                                <input
+                                  type="text"
+                                  value={l.remarks || ""}
+                                  onChange={e => updateLine(i, "remarks", e.target.value)}
+                                  placeholder="Batch # / Tag"
+                                  className="w-full rounded border border-slate-700 bg-slate-800 px-1.5 py-1 text-[11px] text-white focus:outline-none"
+                                />
+                              </td>
+                              <td className="p-1 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => removeLine(i)}
+                                  disabled={lines.length === 1}
+                                  className="text-slate-500 hover:text-rose-400 disabled:opacity-20 cursor-pointer"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addLine}
+                      className="mt-2 flex items-center gap-1.5 rounded-lg border border-dashed border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:border-slate-500 hover:text-white transition cursor-pointer"
+                    >
+                      <Plus size={13} />
+                      <span>Add Line Item</span>
+                    </button>
+                  </div>
+
+                  {/* Receiver Acknowledgement */}
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Receiver Acknowledgement</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Receiver Name</label>
+                        <input
+                          type="text"
+                          value={form.receiver_name}
+                          onChange={e => ff("receiver_name", e.target.value)}
+                          placeholder="Person receiving on site"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-300">Receiver Mobile</label>
+                        <input
+                          type="text"
+                          value={form.receiver_mobile}
+                          onChange={e => ff("receiver_mobile", e.target.value)}
+                          placeholder="+971 50..."
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-300">Delivery Notes / Remarks</label>
+                    <textarea
+                      value={form.notes}
+                      onChange={e => ff("notes", e.target.value)}
+                      rows={2}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                      placeholder="Special delivery instructions or remarks"
+                    />
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            {/* RIGHT: Live A4 PDF Preview */}
+            <div
+              className={`flex-1 flex flex-col bg-slate-950 overflow-hidden relative ${
+                previewFullscreen ? "w-full" : ""
+              } ${activeTabMobile === "preview" ? "flex" : "hidden lg:flex"}`}
+            >
+              <div className="flex h-10 shrink-0 items-center justify-between border-b border-slate-800/80 bg-slate-900/60 px-4 text-xs text-slate-300 select-none">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="font-semibold text-slate-200">WYSIWYG Delivery Note Preview</span>
+                  <span className="text-[10px] text-slate-400">({previewData.items.length} lines)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewFullscreen(f => !f)}
+                    className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                  >
+                    {previewFullscreen ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                    <span className="hidden sm:inline">{previewFullscreen ? "Split View" : "Full Screen"}</span>
+                  </button>
+                  <div className="flex items-center gap-1 rounded bg-slate-800 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setZoom(z => Math.max(0.4, Number((z - 0.1).toFixed(2))))}
+                      className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white"
+                    >
+                      <ZoomOut size={12} />
+                    </button>
+                    <span
+                      onClick={() => setZoom(0.85)}
+                      className="px-1.5 text-[10px] font-mono font-bold text-slate-300 cursor-pointer hover:text-amber-400"
+                    >
+                      {Math.round(zoom * 100)}%
                     </span>
                     <button
                       type="button"
-                      onClick={() => setShowRenameModal(true)}
-                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
-                      title="Safely rename delivery note reference number with collision check"
+                      onClick={() => setZoom(z => Math.min(1.5, Number((z + 0.1).toFixed(2))))}
+                      className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white"
                     >
-                      <Pencil size={11} />
-                      <span>Edit #</span>
+                      <ZoomIn size={12} />
                     </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Canvas View */}
+              <div
+                className="flex-1 overflow-auto designer-scrollbar p-6 sm:p-8 flex justify-center items-start overscroll-contain bg-slate-950"
+                style={{
+                  backgroundImage: "radial-gradient(circle at center, rgba(148,163,184,0.15) 1px, transparent 1px)",
+                  backgroundSize: "20px 20px",
+                }}
+              >
+                {design.ready && design.layout ? (
+                  <div
+                    style={{
+                      width: `${design.layout.page.widthMm * zoom * 3.7795296}px`,
+                      height: `${design.layout.page.heightMm * zoom * 3.7795296}px`,
+                      flexShrink: 0,
+                      position: "relative",
+                      margin: "0 auto",
+                    }}
+                  >
+                    <div
+                      className="erp-document-surface absolute top-0 left-0 origin-top-left bg-white shadow-2xl rounded-sm border border-slate-300"
+                      style={{
+                        width: `${design.layout.page.widthMm}mm`,
+                        height: `${design.layout.page.heightMm}mm`,
+                        transform: `scale(${zoom})`,
+                      }}
+                    >
+                      <DynamicDocumentRenderer
+                        layout={design.layout}
+                        company={company}
+                        data={previewData}
+                        isDesignerPreview={false}
+                        scale={1}
+                        pageNumber={1}
+                        totalPages={totalPreviewPages}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex h-64 items-center justify-center text-xs text-slate-400">
+                    <Loader2 size={24} className="animate-spin text-slate-500" />
                   </div>
                 )}
               </div>
-              <button onClick={closeForm} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={20} /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <form id="dn-form" onSubmit={save} className="p-6 space-y-4">
-                {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-                {form.status === "delivered" && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                    ⚠️ When saved as Delivered, stock will be automatically deducted for product line items.
-                  </div>
-                )}
-
-                {/* Section 1: Customer & Order Reference */}
-                <div className="rounded-lg border border-slate-200 p-3.5 space-y-3 bg-slate-50/50">
-                  <div className="text-xs font-bold uppercase text-slate-700">Customer & Site Reference</div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Customer <span className="text-red-500">*</span></label>
-                      <select value={form.customer_id} onChange={e => onCustomerChange(e.target.value)} required className={sel}>
-                        <option value="">— Select Customer —</option>
-                        {selectableCustomers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Project / Job (Optional)</label>
-                      <select value={form.project_id} onChange={e => ff("project_id", e.target.value)} className={sel}>
-                        <option value="">— Select Project (Optional) —</option>
-                        {projects.map(p => <option key={p.id} value={p.id}>{p.project_number} - {p.name}</option>)}
-                      </select>
-                    </div>
-                    <div className="col-span-2">
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Order / Invoice Ref</label>
-                      <input type="text" value={form.order_ref} onChange={e => ff("order_ref", e.target.value)} placeholder="e.g. PO-8492 / INV-1002" className={inp} />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Delivery Address / Project Site</label>
-                      <input type="text" value={form.customer_address} onChange={e => ff("customer_address", e.target.value)} placeholder="Delivery location details" className={inp} />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Contact Person</label>
-                      <input type="text" value={form.contact_person} onChange={e => ff("contact_person", e.target.value)} placeholder="Site contact name" className={inp} />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Contact Tel / Mobile</label>
-                      <input type="text" value={form.contact_number} onChange={e => ff("contact_number", e.target.value)} placeholder="+971 50 123 4567" className={inp} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 2: Logistics & Transport */}
-                <div className="rounded-lg border border-slate-200 p-3.5 space-y-3 bg-slate-50/50">
-                  <div className="text-xs font-bold uppercase text-slate-700">Dispatch & Transport Details</div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Dispatch Date</label>
-                      <input type="date" value={form.dispatch_date} onChange={e => ff("dispatch_date", e.target.value)} className={inp} />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Delivery Method</label>
-                      <select value={form.delivery_method} onChange={e => ff("delivery_method", e.target.value)} className={sel}>
-                        <option>Company Vehicle</option>
-                        <option>Customer Pickup</option>
-                        <option>Third-Party Courier</option>
-                        <option>Freight Carrier</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Status</label>
-                      <select value={form.status} onChange={e => ff("status", e.target.value)} className={sel}>
-                        <option value="draft">Draft</option>
-                        <option value="delivered">Delivered</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Driver Name</label>
-                      <input type="text" value={form.driver_name} onChange={e => ff("driver_name", e.target.value)} placeholder="Driver full name" className={inp} />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Driver Mobile</label>
-                      <input type="text" value={form.driver_number} onChange={e => ff("driver_number", e.target.value)} placeholder="+971 55..." className={inp} />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Vehicle Number</label>
-                      <input type="text" value={form.vehicle_number} onChange={e => ff("vehicle_number", e.target.value)} placeholder="e.g. DXB 84920" className={inp} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 3: Line Items */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-bold uppercase tracking-wider text-slate-700">Item Details</p>
-                    <span className="text-[11px] text-slate-500">{lines.length} Line(s)</span>
-                  </div>
-                  <div className="overflow-x-auto rounded-lg border border-slate-200">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-slate-50 text-[11px] font-semibold uppercase text-slate-500">
-                          <th className="px-2 py-2 text-left w-44">Product Item</th>
-                          <th className="px-2 py-2 text-left">Description</th>
-                          <th className="px-2 py-2 w-16 text-center">Qty</th>
-                          <th className="px-2 py-2 w-16 text-center">Unit</th>
-                          <th className="px-2 py-2 text-left w-36">Remarks</th>
-                          <th className="px-2 py-2 w-8"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {lines.map((l, i) => (
-                          <tr key={i} className="border-t border-slate-100">
-                            <td className="px-1.5 py-1">
-                              <select value={l.product_id} onChange={e => onProductSelect(i, e.target.value)} className="w-full rounded border border-slate-200 px-1.5 py-1 text-xs focus:outline-none">
-                                <option value="">— Select Product —</option>
-                                {products.map(p => <option key={p.id} value={p.id}>{p.name} (Stock: {p.current_stock ?? 0})</option>)}
-                              </select>
-                            </td>
-                            <td className="px-1.5 py-1">
-                              <input type="text" value={l.description} onChange={e => updateLine(i, "description", e.target.value)} placeholder="Description" className="w-full rounded border border-slate-200 px-1.5 py-1 text-xs focus:outline-none" />
-                            </td>
-                            <td className="px-1.5 py-1">
-                              <input type="number" min="1" step="1" value={l.quantity} onChange={e => updateLine(i, "quantity", Number(e.target.value))} className="w-full rounded border border-slate-200 px-1.5 py-1 text-xs text-center focus:outline-none" />
-                            </td>
-                            <td className="px-1.5 py-1">
-                              <input type="text" value={l.unit} onChange={e => updateLine(i, "unit", e.target.value)} placeholder="Nos" className="w-full rounded border border-slate-200 px-1.5 py-1 text-xs text-center focus:outline-none" />
-                            </td>
-                            <td className="px-1.5 py-1">
-                              <input type="text" value={l.remarks || ""} onChange={e => updateLine(i, "remarks", e.target.value)} placeholder="e.g. Batch # / Tag" className="w-full rounded border border-slate-200 px-1.5 py-1 text-xs focus:outline-none" />
-                            </td>
-                            <td className="px-1.5 py-1 text-center">
-                              <button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="text-slate-400 hover:text-red-500 disabled:opacity-30">
-                                <X size={14} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <button type="button" onClick={addLine} className="mt-2 flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:border-slate-400">
-                    <Plus size={14} /> Add Line Item
-                  </button>
-                </div>
-
-                {/* Section 4: Receiver Acknowledgement */}
-                <div className="rounded-lg border border-slate-200 p-3.5 space-y-3 bg-slate-50/50">
-                  <div className="text-xs font-bold uppercase text-slate-700">Receiver Acknowledgement</div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Receiver Name</label>
-                      <input type="text" value={form.receiver_name} onChange={e => ff("receiver_name", e.target.value)} placeholder="Person receiving on site" className={inp} />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-slate-700">Receiver Mobile</label>
-                      <input type="text" value={form.receiver_mobile} onChange={e => ff("receiver_mobile", e.target.value)} placeholder="+971 50..." className={inp} />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">Delivery Notes / Remarks</label>
-                  <textarea value={form.notes} onChange={e => ff("notes", e.target.value)} rows={2} className={inp} placeholder="Special delivery instructions or remarks" />
-                </div>
-              </form>
-            </div>
-            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
-              <button type="button" onClick={closeForm} disabled={saving} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">
-                Cancel
-              </button>
-              <button type="submit" form="dn-form" disabled={saving} className="flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
-                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {saving ? "Saving…" : editing ? "Save Changes" : "Create Delivery Note"}
-              </button>
             </div>
           </div>
         </div>

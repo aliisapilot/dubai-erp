@@ -42,6 +42,7 @@ import {
   ElementType,
   DesignerLayoutMode,
 } from "@/lib/documentDesigner";
+import { applyFitBoxWithCollisionClearance } from "@/lib/documentLayoutEngine";
 import { type DocNumberingConfig } from "@/lib/documentNumbering";
 import PageBorderSection from "./PageBorderSection";
 import PrintingSettingsSection from "./PrintingSettingsSection";
@@ -297,6 +298,7 @@ interface RightInspectorProps {
   layout: DocumentLayout;
   selectedElement: LayoutElement | null;
   onUpdateElement: (id: string, patch: Partial<LayoutElement>) => void;
+  onUpdateLayout?: (layout: DocumentLayout) => void;
   onUpdateLayoutBranding: (brandingPatch: Partial<DocumentLayout["branding"]>) => void;
   onUpdatePageSettings: (pagePatch: Partial<DocumentLayout["page"]>) => void;
   onDeleteElement?: (id: string) => void;
@@ -342,6 +344,7 @@ export default function RightInspector({
   layout,
   selectedElement,
   onUpdateElement,
+  onUpdateLayout,
   onUpdateLayoutBranding,
   onUpdatePageSettings,
   onDeleteElement,
@@ -1333,14 +1336,39 @@ export default function RightInspector({
                 if (!domEl) return;
                 const contentEl = (domEl.firstElementChild as HTMLElement) || domEl;
                 const pxPerMm = 3.7795296;
-                const contentHPx = Math.max(contentEl.scrollHeight, contentEl.offsetHeight, domEl.scrollHeight);
+
+                const cs = window.getComputedStyle(contentEl);
+                const padBottom = parseFloat(cs.paddingBottom) || 0;
+                const borderTop = parseFloat(cs.borderTopWidth) || 0;
+                const borderBottom = parseFloat(cs.borderBottomWidth) || 0;
+
+                let maxChildBottom = 0;
+                const children = Array.from(contentEl.children) as HTMLElement[];
+                for (const child of children) {
+                  const bottom = child.offsetTop + child.offsetHeight;
+                  if (bottom > maxChildBottom) maxChildBottom = bottom;
+                }
+
+                const scrollBasedH = contentEl.scrollHeight + padBottom + borderTop + borderBottom;
+                const childBasedH = maxChildBottom > 0 ? (maxChildBottom + padBottom + borderBottom) : 0;
+                const contentHPx = Math.max(scrollBasedH, childBasedH, contentEl.offsetHeight, domEl.scrollHeight);
                 const contentWPx = Math.max(contentEl.scrollWidth, contentEl.offsetWidth, domEl.scrollWidth);
-                const requiredHeightMm = Math.ceil((contentHPx / pxPerMm) * 10) / 10;
+
+                const requiredHeightMm = Math.ceil(((contentHPx / pxPerMm) + 0.4) * 10) / 10;
                 const requiredWidthMm = Math.max(elem.width, Math.ceil((contentWPx / pxPerMm) * 10) / 10);
-                onUpdateElement(elem.id, {
-                  width: requiredWidthMm,
-                  height: Math.max(elem.height, requiredHeightMm),
-                });
+
+                if (onUpdateLayout) {
+                  const nextLayout = applyFitBoxWithCollisionClearance(layout, elem.id, {
+                    widthMm: requiredWidthMm,
+                    heightMm: requiredHeightMm,
+                  });
+                  onUpdateLayout(nextLayout);
+                } else {
+                  onUpdateElement(elem.id, {
+                    width: requiredWidthMm,
+                    height: Math.max(elem.height, requiredHeightMm),
+                  });
+                }
               }}
               className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-indigo-500/50 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 hover:text-white font-bold text-xs transition cursor-pointer shadow-sm disabled:opacity-50"
               title="Measure actual rendered text and rows, and expand the editable box to fit content without clipping"

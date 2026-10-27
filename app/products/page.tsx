@@ -218,7 +218,7 @@ export default function ProductsPage() {
     setEditingMaterial(mat);
 
     const isFab = mat.is_fabric;
-    const isStandardBrand = INITIAL_FABRIC_BRANDS.includes(mat.brand as any);
+    const isStandardBrand = (INITIAL_FABRIC_BRANDS as readonly string[]).includes(mat.brand);
 
     setForm({
       id: mat.id,

@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/refs */
 
 import React, { useRef, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import {
@@ -8,11 +9,7 @@ import {
   Minimize2,
   ChevronLeft,
   ChevronRight,
-  Copy,
-  Trash2,
   Edit3,
-  Lock,
-  Unlock,
 } from "lucide-react";
 import {
   DocumentLayout,
@@ -20,6 +17,7 @@ import {
   getBorderAsLayoutElement,
   normalizePageBorders,
 } from "@/lib/documentDesigner";
+import { applyFitBoxWithCollisionClearance } from "@/lib/documentLayoutEngine";
 import DynamicDocumentRenderer, { getSampleDocumentData } from "../documents/DynamicDocumentRenderer";
 import { CompanyDocInfo } from "../documents/DocHeader";
 
@@ -29,6 +27,7 @@ interface DocumentCanvasProps {
   selectedElementId: string | null;
   onSelectElement: (id: string | null) => void;
   onUpdateElement: (id: string, patch: Partial<LayoutElement>, commitHistory?: boolean) => void;
+  onUpdateLayout?: (layout: DocumentLayout) => void;
   onDuplicateElement?: (elem: LayoutElement) => void;
   onDeleteSelected?: () => void;
   zoom: number;
@@ -62,6 +61,7 @@ export default function DocumentCanvas({
   selectedElementId,
   onSelectElement,
   onUpdateElement,
+  onUpdateLayout,
   onDuplicateElement,
   onDeleteSelected,
   zoom,
@@ -130,7 +130,21 @@ export default function DocumentCanvas({
         if (!domEl) return;
         const contentEl = (domEl.firstElementChild as HTMLElement) || domEl;
 
-        const contentHPx = Math.max(contentEl.scrollHeight, contentEl.offsetHeight, domEl.scrollHeight);
+        const cs = window.getComputedStyle(contentEl);
+        const padBottom = parseFloat(cs.paddingBottom) || 0;
+        const borderTop = parseFloat(cs.borderTopWidth) || 0;
+        const borderBottom = parseFloat(cs.borderBottomWidth) || 0;
+
+        let maxChildBottom = 0;
+        const children = Array.from(contentEl.children) as HTMLElement[];
+        for (const child of children) {
+          const bottom = child.offsetTop + child.offsetHeight;
+          if (bottom > maxChildBottom) maxChildBottom = bottom;
+        }
+
+        const scrollBasedH = contentEl.scrollHeight + padBottom + borderTop + borderBottom;
+        const childBasedH = maxChildBottom > 0 ? (maxChildBottom + padBottom + borderBottom) : 0;
+        const contentHPx = Math.max(scrollBasedH, childBasedH, contentEl.offsetHeight, domEl.scrollHeight);
         const contentWPx = Math.max(contentEl.scrollWidth, contentEl.offsetWidth, domEl.scrollWidth);
 
         const renderedHMm = contentHPx > 0 ? Math.round((contentHPx / pxPerMm) * 10) / 10 : elem.height;
@@ -171,16 +185,24 @@ export default function DocumentCanvas({
     (elem: LayoutElement) => {
       const dim = renderedDimensions[elem.id];
       if (!dim) return;
-      latestOnUpdateElement.current(
-        elem.id,
-        {
-          width: Math.max(elem.width, dim.widthMm),
-          height: Math.max(elem.height, dim.heightMm),
-        },
-        true
-      );
+      if (onUpdateLayout) {
+        const nextLayout = applyFitBoxWithCollisionClearance(latestLayout.current, elem.id, {
+          widthMm: Math.max(elem.width, dim.widthMm),
+          heightMm: Math.max(elem.height, dim.heightMm),
+        });
+        onUpdateLayout(nextLayout);
+      } else {
+        latestOnUpdateElement.current(
+          elem.id,
+          {
+            width: Math.max(elem.width, dim.widthMm),
+            height: Math.max(elem.height, dim.heightMm),
+          },
+          true
+        );
+      }
     },
-    [renderedDimensions, latestOnUpdateElement]
+    [renderedDimensions, onUpdateLayout, latestOnUpdateElement, latestLayout]
   );
 
   const startInlineTotalsEditing = useCallback(

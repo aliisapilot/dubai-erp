@@ -115,9 +115,9 @@ export default function StockMovementsPage() {
       setReversingMovement(null);
       setReversalReason("");
       await loadMovements();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Reversal error:", err);
-      setReversalError(err.message || "Failed to execute reversal.");
+      setReversalError(err instanceof Error ? err.message : "Failed to execute reversal.");
     } finally {
       setReversing(false);
     }

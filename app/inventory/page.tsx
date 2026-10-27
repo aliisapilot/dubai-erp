@@ -47,12 +47,7 @@ export default function InventoryStockPage() {
   // Print State
   const [showPrintModal, setShowPrintModal] = useState(false);
 
-  useEffect(() => {
-    loadInventoryData();
-  }, []);
-
   async function loadInventoryData() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -70,6 +65,11 @@ export default function InventoryStockPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadInventoryData();
+  }, []);
 
   // Brands and categories for filters
   const brands = useMemo(() => {

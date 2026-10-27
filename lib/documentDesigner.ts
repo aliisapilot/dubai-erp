@@ -1145,10 +1145,10 @@ export const DEFAULT_INVOICE_COLUMNS: TableColumnConfig[] = [
   { key: "description", label: "Item Description / البيان", visible: true, widthPct: 40, align: "left" },
   { key: "quantity", label: "Qty", visible: true, widthPct: 8, align: "center" },
   { key: "unit", label: "Unit", visible: true, widthPct: 8, align: "center" },
-  { key: "unit_price", label: "Rate (AED)", visible: true, widthPct: 12, align: "right" },
-  { key: "discount", label: "Disc.", visible: false, widthPct: 8, align: "right" },
-  { key: "vat_amount", label: "VAT (5%)", visible: true, widthPct: 11, align: "right" },
-  { key: "line_total", label: "Total (AED)", visible: true, widthPct: 16, align: "right" },
+  { key: "unit_price", label: "Rate (AED)", visible: true, widthPct: 12, align: "center" },
+  { key: "discount", label: "Disc.", visible: false, widthPct: 8, align: "center" },
+  { key: "vat_amount", label: "VAT (5%)", visible: true, widthPct: 11, align: "center" },
+  { key: "line_total", label: "Total (AED)", visible: true, widthPct: 16, align: "center" },
 ];
 
 export const DEFAULT_DELIVERY_COLUMNS: TableColumnConfig[] = [
@@ -1171,7 +1171,7 @@ export const DEFAULT_STATEMENT_COLUMNS: TableColumnConfig[] = [
 export const DEFAULT_SALARY_COLUMNS: TableColumnConfig[] = [
   { key: "index", label: "#", visible: true, widthPct: 8, align: "center" },
   { key: "description", label: "Earnings / Deductions", visible: true, widthPct: 62, align: "left" },
-  { key: "line_total", label: "Amount (AED)", visible: true, widthPct: 30, align: "right" },
+  { key: "line_total", label: "Amount (AED)", visible: true, widthPct: 30, align: "center" },
 ];
 
 export const DEFAULT_MEASUREMENT_COLUMNS: TableColumnConfig[] = [
@@ -1181,9 +1181,9 @@ export const DEFAULT_MEASUREMENT_COLUMNS: TableColumnConfig[] = [
   { key: "dimensions", label: "Dimensions", visible: true, widthPct: 16, align: "center" },
   { key: "quantity", label: "Qty", visible: true, widthPct: 8, align: "center" },
   { key: "calc_type", label: "Calculation Type & Formula", visible: false, widthPct: 18, align: "left" },
-  { key: "result", label: "Result & Unit", visible: true, widthPct: 12, align: "right" },
-  { key: "rate", label: "Rate (AED)", visible: true, widthPct: 6, align: "right" },
-  { key: "line_total", label: "Amount (AED)", visible: true, widthPct: 8, align: "right" },
+  { key: "result", label: "Result & Unit", visible: true, widthPct: 12, align: "center" },
+  { key: "rate", label: "Rate (AED)", visible: true, widthPct: 6, align: "center" },
+  { key: "line_total", label: "Amount (AED)", visible: true, widthPct: 8, align: "center" },
 ];
 
 type ElementOverrides = Record<string, Partial<LayoutElement>>;
@@ -1426,7 +1426,7 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       locked: false,
       lockAspectRatio: true,
       zIndex: 1,
-      opacity: 0.045,
+      opacity: 0.08,
       imageFit: "contain",
     },
 
@@ -2058,7 +2058,7 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
     }
 
     if (el.type === "watermark") {
-      el.opacity = Math.min(el.opacity ?? 0.045, 0.05);
+      el.opacity = typeof el.opacity === "number" ? Math.max(0.01, Math.min(el.opacity, 0.6)) : (layout.page?.watermarkOpacity ?? 0.08);
       el.lockAspectRatio = true;
     }
 

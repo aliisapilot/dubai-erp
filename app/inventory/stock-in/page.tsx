@@ -76,14 +76,37 @@ function StockInForm() {
 
   // Print GRN State
   const [printGrnData, setPrintGrnData] = useState<GoodsReceiptNoteData | null>(null);
-  const [recentMovements, setRecentMovements] = useState<any[]>([]);
+  interface RecentMovementItem {
+    id: string;
+    created_at: string;
+    quantity: number;
+    previous_stock: number;
+    new_stock: number;
+    unit_cost: number;
+    reference_type: string;
+    reference_number: string;
+    notes: string;
+    products?: {
+      name: string;
+      sku: string;
+      unit: string;
+      category: string;
+    } | null;
+  }
+  const [recentMovements, setRecentMovements] = useState<RecentMovementItem[]>([]);
 
-  useEffect(() => {
-    loadInitialData();
-  }, []);
+  async function loadRecentMovements(companyId: string) {
+    const { data } = await supabase
+      .from("stock_movements")
+      .select("id, created_at, quantity, previous_stock, new_stock, unit_cost, reference_type, reference_number, notes, products(name, sku, unit, category)")
+      .eq("company_id", companyId)
+      .eq("movement_type", "IN")
+      .order("created_at", { ascending: false })
+      .limit(8);
+    setRecentMovements((data as unknown as RecentMovementItem[]) || []);
+  }
 
   async function loadInitialData() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -107,16 +130,10 @@ function StockInForm() {
     }
   }
 
-  async function loadRecentMovements(companyId: string) {
-    const { data } = await supabase
-      .from("stock_movements")
-      .select("id, created_at, quantity, previous_stock, new_stock, unit_cost, reference_type, reference_number, notes, products(name, sku, unit, category)")
-      .eq("company_id", companyId)
-      .eq("movement_type", "IN")
-      .order("created_at", { ascending: false })
-      .limit(8);
-    setRecentMovements(data || []);
-  }
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadInitialData();
+  }, []);
 
   const selectedMaterial = materials.find((m) => m.id === selectedMaterialId);
   const fabricWidth = selectedMaterial?.fabric_width || 3.0;
@@ -276,9 +293,9 @@ function StockInForm() {
       const mats = await getMaterialsList(companyId);
       setMaterials(mats);
       await loadRecentMovements(companyId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Stock In submission error:", err);
-      setErrorMsg(err.message || "Failed to confirm stock in.");
+      setErrorMsg(err instanceof Error ? err.message : "Failed to confirm stock in.");
     } finally {
       setSubmitting(false);
     }
@@ -584,7 +601,7 @@ function StockInForm() {
                 <label className="text-xs font-medium text-slate-300 block mb-1">Rate Unit</label>
                 <select
                   value={rateUnit}
-                  onChange={(e) => setRateUnit(e.target.value as any)}
+                  onChange={(e) => setRateUnit(e.target.value as "per_sqm" | "per_rm" | "per_roll" | "per_unit")}
                   className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
                 >
                   <option value="per_sqm">Per Square Metre (m²)</option>

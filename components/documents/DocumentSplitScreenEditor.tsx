@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   X,
   Save,
@@ -10,19 +10,18 @@ import {
   Trash2,
   ZoomIn,
   ZoomOut,
-  Maximize2,
-  Minimize2,
   AlertTriangle,
   CheckCircle2,
   Loader2,
-  Eye,
   ChevronLeft,
   ChevronRight,
-  Layers,
-  ArrowRight,
   Pencil,
+  Maximize2,
+  Minimize2,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
-import { DocumentTypeId, DocumentLayout } from "@/lib/documentDesigner";
+import { DocumentTypeId } from "@/lib/documentDesigner";
 import { CompanyDocInfo } from "./DocHeader";
 import DynamicDocumentRenderer, {
   MockDocumentData,
@@ -57,20 +56,63 @@ export interface DocumentEditorFormState {
   terms?: string;
 }
 
+export const PRESET_PAYMENT_TERMS = [
+  {
+    name: "50% Advance / 50% Balance (Standard)",
+    terms: [
+      "Advance 50% to be released along with order confirmation.",
+      "Balance 50% to be released after completion.",
+    ],
+  },
+  {
+    name: "100% Advance Payment",
+    terms: ["100% advance payment against proforma invoice."],
+  },
+  {
+    name: "30 Days Credit",
+    terms: ["100% payment within 30 days from invoice date."],
+  },
+  {
+    name: "30% Advance / 60% Delivery / 10% Handover",
+    terms: [
+      "30% advance on confirmation.",
+      "60% upon delivery of materials at site.",
+      "10% after completion & handover.",
+    ],
+  },
+  {
+    name: "Cash on Delivery (COD)",
+    terms: ["100% payment on delivery and physical inspection."],
+  },
+];
+
 export interface DocumentSplitScreenEditorProps {
   isOpen: boolean;
   onClose: () => void;
   documentType: DocumentTypeId;
   documentTitle?: string;
+  documentNumberLabel?: string;
   company: CompanyDocInfo | null;
   initialInvoice?: {
     id?: string;
     invoice_number?: string | null;
+    quotation_number?: string | null;
+    proforma_number?: string | null;
+    purchase_order_number?: string | null;
+    delivery_note_number?: string | null;
     customer_id?: string | null;
+    supplier_id?: string | null;
     project_id?: string | null;
     invoice_date?: string | null;
+    quotation_date?: string | null;
+    proforma_date?: string | null;
+    order_date?: string | null;
+    delivery_date?: string | null;
     supply_date?: string | null;
     due_date?: string | null;
+    valid_until?: string | null;
+    expiry_date?: string | null;
+    expected_date?: string | null;
     payment_terms?: string | null;
     status?: string | null;
     notes?: string | null;
@@ -80,7 +122,7 @@ export interface DocumentSplitScreenEditorProps {
     total_amount?: number | null;
   } | null;
   initialLines?: EditorLineItem[];
-  customers: Array<{
+  customers?: Array<{
     id: string;
     name: string | null;
     customer_code?: string | null;
@@ -92,12 +134,26 @@ export interface DocumentSplitScreenEditorProps {
     email?: string | null;
     active?: boolean | null;
   }>;
+  suppliers?: Array<{
+    id: string;
+    name: string | null;
+    supplier_code?: string | null;
+    trn?: string | null;
+    address?: string | null;
+    contact_person?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    active?: boolean | null;
+  }>;
+  partyType?: "customer" | "supplier";
+  partyLabel?: string;
   projects?: Array<{ id: string; project_number: string; name: string }>;
   products?: Array<{
     id: string;
     name: string | null;
     sku?: string | null;
     selling_price?: number | null;
+    cost_price?: number | null;
     vat_rate?: number | null;
     unit?: string | null;
   }>;
@@ -140,14 +196,27 @@ function recalc(item: EditorLineItem): EditorLineItem {
   };
 }
 
+function parseTermsToList(raw?: string | null): string[] {
+  if (!raw) return [];
+  const lines = raw
+    .split(/\r?\n/)
+    .map((t) => t.trim().replace(/^[-•*➢]\s*/, ""))
+    .filter(Boolean);
+  return lines.length > 0 ? lines : [];
+}
+
 function DocumentSplitScreenEditorWorkspace({
   onClose,
   documentType,
-  documentTitle = "Tax Invoice",
+  documentTitle = "Document",
+  documentNumberLabel,
   company,
   initialInvoice,
   initialLines,
-  customers,
+  customers = [],
+  suppliers = [],
+  partyType = "customer",
+  partyLabel,
   projects = [],
   products = [],
   onSave,
@@ -156,17 +225,46 @@ function DocumentSplitScreenEditorWorkspace({
 }: DocumentSplitScreenEditorProps) {
   const design = usePersistedDocumentDesign(company?.id, documentType);
 
+  const effectiveDocNumber =
+    initialInvoice?.invoice_number ||
+    initialInvoice?.quotation_number ||
+    initialInvoice?.proforma_number ||
+    initialInvoice?.purchase_order_number ||
+    initialInvoice?.delivery_note_number ||
+    null;
+
+  const initialPrimaryDate =
+    initialInvoice?.invoice_date ||
+    initialInvoice?.quotation_date ||
+    initialInvoice?.proforma_date ||
+    initialInvoice?.order_date ||
+    initialInvoice?.delivery_date ||
+    todayISO();
+
+  const initialSecondaryDate =
+    initialInvoice?.supply_date ||
+    initialInvoice?.valid_until ||
+    initialInvoice?.expiry_date ||
+    initialInvoice?.expected_date ||
+    todayISO();
+
   const [form, setForm] = useState<DocumentEditorFormState>(() => ({
-    customer_id: initialInvoice?.customer_id || "",
+    customer_id: initialInvoice?.customer_id || initialInvoice?.supplier_id || "",
     project_id: initialInvoice?.project_id || "",
-    invoice_date: initialInvoice?.invoice_date || todayISO(),
-    supply_date: initialInvoice?.supply_date || todayISO(),
+    invoice_date: initialPrimaryDate,
+    supply_date: initialSecondaryDate,
     due_date: initialInvoice?.due_date || "",
     payment_terms: initialInvoice?.payment_terms || "30 days",
     status: initialInvoice?.status || "draft",
     notes: initialInvoice?.notes || "",
     terms: initialInvoice?.terms || "",
   }));
+
+  // Editable bullet terms state
+  const [termsList, setTermsList] = useState<string[]>(() => {
+    const parsed = parseTermsToList(initialInvoice?.payment_terms);
+    return parsed.length > 0 ? parsed : [initialInvoice?.payment_terms || "30 days"];
+  });
 
   const [lines, setLines] = useState<EditorLineItem[]>(() => {
     if (initialLines && initialLines.length > 0) {
@@ -176,18 +274,28 @@ function DocumentSplitScreenEditorWorkspace({
   });
 
   const [activeTabMobile, setActiveTabMobile] = useState<"form" | "preview">("form");
+  const [previewFullscreen, setPreviewFullscreen] = useState<boolean>(false);
   const [zoom, setZoom] = useState<number>(0.85);
   const [previewPage, setPreviewPage] = useState<number>(1);
   const [dirty, setDirty] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
 
-  const isIssued = (initialInvoice?.status || "").toLowerCase() === "issued" || (initialInvoice?.status || "") === "Final";
+  const isIssuedOriginal =
+    (initialInvoice?.status || "").toLowerCase() === "issued" ||
+    (initialInvoice?.status || "") === "Final" ||
+    (initialInvoice?.status || "").toLowerCase() === "paid" ||
+    (initialInvoice?.status || "").toLowerCase() === "partially_paid";
+
+  const [isUnlockedForEdit, setIsUnlockedForEdit] = useState<boolean>(!isIssuedOriginal);
+  const isFormDisabled = isIssuedOriginal && !isUnlockedForEdit;
 
   // Lookup maps
   const custMap = useMemo(() => Object.fromEntries(customers.map((c) => [c.id, c])), [customers]);
+  const suppMap = useMemo(() => Object.fromEntries(suppliers.map((s) => [s.id, s])), [suppliers]);
   const projMap = useMemo(() => Object.fromEntries(projects.map((p) => [p.id, p])), [projects]);
 
-  const selectedCustomer = custMap[form.customer_id];
+  const selectedCustomer = partyType === "customer" ? custMap[form.customer_id] : null;
+  const selectedSupplier = partyType === "supplier" ? suppMap[form.customer_id] : null;
   const selectedProject = projMap[form.project_id];
 
   // Financial calculations
@@ -210,14 +318,17 @@ function DocumentSplitScreenEditorWorkspace({
                 product_id: pid,
                 description: prod?.name || l.description,
                 unit: prod?.unit || l.unit || "Nos",
-                unit_price: prod?.selling_price ?? l.unit_price,
+                unit_price:
+                  partyType === "supplier"
+                    ? prod?.cost_price ?? prod?.selling_price ?? l.unit_price
+                    : prod?.selling_price ?? l.unit_price,
                 vat_rate: prod?.vat_rate ?? 5,
               })
         )
       );
       setDirty(true);
     },
-    [products]
+    [products, partyType]
   );
 
   const handleUpdateLine = useCallback((idx: number, patch: Partial<EditorLineItem>) => {
@@ -243,10 +354,76 @@ function DocumentSplitScreenEditorWorkspace({
     setDirty(true);
   };
 
+  // Payment terms bullet manipulation handlers
+  const syncTerms = (newList: string[]) => {
+    setTermsList(newList);
+    const joined = newList.filter((t) => t.trim().length > 0).join("\n");
+    setForm((prev) => ({ ...prev, payment_terms: joined }));
+    setDirty(true);
+  };
+
+  const handleAddTerm = () => {
+    syncTerms([...termsList, ""]);
+  };
+
+  const handleUpdateTerm = (idx: number, val: string) => {
+    const updated = [...termsList];
+    updated[idx] = val;
+    syncTerms(updated);
+  };
+
+  const handleRemoveTerm = (idx: number) => {
+    const updated = termsList.filter((_, i) => i !== idx);
+    syncTerms(updated.length > 0 ? updated : [""]);
+  };
+
+  const handleMoveTerm = (idx: number, dir: -1 | 1) => {
+    const targetIdx = idx + dir;
+    if (targetIdx < 0 || targetIdx >= termsList.length) return;
+    const updated = [...termsList];
+    const [moved] = updated.splice(idx, 1);
+    updated.splice(targetIdx, 0, moved);
+    syncTerms(updated);
+  };
+
+  const handleApplyPreset = (presetTerms: string[]) => {
+    syncTerms([...presetTerms]);
+  };
+
   // Construct real-time MockDocumentData for the Live PDF preview
   const previewData: MockDocumentData = useMemo(() => {
-    const isNew = !initialInvoice?.invoice_number;
-    const effectiveNumber = isNew ? "[DRAFT - Assigned on Save]" : initialInvoice.invoice_number || "INV";
+    const isNew = !effectiveDocNumber;
+    const effectiveNumber = isNew ? "[DRAFT - Assigned on Save]" : effectiveDocNumber;
+
+    const partyName =
+      partyType === "supplier"
+        ? selectedSupplier?.name || "Supplier / Vendor Name"
+        : selectedCustomer?.name || "Customer / Client Name";
+
+    const partyTrn =
+      partyType === "supplier"
+        ? selectedSupplier?.trn || undefined
+        : selectedCustomer?.trn || undefined;
+
+    const partyAddress =
+      partyType === "supplier"
+        ? selectedSupplier?.address || undefined
+        : selectedCustomer?.address || undefined;
+
+    const partyContact =
+      partyType === "supplier"
+        ? selectedSupplier?.contact_person || undefined
+        : selectedCustomer?.contact_person || undefined;
+
+    const partyPhone =
+      partyType === "supplier"
+        ? selectedSupplier?.phone || undefined
+        : selectedCustomer?.phone || selectedCustomer?.mobile || undefined;
+
+    const partyEmail =
+      partyType === "supplier"
+        ? selectedSupplier?.email || undefined
+        : selectedCustomer?.email || undefined;
 
     return {
       document_number: effectiveNumber,
@@ -254,12 +431,12 @@ function DocumentSplitScreenEditorWorkspace({
       supply_date: form.supply_date,
       due_date: form.due_date,
       status: form.status,
-      customer_name: selectedCustomer?.name || "Customer / Client Name",
-      customer_trn: selectedCustomer?.trn || undefined,
-      customer_address: selectedCustomer?.address || undefined,
-      contact_person: selectedCustomer?.contact_person || undefined,
-      contact_number: selectedCustomer?.phone || selectedCustomer?.mobile || undefined,
-      contact_email: selectedCustomer?.email || undefined,
+      customer_name: partyName,
+      customer_trn: partyTrn,
+      customer_address: partyAddress,
+      contact_person: partyContact,
+      contact_number: partyPhone,
+      contact_email: partyEmail,
       project_name: selectedProject?.name || undefined,
       project_number: selectedProject?.project_number || undefined,
       payment_terms: form.payment_terms,
@@ -278,11 +455,25 @@ function DocumentSplitScreenEditorWorkspace({
         line_total: l.line_total,
       })),
     };
-  }, [initialInvoice, form, selectedCustomer, selectedProject, totals, lines]);
+  }, [
+    effectiveDocNumber,
+    partyType,
+    selectedCustomer,
+    selectedSupplier,
+    selectedProject,
+    form,
+    totals,
+    lines,
+  ]);
 
   const totalPreviewPages = useMemo(() => {
     if (!design.layout) return 1;
-    return getDocumentPageCount(design.layout, previewData.items.length, previewData.items, previewData);
+    return getDocumentPageCount(
+      design.layout,
+      previewData.items.length,
+      previewData.items,
+      previewData
+    );
   }, [design.layout, previewData]);
 
   const handleClose = () => {
@@ -296,7 +487,7 @@ function DocumentSplitScreenEditorWorkspace({
 
   const handleSaveDocument = async (targetStatus?: string) => {
     if (!form.customer_id) {
-      setError("Please select a customer.");
+      setError(`Please select a ${partyLabel || (partyType === "supplier" ? "supplier" : "customer")}.`);
       return;
     }
     if (lines.length === 0 || !lines[0].description) {
@@ -320,6 +511,29 @@ function DocumentSplitScreenEditorWorkspace({
     window.print();
   };
 
+  // Label helpers based on document type
+  const primaryDateLabel =
+    documentType === "quotation"
+      ? "Quotation Date"
+      : documentType === "proforma_invoice"
+      ? "Proforma Date"
+      : documentType === "purchase_order"
+      ? "Order Date"
+      : documentType === "delivery_note"
+      ? "Delivery Date"
+      : "Invoice Date";
+
+  const secondaryDateLabel =
+    documentType === "quotation"
+      ? "Valid Until / Expiry Date"
+      : documentType === "proforma_invoice"
+      ? "Valid Until"
+      : documentType === "purchase_order"
+      ? "Expected Delivery Date"
+      : documentType === "delivery_note"
+      ? "Dispatch Date"
+      : "Date of Supply";
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-150">
       {/* ── Top Header Bar ────────────────────────────────────────────────────────── */}
@@ -331,20 +545,20 @@ function DocumentSplitScreenEditorWorkspace({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold tracking-wide">
-                {initialInvoice ? `Edit ${documentTitle}` : `New ${documentTitle}`}
+                {effectiveDocNumber ? `Edit ${documentTitle}` : `New ${documentTitle}`}
               </h2>
               <span className="font-mono text-xs rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-slate-300">
-                {initialInvoice?.invoice_number || "[Draft Preview]"}
+                {effectiveDocNumber || "[Draft Preview]"}
               </span>
-              {initialInvoice?.invoice_number && onRename && (
+              {effectiveDocNumber && onRename && (
                 <button
                   type="button"
                   onClick={onRename}
-                  className="text-xs font-semibold text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1 cursor-pointer"
-                  title="Safely rename invoice reference number with collision check"
+                  className="flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 px-2.5 py-0.5 text-xs font-bold text-amber-300 transition cursor-pointer"
+                  title="Edit document reference number independently"
                 >
                   <Pencil size={11} />
-                  <span>Edit #</span>
+                  <span>Edit Number</span>
                 </button>
               )}
               {dirty ? (
@@ -355,7 +569,7 @@ function DocumentSplitScreenEditorWorkspace({
               ) : (
                 <span className="flex items-center gap-1 text-[11px] text-slate-400">
                   <CheckCircle2 size={12} className="text-emerald-400" />
-                  Synced
+                  Live Sync
                 </span>
               )}
             </div>
@@ -399,7 +613,7 @@ function DocumentSplitScreenEditorWorkspace({
           <button
             type="button"
             onClick={() => handleSaveDocument("draft")}
-            disabled={saving || isIssued}
+            disabled={saving || isFormDisabled}
             className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white cursor-pointer disabled:opacity-50"
             title="Save as Draft"
           >
@@ -410,11 +624,11 @@ function DocumentSplitScreenEditorWorkspace({
           <button
             type="button"
             onClick={() => handleSaveDocument()}
-            disabled={saving || isIssued}
+            disabled={saving || isFormDisabled}
             className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 text-xs font-bold text-white shadow-md transition cursor-pointer disabled:opacity-50"
           >
             {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-            <span>{saving ? "Saving…" : initialInvoice ? "Save Changes" : "Save Document"}</span>
+            <span>{saving ? "Saving…" : effectiveDocNumber ? "Save Changes" : "Save Document"}</span>
           </button>
 
           <button
@@ -432,9 +646,9 @@ function DocumentSplitScreenEditorWorkspace({
       <div className="relative flex flex-1 overflow-hidden">
         {/* LEFT PANEL: Editable Document Form */}
         <div
-          className={`flex flex-col border-r border-slate-800 bg-slate-900/90 text-slate-200 overflow-y-auto designer-scrollbar w-full lg:w-1/2 ${
-            activeTabMobile === "form" ? "block" : "hidden lg:flex"
-          }`}
+          className={`flex flex-col border-r border-slate-800 bg-slate-900/90 text-slate-200 overflow-y-auto designer-scrollbar ${
+            previewFullscreen ? "hidden" : "w-full lg:w-1/2"
+          } ${activeTabMobile === "form" ? "block" : "hidden lg:flex"}`}
         >
           <div className="p-5 space-y-5">
             {error && (
@@ -446,43 +660,100 @@ function DocumentSplitScreenEditorWorkspace({
               </div>
             )}
 
-            {isIssued && (
-              <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-xs text-amber-300 flex items-center gap-2">
-                <AlertTriangle size={16} className="text-amber-400 shrink-0" />
-                <span>
-                  This document is Finalized/Issued. Financial details are locked to preserve accounting integrity.
-                  To modify, cancel this document and create a replacement or credit note.
-                </span>
+            {isIssuedOriginal && (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3.5 text-xs text-amber-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-bold text-amber-300">
+                    <AlertTriangle size={16} />
+                    <span>Issued Document Accounting Controls</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsUnlockedForEdit(!isUnlockedForEdit)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      isUnlockedForEdit
+                        ? "bg-amber-500 text-slate-950 hover:bg-amber-400"
+                        : "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40"
+                    }`}
+                  >
+                    <Pencil size={12} />
+                    <span>{isUnlockedForEdit ? "Lock Editing" : "Unlock for Editing"}</span>
+                  </button>
+                </div>
+                <p className="text-[11px] leading-relaxed text-amber-200/90">
+                  {isUnlockedForEdit
+                    ? "Document unlocked for amendment. You can modify line items, quantities, rates, details, or dates. Changes are reflected in real-time in the live preview."
+                    : "This document is marked as Issued/Final. In accordance with accounting controls, fields are locked by default. Click 'Unlock for Editing' above to amend details."}
+                </p>
               </div>
             )}
 
             {/* Document Metadata Card */}
             <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-4">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-                <span>Document Details</span>
+                <span>{documentTitle} Details</span>
                 <span className="text-[10px] text-amber-400 font-mono">Live Sync Active</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {/* Customer Selection */}
+                {/* Reference Number */}
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Customer / Client <span className="text-rose-400">*</span>
+                    {documentNumberLabel || `${documentTitle} Reference Number`}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-2 text-xs font-mono font-bold text-emerald-400">
+                      {effectiveDocNumber || "[Draft - Generated on Save]"}
+                    </div>
+                    {effectiveDocNumber && onRename && (
+                      <button
+                        type="button"
+                        onClick={onRename}
+                        className="flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 px-3.5 py-2 text-xs font-bold transition cursor-pointer"
+                        title="Edit Number independently"
+                      >
+                        <Pencil size={12} />
+                        <span>Edit Number</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Party (Customer / Supplier) Selection */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                    {partyLabel || (partyType === "supplier" ? "Supplier / Vendor" : "Customer / Client")}{" "}
+                    <span className="text-rose-400">*</span>
                   </label>
                   <select
                     value={form.customer_id}
                     onChange={(e) => handleFormChange("customer_id", e.target.value)}
-                    disabled={isIssued}
+                    disabled={isFormDisabled}
                     className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
                   >
-                    <option value="">— Select Customer —</option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} {c.trn ? `(TRN: ${c.trn})` : ""}
-                      </option>
-                    ))}
+                    <option value="">
+                      — Select {partyLabel || (partyType === "supplier" ? "Supplier" : "Customer")} —
+                    </option>
+                    {partyType === "supplier"
+                      ? suppliers.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} {s.trn ? `(TRN: ${s.trn})` : ""}
+                          </option>
+                        ))
+                      : customers.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.trn ? `(TRN: ${c.trn})` : ""}
+                          </option>
+                        ))}
                   </select>
-                  {selectedCustomer && (
+                  {partyType === "supplier" && selectedSupplier && (
+                    <div className="mt-1.5 flex flex-wrap gap-2 text-[10px] text-slate-400">
+                      {selectedSupplier.trn && <span>TRN: <strong className="text-slate-200">{selectedSupplier.trn}</strong></span>}
+                      {selectedSupplier.phone && <span>Tel: {selectedSupplier.phone}</span>}
+                      {selectedSupplier.address && <span className="truncate max-w-xs">{selectedSupplier.address}</span>}
+                    </div>
+                  )}
+                  {partyType === "customer" && selectedCustomer && (
                     <div className="mt-1.5 flex flex-wrap gap-2 text-[10px] text-slate-400">
                       {selectedCustomer.trn && <span>TRN: <strong className="text-slate-200">{selectedCustomer.trn}</strong></span>}
                       {selectedCustomer.phone && <span>Tel: {selectedCustomer.phone}</span>}
@@ -499,7 +770,7 @@ function DocumentSplitScreenEditorWorkspace({
                   <select
                     value={form.project_id}
                     onChange={(e) => handleFormChange("project_id", e.target.value)}
-                    disabled={isIssued}
+                    disabled={isFormDisabled}
                     className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
                   >
                     <option value="">— General / No Project —</option>
@@ -519,57 +790,43 @@ function DocumentSplitScreenEditorWorkspace({
                   <select
                     value={form.status}
                     onChange={(e) => handleFormChange("status", e.target.value)}
-                    disabled={isIssued}
+                    disabled={isFormDisabled}
                     className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
                   >
                     <option value="draft">Draft</option>
+                    <option value="sent">Sent</option>
+                    <option value="accepted">Accepted / Approved</option>
                     <option value="issued">Final / Issued</option>
                     <option value="partially_paid">Partially Paid</option>
                     <option value="paid">Paid</option>
                     <option value="cancelled">Cancelled</option>
-                    <option value="overdue">Overdue</option>
                   </select>
                 </div>
 
-                {/* Document Date */}
+                {/* Primary Document Date */}
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Invoice Date
+                    {primaryDateLabel}
                   </label>
                   <input
                     type="date"
                     value={form.invoice_date}
                     onChange={(e) => handleFormChange("invoice_date", e.target.value)}
-                    disabled={isIssued}
+                    disabled={isFormDisabled}
                     className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
                   />
                 </div>
 
-                {/* Supply Date */}
+                {/* Secondary Date */}
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Date of Supply
+                    {secondaryDateLabel}
                   </label>
                   <input
                     type="date"
                     value={form.supply_date}
                     onChange={(e) => handleFormChange("supply_date", e.target.value)}
-                    disabled={isIssued}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-
-                {/* Payment Terms */}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Payment Terms
-                  </label>
-                  <input
-                    type="text"
-                    value={form.payment_terms}
-                    onChange={(e) => handleFormChange("payment_terms", e.target.value)}
-                    placeholder="e.g. 50% Advance, Balance on Delivery / 30 Days"
-                    disabled={isIssued}
+                    disabled={isFormDisabled}
                     className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
                   />
                 </div>
@@ -595,10 +852,10 @@ function DocumentSplitScreenEditorWorkspace({
                       <th className="px-2.5 py-2">Item Description</th>
                       <th className="px-2.5 py-2 w-16 text-center">Qty</th>
                       <th className="px-2.5 py-2 w-14 text-center">Unit</th>
-                      <th className="px-2.5 py-2 w-20 text-right">Price</th>
+                      <th className="px-2.5 py-2 w-20 text-center">Rate</th>
                       <th className="px-2.5 py-2 w-14 text-center">Disc%</th>
                       <th className="px-2.5 py-2 w-14 text-center">VAT%</th>
-                      <th className="px-2.5 py-2 w-20 text-right">Total</th>
+                      <th className="px-2.5 py-2 w-20 text-center">Total</th>
                       <th className="px-1.5 py-2 w-8"></th>
                     </tr>
                   </thead>
@@ -610,7 +867,7 @@ function DocumentSplitScreenEditorWorkspace({
                           <select
                             value={l.product_id}
                             onChange={(e) => handleProductSelect(idx, e.target.value)}
-                            disabled={isIssued}
+                            disabled={isFormDisabled}
                             className="w-full rounded border border-slate-700 bg-slate-800 px-1.5 py-1 text-[11px] text-white focus:outline-none"
                           >
                             <option value="">— Custom —</option>
@@ -629,7 +886,7 @@ function DocumentSplitScreenEditorWorkspace({
                             value={l.description}
                             onChange={(e) => handleUpdateLine(idx, { description: e.target.value })}
                             placeholder="Description"
-                            disabled={isIssued}
+                            disabled={isFormDisabled}
                             className="w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] font-sans text-white focus:outline-none resize-y min-h-[28px]"
                             required
                           />
@@ -643,7 +900,7 @@ function DocumentSplitScreenEditorWorkspace({
                             step={1}
                             value={l.quantity}
                             onChange={(e) => handleUpdateLine(idx, { quantity: Number(e.target.value) || 1 })}
-                            disabled={isIssued}
+                            disabled={isFormDisabled}
                             className="w-full rounded border border-slate-700 bg-slate-800 px-1 py-1 text-center text-white focus:outline-none"
                           />
                         </td>
@@ -655,12 +912,12 @@ function DocumentSplitScreenEditorWorkspace({
                             value={l.unit}
                             onChange={(e) => handleUpdateLine(idx, { unit: e.target.value })}
                             placeholder="pcs"
-                            disabled={isIssued}
+                            disabled={isFormDisabled}
                             className="w-full rounded border border-slate-700 bg-slate-800 px-1 py-1 text-center text-white focus:outline-none"
                           />
                         </td>
 
-                        {/* Price */}
+                        {/* Rate (AED) - Centered */}
                         <td className="p-1">
                           <input
                             type="number"
@@ -668,12 +925,12 @@ function DocumentSplitScreenEditorWorkspace({
                             step={0.01}
                             value={l.unit_price}
                             onChange={(e) => handleUpdateLine(idx, { unit_price: Number(e.target.value) || 0 })}
-                            disabled={isIssued}
-                            className="w-full rounded border border-slate-700 bg-slate-800 px-1.5 py-1 text-right text-white focus:outline-none"
+                            disabled={isFormDisabled}
+                            className="w-full rounded border border-slate-700 bg-slate-800 px-1.5 py-1 text-center font-mono text-white focus:outline-none"
                           />
                         </td>
 
-                        {/* Disc% */}
+                        {/* Disc% - Centered */}
                         <td className="p-1">
                           <input
                             type="number"
@@ -682,12 +939,12 @@ function DocumentSplitScreenEditorWorkspace({
                             step={0.5}
                             value={l.discount_pct}
                             onChange={(e) => handleUpdateLine(idx, { discount_pct: Number(e.target.value) || 0 })}
-                            disabled={isIssued}
+                            disabled={isFormDisabled}
                             className="w-full rounded border border-slate-700 bg-slate-800 px-1 py-1 text-center text-white focus:outline-none"
                           />
                         </td>
 
-                        {/* VAT% */}
+                        {/* VAT% - Centered */}
                         <td className="p-1">
                           <input
                             type="number"
@@ -696,13 +953,13 @@ function DocumentSplitScreenEditorWorkspace({
                             step={1}
                             value={l.vat_rate}
                             onChange={(e) => handleUpdateLine(idx, { vat_rate: Number(e.target.value) || 0 })}
-                            disabled={isIssued}
+                            disabled={isFormDisabled}
                             className="w-full rounded border border-slate-700 bg-slate-800 px-1 py-1 text-center text-amber-300 focus:outline-none"
                           />
                         </td>
 
-                        {/* Line Total */}
-                        <td className="px-2 py-1 text-right font-bold text-slate-100 whitespace-nowrap">
+                        {/* Total (AED) - Centered */}
+                        <td className="px-2 py-1 text-center font-bold text-slate-100 whitespace-nowrap font-mono">
                           {l.line_total.toFixed(2)}
                         </td>
 
@@ -711,7 +968,7 @@ function DocumentSplitScreenEditorWorkspace({
                           <button
                             type="button"
                             onClick={() => handleRemoveLine(idx)}
-                            disabled={isIssued || lines.length <= 1}
+                            disabled={isFormDisabled || lines.length <= 1}
                             className="text-slate-500 hover:text-rose-400 disabled:opacity-20 cursor-pointer"
                             title="Remove Line"
                           >
@@ -724,7 +981,7 @@ function DocumentSplitScreenEditorWorkspace({
                 </table>
               </div>
 
-              {!isIssued && (
+              {!isFormDisabled && (
                 <button
                   type="button"
                   onClick={handleAddLine}
@@ -754,6 +1011,102 @@ function DocumentSplitScreenEditorWorkspace({
               </div>
             </div>
 
+            {/* ── Editable Payment Terms Section (Bulleted in PDF) ───────────────── */}
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-400 text-xs font-bold">➢</span>
+                  <label className="text-xs font-bold text-white tracking-wide">
+                    Payment Terms
+                  </label>
+                  <span className="text-[10px] text-slate-400">
+                    (Rendered as bullet list with ➢ heading in PDF)
+                  </span>
+                </div>
+
+                {/* Preset Templates Selector */}
+                <div className="flex items-center gap-1.5">
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        const found = PRESET_PAYMENT_TERMS.find((p) => p.name === e.target.value);
+                        if (found) handleApplyPreset(found.terms);
+                        e.target.value = "";
+                      }
+                    }}
+                    disabled={isFormDisabled}
+                    className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-[11px] font-medium text-amber-300 focus:outline-none cursor-pointer hover:bg-slate-750"
+                  >
+                    <option value="">⚡ Load Preset Template…</option>
+                    {PRESET_PAYMENT_TERMS.map((p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Dynamic Bullets List */}
+              <div className="space-y-2">
+                {termsList.map((term, tIdx) => (
+                  <div key={tIdx} className="flex items-center gap-2">
+                    <span className="text-slate-500 font-bold text-xs select-none">•</span>
+                    <input
+                      type="text"
+                      value={term}
+                      onChange={(e) => handleUpdateTerm(tIdx, e.target.value)}
+                      placeholder={`Payment term ${tIdx + 1} (e.g. Advance 50% to be released...)`}
+                      disabled={isFormDisabled}
+                      className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white focus:border-amber-400 focus:outline-none"
+                    />
+
+                    {/* Reordering Controls */}
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => handleMoveTerm(tIdx, -1)}
+                        disabled={isFormDisabled || tIdx === 0}
+                        className="p-1 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"
+                        title="Move Up"
+                      >
+                        <ChevronUp size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveTerm(tIdx, 1)}
+                        disabled={isFormDisabled || tIdx === termsList.length - 1}
+                        className="p-1 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"
+                        title="Move Down"
+                      >
+                        <ChevronDown size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTerm(tIdx)}
+                        disabled={isFormDisabled || termsList.length <= 1}
+                        className="p-1 text-slate-500 hover:text-rose-400 disabled:opacity-20 cursor-pointer"
+                        title="Delete term"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {!isFormDisabled && (
+                  <button
+                    type="button"
+                    onClick={handleAddTerm}
+                    className="flex items-center gap-1.5 rounded-lg border border-dashed border-slate-700 px-3 py-1 text-xs text-amber-300 hover:border-amber-400/60 hover:text-amber-200 transition cursor-pointer"
+                  >
+                    <Plus size={12} />
+                    <span>Add Payment Term Line</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Notes & Terms */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
@@ -764,22 +1117,22 @@ function DocumentSplitScreenEditorWorkspace({
                   rows={3}
                   value={form.notes}
                   onChange={(e) => handleFormChange("notes", e.target.value)}
-                  placeholder="Notes printed on document..."
-                  disabled={isIssued}
+                  placeholder="Additional notes or remarks printed on document..."
+                  disabled={isFormDisabled}
                   className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Terms &amp; Conditions
+                  Terms &amp; Conditions (Optional)
                 </label>
                 <textarea
                   rows={3}
                   value={form.terms}
                   onChange={(e) => handleFormChange("terms", e.target.value)}
-                  placeholder="Terms printed on document..."
-                  disabled={isIssued}
+                  placeholder="General warranty, legal or delivery conditions..."
+                  disabled={isFormDisabled}
                   className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
                 />
               </div>
@@ -790,26 +1143,41 @@ function DocumentSplitScreenEditorWorkspace({
         {/* RIGHT PANEL: Live A4 PDF Document Preview */}
         <div
           className={`flex-1 flex flex-col bg-slate-950 overflow-hidden relative ${
-            activeTabMobile === "preview" ? "flex" : "hidden lg:flex"
-          }`}
+            previewFullscreen ? "w-full" : ""
+          } ${activeTabMobile === "preview" ? "flex" : "hidden lg:flex"}`}
         >
           {/* Top Preview Controls Bar */}
           <div className="flex h-10 shrink-0 items-center justify-between border-b border-slate-800/80 bg-slate-900/60 px-4 text-xs text-slate-300 select-none">
             <div className="flex items-center gap-2">
               <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="font-semibold text-slate-200">WYSIWYG PDF Live Preview</span>
+              <span className="font-semibold text-slate-200">WYSIWYG Live PDF Preview</span>
               <span className="text-[10px] text-slate-400">
                 ({previewData.items.length} {previewData.items.length === 1 ? "line" : "lines"})
               </span>
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Fullscreen Expand Toggle */}
+              <button
+                type="button"
+                onClick={() => setPreviewFullscreen((f) => !f)}
+                className={`flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-semibold transition cursor-pointer ${
+                  previewFullscreen
+                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                    : "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                }`}
+                title={previewFullscreen ? "Exit Fullscreen Preview" : "Expand Live Preview to Full Screen"}
+              >
+                {previewFullscreen ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                <span className="hidden sm:inline">{previewFullscreen ? "Split View" : "Full Screen"}</span>
+              </button>
+
               {/* Zoom Controls */}
               <div className="flex items-center gap-1 rounded bg-slate-800 p-0.5">
                 <button
                   type="button"
                   onClick={() => setZoom((z) => Math.max(0.4, Number((z - 0.1).toFixed(2))))}
-                  className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white"
+                  className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white cursor-pointer"
                   title="Zoom Out"
                 >
                   <ZoomOut size={12} />
@@ -824,7 +1192,7 @@ function DocumentSplitScreenEditorWorkspace({
                 <button
                   type="button"
                   onClick={() => setZoom((z) => Math.min(1.5, Number((z + 0.1).toFixed(2))))}
-                  className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white"
+                  className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white cursor-pointer"
                   title="Zoom In"
                 >
                   <ZoomIn size={12} />
@@ -838,7 +1206,7 @@ function DocumentSplitScreenEditorWorkspace({
                     type="button"
                     onClick={() => setPreviewPage((p) => Math.max(1, p - 1))}
                     disabled={previewPage <= 1}
-                    className="p-1 rounded hover:bg-slate-800 disabled:opacity-30"
+                    className="p-1 rounded hover:bg-slate-800 disabled:opacity-30 cursor-pointer"
                   >
                     <ChevronLeft size={12} />
                   </button>
@@ -849,7 +1217,7 @@ function DocumentSplitScreenEditorWorkspace({
                     type="button"
                     onClick={() => setPreviewPage((p) => Math.min(totalPreviewPages, p + 1))}
                     disabled={previewPage >= totalPreviewPages}
-                    className="p-1 rounded hover:bg-slate-800 disabled:opacity-30"
+                    className="p-1 rounded hover:bg-slate-800 disabled:opacity-30 cursor-pointer"
                   >
                     <ChevronRight size={12} />
                   </button>
@@ -909,6 +1277,13 @@ function DocumentSplitScreenEditorWorkspace({
 
 export default function DocumentSplitScreenEditor(props: DocumentSplitScreenEditorProps) {
   if (!props.isOpen) return null;
-  const editorKey = `${props.initialInvoice?.id || "new"}-${props.initialInvoice?.invoice_number || "draft"}`;
+  const editorKey = `${props.initialInvoice?.id || "new"}-${
+    props.initialInvoice?.invoice_number ||
+    props.initialInvoice?.quotation_number ||
+    props.initialInvoice?.proforma_number ||
+    props.initialInvoice?.purchase_order_number ||
+    props.initialInvoice?.delivery_note_number ||
+    "draft"
+  }`;
   return <DocumentSplitScreenEditorWorkspace key={editorKey} {...props} />;
 }

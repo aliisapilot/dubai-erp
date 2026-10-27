@@ -38,7 +38,7 @@ import LayoutValidatorModal from "./LayoutValidatorModal";
 import { getDocumentPageCount, getSampleDocumentData } from "../documents/DynamicDocumentRenderer";
 import { processAndOptimizeImage } from "@/lib/documentDesigner";
 import { AlertCircle, CheckCircle2, RotateCcw } from "lucide-react";
-import { autoFixDocumentLayout } from "@/lib/documentLayoutEngine";
+import { autoFixDocumentLayout, prepareSavedAutoFit } from "@/lib/documentLayoutEngine";
 import { documentStylePresets } from "@/lib/documentStylePresets";
 import {
   getFallbackDocumentStylePreset,
@@ -926,7 +926,8 @@ export default function DocumentDesigner() {
   }), [companyId,cloudRevision,dirty,runStyleMutation,selectedDocType]);
   const handleAutoFix = useCallback(() => {
     try {
-      const { fixedLayout, message, warning } = autoFixDocumentLayout(layout);
+      const prepared = prepareSavedAutoFit(layout);
+      const { fixedLayout, message, warning } = autoFixDocumentLayout(prepared);
       pushHistory(fixedLayout);
       setNotification({
         message: warning ? `${message} (${warning})` : message,
@@ -1400,6 +1401,7 @@ export default function DocumentDesigner() {
             selectedElementId={selectedElementId}
             onSelectElement={setSelectedElementId}
             onUpdateElement={handleUpdateElement}
+            onUpdateLayout={pushHistory}
             onDuplicateElement={handleDuplicateElement}
             onDeleteSelected={handleDeleteSelected}
             zoom={zoom}
@@ -1447,6 +1449,7 @@ export default function DocumentDesigner() {
                   layout={layout}
                   selectedElement={selectedElement}
                   onUpdateElement={handleUpdateElement}
+                  onUpdateLayout={pushHistory}
                   onUpdateLayoutBranding={handleUpdateLayoutBranding}
                   onUpdatePageSettings={handleUpdatePageSettings}
                   onDeleteElement={handleDeleteElement}

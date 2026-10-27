@@ -7,6 +7,10 @@ import PurchaseOrderTemplate, { PurchaseOrderData, POLineItem } from "@/componen
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import DocumentSplitScreenEditor, {
+  DocumentEditorFormState,
+  EditorLineItem,
+} from "@/components/documents/DocumentSplitScreenEditor";
 import {
   PurchaseOrderStatus,
   PURCHASE_ORDER_STATUS_OPTIONS,
@@ -210,6 +214,101 @@ export default function PurchaseOrdersPage() {
     finally { setSaving(false); }
   }
 
+  async function handleSaveSplitScreen(payload: {
+    form: DocumentEditorFormState;
+    lines: EditorLineItem[];
+    subtotal: number;
+    vat_amount: number;
+    total_amount: number;
+  }) {
+    setError("");
+    setSuccess("");
+    setSaving(true);
+    try {
+      const normStatus = normalizePurchaseOrderStatus(payload.form.status);
+      const dataPayload = {
+        supplier_id: payload.form.customer_id,
+        project_id: payload.form.project_id || null,
+        order_date: payload.form.invoice_date || null,
+        expected_date: payload.form.supply_date || null,
+        status: normStatus,
+        subtotal: payload.subtotal,
+        vat_amount: payload.vat_amount,
+        total_amount: payload.total_amount,
+        payment_terms: payload.form.payment_terms || null,
+        notes: payload.form.notes.trim() || null,
+      };
+
+      let poid: string;
+      if (editing) {
+        const { error: err } = await supabase.from("purchase_orders").update(dataPayload).eq("id", editing.id);
+        if (err) throw err;
+        poid = editing.id;
+        const { error: delErr } = await supabase.from("purchase_order_items").delete().eq("purchase_order_id", poid);
+        if (delErr) throw delErr;
+      } else {
+        const cid = await getCompanyId();
+        const pno = await generateDocNumber(cid, "PO");
+        const { data: ins, error: err } = await supabase.from("purchase_orders").insert({
+          ...dataPayload,
+          company_id: cid,
+          purchase_order_number: pno,
+        }).select("id").single();
+        if (err) throw err;
+        poid = ins.id;
+      }
+
+      // If Received, update stock
+      if (normStatus === "received" && normalizePurchaseOrderStatus(editing?.status) !== "received") {
+        for (const l of payload.lines.filter((l) => l.product_id && l.quantity > 0)) {
+          const { data: prod } = await supabase.from("products").select("current_stock").eq("id", l.product_id).single();
+          if (!prod) continue;
+          const before = prod.current_stock || 0;
+          const after = before + l.quantity;
+          const { error: stockErr } = await supabase.from("products").update({ current_stock: after, updated_at: new Date().toISOString() }).eq("id", l.product_id);
+          if (stockErr) throw stockErr;
+          const cid = await getCompanyId();
+          const { error: movementErr } = await supabase.from("stock_movements").insert({
+            company_id: cid,
+            product_id: l.product_id,
+            movement_type: "IN",
+            quantity: l.quantity,
+            previous_stock: before,
+            new_stock: after,
+            reference_type: "purchase_order",
+            reference_id: poid,
+          });
+          if (movementErr) throw movementErr;
+        }
+      }
+
+      // Insert line items
+      const { error: itemErr } = await supabase.from("purchase_order_items").insert(
+        payload.lines.map((l, i) => ({
+          purchase_order_id: poid,
+          product_id: l.product_id || null,
+          description: l.description,
+          quantity: l.quantity,
+          unit_price: l.unit_price,
+          discount_percent: l.discount_pct,
+          vat_rate: l.vat_rate,
+          line_total: l.line_total,
+          vat_amount: l.vat_amount,
+          sort_order: i,
+        }))
+      );
+      if (itemErr) throw itemErr;
+
+      setSuccess(editing ? "PO updated." : "Purchase order created.");
+      closeForm();
+      await loadAll();
+    } catch (err: unknown) {
+      setError(parsePurchaseOrderError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const suppMap = Object.fromEntries(suppliers.map(s=>[s.id,s]));
   const projMap = Object.fromEntries(projects.map(p=>[p.id,p]));
   const filtered = orders.filter(po => {
@@ -320,93 +419,74 @@ export default function PurchaseOrdersPage() {
           )}
         </div>
 
+      {/* Live Split-Screen Form & PDF Preview */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeForm}/>
-          <div className="relative ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold">{editing ? "Edit PO" : "New Purchase Order"}</h2>
-                {!editing ? (
-                  <span className="text-xs font-mono bg-blue-50 text-blue-700 px-2.5 py-1 rounded font-medium border border-blue-200">
-                    PO #: Auto-generated on save
-                  </span>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
-                      PO #: {editing.purchase_order_number}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowRenameModal(true)}
-                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
-                      title="Safely rename purchase order reference number with collision check"
-                    >
-                      <Pencil size={11} />
-                      <span>Edit #</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-              <button onClick={closeForm} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={20}/></button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <form id="po-form" onSubmit={save} className="p-6 space-y-5">
-                {error&&<div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-                {normalizePurchaseOrderStatus(form.status)==="received"&&<div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">âœ… When saved as Received, stock will be updated for product line items.</div>}
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Supplier <span className="text-red-500">*</span></label><select value={form.supplier_id} onChange={e=>ff("supplier_id",e.target.value)} required className={sel}><option value="">â€” Select Supplier â€”</option>{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
-                    <select
-                      value={form.status}
-                      onChange={e=>ff("status", normalizePurchaseOrderStatus(e.target.value))}
-                      className={sel}
-                    >
-                      {PURCHASE_ORDER_STATUS_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Project / Job (Optional)</label>
-                    <select value={form.project_id} onChange={e=>ff("project_id",e.target.value)} className={sel}>
-                      <option value="">â€” No Project / General Stock â€”</option>
-                      {projects.map(p=><option key={p.id} value={p.id}>{p.project_number} â€” {p.name}</option>)}
-                    </select>
-                  </div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Order Date</label><input type="date" value={form.order_date} onChange={e=>ff("order_date",e.target.value)} className={inp}/></div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Expected Delivery</label><input type="date" value={form.expected_date} onChange={e=>ff("expected_date",e.target.value)} className={inp}/></div>
-                </div>
-                <div>
-                  <div className="overflow-x-auto rounded-lg border border-slate-200">
-                    <table className="w-full text-sm"><thead><tr className="bg-slate-50 text-xs font-semibold uppercase text-slate-500"><th className="px-3 py-2 text-left w-48">Product</th><th className="px-3 py-2 text-left">Description</th><th className="px-3 py-2 w-16 text-center">Qty</th><th className="px-3 py-2 w-24 text-right">Cost Price</th><th className="px-3 py-2 w-14 text-center">Disc%</th><th className="px-3 py-2 w-14 text-center">VAT%</th><th className="px-3 py-2 w-28 text-right">Total</th><th className="px-3 py-2 w-8"></th></tr></thead>
-                    <tbody>{lines.map((l,i)=>(
-                      <tr key={i} className="border-t border-slate-100">
-                        <td className="px-2 py-1"><select value={l.product_id} onChange={e=>onProductSelect(i,e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"><option value="">â€”</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></td>
-                        <td className="px-2 py-1"><input type="text" value={l.description} onChange={e=>updateLine(i,{description:e.target.value})} placeholder="Description" className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"/></td>
-                        <td className="px-2 py-1"><input type="number" min="1" step="1" value={l.quantity} onChange={e=>updateLine(i,{quantity:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-center focus:outline-none"/></td>
-                        <td className="px-2 py-1"><input type="number" min="0" step="0.01" value={l.unit_price} onChange={e=>updateLine(i,{unit_price:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none"/></td>
-                        <td className="px-2 py-1"><input type="number" min="0" max="100" step="0.01" value={l.discount_pct} onChange={e=>updateLine(i,{discount_pct:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-center focus:outline-none"/></td>
-                        <td className="px-2 py-1"><input type="number" min="0" max="100" step="0.01" value={l.vat_rate} onChange={e=>updateLine(i,{vat_rate:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-center focus:outline-none"/></td>
-                        <td className="px-2 py-1 text-right text-xs font-semibold whitespace-nowrap">AED {l.line_total.toFixed(2)}</td>
-                        <td className="px-2 py-1 text-center"><button type="button" onClick={()=>removeLine(i)} disabled={lines.length===1} className="text-slate-400 hover:text-red-500 disabled:opacity-30"><X size={14}/></button></td>
-                      </tr>
-                    ))}</tbody>
-                  </table></div>
-                  <button type="button" onClick={addLine} className="mt-2 flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-500 hover:border-slate-400"><Plus size={14}/>Add Line</button>
-                </div>
-                <div className="flex justify-end"><div className="w-64 space-y-2 text-sm"><div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{fmtAED(fSub)}</span></div><div className="flex justify-between text-amber-700"><span>VAT</span><span>{fmtAED(fVAT)}</span></div><div className="flex justify-between border-t pt-2 font-bold"><span>Total</span><span>{fmtAED(fTotal)}</span></div></div></div>
-                <div><label className="mb-1 block text-sm font-medium text-slate-700">Notes</label><textarea value={form.notes} onChange={e=>ff("notes",e.target.value)} rows={2} className={inp}/></div>
-              </form>
-            </div>
-            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
-              <button type="button" onClick={closeForm} disabled={saving} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-              <button type="submit" form="po-form" disabled={saving} className="flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
-                {saving?<Loader2 size={16} className="animate-spin"/>:<Save size={16}/>}{saving?"Savingâ€¦":editing?"Save Changes":"Create PO"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <DocumentSplitScreenEditor
+          isOpen={showForm}
+          onClose={closeForm}
+          documentType="purchase_order"
+          documentTitle="Purchase Order"
+          documentNumberLabel="Purchase Order Number"
+          company={company}
+          partyType="supplier"
+          partyLabel="Supplier / Vendor"
+          suppliers={suppliers}
+          initialInvoice={
+            editing
+              ? {
+                  id: editing.id,
+                  purchase_order_number: editing.purchase_order_number,
+                  supplier_id: editing.supplier_id,
+                  customer_id: editing.supplier_id,
+                  order_date: editing.order_date,
+                  invoice_date: editing.order_date,
+                  expected_date: editing.expected_date,
+                  supply_date: editing.expected_date,
+                  status: editing.status,
+                  notes: editing.notes,
+                  subtotal: editing.subtotal,
+                  vat_amount: editing.vat_amount,
+                  total_amount: editing.total_amount,
+                }
+              : {
+                  customer_id: form.supplier_id,
+                  supplier_id: form.supplier_id,
+                  order_date: form.order_date,
+                  invoice_date: form.order_date,
+                  expected_date: form.expected_date,
+                  supply_date: form.expected_date,
+                  status: form.status,
+                  notes: form.notes,
+                }
+          }
+          initialLines={lines.map((l) => ({
+            id: l.id,
+            product_id: l.product_id,
+            description: l.description,
+            quantity: l.quantity,
+            unit: "Nos",
+            unit_price: l.unit_price,
+            discount_pct: l.discount_pct,
+            vat_rate: l.vat_rate,
+            taxable_amount:
+              l.quantity * l.unit_price -
+              l.quantity * l.unit_price * (l.discount_pct / 100),
+            vat_amount: l.vat_amount,
+            line_total: l.line_total,
+          }))}
+          projects={projects}
+          products={products.map((p) => ({
+            ...p,
+            selling_price: p.cost_price ?? null,
+          }))}
+          onSave={handleSaveSplitScreen}
+          saving={saving}
+          onRename={
+            editing && (company?.id || editing.company_id)
+              ? () => setShowRenameModal(true)
+              : undefined
+          }
+        />
       )}
 
       {viewing && (

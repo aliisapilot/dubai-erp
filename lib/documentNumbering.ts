@@ -577,6 +577,19 @@ export async function renameDocumentReference(
     return { success: false, error: `Document type "${docType}" does not support renaming.` };
   }
 
+  // Retrieve previous reference number for audit trail
+  let previousReference: string | null = null;
+  try {
+    const { data: curDoc } = await supabase
+      .from(dbInfo.table)
+      .select(dbInfo.column)
+      .eq("id", documentId)
+      .maybeSingle();
+    if (curDoc && typeof curDoc === "object" && dbInfo.column in curDoc) {
+      previousReference = (curDoc as unknown as Record<string, string | null>)[dbInfo.column];
+    }
+  } catch {}
+
   const { error: updateErr } = await supabase
     .from(dbInfo.table)
     .update({
@@ -589,6 +602,29 @@ export async function renameDocumentReference(
   if (updateErr) {
     return { success: false, error: updateErr.message };
   }
+
+  // Update associated document access logs if present
+  try {
+    await supabase
+      .from("document_access_logs")
+      .update({ document_ref: trimmed })
+      .eq("document_id", documentId);
+  } catch {}
+
+  // Record audit trail entry
+  try {
+    const { logDocumentAudit } = await import("./auditLogging");
+    await logDocumentAudit({
+      companyId,
+      documentType: docType,
+      documentId,
+      documentNumber: trimmed,
+      action: "invoice_renumber",
+      previousValues: { reference_number: previousReference },
+      newValues: { reference_number: trimmed },
+      notes: `Renamed ${dbInfo.label} from ${previousReference || "unassigned"} to ${trimmed}`,
+    });
+  } catch {}
 
   return { success: true };
 }

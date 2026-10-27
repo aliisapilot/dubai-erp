@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Search, FileCheck2, X, Save, Loader2, Pencil, Printer, Trash2, Ban } from "lucide-react";
+import { Plus, Search, FileCheck2, X, Save, Loader2, Pencil, Printer, Trash2, Ban, FileEdit } from "lucide-react";
 import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, calcLineItem } from "@/lib/helpers";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
@@ -44,6 +44,7 @@ function TIContent() {
   const [filterStatus, setFilterStatus] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renamingInvoice, setRenamingInvoice] = useState<TI | null>(null);
   const [editing, setEditing] = useState<TI | null>(null);
   const [printRec, setPrintRec] = useState<{ti: TI; lines: LineItem[]} | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,15 +153,48 @@ function TIContent() {
   function removeLine(idx: number) { if (lines.length===1) return; setLines(ls => ls.filter((_,i)=>i!==idx)); }
   const ff = (k: keyof TIForm, v: string) => setForm(c => ({...c,[k]:v}));
   function openAdd() { setError(""); setSuccess(""); setEditing(null); setForm(emptyForm); setLines([emptyLine()]); setShowForm(true); }
+  function openRename(ti: TI) {
+    setError("");
+    setSuccess("");
+    setRenamingInvoice(ti);
+    setShowRenameModal(true);
+  }
   async function openEdit(ti: TI) {
-    if (ti.status === "issued") { setError("Final invoices cannot be edited. Cancel and reissue."); return; }
-    setError(""); setSuccess(""); setEditing(ti);
-    setForm({ customer_id: ti.customer_id||"", project_id: ti.project_id||"", invoice_date: ti.invoice_date||todayISO(), supply_date: ti.supply_date||todayISO(), status: ti.status||"draft", payment_terms: ti.payment_terms||"", notes: ti.notes||"" });
+    setError("");
+    setSuccess("");
+    setEditing(ti);
+    setForm({
+      customer_id: ti.customer_id || "",
+      project_id: ti.project_id || "",
+      invoice_date: ti.invoice_date || todayISO(),
+      supply_date: ti.supply_date || todayISO(),
+      status: ti.status || "draft",
+      payment_terms: ti.payment_terms || "",
+      notes: ti.notes || "",
+    });
     // DB FK: tax_invoice_id (not invoice_id)
     const { data: items } = await supabase.from("tax_invoice_items").select("*").eq("tax_invoice_id", ti.id).order("sort_order");
     // Map DB discount_percent → UI discount_pct
     type DBTaxItem = { id?: string; tax_invoice_id?: string; product_id?: string; description?: string; quantity?: number; unit?: string; unit_price?: number; discount_percent?: number; vat_rate?: number; taxable_amount?: number; vat_amount?: number; line_total?: number; sort_order?: number };
-    setLines((items||[]).length>0?(items as DBTaxItem[]).map(it => ({ ...emptyLine(), ...it, discount_pct: Number(it.discount_percent??0) } as LineItem)):[emptyLine()]);
+    setLines(
+      (items || []).length > 0
+        ? (items as DBTaxItem[]).map((it) => ({
+            ...emptyLine(),
+            id: it.id,
+            product_id: it.product_id || "",
+            description: it.description || "",
+            quantity: Number(it.quantity) || 1,
+            unit: it.unit || "Nos",
+            unit_price: Number(it.unit_price) || 0,
+            discount_pct: Number(it.discount_percent ?? 0),
+            vat_rate: Number(it.vat_rate ?? 5),
+            taxable_amount: Number(it.taxable_amount) || 0,
+            vat_amount: Number(it.vat_amount) || 0,
+            line_total: Number(it.line_total) || 0,
+            sort_order: Number(it.sort_order) || 0,
+          }))
+        : [emptyLine()]
+    );
     setShowForm(true);
   }
   async function openPrint(ti: TI) { const { data: items } = await supabase.from("tax_invoice_items").select("*").eq("tax_invoice_id", ti.id).order("sort_order"); const customer = customers.find((item) => item.id === ti.customer_id); setPrintRec({ ti: withCustomerDocumentDetails({ ...ti, customer }) as TI, lines: (items||[]) as LineItem[] }); }
@@ -226,10 +260,6 @@ function TIContent() {
       setError("Please select a customer.");
       return;
     }
-    if (editing?.status === "Final" || editing?.status === "issued") {
-      setError("Final invoices cannot be edited.");
-      return;
-    }
     setSaving(true);
     try {
       const dataPayload = {
@@ -290,6 +320,33 @@ function TIContent() {
           const { error: delErr } = await supabase.from("tax_invoice_items").delete().in("id", toDelete);
           if (delErr) throw delErr;
         }
+
+        // Record audit trail entry for invoice modification
+        try {
+          const { logDocumentAudit } = await import("@/lib/auditLogging");
+          await logDocumentAudit({
+            companyId: editing.company_id || (company?.id as string),
+            documentType: "tax_invoice",
+            documentId: editing.id,
+            documentNumber: editing.invoice_number || "INV",
+            action: "invoice_edit",
+            previousValues: {
+              customer_id: editing.customer_id,
+              subtotal: editing.subtotal,
+              vat_amount: editing.vat_amount,
+              total_amount: editing.total_amount,
+              status: editing.status,
+            },
+            newValues: {
+              customer_id: payload.form.customer_id,
+              subtotal: payload.subtotal,
+              vat_amount: payload.vat_amount,
+              total_amount: payload.total_amount,
+              status: payload.form.status,
+            },
+            notes: `Amended invoice ${editing.invoice_number || ""}. Total: AED ${payload.total_amount.toFixed(2)}`,
+          });
+        } catch {}
       } else {
         const cid = await getCompanyId();
         const ino = await generateDocNumber(cid, "INV");
@@ -322,7 +379,7 @@ function TIContent() {
 
       setShowForm(false);
       setEditing(null);
-      setSuccess(editing ? "Invoice updated." : "Tax invoice created.");
+      setSuccess(editing ? `Invoice ${editing.invoice_number || ""} updated successfully.` : "Tax invoice created.");
       await loadAll();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error");
@@ -375,14 +432,43 @@ function TIContent() {
                   <td className="px-4 py-3 text-right font-bold text-slate-900">{fmtAED(ti.total_amount)}</td>
                   <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(ti.status||"Draft")}`}>{ti.status||"Draft"}</span></td>
                   <td className="px-4 py-3"><div className="flex justify-center items-center gap-1">
-                    <button onClick={()=>openPrint(ti)} title="Print Document" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"><Printer size={14}/></button>
-                    {!isCancelled(ti.status) && ti.status!=="issued" && ti.status!=="Final" && (
-                      <button onClick={()=>openEdit(ti)} title="Edit Invoice" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"><Pencil size={14}/></button>
-                    )}
+                    <button
+                      onClick={() => openPrint(ti)}
+                      title="Print / View PDF"
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer"
+                    >
+                      <Printer size={14} />
+                    </button>
+                    <button
+                      onClick={() => openEdit(ti)}
+                      title="Edit Invoice"
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition cursor-pointer"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => openRename(ti)}
+                      title="Edit Invoice Number"
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600 transition cursor-pointer"
+                    >
+                      <FileEdit size={14} />
+                    </button>
                     {isDraft(ti.status) || isCancelled(ti.status) ? (
-                      <button onClick={()=>deleteDraftInvoice(ti)} title={isCancelled(ti.status) ? "Delete Cancelled Invoice" : "Delete Draft Invoice"} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition"><Trash2 size={14}/></button>
+                      <button
+                        onClick={() => deleteDraftInvoice(ti)}
+                        title={isCancelled(ti.status) ? "Delete Cancelled Invoice" : "Delete Draft Invoice"}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     ) : (
-                      <button onClick={()=>cancelInvoice(ti)} title="Cancel / Void Invoice" className="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600 transition"><Ban size={14}/></button>
+                      <button
+                        onClick={() => cancelInvoice(ti)}
+                        title="Cancel / Void Invoice"
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600 transition cursor-pointer"
+                      >
+                        <Ban size={14} />
+                      </button>
                     )}
                   </div></td>
                 </tr>
@@ -469,20 +555,25 @@ function TIContent() {
         )}
       </PrintModal>
 
-      {showRenameModal && editing && (company?.id || editing.company_id) && (
+      {showRenameModal && (renamingInvoice || editing) && (company?.id || renamingInvoice?.company_id || editing?.company_id) && (
         <EditDocumentReferenceModal
           isOpen={showRenameModal}
-          onClose={() => setShowRenameModal(false)}
-          companyId={company?.id || editing.company_id}
+          onClose={() => {
+            setShowRenameModal(false);
+            setRenamingInvoice(null);
+          }}
+          companyId={company?.id || renamingInvoice?.company_id || editing?.company_id || ""}
           docType="tax_invoice"
-          documentId={editing.id}
-          currentReferenceNumber={editing.invoice_number || ""}
+          documentId={(renamingInvoice || editing)!.id}
+          currentReferenceNumber={(renamingInvoice || editing)!.invoice_number || ""}
           onSuccess={(newNum) => {
-            setEditing((prev) => (prev ? { ...prev, invoice_number: newNum } : prev));
+            const targetId = (renamingInvoice || editing)!.id;
+            setEditing((prev) => (prev && prev.id === targetId ? { ...prev, invoice_number: newNum } : prev));
             setInvoices((prev) =>
-              prev.map((i) => (i.id === editing.id ? { ...i, invoice_number: newNum } : i))
+              prev.map((i) => (i.id === targetId ? { ...i, invoice_number: newNum } : i))
             );
             setSuccess(`Tax invoice reference updated to ${newNum}`);
+            setRenamingInvoice(null);
           }}
         />
       )}

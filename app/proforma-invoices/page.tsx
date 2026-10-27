@@ -10,6 +10,10 @@ import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
+import DocumentSplitScreenEditor, {
+  DocumentEditorFormState,
+  EditorLineItem,
+} from "@/components/documents/DocumentSplitScreenEditor";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn?: string | null; address?: string | null; contact_person?: string | null; phone?: string | null; mobile?: string | null; email?: string | null; active?: boolean | null };
 type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; unit?: string | null };
@@ -175,6 +179,93 @@ function PIContent() {
     finally { setSaving(false); }
   }
 
+  async function handleSaveSplitScreen(payload: {
+    form: DocumentEditorFormState;
+    lines: EditorLineItem[];
+    subtotal: number;
+    vat_amount: number;
+    total_amount: number;
+  }) {
+    setError("");
+    setSuccess("");
+    setSaving(true);
+    try {
+      const dbPayload = {
+        customer_id: payload.form.customer_id,
+        proforma_date: payload.form.invoice_date || null,
+        valid_until: payload.form.supply_date || null,
+        status: payload.form.status || "draft",
+        subtotal: payload.subtotal,
+        vat_amount: payload.vat_amount,
+        total_amount: payload.total_amount,
+        notes: payload.form.notes.trim() || payload.form.payment_terms || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      let pid: string;
+      if (editing) {
+        const { error: err } = await supabase.from("proforma_invoices").update(dbPayload).eq("id", editing.id);
+        if (err) throw err;
+        pid = editing.id;
+      } else {
+        const cid = await getCompanyId();
+        const pno = await generateDocNumber(cid, "PRO");
+        const { data: ins, error: err } = await supabase.from("proforma_invoices").insert({
+          company_id: cid,
+          proforma_number: pno,
+          ...dbPayload,
+        }).select("id").single();
+        if (err) throw err;
+        pid = ins.id;
+      }
+
+      // Upsert proforma line items
+      const { data: existingItems } = await supabase.from("proforma_invoice_items").select("id").eq("proforma_invoice_id", pid);
+      const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
+      const currentIds = new Set<string>();
+
+      for (let i = 0; i < payload.lines.length; i++) {
+        const l = payload.lines[i];
+        const itemPayload = {
+          product_id: l.product_id || null,
+          description: l.description,
+          quantity: l.quantity,
+          unit_price: l.unit_price,
+          discount_percent: l.discount_pct,
+          vat_rate: l.vat_rate,
+          line_total: l.line_total,
+          vat_amount: l.vat_amount,
+          sort_order: i,
+        };
+        if (l.id && existingIds.has(l.id)) {
+          const { error: updErr } = await supabase.from("proforma_invoice_items").update(itemPayload).eq("id", l.id);
+          if (updErr) throw updErr;
+          currentIds.add(l.id);
+        } else {
+          const { error: insErr } = await supabase.from("proforma_invoice_items").insert({
+            proforma_invoice_id: pid,
+            ...itemPayload,
+          });
+          if (insErr) throw insErr;
+        }
+      }
+
+      const toDelete = [...existingIds].filter((id) => !currentIds.has(id));
+      if (toDelete.length > 0) {
+        const { error: delErr } = await supabase.from("proforma_invoice_items").delete().in("id", toDelete);
+        if (delErr) throw delErr;
+      }
+
+      setSuccess(editing ? "Proforma updated." : "Proforma invoice created.");
+      closeForm();
+      await loadAll();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error saving proforma");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const custMap = Object.fromEntries(customers.map(c=>[c.id,c]));
   const selectableCustomers = customers.filter(c => c.active !== false || c.id === form.customer_id);
   const filtered = invoices.filter(pi => { if (filterStatus && pi.status?.toLowerCase()!==filterStatus.toLowerCase()) return false; const cn=custMap[pi.customer_id||""]?.name||""; return [pi.proforma_number, cn, pi.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase()); });
@@ -242,79 +333,64 @@ function PIContent() {
         )}
       </div>
 
+      {/* Live Split-Screen Form & PDF Preview */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeForm}/>
-          <div className="relative ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-slate-900">{editing ? "Edit Proforma" : "New Proforma Invoice"}</h2>
-                {!editing ? (
-                  <span className="text-xs font-mono bg-blue-50 text-blue-700 px-2.5 py-1 rounded font-medium border border-blue-200">
-                    Proforma #: Auto-generated on save
-                  </span>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
-                      Proforma #: {editing.proforma_number}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowRenameModal(true)}
-                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
-                      title="Safely rename proforma reference number with collision check"
-                    >
-                      <Pencil size={11} />
-                      <span>Edit #</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-              <button onClick={closeForm} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={20}/></button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <form id="pi-form" onSubmit={save} className="p-6 space-y-5">
-                {error&&<div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Customer <span className="text-red-500">*</span></label><select value={form.customer_id} onChange={e=>ff("customer_id",e.target.value)} required className={sel}><option value="">â€” Select â€”</option>{selectableCustomers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Status</label><select value={form.status} onChange={e=>ff("status",e.target.value)} className={sel}><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="invoiced">Invoiced</option><option value="cancelled">Cancelled</option></select></div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Proforma Date</label><input type="date" value={form.proforma_date} onChange={e=>ff("proforma_date",e.target.value)} className={inp}/></div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Valid Until</label><input type="date" value={form.valid_until} onChange={e=>ff("valid_until",e.target.value)} className={inp}/></div>
-                  <div className="col-span-2"><label className="mb-1 block text-sm font-medium text-slate-700">Payment Terms (displayed on document)</label><input type="text" value={form.payment_terms} onChange={e=>ff("payment_terms",e.target.value)} placeholder="30 days" className={inp}/></div>
-                </div>
-                <div>
-                  <div className="overflow-x-auto rounded-lg border border-slate-200">
-                    <table className="w-full text-sm"><thead><tr className="bg-slate-50 text-xs font-semibold uppercase text-slate-500"><th className="px-3 py-2 text-left w-48">Product</th><th className="px-3 py-2 text-left">Description</th><th className="px-3 py-2 w-16 text-center">Qty</th><th className="px-3 py-2 w-24 text-right">Price</th><th className="px-3 py-2 w-16 text-center">Disc%</th><th className="px-3 py-2 w-16 text-center">VAT%</th><th className="px-3 py-2 w-28 text-right">Total</th><th className="px-3 py-2 w-10"></th></tr></thead>
-                    <tbody>{lines.map((l,i)=>(
-                      <tr key={i} className="border-t border-slate-100">
-                        <td className="px-2 py-1"><select value={l.product_id} onChange={e=>onProductSelect(i,e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"><option value="">â€” Select â€”</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></td>
-                        <td className="px-2 py-1"><input type="text" value={l.description} onChange={e=>updateLine(i,{description:e.target.value})} placeholder="Description" className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none" required/></td>
-                        <td className="px-2 py-1"><input type="number" min="1" step="1" value={l.quantity} onChange={e=>updateLine(i,{quantity:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-center focus:outline-none"/></td>
-                        <td className="px-2 py-1"><input type="number" min="0" step="0.01" value={l.unit_price} onChange={e=>updateLine(i,{unit_price:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none"/></td>
-                        <td className="px-2 py-1"><input type="number" min="0" max="100" step="0.01" value={l.discount_pct} onChange={e=>updateLine(i,{discount_pct:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-center focus:outline-none"/></td>
-                        <td className="px-2 py-1"><input type="number" min="0" max="100" step="0.01" value={l.vat_rate} onChange={e=>updateLine(i,{vat_rate:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-center focus:outline-none"/></td>
-                        <td className="px-2 py-1 text-right text-xs font-semibold whitespace-nowrap">AED {l.line_total.toFixed(2)}</td>
-                        <td className="px-2 py-1 text-center"><button type="button" onClick={()=>removeLine(i)} disabled={lines.length===1} className="text-slate-400 hover:text-red-500 disabled:opacity-30"><X size={14}/></button></td>
-                      </tr>
-                    ))}</tbody>
-                  </table></div>
-                  <button type="button" onClick={addLine} className="mt-2 flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-500 hover:border-slate-400"><Plus size={14}/>Add Line</button>
-                </div>
-                <div className="flex justify-end"><div className="w-64 space-y-2 text-sm">
-                  <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{fmtAED(fSub)}</span></div>
-                  <div className="flex justify-between text-slate-600"><span>VAT</span><span>{fmtAED(fVAT)}</span></div>
-                  <div className="flex justify-between border-t border-slate-200 pt-2 font-bold text-slate-900"><span>Total (AED)</span><span>{fmtAED(fTotal)}</span></div>
-                </div></div>
-                <div><label className="mb-1 block text-sm font-medium text-slate-700">Notes</label><textarea value={form.notes} onChange={e=>ff("notes",e.target.value)} rows={3} className={inp}/></div>
-              </form>
-            </div>
-            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
-              <button type="button" onClick={closeForm} disabled={saving} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-              <button type="submit" form="pi-form" disabled={saving} className="flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
-                {saving?<Loader2 size={16} className="animate-spin"/>:<Save size={16}/>}{saving?"Savingâ€¦":editing?"Save Changes":"Create Proforma"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <DocumentSplitScreenEditor
+          isOpen={showForm}
+          onClose={closeForm}
+          documentType="proforma_invoice"
+          documentTitle="Proforma Invoice"
+          documentNumberLabel="Proforma Number"
+          company={company}
+          initialInvoice={
+            editing
+              ? {
+                  id: editing.id,
+                  proforma_number: editing.proforma_number,
+                  customer_id: editing.customer_id,
+                  proforma_date: editing.proforma_date,
+                  valid_until: editing.valid_until,
+                  status: editing.status,
+                  payment_terms: form.payment_terms || "30 days",
+                  notes: editing.notes,
+                  subtotal: editing.subtotal,
+                  vat_amount: editing.vat_amount,
+                  total_amount: editing.total_amount,
+                }
+              : {
+                  customer_id: form.customer_id,
+                  proforma_date: form.proforma_date,
+                  valid_until: form.valid_until,
+                  status: form.status,
+                  payment_terms: form.payment_terms || "30 days",
+                  notes: form.notes,
+                }
+          }
+          initialLines={lines.map((l) => ({
+            id: l.id,
+            product_id: l.product_id,
+            description: l.description,
+            quantity: l.quantity,
+            unit: l.unit || "Nos",
+            unit_price: l.unit_price,
+            discount_pct: l.discount_pct,
+            vat_rate: l.vat_rate,
+            taxable_amount:
+              l.quantity * l.unit_price -
+              l.quantity * l.unit_price * (l.discount_pct / 100),
+            vat_amount: l.vat_amount,
+            line_total: l.line_total,
+          }))}
+          customers={customers}
+          products={products}
+          onSave={handleSaveSplitScreen}
+          saving={saving}
+          onRename={
+            editing && (company?.id || editing.company_id)
+              ? () => setShowRenameModal(true)
+              : undefined
+          }
+        />
       )}
 
       {viewing && (

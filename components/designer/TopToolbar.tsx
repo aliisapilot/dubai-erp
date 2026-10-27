@@ -182,7 +182,7 @@ export default function TopToolbar({
   return (
     <header className="shrink-0 border-b border-slate-800 bg-slate-900 text-white select-none z-30 shadow-md">
       {/* ── Single Simplified Main Toolbar ───────────────────────────────────────────── */}
-      <div className="flex h-13 w-full items-center justify-between px-2.5 sm:px-3 gap-1.5 sm:gap-2 overflow-x-auto lg:overflow-x-visible">
+      <div className="flex h-13 w-full items-center justify-between px-2.5 sm:px-3 gap-1.5 sm:gap-2 overflow-x-auto overscroll-x-contain lg:overflow-x-visible">
         {/* 1. Template & Document Selection */}
         <div className="flex items-center gap-1.5 shrink-0">
           <div className="flex items-center gap-1 pr-1.5 border-r border-slate-800">

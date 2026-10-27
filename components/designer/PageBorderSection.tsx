@@ -221,7 +221,7 @@ export default function PageBorderSection({
           </div>
           <div>
             <h3 className="text-xs font-bold text-slate-100 tracking-wide">
-              Page &amp; Borders Control
+              Page Border &amp; Background Design
             </h3>
             <p className="text-[10px] text-slate-400">
               Independent 4-side borders, margins &amp; guides
@@ -365,7 +365,7 @@ export default function PageBorderSection({
       {/* ── TOP DECORATIVE BORDER ─────────────────────────────────────────── */}
       {(activeBorderTab === "all" || activeBorderTab === "top") && (
         <HorizontalBorderControlCard
-          title="Top Page Border"
+          title="Top Decorative Border"
           borderId="border_top"
           defaultColor="#E0AC23"
           defaultColorName="Gold"
@@ -382,7 +382,7 @@ export default function PageBorderSection({
       {/* ── BOTTOM DECORATIVE BORDER ──────────────────────────────────────── */}
       {(activeBorderTab === "all" || activeBorderTab === "bottom") && (
         <HorizontalBorderControlCard
-          title="Bottom Page Border"
+          title="Bottom Decorative Border"
           borderId="border_bottom"
           defaultColor="#173C64"
           defaultColorName="Navy Blue"
@@ -427,6 +427,19 @@ export default function PageBorderSection({
           isSelected={selectedBorderId === "border_right"}
         />
       )}
+
+      {/* ── Auto-Clearance Guard Assurance Banner ─────────────────────────── */}
+      <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2.5 flex items-start gap-2 text-emerald-300">
+        <ShieldCheck size={16} className="shrink-0 mt-0.5 text-emerald-400" />
+        <div className="space-y-0.5">
+          <p className="text-[10px] font-bold text-emerald-200">
+            Auto-Clearance Guard Active
+          </p>
+          <p className="text-[9px] text-emerald-400/90 leading-normal">
+            Borders are automatically constrained to guarantee they NEVER overlap header, company details, or footer elements.
+          </p>
+        </div>
+      </div>
 
       {/* ── PAGE MARGINS & SNAPPING SECTION ───────────────────────────────── */}
       {(activeBorderTab === "all" || activeBorderTab === "margins") && (
@@ -1056,6 +1069,36 @@ function HorizontalBorderControlCard({
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Rotation Angle (degrees) */}
+          <div>
+            <div className="flex items-center justify-between text-[10px] mb-1">
+              <span className="text-slate-400 font-semibold">Rotation Angle (degrees)</span>
+              <span className="font-mono font-bold text-slate-300">
+                {border.angle || 0}°
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min={-45}
+                max={45}
+                step={1}
+                value={border.angle || 0}
+                onChange={(e) => onUpdate({ angle: Number(e.target.value) || 0 })}
+                className="flex-1 accent-purple-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+              />
+              <input
+                type="number"
+                min={-45}
+                max={45}
+                step={1}
+                value={border.angle || 0}
+                onChange={(e) => onUpdate({ angle: Number(e.target.value) || 0 })}
+                className="w-14 bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-center font-mono text-[10px] text-white"
+              />
+            </div>
           </div>
 
           {/* Opacity */}

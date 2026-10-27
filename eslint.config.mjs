@@ -17,6 +17,7 @@ const eslintConfig = defineConfig([
     ".wrangler/**",
     "test-output/**",
     "test-results/**",
+    "scripts/**",
   ]),
 ]);
 

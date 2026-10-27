@@ -235,6 +235,12 @@ export async function exportDocumentToPdf(
             clonedSheet.style.boxShadow = "none";
             clonedSheet.style.margin = "0";
           }
+
+          // Ensure Arabic elements retain cursive ligatures and zero letter-spacing
+          clonedDoc.querySelectorAll<HTMLElement>("[dir='rtl'], .font-arabic").forEach((el) => {
+            el.style.letterSpacing = "0px";
+            el.style.fontFeatureSettings = '"liga" 1, "dlig" 1';
+          });
         },
       });
 

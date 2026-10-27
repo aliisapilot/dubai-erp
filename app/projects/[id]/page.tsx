@@ -153,9 +153,9 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [handovers, setHandovers] = useState<Handover[]>([]);
   const [linkedDocs, setLinkedDocs] = useState<LinkedDoc[]>([]);
 
-  // Project Material Consumption (Part 8)
+  type ProjectMaterialBreakdown = Awaited<ReturnType<typeof getProjectMaterialConsumption>>["materialsBreakdown"];
   const [projectMovements, setProjectMovements] = useState<MaterialMovementRecord[]>([]);
-  const [projectMaterialsSummary, setProjectMaterialsSummary] = useState<any[]>([]);
+  const [projectMaterialsSummary, setProjectMaterialsSummary] = useState<ProjectMaterialBreakdown>([]);
   const [totalProjectActualCost, setTotalProjectActualCost] = useState(0);
   const [totalProjectActualSqm, setTotalProjectActualSqm] = useState(0);
   const [totalProjectActualRm, setTotalProjectActualRm] = useState(0);

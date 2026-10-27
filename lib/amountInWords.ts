@@ -145,5 +145,6 @@ export function numberToWordsArabic(amount: number): string {
     result += ` و ${convertChunkAr(fils)} فلساً`;
   }
 
-  return result + " لا غير";
+  return result + " لا\u00A0غير";
 }
+

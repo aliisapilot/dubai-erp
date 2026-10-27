@@ -45,6 +45,85 @@ export function prepareSavedAutoFit(layout: DocumentLayout): DocumentLayout {
   };
 }
 
+/**
+ * Expands an element to fit rendered text content and shifts downstream elements
+ * (like the table and followers) down to guarantee ZERO collision or overlap.
+ */
+export function applyFitBoxWithCollisionClearance(
+  layout: DocumentLayout,
+  elementId: string,
+  requiredDimensions: { widthMm: number; heightMm: number }
+): DocumentLayout {
+  const elem = layout.elements.find((el) => el.id === elementId);
+  if (!elem || elem.locked) return layout;
+
+  const targetWidth = Math.max(elem.width, requiredDimensions.widthMm);
+  const targetHeight = Math.max(elem.height, requiredDimensions.heightMm);
+
+  if (targetHeight <= elem.height && targetWidth <= elem.width) {
+    return layout;
+  }
+
+  const newBottom = elem.y + targetHeight;
+
+  const table = layout.elements.find(
+    (el) => el.visible && (el.type === "line_items" || el.id === "line_items" || el.id === "salary_statement")
+  );
+
+  // Case 1: element is above the table
+  if (table && elem.y < table.y) {
+    const minClearanceGap = 2.5; // mm
+    const minAllowedTableY = newBottom + minClearanceGap;
+
+    if (minAllowedTableY > table.y) {
+      const tableShift = Math.round((minAllowedTableY - table.y) * 10) / 10;
+
+      const nextElements = layout.elements.map((el) => {
+        if (el.id === elem.id) {
+          return { ...el, width: targetWidth, height: targetHeight };
+        }
+        if (el.id === table.id) {
+          return { ...el, y: minAllowedTableY };
+        }
+        if (isFollowerElement(el, table) || el.y >= table.y - 1) {
+          return { ...el, y: Math.round((el.y + tableShift) * 10) / 10 };
+        }
+        return el;
+      });
+
+      return {
+        ...layout,
+        elements: nextElements,
+      };
+    }
+  }
+
+  // Case 2: element is below the table or general element: shift directly overlapping downstream elements
+  const nextElements = layout.elements.map((el) => {
+    if (el.id === elem.id) {
+      return { ...el, width: targetWidth, height: targetHeight };
+    }
+    if (el.id !== elem.id && el.visible && el.type !== "watermark" && el.type !== "footer") {
+      if (el.y >= elem.y && el.y < newBottom + 2.0) {
+        const xOverlap = Math.max(
+          0,
+          Math.min(elem.x + targetWidth, el.x + el.width) - Math.max(elem.x, el.x)
+        );
+        if (xOverlap > 3.0) {
+          const shift = Math.round((newBottom + 2.5 - el.y) * 10) / 10;
+          return { ...el, y: Math.round((el.y + shift) * 10) / 10 };
+        }
+      }
+    }
+    return el;
+  });
+
+  return {
+    ...layout,
+    elements: nextElements,
+  };
+}
+
 export interface EffectiveLayoutElement extends LayoutElement {
   effectiveX: number;
   effectiveY: number;
@@ -137,6 +216,8 @@ export interface DocumentFitText {
   scope_of_work?: string;
   notes?: string;
   payment_terms?: string;
+  due_date?: string;
+  supply_date?: string;
   company_name?: string;
   company_name_ar?: string;
   company_address?: string;
@@ -217,27 +298,63 @@ export function estimateHeaderElementHeight(element: LayoutElement, text?: Docum
   }
 }
 
-function estimatePartyInfoHeight(layout: DocumentLayout, text?: DocumentFitText): number | undefined {
+export function estimatePartyInfoHeight(layout: DocumentLayout, text?: DocumentFitText): number | undefined {
   if (!text) return undefined;
   const party = layout.elements.find((element) =>
     element.visible && ["customer_info", "supplier_info", "project_info"].includes(element.type)
   );
-  if (!party) return undefined;
-
-  const fields = party.type === "supplier_info"
-    ? [text.supplier_name || text.customer_name, text.contact_person, text.customer_address]
-    : party.type === "project_info"
-    ? [text.project_name, text.location, text.scope_of_work]
-    : [text.customer_name, text.customer_trn, text.customer_address, text.contact_person, text.contact_number, text.contact_email];
-  const fontSize = Math.max(9.5, party.fontSize || 10.5);
-  const textLines = fields.filter((value): value is string => Boolean(value?.trim())).reduce(
-    (count, value) => count + estimateWrappedLines(value, party.width - (party.padding || 3) * 2, fontSize),
-    1
+  const meta = layout.elements.find((element) =>
+    element.visible && (element.type === "doc_meta" || element.id === "doc_meta")
   );
-  const headingHeightMm = 4.5;
-  const lineHeightMm = (fontSize * 1.35) / 3.7795;
-  const contentHeight = headingHeightMm + textLines * lineHeightMm + (party.padding || 3) * 2 + 2;
-  return Math.max(party.height, contentHeight);
+  if (!party && !meta) return undefined;
+
+  let partyHeight = 0;
+  if (party) {
+    const fields = party.type === "supplier_info"
+      ? [text.supplier_name || text.customer_name, text.contact_person, text.customer_address]
+      : party.type === "project_info"
+      ? [text.project_name, text.location, text.scope_of_work]
+      : [text.customer_name, text.customer_trn, text.customer_address, text.contact_person, text.contact_number, text.contact_email];
+    const fontSize = Math.max(9.5, party.fontSize || 10.5);
+    const textLines = fields.filter((value): value is string => Boolean(value?.trim())).reduce(
+      (count, value) => count + estimateWrappedLines(value, party.width - (party.padding || 3) * 2, fontSize),
+      1
+    );
+    const headingHeightMm = 4.5;
+    const lineHeightMm = (fontSize * 1.35) / 3.7795;
+    partyHeight = headingHeightMm + textLines * lineHeightMm + (party.padding || 3) * 2 + 2;
+  }
+
+  let metaHeight = 0;
+  if (meta) {
+    const metaFontSize = Math.max(8.0, meta.fontSize || 8.5);
+    const metaLineHeightMm = (metaFontSize * 1.35) / 3.7795;
+    const innerWidth = meta.width - (meta.padding || 3.2) * 2;
+    // Heading line
+    let lines = 1;
+    // Dates line (Date & Supply)
+    lines += 1;
+    if (text.due_date && (layout.documentType === "tax_invoice" || layout.documentType === "supplier_bill")) {
+      lines += 1;
+    }
+    // Terms
+    if (text.payment_terms) {
+      const termLines = text.payment_terms.split("\n");
+      for (const tl of termLines) {
+        lines += estimateWrappedLines(tl, innerWidth, metaFontSize);
+      }
+    }
+    // Project
+    if (text.project_name) {
+      lines += estimateWrappedLines(text.project_name, innerWidth, metaFontSize);
+    }
+    const headingMm = 5.0;
+    metaHeight = headingMm + lines * metaLineHeightMm + (meta.padding || 3.2) * 2 + 2;
+  }
+
+  const maxEstimated = Math.max(partyHeight, metaHeight);
+  const maxDesigned = Math.max(party?.height || 0, meta?.height || 0);
+  return Math.max(maxDesigned, maxEstimated);
 }
 
 /**
@@ -453,7 +570,14 @@ export function computeIntelligentFitProfile(
       (el) => el.visible && isFollowerElement(el, table)
     );
     const followerSpan = calculateFollowerVerticalSpan(followers, 1.0, 3.0);
-    const tableY = table.y;
+    const party = layout.elements.find((el) => el.visible && ["customer_info", "supplier_info", "project_info"].includes(el.type));
+    const elementsAbove = layout.elements.filter(
+      (el) => el.visible && el.type !== "watermark" && el.y + el.height <= table.y + 2
+    );
+    const maxAboveBottom = elementsAbove.length > 0
+      ? Math.max(...elementsAbove.map((el) => el.y + (el.id === party?.id && partyInfoHeight ? partyInfoHeight : el.height)))
+      : 0;
+    const tableY = maxAboveBottom > 0 ? Math.max(table.y, maxAboveBottom + 3.0) : table.y;
     const totalContentBottom = tableY + tableHeight + (followerSpan > 0 ? 3.0 + followerSpan : 0);
     const fits = totalContentBottom <= safetyBottom;
 
@@ -486,9 +610,13 @@ export function computeIntelligentFitProfile(
     (el) => el.visible && el.type !== "watermark" && el.y + el.height <= table.y + 2
   );
   const minHeaderY = elementsAbove.length > 0 ? Math.min(...elementsAbove.map((el) => el.y)) : 10;
-  const party = layout.elements.find((el) => el.visible && ["customer_info", "supplier_info", "project_info"].includes(el.type));
+  const isPartyCard = (type: string) => ["customer_info", "supplier_info", "project_info", "doc_meta"].includes(type);
   const maxAboveBottom = elementsAbove.length > 0
-    ? Math.max(...elementsAbove.map((el) => el.y + (el.id === party?.id && partyInfoHeight ? partyInfoHeight : el.height)))
+    ? Math.max(...elementsAbove.map((el) => {
+        const isParty = isPartyCard(el.type);
+        const cardH = isParty && partyInfoHeight ? Math.max(el.height, partyInfoHeight) : el.height;
+        return el.y + cardH;
+      }))
     : 60;
   const originalHeaderSpan = Math.max(20, (table?.y || 95) - minHeaderY);
 
@@ -617,9 +745,12 @@ export function computeIntelligentFitProfile(
       effectiveAbove = minHeaderY + compactedSpan;
     }
 
+    const minTableYAllowed = maxAboveBottom + tier.gap;
     const tableY = isSmartFitEnabled && smartFit.automaticSpacing !== false
-      ? (tier.allowSlideTableUp ? Math.min(table.y, effectiveAbove + tier.gap) : effectiveAbove + tier.gap)
-      : Math.max(table.y, maxAboveBottom + tier.gap);
+      ? (tier.allowSlideTableUp
+          ? (minTableYAllowed > table.y ? minTableYAllowed : Math.min(table.y, effectiveAbove + tier.gap))
+          : Math.max(table.y, minTableYAllowed))
+      : Math.max(table.y, minTableYAllowed);
 
     const tableHeight = calculateTableRenderedHeight(
       table,
@@ -877,9 +1008,26 @@ export function computeEffectiveLayout(
   const headerLayoutMap = new Map<string, { y: number; height: number }>();
 
   if (isManualMode) {
-    // In MANUAL DESIGN mode: strictly preserve exact user positions and heights
+    // In MANUAL DESIGN mode: strictly preserve exact user positions and heights, but expand party/meta cards when needed for readability
     for (const el of elementsAbove) {
-      headerLayoutMap.set(el.id, { y: el.y, height: el.height });
+      const isParty = ["customer_info", "supplier_info", "project_info", "doc_meta"].includes(el.type);
+      const height = isParty && fitProfile.partyInfoHeight
+        ? Math.max(el.height, fitProfile.partyInfoHeight)
+        : el.height;
+      headerLayoutMap.set(el.id, { y: el.y, height });
+    }
+
+    // Clearance guard: guarantee table strictly clears all elements above it without overlapping
+    const allHeadersBottom = elementsAbove.length > 0
+      ? Math.max(...elementsAbove.map((el) => {
+          const mapped = headerLayoutMap.get(el.id);
+          return mapped ? mapped.y + mapped.height : el.y + el.height;
+        }))
+      : minHeaderY;
+
+    const minTableY = allHeadersBottom + fitProfile.gap;
+    if (effectiveTableY < minTableY) {
+      effectiveTableY = minTableY;
     }
   } else {
     // ── ZONE 1: CORPORATE BRANDING HEADER (Logo, English Name, Arabic Name, Address/TRN, Title Banner) ──
@@ -1001,13 +1149,15 @@ export function computeEffectiveLayout(
   const followers = layout.elements.filter((el) => isFollowerElement(el, table));
   let followerMap = new Map<string, { y: number; height: number }>();
 
+  const totalTableShift = (effectiveTableY - (table ? table.y : 95)) + Math.max(0, deltaY);
+
   if (followers.length > 0 && isLastPage) {
     if (isManualMode) {
       for (const el of followers) {
         if (el.flowMode === "fixed") {
           followerMap.set(el.id, { y: el.y, height: el.height });
         } else {
-          followerMap.set(el.id, { y: el.y + Math.max(0, deltaY), height: el.height });
+          followerMap.set(el.id, { y: el.y + Math.max(0, totalTableShift), height: el.height });
         }
       }
     } else {

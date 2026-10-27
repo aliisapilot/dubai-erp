@@ -253,9 +253,9 @@ const html = `<!DOCTYPE html>
             <th style="width: 45%; text-align: left;">Item Description / البيان</th>
             <th style="width: 8%; text-align: center;">Qty</th>
             <th style="width: 8%; text-align: center;">Unit</th>
-            <th style="width: 10%; text-align: right;">Rate (AED)</th>
-            <th style="width: 10%; text-align: right;">VAT (5%)</th>
-            <th style="width: 14%; text-align: right;">Total (AED)</th>
+            <th style="width: 10%; text-align: center;">Rate (AED)</th>
+            <th style="width: 10%; text-align: center;">VAT (5%)</th>
+            <th style="width: 14%; text-align: center;">Total (AED)</th>
           </tr>
         </thead>
         <tbody>
@@ -265,9 +265,9 @@ const html = `<!DOCTYPE html>
               <td style="word-break: break-word; white-space: pre-line;">${it.description}</td>
               <td style="text-align: center;">${it.quantity}</td>
               <td style="text-align: center;">${it.unit}</td>
-              <td style="text-align: right;" class="mono">${it.unit_price.toFixed(2)}</td>
-              <td style="text-align: right;" class="mono">${it.vat_amount.toFixed(2)}</td>
-              <td style="text-align: right; font-weight: 700;" class="mono">${it.line_total.toFixed(2)}</td>
+              <td style="text-align: center;" class="mono">${it.unit_price.toFixed(2)}</td>
+              <td style="text-align: center;" class="mono">${it.vat_amount.toFixed(2)}</td>
+              <td style="text-align: center; font-weight: 700;" class="mono">${it.line_total.toFixed(2)}</td>
             </tr>
           `).join("")}
         </tbody>

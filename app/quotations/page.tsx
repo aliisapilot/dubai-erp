@@ -9,6 +9,10 @@ import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
+import DocumentSplitScreenEditor, {
+  DocumentEditorFormState,
+  EditorLineItem,
+} from "@/components/documents/DocumentSplitScreenEditor";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; address: string | null; contact_person: string | null; phone: string | null; mobile: string | null; email: string | null; active: boolean | null };
 type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; unit: string | null };
@@ -30,7 +34,7 @@ type RawItemRecord = {
   sort_order?: number;
 };
 
-type Quotation = { id: string; company_id: string; quotation_number: string | null; customer_id: string | null; customer_name?: string; customer_trn?: string; customer_address?: string; contact_person?: string | null; contact_mobile?: string | null; contact_number?: string; contact_email?: string | null; project_id?: string | null; quotation_date: string | null; expiry_date: string | null; status: string | null; subtotal: number | null; discount_amount: number | null; vat_amount: number | null; total_amount: number | null; notes: string | null; terms: string | null; created_at: string | null };
+type Quotation = { id: string; company_id: string; quotation_number: string | null; customer_id: string | null; customer_name?: string; customer_trn?: string; customer_address?: string; contact_person?: string | null; contact_mobile?: string | null; contact_number?: string; contact_email?: string | null; project_id?: string | null; quotation_date: string | null; expiry_date: string | null; status: string | null; subtotal: number | null; discount_amount: number | null; vat_amount: number | null; total_amount: number | null; notes: string | null; terms: string | null; payment_terms?: string | null; created_at: string | null };
 type QForm = { customer_id: string; project_id: string; quotation_date: string; expiry_date: string; status: string; notes: string; terms: string };
 
 type QuotationStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
@@ -321,6 +325,108 @@ export default function QuotationsPage() {
     finally { setSaving(false); }
   }
 
+  async function handleSaveSplitScreen(payload: {
+    form: DocumentEditorFormState;
+    lines: EditorLineItem[];
+    subtotal: number;
+    vat_amount: number;
+    total_amount: number;
+  }) {
+    setError("");
+    setSuccess("");
+    setSaving(true);
+    try {
+      const dbStatus = normalizeQuotationStatus(payload.form.status);
+      const dataPayload = {
+        customer_id: payload.form.customer_id,
+        project_id: payload.form.project_id || null,
+        quotation_date: payload.form.invoice_date || null,
+        expiry_date: payload.form.supply_date || null,
+        status: String(dbStatus),
+        subtotal: payload.subtotal,
+        discount_amount: 0,
+        vat_amount: payload.vat_amount,
+        total_amount: payload.total_amount,
+        payment_terms: payload.form.payment_terms || null,
+        notes: payload.form.notes.trim() || null,
+        terms: payload.form.terms?.trim() || payload.form.payment_terms || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      let qid: string;
+      if (editing) {
+        const { error: err } = await supabase.from("quotations").update(dataPayload).eq("id", editing.id);
+        if (err) throw new Error(err.message);
+        qid = editing.id;
+      } else {
+        const cid = await getCompanyId();
+        const qno = await generateDocNumber(cid, "QUO");
+        const { data: ins, error: err } = await supabase.from("quotations").insert({
+          company_id: cid,
+          quotation_number: qno,
+          ...dataPayload,
+        }).select("id").single();
+        if (err) throw new Error(err.message);
+        qid = ins.id;
+      }
+
+      // Upsert line items
+      const { data: existingItems } = await supabase.from("quotation_items").select("id").eq("quotation_id", qid);
+      const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
+      const currentIds = new Set<string>();
+      for (let i = 0; i < payload.lines.length; i++) {
+        const l = payload.lines[i];
+        const qty = Number(l.quantity) || 0;
+        const price = Number(l.unit_price) || 0;
+        const discPct = Number(l.discount_pct || 0);
+        const gross = qty * price;
+        const discAmt = gross * (discPct / 100);
+        const taxable = gross - discAmt;
+        const vatRate = Number(l.vat_rate) || 0;
+        const vatAmt = Number(l.vat_amount) || (taxable * (vatRate / 100));
+        const lineTot = Number(l.line_total) || (taxable + vatAmt);
+        const itemPayload = {
+          product_id: l.product_id || null,
+          description: l.description,
+          quantity: qty,
+          unit: l.unit || "Nos",
+          unit_price: price,
+          discount_percent: discPct,
+          discount_amount: discAmt,
+          taxable_amount: taxable,
+          vat_rate: vatRate,
+          vat_amount: vatAmt,
+          line_total: lineTot,
+          sort_order: i,
+        };
+        if (l.id && existingIds.has(l.id)) {
+          const { error: updErr } = await supabase.from("quotation_items").update(itemPayload).eq("id", l.id);
+          if (updErr) throw new Error(updErr.message);
+          currentIds.add(l.id);
+        } else {
+          const { error: insErr } = await supabase.from("quotation_items").insert({
+            quotation_id: qid,
+            ...itemPayload,
+          });
+          if (insErr) throw new Error(insErr.message);
+        }
+      }
+      const toDelete = [...existingIds].filter(id => !currentIds.has(id));
+      if (toDelete.length > 0) {
+        const { error: delErr } = await supabase.from("quotation_items").delete().in("id", toDelete);
+        if (delErr) throw new Error(delErr.message);
+      }
+
+      setSuccess(editing ? "Quotation updated." : "Quotation created.");
+      closeForm();
+      await loadAll();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error saving quotation");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function convertToProforma(q: Quotation) {
     router.push(`/proforma-invoices?from_quotation=${q.id}`);
   }
@@ -484,106 +590,73 @@ export default function QuotationsPage() {
         )}
       </div>
 
-      {/* Form Panel */}
+      {/* Live Split-Screen Form & PDF Preview */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeForm} />
-          <div className="relative ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-slate-900">{editing ? "Edit Quotation" : "New Quotation"}</h2>
-                {!editing ? (
-                  <span className="text-xs font-mono bg-blue-50 text-blue-700 px-2.5 py-1 rounded font-medium border border-blue-200">
-                    Quotation #: Auto-generated on save
-                  </span>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded font-medium border border-slate-200">
-                      Quotation #: {editing.quotation_number}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowRenameModal(true)}
-                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
-                      title="Safely rename quotation reference number with collision check"
-                    >
-                      <Pencil size={11} />
-                      <span>Edit #</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-              <button onClick={closeForm} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={20} /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <form id="q-form" onSubmit={save} className="p-6 space-y-6">
-                {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-                {/* Header */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Customer <span className="text-red-500">*</span></label><select value={form.customer_id} onChange={e=>ff("customer_id",e.target.value)} required className={sel}><option value="">— Select Customer —</option>{selectableCustomers.map(c=><option key={c.id} value={c.id}>{c.customer_code?`${c.customer_code} - `:""}{c.name}</option>)}</select></div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Project / Job (Optional)</label><select value={form.project_id} onChange={e=>ff("project_id",e.target.value)} className={sel}><option value="">— No Project Linked —</option>{projects.map(p=><option key={p.id} value={p.id}>{p.project_number} - {p.name}</option>)}</select></div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
-                    <select
-                      value={normalizeQuotationStatus(form.status)}
-                      onChange={e => ff("status", normalizeQuotationStatus(e.target.value))}
-                      className={sel}
-                    >
-                      {STATUS_OPTIONS.map(s => (
-                        <option key={s.value} value={s.value}>{s.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Quotation Date</label><input type="date" value={form.quotation_date} onChange={e=>ff("quotation_date",e.target.value)} className={inp} /></div>
-                  <div className="col-span-2"><label className="mb-1 block text-sm font-medium text-slate-700">Expiry Date</label><input type="date" value={form.expiry_date} onChange={e=>ff("expiry_date",e.target.value)} className={inp} /></div>
-                </div>
-                {/* Line Items */}
-                <div>
-                  <div className="flex justify-between items-center mb-3"><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Line Items</p></div>
-                  <div className="overflow-x-auto rounded-lg border border-slate-200">
-                    <table className="w-full text-sm">
-                      <thead><tr className="bg-slate-50 text-xs font-semibold uppercase text-slate-500"><th className="px-3 py-2 text-left w-48">Product</th><th className="px-3 py-2 text-left">Description</th><th className="px-3 py-2 w-16 text-center">Qty</th><th className="px-3 py-2 w-24 text-right">Unit Price</th><th className="px-3 py-2 w-16 text-center">Disc%</th><th className="px-3 py-2 w-16 text-center">VAT%</th><th className="px-3 py-2 w-28 text-right">Total</th><th className="px-3 py-2 w-10"></th></tr></thead>
-                      <tbody>
-                        {lines.map((l, i) => (
-                          <tr key={i} className="border-t border-slate-100">
-                            <td className="px-2 py-1"><select value={l.product_id} onChange={e=>onProductSelect(i,e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"><option value="">— Select —</option>{products.map(p=><option key={p.id} value={p.id}>{p.sku?`${p.sku} - `:""}{p.name}</option>)}</select></td>
-                            <td className="px-2 py-1"><input type="text" value={l.description} onChange={e=>updateLine(i,{description:e.target.value})} placeholder="Description" className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none" required /></td>
-                            <td className="px-2 py-1"><input type="number" min="1" step="1" value={l.quantity} onChange={e=>updateLine(i,{quantity:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-center focus:outline-none" /></td>
-                            <td className="px-2 py-1"><input type="number" min="0" step="0.01" value={l.unit_price} onChange={e=>updateLine(i,{unit_price:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none" /></td>
-                            <td className="px-2 py-1"><input type="number" min="0" max="100" step="0.01" value={l.discount_percent} onChange={e=>updateLine(i,{discount_percent:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-center focus:outline-none" /></td>
-                            <td className="px-2 py-1"><input type="number" min="0" max="100" step="0.01" value={l.vat_rate} onChange={e=>updateLine(i,{vat_rate:Number(e.target.value)})} className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-center focus:outline-none" /></td>
-                            <td className="px-2 py-1 text-right text-xs font-semibold text-slate-900 whitespace-nowrap">AED {l.line_total.toFixed(2)}</td>
-                            <td className="px-2 py-1 text-center"><button type="button" onClick={()=>removeLine(i)} disabled={lines.length===1} className="text-slate-400 hover:text-red-500 disabled:opacity-30"><X size={14} /></button></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <button type="button" onClick={addLine} className="mt-2 flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-500 hover:border-slate-400 hover:text-slate-700"><Plus size={14} />Add Line</button>
-                </div>
-                {/* Totals */}
-                <div className="flex justify-end">
-                  <div className="w-64 space-y-2 text-sm">
-                    <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{fmtAED(fSub)}</span></div>
-                    <div className="flex justify-between text-slate-600"><span>VAT</span><span>{fmtAED(fVAT)}</span></div>
-                    <div className="flex justify-between border-t border-slate-200 pt-2 font-bold text-slate-900"><span>Total (AED)</span><span>{fmtAED(fTotal)}</span></div>
-                  </div>
-                </div>
-                {/* Notes & Terms */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Notes</label><textarea value={form.notes} onChange={e=>ff("notes",e.target.value)} rows={3} className={inp} /></div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Terms & Conditions</label><textarea value={form.terms} onChange={e=>ff("terms",e.target.value)} rows={3} className={inp} /></div>
-                </div>
-              </form>
-            </div>
-            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
-              <button type="button" onClick={closeForm} disabled={saving} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-              <button type="submit" form="q-form" disabled={saving} className="flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
-                {saving?<Loader2 size={16} className="animate-spin"/>:<Save size={16}/>}{saving?"Saving…":editing?"Save Changes":"Create Quotation"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <DocumentSplitScreenEditor
+          isOpen={showForm}
+          onClose={closeForm}
+          documentType="quotation"
+          documentTitle="Quotation"
+          documentNumberLabel="Quotation Number"
+          company={company}
+          initialInvoice={
+            editing
+              ? {
+                  id: editing.id,
+                  quotation_number: editing.quotation_number,
+                  customer_id: editing.customer_id,
+                  project_id: editing.project_id,
+                  quotation_date: editing.quotation_date,
+                  expiry_date: editing.expiry_date,
+                  status: editing.status,
+                  payment_terms: editing.payment_terms || editing.terms || "30 days",
+                  notes: editing.notes,
+                  terms: editing.terms,
+                  subtotal: editing.subtotal,
+                  vat_amount: editing.vat_amount,
+                  total_amount: editing.total_amount,
+                }
+              : {
+                  customer_id: form.customer_id,
+                  project_id: form.project_id,
+                  quotation_date: form.quotation_date,
+                  expiry_date: form.expiry_date,
+                  status: form.status,
+                  payment_terms: form.terms || "30 days",
+                  notes: form.notes,
+                  terms: form.terms,
+                }
+          }
+          initialLines={lines.map((l) => ({
+            id: l.id,
+            product_id: l.product_id,
+            description: l.description,
+            quantity: l.quantity,
+            unit: l.unit || "Nos",
+            unit_price: l.unit_price,
+            discount_pct: Number(l.discount_percent ?? l.discount_pct ?? 0),
+            vat_rate: l.vat_rate,
+            taxable_amount:
+              l.quantity * l.unit_price -
+              l.quantity * l.unit_price * (Number(l.discount_percent ?? l.discount_pct ?? 0) / 100),
+            vat_amount: l.vat_amount,
+            line_total: l.line_total,
+          }))}
+          customers={customers}
+          projects={projects.map((p) => ({
+            id: p.id,
+            project_number: p.project_number || "",
+            name: p.name || "",
+          }))}
+          products={products}
+          onSave={handleSaveSplitScreen}
+          saving={saving}
+          onRename={
+            editing && (company?.id || editing.company_id)
+              ? () => setShowRenameModal(true)
+              : undefined
+          }
+        />
       )}
 
       {/* View Modal */}

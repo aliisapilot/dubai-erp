@@ -86,14 +86,37 @@ function StockOutForm() {
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [printMinData, setPrintMinData] = useState<MaterialIssueNoteData | null>(null);
-  const [recentDispatches, setRecentDispatches] = useState<any[]>([]);
+  interface RecentDispatchItem {
+    id: string;
+    created_at: string;
+    quantity: number;
+    previous_stock: number;
+    new_stock: number;
+    unit_cost: number;
+    reference_type: string;
+    reference_number: string;
+    notes: string;
+    products?: {
+      name: string;
+      sku: string;
+      unit: string;
+      category: string;
+    } | null;
+  }
+  const [recentDispatches, setRecentDispatches] = useState<RecentDispatchItem[]>([]);
 
-  useEffect(() => {
-    loadInitialData();
-  }, []);
+  async function loadRecentDispatches(companyId: string) {
+    const { data } = await supabase
+      .from("stock_movements")
+      .select("id, created_at, quantity, previous_stock, new_stock, unit_cost, reference_type, reference_number, notes, products(name, sku, unit, category)")
+      .eq("company_id", companyId)
+      .eq("movement_type", "OUT")
+      .order("created_at", { ascending: false })
+      .limit(10);
+    setRecentDispatches((data as unknown as RecentDispatchItem[]) || []);
+  }
 
   async function loadInitialData() {
-    setLoading(true);
     try {
       const companyId = await getCompanyId();
       if (!companyId) return;
@@ -122,16 +145,10 @@ function StockOutForm() {
     }
   }
 
-  async function loadRecentDispatches(companyId: string) {
-    const { data } = await supabase
-      .from("stock_movements")
-      .select("id, created_at, quantity, previous_stock, new_stock, unit_cost, reference_type, reference_number, notes, products(name, sku, unit, category)")
-      .eq("company_id", companyId)
-      .eq("movement_type", "OUT")
-      .order("created_at", { ascending: false })
-      .limit(8);
-    setRecentDispatches(data || []);
-  }
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadInitialData();
+  }, []);
 
   const selectedMaterial = materials.find((m) => m.id === selectedMaterialId);
   const fabricWidth = selectedMaterial?.fabric_width || 3.0;
@@ -286,9 +303,9 @@ function StockOutForm() {
       const mats = await getMaterialsList(companyId);
       setMaterials(mats);
       await loadRecentDispatches(companyId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Stock Out submission error:", err);
-      setErrorMsg(err.message || "Failed to confirm material dispatch.");
+      setErrorMsg(err instanceof Error ? err.message : "Failed to confirm material dispatch.");
     } finally {
       setSubmitting(false);
     }
