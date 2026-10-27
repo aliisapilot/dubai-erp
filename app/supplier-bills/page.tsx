@@ -10,6 +10,7 @@ import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO
 import SupplierBillTemplate, { SupplierBillData } from "@/components/documents/SupplierBillTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { NumericCellInput } from "@/components/ui/NumericCellInput";
 
 type Supplier = { id: string; name: string | null; trn: string | null; address: string | null };
 type PO = { id: string; purchase_order_number?: string | null; total_amount: number | null };
@@ -678,12 +679,11 @@ export default function SupplierBillsPage() {
                             />
                           </td>
                           <td className="p-2">
-                            <input
-                              type="number"
-                              min="1"
-                              step="1"
+                            <NumericCellInput
                               value={l.quantity}
-                              onChange={e => updateLine(i, { quantity: Number(e.target.value) })}
+                              onChange={(val) => updateLine(i, { quantity: val })}
+                              min={0.001}
+                              fallback={1}
                               className={inp + " text-center"}
                               required
                             />
@@ -697,24 +697,22 @@ export default function SupplierBillsPage() {
                             />
                           </td>
                           <td className="p-2">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
+                            <NumericCellInput
                               value={l.unit_price}
-                              onChange={e => updateLine(i, { unit_price: Number(e.target.value) })}
+                              onChange={(val) => updateLine(i, { unit_price: val })}
+                              min={0}
+                              fallback={0}
                               className={inp + " text-right font-mono"}
                               required
                             />
                           </td>
                           <td className="p-2">
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.01"
+                            <NumericCellInput
                               value={l.vat_rate}
-                              onChange={e => updateLine(i, { vat_rate: Number(e.target.value) })}
+                              onChange={(val) => updateLine(i, { vat_rate: val })}
+                              min={0}
+                              max={100}
+                              fallback={0}
                               className={inp + " text-center font-mono"}
                             />
                           </td>

@@ -31,6 +31,7 @@ import DynamicDocumentRenderer, {
 } from "./DynamicDocumentRenderer";
 import { usePersistedDocumentDesign } from "./usePersistedDocumentDesign";
 import { calcLineItem, fmtAED, todayISO } from "@/lib/helpers";
+import { NumericCellInput } from "@/components/ui/NumericCellInput";
 
 export interface EditorLineItem {
   id?: string;
@@ -531,7 +532,6 @@ function DocumentSplitScreenEditorWorkspace({
     };
   }, [
     effectiveDocNumber,
-    partyType,
     partyMode,
     customParty,
     isSupplierParty,
@@ -1199,12 +1199,11 @@ function DocumentSplitScreenEditorWorkspace({
 
                         {/* Qty */}
                         <td className="p-1">
-                          <input
-                            type="number"
-                            min={1}
-                            step={1}
+                          <NumericCellInput
                             value={l.quantity}
-                            onChange={(e) => handleUpdateLine(idx, { quantity: Number(e.target.value) || 1 })}
+                            onChange={(val) => handleUpdateLine(idx, { quantity: val })}
+                            min={0.001}
+                            fallback={1}
                             disabled={isFormDisabled}
                             className="w-full rounded border border-slate-700 bg-slate-800 px-1 py-1 text-center text-white focus:outline-none"
                           />
@@ -1224,12 +1223,11 @@ function DocumentSplitScreenEditorWorkspace({
 
                         {/* Rate (AED) - Centered */}
                         <td className="p-1">
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.01}
+                          <NumericCellInput
                             value={l.unit_price}
-                            onChange={(e) => handleUpdateLine(idx, { unit_price: Number(e.target.value) || 0 })}
+                            onChange={(val) => handleUpdateLine(idx, { unit_price: val })}
+                            min={0}
+                            fallback={0}
                             disabled={isFormDisabled}
                             className="w-full rounded border border-slate-700 bg-slate-800 px-1.5 py-1 text-center font-mono text-white focus:outline-none"
                           />
@@ -1237,13 +1235,12 @@ function DocumentSplitScreenEditorWorkspace({
 
                         {/* Disc% - Centered */}
                         <td className="p-1">
-                          <input
-                            type="number"
+                          <NumericCellInput
+                            value={l.discount_pct}
+                            onChange={(val) => handleUpdateLine(idx, { discount_pct: val })}
                             min={0}
                             max={100}
-                            step={0.5}
-                            value={l.discount_pct}
-                            onChange={(e) => handleUpdateLine(idx, { discount_pct: Number(e.target.value) || 0 })}
+                            fallback={0}
                             disabled={isFormDisabled}
                             className="w-full rounded border border-slate-700 bg-slate-800 px-1 py-1 text-center text-white focus:outline-none"
                           />
@@ -1251,13 +1248,12 @@ function DocumentSplitScreenEditorWorkspace({
 
                         {/* VAT% - Centered */}
                         <td className="p-1">
-                          <input
-                            type="number"
+                          <NumericCellInput
+                            value={l.vat_rate}
+                            onChange={(val) => handleUpdateLine(idx, { vat_rate: val })}
                             min={0}
                             max={100}
-                            step={1}
-                            value={l.vat_rate}
-                            onChange={(e) => handleUpdateLine(idx, { vat_rate: Number(e.target.value) || 0 })}
+                            fallback={0}
                             disabled={isFormDisabled}
                             className="w-full rounded border border-slate-700 bg-slate-800 px-1 py-1 text-center text-amber-300 focus:outline-none"
                           />

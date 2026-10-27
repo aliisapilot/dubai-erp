@@ -16,6 +16,7 @@ import DynamicDocumentRenderer, {
   getDocumentPageCount,
 } from "@/components/documents/DynamicDocumentRenderer";
 import { usePersistedDocumentDesign } from "@/components/documents/usePersistedDocumentDesign";
+import { NumericCellInput } from "@/components/ui/NumericCellInput";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; address: string | null; contact_person: string | null; phone: string | null; mobile: string | null; email: string | null; active: boolean | null };
 type Product = { id: string; name: string | null; sku: string | null; unit: string | null; current_stock: number | null };
@@ -35,7 +36,7 @@ type DN = {
   contact_email?: string | null;
   custom_project_name?: string | null;
   is_custom_customer?: boolean | null;
-  custom_customer?: any;
+  custom_customer?: Record<string, unknown> | null;
   project_id?: string | null;
   delivery_date: string | null; // DB: delivery_date (not dn_date or dispatch_date)
   status: string | null;
@@ -89,8 +90,6 @@ const emptyForm: DNForm = {
 };
 
 const emptyLine = (): DNLine => ({ product_id: "", description: "", quantity: 1, unit: "Nos", remarks: "", sort_order: 0 });
-const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none";
-const sel = inp + " appearance-none";
 
 export default function DeliveryNotesPage() {
   const [notes, setNotes] = useState<DN[]>([]);
@@ -402,7 +401,7 @@ export default function DeliveryNotesPage() {
       const rawNotes = form.notes.trim() || "";
       const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
 
-      const payload: Record<string, any> = {
+      const payload: Record<string, unknown> = {
         customer_id: isCustom ? null : form.customer_id || null,
         customer_name: isCustom ? customCustomer.name.trim() : null,
         customer_address: isCustom ? (customCustomer.address.trim() || form.customer_address.trim() || null) : (form.customer_address.trim() || null),
@@ -427,7 +426,7 @@ export default function DeliveryNotesPage() {
         updated_at: new Date().toISOString(),
       };
 
-      const executeSave = async (recordPayload: Record<string, any>) => {
+      const executeSave = async (recordPayload: Record<string, unknown>) => {
         if (editing) {
           const { error: updateErr } = await supabase.from("delivery_notes").update(recordPayload).eq("id", editing.id);
           if (updateErr) throw updateErr;
@@ -451,8 +450,9 @@ export default function DeliveryNotesPage() {
         const res = await executeSave(payload);
         dnid = res.id;
         dnNumber = res.number;
-      } catch (saveErr: any) {
-        if (saveErr?.message && (saveErr.message.includes("column") || saveErr.code === "PGRST204" || saveErr.code === "42703")) {
+      } catch (saveErr: unknown) {
+        const errObj = saveErr as { message?: string; code?: string };
+        if (errObj?.message && (errObj.message.includes("column") || errObj.code === "PGRST204" || errObj.code === "42703")) {
           const minimalPayload = {
             customer_id: isCustom ? null : form.customer_id || null,
             project_id: form.project_id || null,
@@ -1090,12 +1090,11 @@ export default function DeliveryNotesPage() {
                                 />
                               </td>
                               <td className="p-1">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  step="1"
+                                <NumericCellInput
                                   value={l.quantity}
-                                  onChange={e => updateLine(i, "quantity", Number(e.target.value))}
+                                  onChange={(val) => updateLine(i, "quantity", val)}
+                                  min={0.001}
+                                  fallback={1}
                                   className="w-full rounded border border-slate-700 bg-slate-800 px-1 py-1 text-xs text-center text-white focus:outline-none"
                                 />
                               </td>
