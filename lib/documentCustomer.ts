@@ -204,6 +204,8 @@ export function withCustomerDocumentDetails<T extends DocumentRecord>(record: T)
 
   const isCustom =
     Boolean(record.is_custom_customer) ||
+    Boolean(customJson) ||
+    Boolean(customNotes) ||
     (!record.customer_id && Boolean(name));
 
   return {
@@ -215,6 +217,7 @@ export function withCustomerDocumentDetails<T extends DocumentRecord>(record: T)
     contact_number: contactNumber,
     contact_email: contactEmail,
     project_name: projectName,
+    custom_project_name: projectName,
     is_custom_customer: isCustom,
   };
 }
@@ -292,6 +295,8 @@ export function withSupplierDocumentDetails<T extends DocumentRecord>(record: T)
 
   const isCustom =
     Boolean(record.is_custom_supplier) ||
+    Boolean(customJson) ||
+    Boolean(customNotes) ||
     (!record.supplier_id && Boolean(name));
 
   return {
@@ -303,6 +308,29 @@ export function withSupplierDocumentDetails<T extends DocumentRecord>(record: T)
     contact_number: contactNumber,
     contact_email: contactEmail,
     project_name: projectName,
+    custom_project_name: projectName,
     is_custom_supplier: isCustom,
   };
+}
+
+export function formatDatabaseError(err: unknown): string {
+  if (!err) return "An unknown error occurred while saving.";
+  if (typeof err === "string" && err.trim()) return err.trim();
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === "object") {
+    const obj = err as Record<string, unknown>;
+    const message = (obj.message || obj.error_description || obj.error || obj.details || obj.hint) as string | undefined;
+    if (message) {
+      const details = obj.details && obj.details !== message ? ` (${obj.details})` : "";
+      const hint = obj.hint ? ` [Hint: ${obj.hint}]` : "";
+      const code = obj.code ? ` [Code: ${obj.code}]` : "";
+      return `${message}${details}${hint}${code}`;
+    }
+    try {
+      return JSON.stringify(err);
+    } catch {
+      // fallback
+    }
+  }
+  return String(err);
 }

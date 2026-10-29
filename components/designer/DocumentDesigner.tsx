@@ -53,9 +53,24 @@ import { getBrandConfig } from '@/lib/brandConfig';
 import { cloudError, revisionOf, type CloudRevision } from '@/lib/documentCloud';
 import { exportDesignBackup, preserveDesignDraft } from '@/lib/documentDesignBackup';
 
-export default function DocumentDesigner() {
-  const [selectedDocType, setSelectedDocType] = useState<DocumentTypeId>("tax_invoice");
-  const [layout, setLayout] = useState<DocumentLayout>(() => createDefaultLayout("tax_invoice"));
+function normalizeDocTypeParam(raw: string | null | undefined): DocumentTypeId | null {
+  if (!raw) return null;
+  const s = raw.toLowerCase().trim();
+  if (DOCUMENT_TYPE_OPTIONS.some((d) => d.id === s)) return s as DocumentTypeId;
+  if (s === "proforma" || s === "pi") return "proforma_invoice";
+  if (s === "quote" || s === "estimates") return "quotation";
+  if (s === "invoice" || s === "tax-invoice") return "tax_invoice";
+  if (s === "po" || s === "purchase-order") return "purchase_order";
+  if (s === "dn" || s === "delivery") return "delivery_note";
+  if (s === "receipt" || s === "rv") return "receipt_voucher";
+  return null;
+}
+
+export default function DocumentDesigner({ initialType }: { initialType?: string } = {}) {
+  const initialDocType: DocumentTypeId = normalizeDocTypeParam(initialType) || "tax_invoice";
+
+  const [selectedDocType, setSelectedDocType] = useState<DocumentTypeId>(initialDocType);
+  const [layout, setLayout] = useState<DocumentLayout>(() => createDefaultLayout(initialDocType));
   const [company, setCompany] = useState<CompanyDocInfo | null>(() => getCachedCompanySync() as CompanyDocInfo | null);
   const [companyId, setCompanyId] = useState<string | null | undefined>(() => getCachedCompanySync()?.id ?? undefined);
   const [stylePresets, setStylePresets] = useState<DocumentStylePreset[]>([]);
@@ -78,9 +93,9 @@ export default function DocumentDesigner() {
 
   // History for 50+ steps of Undo / Redo
   // Stored in BOTH state (to trigger re-renders for canUndo/canRedo) and refs (so callbacks always see current values)
-  const [history, setHistory] = useState<DocumentLayout[]>([createDefaultLayout("tax_invoice")]);
+  const [history, setHistory] = useState<DocumentLayout[]>([createDefaultLayout(initialDocType)]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
-  const historyRef = useRef<DocumentLayout[]>([createDefaultLayout("tax_invoice")]);
+  const historyRef = useRef<DocumentLayout[]>([createDefaultLayout(initialDocType)]);
   const historyIndexRef = useRef<number>(0);
 
   // Canvas & Interaction State
@@ -319,7 +334,7 @@ export default function DocumentDesigner() {
     if (dirty) preserveDesignDraft(companyId, selectedDocType, layout);
     setSelectedDocType(docType);
     setSelectedElementId(null);
-  }, [companyId,dirty,layout,loadingCloud,selectedDocType]);
+  }, [companyId, dirty, layout, loadingCloud, selectedDocType, setSelectedElementId]);
 
   useEffect(() => {
     if (!loadingCloud && dirty) preserveDesignDraft(companyId, selectedDocType, layout);
@@ -695,7 +710,7 @@ export default function DocumentDesigner() {
         setTimeout(() => setNotification(null), 4000);
       }
     },
-    [layout, pushHistory]
+    [layout, pushHistory, setSelectedElementId]
   );
 
   const handleReplaceImage = useCallback(
@@ -751,7 +766,7 @@ export default function DocumentDesigner() {
       });
       setTimeout(() => setNotification(null), 3000);
     },
-    [layout, pushHistory]
+    [layout, pushHistory, setSelectedElementId]
   );
 
   // ── 9. Add / Delete Custom Elements ────────────────────────────────────────
@@ -784,7 +799,7 @@ export default function DocumentDesigner() {
       pushHistory(updated);
       setSelectedElementId(newId);
     },
-    [layout, pushHistory]
+    [layout, pushHistory, setSelectedElementId]
   );
 
   const handleDeleteElement = useCallback(
@@ -796,7 +811,7 @@ export default function DocumentDesigner() {
       pushHistory(updated);
       if (selectedElementId === id) setSelectedElementId(null);
     },
-    [layout, pushHistory, selectedElementId]
+    [layout, pushHistory, selectedElementId, setSelectedElementId]
   );
 
   const handleDeleteSelected = useCallback(() => {
@@ -962,7 +977,7 @@ export default function DocumentDesigner() {
     pushHistory(createDefaultLayout(selectedDocType));setShowResetModal(false);
     setNotification({message:'Default loaded as an unsaved draft. Save as a new style to preserve your current cloud design.',type:'success'});
   }, [companyId,layout,pushHistory,selectedDocType]);
-  const recoverBrowserDraft = useCallback(() => {
+  const _recoverBrowserDraft = useCallback(() => {
     if(loadingCloud || !companyId || mutationRef.current)return;
     try {
       const raw=localStorage.getItem('dubai-erp.design-draft.'+companyId+'.'+selectedDocType)
@@ -994,7 +1009,7 @@ export default function DocumentDesigner() {
       type: "success",
     });
     setTimeout(() => setNotification(null), 4000);
-  }, [pushHistory, selectedDocType]);
+  }, [pushHistory, selectedDocType, setSelectedElementId]);
 
   const handleSaveImportedToCloud = useCallback(async (importedLayout: DocumentLayout, name: string, makeDefault: boolean) => {
     if (!companyId) {

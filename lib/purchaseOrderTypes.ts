@@ -5,6 +5,8 @@
  *   CHECK (status IN ('draft', 'confirmed', 'sent', 'partially_received', 'received', 'cancelled'))
  */
 
+import { formatDatabaseError } from "@/lib/helpers";
+
 export type PurchaseOrderStatus =
   | "draft"
   | "confirmed"
@@ -110,7 +112,7 @@ export function formatPurchaseOrderStatus(status: unknown): string {
  */
 export function parsePurchaseOrderError(error: unknown): string {
   if (!error) return "An unexpected error occurred.";
-  const msg = typeof error === "string" ? error : (error as { message?: string }).message || String(error);
+  const msg = formatDatabaseError(error);
 
   if (msg.includes("purchase_orders_status_check")) {
     return "Invalid Purchase Order status. Supported statuses are Draft, Confirmed, Sent, Partially Received, Received, and Cancelled.";

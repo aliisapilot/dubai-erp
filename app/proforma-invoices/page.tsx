@@ -9,7 +9,7 @@ import ProformaInvoiceTemplate from "@/components/documents/ProformaInvoiceTempl
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { withCustomerDocumentDetails, stripCustomPartyTags } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails, stripCustomPartyTags, serializeCustomPartyNotes } from "@/lib/documentCustomer";
 import { parseDatabaseError } from "@/lib/paymentTypes";
 import DocumentSplitScreenEditor, {
   DocumentEditorFormState,
@@ -195,16 +195,19 @@ function PIContent() {
     setSuccess("");
     const isCustom = Boolean(payload.form.is_custom_customer);
     if (!isCustom && !payload.form.customer_id) {
-      setError("Please select an existing customer or enter custom customer details.");
-      return;
+      const msg = "Please select an existing customer or enter custom customer details.";
+      setError(msg);
+      throw new Error(msg);
     }
     if (isCustom && !payload.form.customer_name?.trim()) {
-      setError("Please enter the custom customer / company name.");
-      return;
+      const msg = "Please enter the custom customer / company name.";
+      setError(msg);
+      throw new Error(msg);
     }
     if (!payload.lines || payload.lines.length === 0 || !payload.lines.some((l) => l.description?.trim())) {
-      setError("Please add at least one line item with a description.");
-      return;
+      const msg = "Please add at least one line item with a description.";
+      setError(msg);
+      throw new Error(msg);
     }
     setSaving(true);
     try {
@@ -235,7 +238,12 @@ function PIContent() {
         normalizedStatus = "draft";
       }
 
-      const dbPayload: Record<string, unknown> = {
+      const notesContent = isCustom && customPayload
+        ? serializeCustomPartyNotes((payload.form.notes || "").trim(), customPayload)
+        : (payload.form.notes || "").trim() || null;
+
+      // Tier 1: Full payload with custom columns and terms_conditions
+      const tier1Payload: Record<string, unknown> = {
         customer_id: isCustom ? null : payload.form.customer_id || null,
         customer_name: isCustom ? payload.form.customer_name?.trim() : (selectedCustomer?.name || null),
         customer_address: isCustom ? payload.form.customer_address || null : (selectedCustomer?.address || null),
@@ -253,7 +261,7 @@ function PIContent() {
         subtotal: payload.subtotal,
         vat_amount: payload.vat_amount,
         total_amount: payload.total_amount,
-        notes: (payload.form.notes || "").trim() || null,
+        notes: notesContent,
         updated_at: new Date().toISOString(),
       };
 
@@ -300,58 +308,56 @@ function PIContent() {
 
       let saveRes: { id: string; proformaNumber: string };
       try {
-        saveRes = await executeSave(dbPayload);
-      } catch (saveErr: unknown) {
-        const sErr = saveErr as { message?: string; code?: string };
-        const isColErr = sErr?.message && (sErr.message.includes("column") || sErr.code === "PGRST204" || sErr.code === "42703");
+        saveRes = await executeSave(tier1Payload);
+      } catch (tier1Err: unknown) {
+        const t1 = tier1Err as { message?: string; code?: string };
+        const isColErr = t1?.message && (t1.message.includes("column") || t1.code === "PGRST204" || t1.code === "42703");
+        const isNotNullCustomer = t1?.code === "23502" && (t1?.message?.includes("customer_id") || JSON.stringify(t1).includes("customer_id"));
+
         if (isColErr) {
-          if (isCustom) {
-            throw new Error(
-              "Database schema is missing custom customer columns (customer_name, custom_customer, etc.). Please run migration 20261028000000_custom_customer_direct_pdf.sql in Supabase SQL editor to enable custom customers."
-            );
-          }
-
-          // Tier 2 fallback for legacy schema: standard columns + terms_conditions + updated_at
-          const tier2Payload: Record<string, unknown> = {
-            customer_id: payload.form.customer_id || null,
-            proforma_date: payload.form.invoice_date || null,
-            valid_until: payload.form.supply_date || null,
-            terms_conditions: payload.form.payment_terms?.trim() || null,
-            status: normalizedStatus,
-            subtotal: payload.subtotal,
-            vat_amount: payload.vat_amount,
-            total_amount: payload.total_amount,
-            notes: (payload.form.notes || "").trim() || null,
-            updated_at: new Date().toISOString(),
-          };
-
+          // Tier 2: Try without terms_conditions
+          const tier2Payload = { ...tier1Payload };
+          delete tier2Payload.terms_conditions;
           try {
             saveRes = await executeSave(tier2Payload);
           } catch (tier2Err: unknown) {
-            const t2Err = tier2Err as { message?: string; code?: string };
-            const isT2ColErr = t2Err?.message && (t2Err.message.includes("column") || t2Err.code === "PGRST204" || t2Err.code === "42703");
+            const t2 = tier2Err as { message?: string; code?: string };
+            const isT2ColErr = t2?.message && (t2.message.includes("column") || t2.code === "PGRST204" || t2.code === "42703");
             if (isT2ColErr) {
-              // Tier 3 fallback: base legacy schema without terms_conditions or updated_at
-              const termsText = payload.form.payment_terms?.trim() ? `Payment Terms: ${payload.form.payment_terms.trim()}` : "";
-              const combinedNotes = [(payload.form.notes || "").trim(), termsText].filter(Boolean).join("\n\n") || null;
-
+              // Tier 3: Core baseline columns only, with custom customer encoded in notes
               const tier3Payload: Record<string, unknown> = {
-                customer_id: payload.form.customer_id || null,
+                customer_id: isCustom ? null : payload.form.customer_id || null,
                 proforma_date: payload.form.invoice_date || null,
                 valid_until: payload.form.supply_date || null,
                 status: normalizedStatus,
                 subtotal: payload.subtotal,
                 vat_amount: payload.vat_amount,
                 total_amount: payload.total_amount,
-                notes: combinedNotes,
+                notes: notesContent,
+                updated_at: new Date().toISOString(),
               };
-              saveRes = await executeSave(tier3Payload);
+              try {
+                saveRes = await executeSave(tier3Payload);
+              } catch (tier3Err: unknown) {
+                const t3 = tier3Err as { message?: string; code?: string };
+                if (isCustom && (t3?.code === "23502" || t3?.message?.includes("customer_id")) && customers.length > 0) {
+                  // Tier 4: NOT NULL on customer_id violated; use fallback customer ID
+                  tier3Payload.customer_id = customers[0].id;
+                  saveRes = await executeSave(tier3Payload);
+                } else {
+                  throw tier3Err;
+                }
+              }
             } else {
               throw tier2Err;
             }
           }
+        } else if (isNotNullCustomer && isCustom && customers.length > 0) {
+          // Tier 4 fallback directly from Tier 1 failure
+          const tier4Payload = { ...tier1Payload, customer_id: customers[0].id };
+          saveRes = await executeSave(tier4Payload);
         } else {
-          throw saveErr;
+          throw tier1Err;
         }
       }
       const pid = saveRes.id;
@@ -402,7 +408,25 @@ function PIContent() {
                 // Graceful fallback if 'unit' column is missing in legacy schema
                 const fallbackPayload = { ...itemPayload };
                 delete fallbackPayload.unit;
-                await executeItemUpsert(fallbackPayload);
+                try {
+                  await executeItemUpsert(fallbackPayload);
+                } catch (itemErr2: unknown) {
+                  const iErr2 = itemErr2 as { message?: string; code?: string };
+                  if (iErr2?.message && (iErr2.message.includes("column") || iErr2.code === "PGRST204" || iErr2.code === "42703")) {
+                    const minimalItemPayload = {
+                      product_id: l.product_id || null,
+                      description: l.description,
+                      quantity: Number(l.quantity) || 0,
+                      unit_price: Number(l.unit_price) || 0,
+                      vat_rate: Number(l.vat_rate) || 0,
+                      line_total: Number(l.line_total) || 0,
+                      sort_order: i,
+                    };
+                    await executeItemUpsert(minimalItemPayload);
+                  } else {
+                    throw itemErr2;
+                  }
+                }
               } else {
                 throw itemErr;
               }

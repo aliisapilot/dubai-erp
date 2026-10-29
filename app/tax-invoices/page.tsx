@@ -399,16 +399,12 @@ function TIContent() {
         saveRes = await executeSave(dataPayload);
       } catch (saveErr: unknown) {
         const errObj = saveErr as { message?: string; code?: string };
-        // Safe fallback in case remote DB does not yet have newly added columns cached
-        if (errObj?.message && (errObj.message.includes("column") || errObj.code === "PGRST204" || errObj.code === "42703")) {
-          if (isCustom) {
-            throw new Error(
-              "Database schema is missing custom customer columns (customer_name, custom_customer, etc.). Please run migration 20261028000000_custom_customer_direct_pdf.sql in Supabase SQL editor to enable custom customers."
-            );
-          }
+        const isColErr = errObj?.message && (errObj.message.includes("column") || errObj.code === "PGRST204" || errObj.code === "42703");
+        const isNotNullCustomer = errObj?.code === "23502" && (errObj?.message?.includes("customer_id") || JSON.stringify(errObj).includes("customer_id"));
 
-          const minimalPayload = {
-            customer_id: payload.form.customer_id || null,
+        if (isColErr) {
+          const minimalPayload: Record<string, unknown> = {
+            customer_id: isCustom ? null : payload.form.customer_id || null,
             project_id: payload.form.project_id || null,
             invoice_date: payload.form.invoice_date || null,
             supply_date: payload.form.supply_date || null,
@@ -420,7 +416,20 @@ function TIContent() {
             notes: rawNotes || null,
             updated_at: new Date().toISOString(),
           };
-          saveRes = await executeSave(minimalPayload);
+          try {
+            saveRes = await executeSave(minimalPayload);
+          } catch (minErr: unknown) {
+            const mErr = minErr as { message?: string; code?: string };
+            if (isCustom && (mErr?.code === "23502" || mErr?.message?.includes("customer_id")) && customers.length > 0) {
+              minimalPayload.customer_id = customers[0].id;
+              saveRes = await executeSave(minimalPayload);
+            } else {
+              throw minErr;
+            }
+          }
+        } else if (isNotNullCustomer && isCustom && customers.length > 0) {
+          const fallbackWithCustomer = { ...dataPayload, customer_id: customers[0].id };
+          saveRes = await executeSave(fallbackWithCustomer);
         } else {
           throw saveErr;
         }

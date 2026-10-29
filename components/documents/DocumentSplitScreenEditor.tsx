@@ -1752,7 +1752,7 @@ function DocumentSplitScreenEditorWorkspace({
         <PrintModal
           isOpen={isPrintModalOpen}
           onClose={() => setIsPrintModalOpen(false)}
-          editorHref={`/settings/document-designer?type=${documentType}`}
+          editorHref={`/settings/designer?type=${documentType}`}
         >
           <div className="flex flex-col gap-6 print:gap-0">
             {Array.from({ length: totalPreviewPages }, (_, index) => (

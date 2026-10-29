@@ -447,3 +447,29 @@ export function compareSalaryStatements<T extends { payroll_month?: string | num
   return (a.id || "").localeCompare(b.id || "");
 }
 
+/**
+ * Universal error formatter for database operations, PostgrestError objects, and runtime exceptions.
+ * Ensures the actual, actionable error code, hint, and details are always displayed to the user.
+ */
+export function formatDatabaseError(err: unknown): string {
+  if (!err) return "An unknown error occurred while saving.";
+  if (typeof err === "string" && err.trim()) return err.trim();
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === "object") {
+    const obj = err as Record<string, unknown>;
+    const message = (obj.message || obj.error_description || obj.error || obj.details || obj.hint) as string | undefined;
+    if (message) {
+      const details = obj.details && obj.details !== message ? ` (${obj.details})` : "";
+      const hint = obj.hint ? ` [Hint: ${obj.hint}]` : "";
+      const code = obj.code ? ` [Code: ${obj.code}]` : "";
+      return `${message}${details}${hint}${code}`;
+    }
+    try {
+      return JSON.stringify(err);
+    } catch {
+      // fallback
+    }
+  }
+  return String(err);
+}
+

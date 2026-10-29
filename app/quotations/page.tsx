@@ -477,16 +477,12 @@ export default function QuotationsPage() {
         saveRes = await executeSave(dataPayload);
       } catch (saveErr: unknown) {
         const errObj = saveErr as { message?: string; code?: string };
-        if (errObj?.message && (errObj.message.includes("column") || errObj.code === "PGRST204" || errObj.code === "42703")) {
-          if (isCustom) {
-            throw new Error(
-              "Database schema is missing custom customer columns (customer_name, custom_customer, etc.). Please run migration 20261028000000_custom_customer_direct_pdf.sql in Supabase SQL editor to enable custom customers."
-            );
-          }
+        const isColErr = errObj?.message && (errObj.message.includes("column") || errObj.code === "PGRST204" || errObj.code === "42703");
+        const isNotNullCustomer = errObj?.code === "23502" && (errObj?.message?.includes("customer_id") || JSON.stringify(errObj).includes("customer_id"));
 
-          // Tier 2: standard columns with terms
+        if (isColErr) {
           const minimalPayload: Record<string, unknown> = {
-            customer_id: payload.form.customer_id || null,
+            customer_id: isCustom ? null : payload.form.customer_id || null,
             project_id: payload.form.project_id || null,
             quotation_date: payload.form.invoice_date || null,
             expiry_date: payload.form.supply_date || null,
@@ -501,12 +497,13 @@ export default function QuotationsPage() {
           };
           try {
             saveRes = await executeSave(minimalPayload);
-          } catch (tier2Err: unknown) {
-            const t2Err = tier2Err as { message?: string; code?: string };
-            if (t2Err?.message && (t2Err.message.includes("column") || t2Err.code === "PGRST204" || t2Err.code === "42703")) {
-              // Tier 3: base legacy columns
+          } catch (minErr: unknown) {
+            const mErr = minErr as { message?: string; code?: string };
+            const isMinColErr = mErr?.message && (mErr.message.includes("column") || mErr.code === "PGRST204" || mErr.code === "42703");
+            if (isMinColErr) {
+              // Tier 3: base legacy columns without updated_at
               const tier3Payload: Record<string, unknown> = {
-                customer_id: payload.form.customer_id || null,
+                customer_id: isCustom ? null : payload.form.customer_id || null,
                 project_id: payload.form.project_id || null,
                 quotation_date: payload.form.invoice_date || null,
                 expiry_date: payload.form.supply_date || null,
@@ -518,11 +515,27 @@ export default function QuotationsPage() {
                 notes: rawNotes || null,
                 terms: payload.form.terms?.trim() || payload.form.payment_terms || null,
               };
-              saveRes = await executeSave(tier3Payload);
+              try {
+                saveRes = await executeSave(tier3Payload);
+              } catch (t3Err: unknown) {
+                const t3 = t3Err as { message?: string; code?: string };
+                if (isCustom && (t3?.code === "23502" || t3?.message?.includes("customer_id")) && customers.length > 0) {
+                  tier3Payload.customer_id = customers[0].id;
+                  saveRes = await executeSave(tier3Payload);
+                } else {
+                  throw t3Err;
+                }
+              }
+            } else if (isCustom && (mErr?.code === "23502" || mErr?.message?.includes("customer_id")) && customers.length > 0) {
+              minimalPayload.customer_id = customers[0].id;
+              saveRes = await executeSave(minimalPayload);
             } else {
-              throw tier2Err;
+              throw minErr;
             }
           }
+        } else if (isNotNullCustomer && isCustom && customers.length > 0) {
+          const fallbackWithCustomer = { ...dataPayload, customer_id: customers[0].id };
+          saveRes = await executeSave(fallbackWithCustomer);
         } else {
           throw saveErr;
         }

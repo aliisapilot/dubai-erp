@@ -7,12 +7,12 @@ export function usePersistedDocumentDesign(companyId: string | null | undefined,
   const key = `${companyId}:${documentType}`;
   const [state, setState] = useState<{ key: string; layout: DocumentLayout; ready: boolean; error?: string }>(() => {
     const cached = peekDocumentPreview(companyId, documentType);
-    return {key, layout: cached?.layout || createDefaultLayout(documentType), ready: Boolean(cached)};
+    return { key, layout: cached?.layout || createDefaultLayout(documentType), ready: true };
   });
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    loadDocumentLayout(companyId, documentType, {preview: true, fresh: retry > 0}).then(result => {
+    loadDocumentLayout(companyId, documentType, { preview: true, fresh: retry > 0 }).then(result => {
       if (cancelled) return;
       setState({
         key,
