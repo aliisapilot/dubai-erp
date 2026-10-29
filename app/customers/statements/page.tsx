@@ -162,7 +162,7 @@ export default function StatementOfAccountPage() {
           .select("id, customer_id, invoice_number, invoice_date, total_amount, status, customer_name")
           .ilike("customer_name", custName)
           .order("invoice_date", { ascending: true });
-        paysPromise = Promise.resolve({ data: [] as any[], error: null });
+        paysPromise = Promise.resolve({ data: [] as Payment[], error: null });
         rcvsPromise = supabase
           .from("receipt_vouchers")
           .select("id, customer_id, voucher_number, voucher_date, amount, payment_method, cheque_number, customer_name, received_from")

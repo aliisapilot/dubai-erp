@@ -31,6 +31,8 @@ interface DocumentContainerProps {
   borders?: PageBorderSettings;
   /** Optional full document layout */
   layout?: DocumentLayout;
+  /** When true (e.g. inside PrintModal), hides the redundant standalone control bar and outer page padding */
+  hideControls?: boolean;
 }
 
 export default function DocumentContainer({
@@ -50,6 +52,7 @@ export default function DocumentContainer({
   warning,
   borders,
   layout,
+  hideControls = false,
 }: DocumentContainerProps) {
   const [isExporting, setIsExporting] = useState(false);
   const handlePrint = async () => {
@@ -93,9 +96,15 @@ export default function DocumentContainer({
   } as React.CSSProperties;
 
   return (
-    <div className="print-template-wrapper bg-slate-100 min-h-screen py-6 px-4 print:bg-transparent print:p-0 print:m-0 print:min-h-0 print:h-auto print:w-[210mm]">
-      {/* Control Bar (Screen Only - Hidden in Print) */}
-      {(docTypeLabel || onClose) && (
+    <div
+      className={`print-template-wrapper ${
+        hideControls || noPadding
+          ? "p-0 m-0 bg-transparent min-h-0 w-auto"
+          : "bg-slate-100 min-h-screen py-6 px-4"
+      } print:bg-transparent print:p-0 print:m-0 print:min-h-0 print:h-auto print:w-[210mm]`}
+    >
+      {/* Control Bar (Screen Only - Hidden in Print or inside modal) */}
+      {!hideControls && (docTypeLabel || onClose) && (
         <div className="no-print w-[210mm] max-w-full mx-auto mb-4 flex items-center justify-between bg-white px-4 py-3 rounded-lg border border-slate-200 shadow-sm">
           <div className="text-sm font-semibold text-slate-700 flex items-center gap-2 flex-wrap">
             {docTypeLabel && <span>{docTypeLabel}:</span>}

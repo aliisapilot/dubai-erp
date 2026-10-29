@@ -462,8 +462,8 @@ export default function TopToolbar({
             <button
               ref={moreMenuButtonRef}
               type="button"
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
               aria-label="Document designer actions menu"
-              onClick={() => setShowMoreMenu((v) => !v)}
               className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/90 px-2 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer"
               title="More Actions: Auto Fix Modes & Styles"
             >
@@ -554,7 +554,7 @@ export default function TopToolbar({
 
       {/* ── Unified Advanced Settings Modal ───────────────────────────────────────── */}
       {showAdvancedModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full text-white shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
             <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
@@ -616,7 +616,7 @@ export default function TopToolbar({
             </div>
 
             {/* Modal Body */}
-            <div className="p-5 overflow-y-auto space-y-5 text-xs text-slate-300">
+            <div className="p-5 overflow-y-auto designer-scrollbar space-y-5 text-xs text-slate-300 pr-6">
               {/* Tab 1: Grid & Alignment */}
               {advancedTab === "grid" && (
                 <div className="space-y-4">

@@ -1352,8 +1352,9 @@ export default function RightInspector({
                 const contentHPx = Math.max(contentEl.scrollHeight, contentEl.offsetHeight, maxChildBottom > 0 ? maxChildBottom + padBottom : 0);
                 const contentWPx = Math.max(contentEl.scrollWidth, contentEl.offsetWidth);
 
-                const requiredHeightMm = Math.max(elem.height + 1, Math.ceil(((contentHPx / pxPerMm) + 1.2) * 10) / 10);
-                const requiredWidthMm = Math.max(elem.width, Math.ceil((contentWPx / pxPerMm) * 10) / 10);
+                const minH = elem.type.startsWith("border_") ? 0.5 : 5;
+                const requiredHeightMm = Math.max(minH, Math.ceil(((contentHPx / pxPerMm) + 1.0) * 10) / 10);
+                const requiredWidthMm = Math.max(minH, Math.ceil((contentWPx / pxPerMm) * 10) / 10);
 
                 if (onUpdateLayout) {
                   const nextLayout = applyFitBoxWithCollisionClearance(layout, elem.id, {

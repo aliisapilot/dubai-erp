@@ -185,9 +185,9 @@ export default function DocumentCanvas({
   const handleFitBoxToContent = useCallback(
     (elem: LayoutElement) => {
       const dim = renderedDimensions[elem.id];
-      if (!dim) return;
-      const targetHeightMm = Math.max(elem.height + 1, Math.ceil((dim.heightMm + 1.2) * 10) / 10);
-      const targetWidthMm = Math.max(elem.width, dim.widthMm);
+      const minH = elem.type.startsWith("border_") ? 0.5 : 5;
+      const targetHeightMm = Math.max(minH, Math.ceil((dim.heightMm + 1.0) * 10) / 10);
+      const targetWidthMm = Math.max(minH, Math.ceil(dim.widthMm * 10) / 10);
       if (onUpdateLayout) {
         const nextLayout = applyFitBoxWithCollisionClearance(latestLayout.current, elem.id, {
           widthMm: targetWidthMm,

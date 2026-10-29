@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import {
   UploadCloud,
@@ -97,23 +97,18 @@ export default function SmartImportPage() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [auditRows, setAuditRows] = useState<CalculationAuditRow[]>([]);
   const [relationshipTrees, setRelationshipTrees] = useState<RelationshipTreeNode[]>([]);
-  const [beforeCounts, setBeforeCounts] = useState<{ customers: number; suppliers: number; projects: number; documents: number }>({
-    customers: 0,
-    suppliers: 0,
-    projects: 0,
-    documents: 0,
-  });
-  const [proposedSummary, setProposedSummary] = useState<ImportBatchSummary | null>(null);
-
-  useEffect(() => {
+  const { beforeCounts, proposedSummary } = useMemo(() => {
     if (documents.length > 0) {
       const result = computeBeforeAndAfterSummary(documents);
-      setProposedSummary(result.proposedSummary);
-      setBeforeCounts(result.beforeCounts);
-    } else {
-      setProposedSummary(null);
-      setBeforeCounts({ customers: 0, suppliers: 0, projects: 0, documents: 0 });
+      return {
+        beforeCounts: result.beforeCounts,
+        proposedSummary: result.proposedSummary,
+      };
     }
+    return {
+      beforeCounts: { customers: 0, suppliers: 0, projects: 0, documents: 0 },
+      proposedSummary: null,
+    };
   }, [documents]);
 
   // Split-screen inspector state

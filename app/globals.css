@@ -289,8 +289,16 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color: #0f172a !important;
 }
 
-/* PDF Designer scroll regions only; the rest of the ERP keeps platform defaults. */
+/* Standardized ERP Scrollbars across all modals, editors, split screens, and designer */
 .pdf-designer-shell .designer-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+  overscroll-behavior: contain;
+}
+
+.designer-scrollbar,
+.erp-scroll-container,
+.print-preview-surface {
   scrollbar-width: thin;
   scrollbar-color: #475569 transparent;
   overscroll-behavior: contain;
@@ -300,40 +308,65 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   scrollbar-gutter: stable;
 }
 
+.designer-canvas-scroll,
+.modal-scroll-surface {
+  scrollbar-gutter: stable;
+}
+
+.designer-scrollbar:focus-visible,
 .pdf-designer-shell .designer-scrollbar:focus-visible {
   outline: 1px solid #b08d31;
   outline-offset: -1px;
 }
 
 @media (hover: hover) and (pointer: fine) and (min-width: 768px) {
-  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+  .designer-scrollbar::-webkit-scrollbar,
+  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar,
+  .erp-scroll-container::-webkit-scrollbar,
+  .print-preview-surface::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
   }
 
-  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar-track {
+  .designer-scrollbar::-webkit-scrollbar-track,
+  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar-track,
+  .erp-scroll-container::-webkit-scrollbar-track,
+  .print-preview-surface::-webkit-scrollbar-track {
     background: transparent;
     border-radius: 9999px;
   }
 
-  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar-thumb {
+  .designer-scrollbar::-webkit-scrollbar-thumb,
+  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar-thumb,
+  .erp-scroll-container::-webkit-scrollbar-thumb,
+  .print-preview-surface::-webkit-scrollbar-thumb {
     background-color: #475569;
     background-clip: padding-box;
-    border: 2px solid transparent;
+    border: 1px solid transparent;
     border-radius: 9999px;
     transition: background-color 140ms ease;
   }
 
-  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar-thumb:hover {
+  .designer-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: #b08d31;
   }
 
-  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar-corner {
+  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar-thumb:hover,
+  .erp-scroll-container::-webkit-scrollbar-thumb:hover,
+  .print-preview-surface::-webkit-scrollbar-thumb:hover {
+    background-color: #b08d31;
+  }
+
+  .designer-scrollbar::-webkit-scrollbar-corner,
+  .pdf-designer-shell .designer-scrollbar::-webkit-scrollbar-corner,
+  .erp-scroll-container::-webkit-scrollbar-corner,
+  .print-preview-surface::-webkit-scrollbar-corner {
     background: transparent;
   }
 }
 
 @media (pointer: coarse) {
+  .designer-scrollbar,
   .pdf-designer-shell .designer-scrollbar {
     scrollbar-width: auto;
     scrollbar-color: auto;

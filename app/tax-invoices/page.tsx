@@ -48,7 +48,23 @@ type TI = {
   notes: string | null;
   created_at: string | null;
 };
-type TIForm = { customer_id: string; project_id: string; invoice_date: string; supply_date: string; status: string; payment_terms: string; notes: string };
+type TIForm = {
+  customer_id: string;
+  customer_name?: string;
+  customer_trn?: string;
+  customer_address?: string;
+  contact_person?: string;
+  contact_number?: string;
+  contact_email?: string;
+  custom_project_name?: string;
+  is_custom_customer?: boolean;
+  project_id: string;
+  invoice_date: string;
+  supply_date: string;
+  status: string;
+  payment_terms: string;
+  notes: string;
+};
 const emptyForm: TIForm = { customer_id:"", project_id:"", invoice_date: todayISO(), supply_date: todayISO(), status:"draft", payment_terms:"30 days", notes:"" };
 const emptyLine = (): LineItem => ({ product_id:"", description:"", quantity:1, unit:"", unit_price:0, discount_pct:0, vat_rate:5, taxable_amount:0, vat_amount:0, line_total:0, sort_order:0 });
 const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none";
@@ -290,12 +306,14 @@ function TIContent() {
     setSuccess("");
     const isCustom = Boolean(payload.form.is_custom_customer);
     if (!isCustom && !payload.form.customer_id) {
-      setError("Please select an existing customer or enter custom customer details.");
-      return;
+      const err = new Error("Please select an existing customer or enter custom customer details.");
+      setError(err.message);
+      throw err;
     }
     if (isCustom && !payload.form.customer_name?.trim()) {
-      setError("Please enter the custom customer / company name.");
-      return;
+      const err = new Error("Please enter the custom customer / company name.");
+      setError(err.message);
+      throw err;
     }
     setSaving(true);
     try {
@@ -314,7 +332,7 @@ function TIContent() {
       const rawNotes = payload.form.notes || "";
       const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
 
-      const dataPayload: Record<string, any> = {
+      const dataPayload: Record<string, unknown> = {
         customer_id: isCustom ? null : payload.form.customer_id || null,
         customer_name: isCustom ? payload.form.customer_name?.trim() : null,
         customer_address: isCustom ? payload.form.customer_address || null : null,
@@ -337,11 +355,11 @@ function TIContent() {
         updated_at: new Date().toISOString(),
       };
 
-      const executeSave = async (recordPayload: Record<string, any>) => {
+      const executeSave = async (recordPayload: Record<string, unknown>) => {
         if (editing) {
           const { error: updateErr } = await supabase.from("tax_invoices").update(recordPayload).eq("id", editing.id);
           if (updateErr) throw updateErr;
-          return editing.id;
+          return { id: editing.id, invoiceNumber: editing.invoice_number || editing.id };
         } else {
           const cid = await getCompanyId();
           const ino = await generateDocNumber(cid, "INV");
@@ -351,16 +369,17 @@ function TIContent() {
             .select("id")
             .single();
           if (err) throw new Error(err.message);
-          return ins.id;
+          return { id: ins.id, invoiceNumber: ino };
         }
       };
 
-      let iid: string;
+      let saveRes: { id: string; invoiceNumber: string };
       try {
-        iid = await executeSave(dataPayload);
-      } catch (saveErr: any) {
+        saveRes = await executeSave(dataPayload);
+      } catch (saveErr: unknown) {
+        const errObj = saveErr as { message?: string; code?: string };
         // Safe fallback in case remote DB does not yet have newly added columns cached
-        if (saveErr?.message && (saveErr.message.includes("column") || saveErr.code === "PGRST204" || saveErr.code === "42703")) {
+        if (errObj?.message && (errObj.message.includes("column") || errObj.code === "PGRST204" || errObj.code === "42703")) {
           const minimalPayload = {
             customer_id: isCustom ? null : payload.form.customer_id || null,
             project_id: payload.form.project_id || null,
@@ -374,11 +393,12 @@ function TIContent() {
             notes: serializedNotes || null,
             updated_at: new Date().toISOString(),
           };
-          iid = await executeSave(minimalPayload);
+          saveRes = await executeSave(minimalPayload);
         } else {
           throw saveErr;
         }
       }
+      const iid = saveRes.id;
 
       if (editing) {
         // Upsert line items: preserve existing IDs, insert new ones, delete removed ones
@@ -468,10 +488,12 @@ function TIContent() {
 
       setShowForm(false);
       setEditing(null);
-      setSuccess(editing ? `Invoice ${editing.invoice_number || ""} updated successfully.` : "Tax invoice created.");
+      setSuccess(`Tax invoice ${saveRes.invoiceNumber} ${editing ? "updated" : "saved"} successfully.`);
       await loadAll();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error");
+      const msg = err instanceof Error ? err.message : "Error saving tax invoice";
+      setError(msg);
+      throw err;
     } finally {
       setSaving(false);
     }
@@ -593,17 +615,17 @@ function TIContent() {
           initialInvoice={
             editing
               ? editing
-              : (form.customer_id || (form as any).customer_name)
+              : (form.customer_id || form.customer_name)
               ? {
                   customer_id: form.customer_id,
-                  customer_name: (form as any).customer_name,
-                  customer_trn: (form as any).customer_trn,
-                  customer_address: (form as any).customer_address,
-                  contact_person: (form as any).contact_person,
-                  contact_number: (form as any).contact_number,
-                  contact_email: (form as any).contact_email,
-                  custom_project_name: (form as any).custom_project_name,
-                  is_custom_customer: (form as any).is_custom_customer,
+                  customer_name: form.customer_name,
+                  customer_trn: form.customer_trn,
+                  customer_address: form.customer_address,
+                  contact_person: form.contact_person,
+                  contact_number: form.contact_number,
+                  contact_email: form.contact_email,
+                  custom_project_name: form.custom_project_name,
+                  is_custom_customer: form.is_custom_customer,
                   project_id: form.project_id,
                   invoice_date: form.invoice_date,
                   supply_date: form.supply_date,

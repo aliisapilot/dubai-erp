@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import {
   X,
   Save,
@@ -344,6 +344,15 @@ function DocumentSplitScreenEditorWorkspace({
   const [error, setError] = useState<string>("");
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const leftPanelRef = useRef<HTMLDivElement>(null);
+
+  const scrollToTopError = useCallback((msg?: string) => {
+    if (msg) setError(msg);
+    setActiveTabMobile("form");
+    if (leftPanelRef.current) {
+      leftPanelRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
 
   const isIssuedOriginal =
     (initialInvoice?.status || "").toLowerCase() === "issued" ||
@@ -612,20 +621,30 @@ function DocumentSplitScreenEditorWorkspace({
 
   const handleSaveDocument = async (targetStatus?: string) => {
     if (isSubmitting || saving) return;
-    const isCustom = partyMode === "custom";
+
+    let effectivePartyMode = partyMode;
+    if (effectivePartyMode === "existing" && !form.customer_id && customParty.name.trim()) {
+      effectivePartyMode = "custom";
+      setPartyMode("custom");
+    } else if (effectivePartyMode === "custom" && !customParty.name.trim() && form.customer_id) {
+      effectivePartyMode = "existing";
+      setPartyMode("existing");
+    }
+
+    const isCustom = effectivePartyMode === "custom";
     if (isCustom) {
       if (!customParty.name.trim()) {
-        setError(`Please enter ${partyLabelSingle} Name.`);
+        scrollToTopError(`Please enter ${partyLabelSingle} Name.`);
         return;
       }
     } else {
       if (!form.customer_id) {
-        setError(`Please select an existing ${partyLabelSingle}.`);
+        scrollToTopError(`Please select an existing ${partyLabelSingle} or enter custom details.`);
         return;
       }
     }
     if (lines.length === 0 || !lines.some((l) => l.description.trim())) {
-      setError("Please add at least one line item with a description.");
+      scrollToTopError("Please add at least one line item with a description.");
       return;
     }
 
@@ -671,7 +690,7 @@ function DocumentSplitScreenEditorWorkspace({
         form: {
           ...form,
           status: finalStatus,
-          party_mode: partyMode,
+          party_mode: effectivePartyMode,
           is_custom_customer: isCustom && !isSupplierParty,
           is_custom_supplier: isCustom && isSupplierParty,
           customer_name: finalCustomerName,
@@ -691,6 +710,9 @@ function DocumentSplitScreenEditorWorkspace({
         total_amount: totals.total,
       });
       setDirty(false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to save document. Please check required fields and network.";
+      scrollToTopError(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -750,7 +772,17 @@ function DocumentSplitScreenEditorWorkspace({
                   <span>Edit Number</span>
                 </button>
               )}
-              {dirty ? (
+              {error ? (
+                <button
+                  type="button"
+                  onClick={() => scrollToTopError()}
+                  className="flex items-center gap-1.5 rounded border border-rose-500/50 bg-rose-500/20 px-2.5 py-0.5 text-[11px] font-bold text-rose-300 hover:bg-rose-500/30 transition cursor-pointer"
+                  title="Click to view error"
+                >
+                  <AlertTriangle size={12} className="text-rose-400 shrink-0" />
+                  <span>Action Needed</span>
+                </button>
+              ) : dirty ? (
                 <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-400">
                   <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
                   Unsaved Changes
@@ -841,10 +873,29 @@ function DocumentSplitScreenEditorWorkspace({
         </div>
       </header>
 
+      {/* Top Global Error Banner: Visible across all scroll positions and mobile tabs */}
+      {error && (
+        <div className="z-20 flex shrink-0 items-center justify-between border-b border-rose-500/40 bg-rose-950/95 px-4 py-2 text-xs text-rose-200 shadow-md">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={15} className="shrink-0 text-rose-400" />
+            <span className="font-semibold">{error}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setError("")}
+            className="rounded p-1 text-rose-300 hover:bg-rose-900 transition cursor-pointer"
+            title="Dismiss error"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* ── Main Split-Screen Workspace ───────────────────────────────────────────── */}
       <div className="relative flex flex-1 overflow-hidden">
         {/* LEFT PANEL: Editable Document Form */}
         <div
+          ref={leftPanelRef}
           className={`flex flex-col border-r border-slate-800 bg-slate-900/90 text-slate-200 overflow-y-auto designer-scrollbar ${
             previewFullscreen ? "hidden" : "w-full lg:w-1/2"
           } ${activeTabMobile === "form" ? "block" : "hidden lg:flex"}`}

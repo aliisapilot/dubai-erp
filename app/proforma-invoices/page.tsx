@@ -252,7 +252,7 @@ function PIContent() {
         subtotal: payload.subtotal,
         vat_amount: payload.vat_amount,
         total_amount: payload.total_amount,
-        notes: payload.form.notes.trim() || null,
+        notes: (payload.form.notes || "").trim() || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -260,7 +260,7 @@ function PIContent() {
         if (editing) {
           const { error: err } = await supabase.from("proforma_invoices").update(recordPayload).eq("id", editing.id);
           if (err) throw err;
-          return editing.id;
+          return { id: editing.id, proformaNumber: editing.proforma_number || editing.id };
         } else {
           const cid = await getCompanyId();
           const pno = await generateDocNumber(cid, "PRO");
@@ -270,13 +270,13 @@ function PIContent() {
             ...recordPayload,
           }).select("id").single();
           if (err) throw err;
-          return ins.id;
+          return { id: ins.id, proformaNumber: pno };
         }
       };
 
-      let pid: string;
+      let saveRes: { id: string; proformaNumber: string };
       try {
-        pid = await executeSave(dbPayload);
+        saveRes = await executeSave(dbPayload);
       } catch (saveErr: unknown) {
         const sErr = saveErr as { message?: string; code?: string };
         if (sErr?.message && (sErr.message.includes("column") || sErr.code === "PGRST204" || sErr.code === "42703")) {
@@ -289,14 +289,15 @@ function PIContent() {
             subtotal: payload.subtotal,
             vat_amount: payload.vat_amount,
             total_amount: payload.total_amount,
-            notes: isCustom && customPayload ? serializeCustomPartyNotes(payload.form.notes.trim(), customPayload) : payload.form.notes.trim() || null,
+            notes: isCustom && customPayload ? serializeCustomPartyNotes((payload.form.notes || "").trim(), customPayload) : (payload.form.notes || "").trim() || null,
             updated_at: new Date().toISOString(),
           };
-          pid = await executeSave(minimalPayload);
+          saveRes = await executeSave(minimalPayload);
         } else {
           throw saveErr;
         }
       }
+      const pid = saveRes.id;
 
       // Upsert proforma line items
       const { data: existingItems } = await supabase.from("proforma_invoice_items").select("id").eq("proforma_invoice_id", pid);
@@ -354,12 +355,14 @@ function PIContent() {
         if (delErr) throw delErr;
       }
 
-      setSuccess(editing ? "Proforma updated." : "Proforma invoice created.");
+      setSuccess(`Proforma invoice ${saveRes.proformaNumber} ${editing ? "updated" : "saved"} successfully.`);
       setShowForm(false);
       setEditing(null);
       await loadAll();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error saving proforma");
+      const msg = err instanceof Error ? err.message : "Error saving proforma";
+      setError(msg);
+      throw err;
     } finally {
       setSaving(false);
     }

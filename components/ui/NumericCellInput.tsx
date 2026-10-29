@@ -104,7 +104,11 @@ export const NumericCellInput: React.FC<NumericCellInputProps> = ({
       setDraft(text);
 
       // If draft represents a valid complete number, propagate immediately so calculations & live preview update
-      if (text.trim() !== "" && text !== "-" && text !== "." && !text.endsWith(".")) {
+      if (text.trim() === "" || text === "-" || text === ".") {
+        if (changeHandler) {
+          changeHandler(0);
+        }
+      } else if (!text.endsWith(".")) {
         const parsed = parseFloat(text);
         if (!isNaN(parsed)) {
           // Normalise to at most 6 decimal places to prevent float artifacts

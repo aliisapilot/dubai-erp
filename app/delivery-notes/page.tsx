@@ -3,7 +3,7 @@ import { planDeliveryStock } from "@/lib/deliveryStock";
 
 import { FormEvent, useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Search, X, Save, Loader2, Pencil, Printer, Trash2, ClipboardList, ZoomIn, ZoomOut, Maximize2, Minimize2, CheckCircle2 } from "lucide-react";
+import { Plus, Search, X, Save, Loader2, Pencil, Printer, Trash2, ClipboardList, ZoomIn, ZoomOut, Maximize2, Minimize2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { getCompanyId, getCurrentCompany, statusClass, fmtDate, todayISO, generateDocNumber } from "@/lib/helpers";
 import DeliveryNoteTemplate, { DeliveryNoteData } from "@/components/documents/DeliveryNoteTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -357,11 +357,56 @@ export default function DeliveryNotesPage() {
     setPrintDoc(printData);
   }
 
+  function handlePrintCurrent() {
+    const isCustom = partyMode === "custom";
+    const cust = customers.find(c => c.id === form.customer_id);
+    const prj = projects.find(p => p.id === form.project_id);
+    const currentPrintData: DeliveryNoteData = {
+      id: editing?.id || "draft",
+      delivery_number: editing?.delivery_note_number || "DN-DRAFT",
+      delivery_date: form.delivery_date || todayISO(),
+      dispatch_date: form.dispatch_date || form.delivery_date || todayISO(),
+      customer_name: isCustom ? customCustomer.name : cust?.name || "",
+      customer_trn: isCustom ? customCustomer.trn : cust?.trn,
+      customer_address: isCustom ? customCustomer.address : cust?.address,
+      contact_person: isCustom ? customCustomer.contact_person : cust?.contact_person,
+      contact_number: isCustom ? customCustomer.phone : cust?.phone || cust?.mobile,
+      contact_email: isCustom ? customCustomer.email : cust?.email,
+      order_ref: form.order_ref,
+      driver_name: form.driver_name,
+      driver_number: form.driver_number,
+      vehicle_number: form.vehicle_number,
+      delivery_method: form.delivery_method,
+      receiver_name: form.receiver_name,
+      receiver_mobile: form.receiver_mobile,
+      notes: form.notes,
+      project_name: isCustom ? customCustomer.project_name : prj?.name || null,
+      project_number: prj?.project_number || null,
+      items: lines.map((l) => ({
+        description: l.description,
+        quantity: l.quantity,
+        unit: l.unit || "Nos",
+        remarks: l.remarks || "",
+      })),
+    };
+    setPrintDoc(currentPrintData);
+  }
+
   async function save(e: FormEvent) {
     e.preventDefault();
     setError("");
     setSuccess("");
-    const isCustom = partyMode === "custom";
+
+    let effectivePartyMode = partyMode;
+    if (effectivePartyMode === "existing" && !form.customer_id && customCustomer.name.trim()) {
+      effectivePartyMode = "custom";
+      setPartyMode("custom");
+    } else if (effectivePartyMode === "custom" && !customCustomer.name.trim() && form.customer_id) {
+      effectivePartyMode = "existing";
+      setPartyMode("existing");
+    }
+
+    const isCustom = effectivePartyMode === "custom";
     if (!isCustom && !form.customer_id) {
       setError("Please select an existing customer or switch to Custom Customer.");
       return;
@@ -748,8 +793,9 @@ export default function DeliveryNotesPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700"
+                onClick={handlePrintCurrent}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 cursor-pointer"
+                title="Print or Export PDF"
               >
                 <Printer size={14} className="text-indigo-400" />
                 <span className="hidden sm:inline">Print / Export</span>
@@ -758,7 +804,7 @@ export default function DeliveryNotesPage() {
                 type="submit"
                 form="dn-form"
                 disabled={saving}
-                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 text-xs font-bold text-white shadow-md transition"
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 text-xs font-bold text-white shadow-md transition cursor-pointer"
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 <span>{saving ? "Saving…" : editing ? "Save Changes" : "Save Delivery Note"}</span>
@@ -766,12 +812,30 @@ export default function DeliveryNotesPage() {
               <button
                 type="button"
                 onClick={closeForm}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
           </header>
+
+          {/* Top Global Error Banner: Visible across all scroll positions and mobile tabs */}
+          {error && (
+            <div className="z-20 flex shrink-0 items-center justify-between border-b border-rose-500/40 bg-rose-950/95 px-4 py-2 text-xs text-rose-200 shadow-md">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={15} className="shrink-0 text-rose-400" />
+                <span className="font-semibold">{error}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setError("")}
+                className="rounded p-1 text-rose-300 hover:bg-rose-900 transition cursor-pointer"
+                title="Dismiss error"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
 
           {/* Main Split Body */}
           <div className="relative flex flex-1 overflow-hidden">

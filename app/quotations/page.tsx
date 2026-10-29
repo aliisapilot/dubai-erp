@@ -48,7 +48,7 @@ type Quotation = {
   contact_email?: string | null;
   custom_project_name?: string | null;
   is_custom_customer?: boolean | null;
-  custom_customer?: any;
+  custom_customer?: unknown;
   project_id?: string | null;
   quotation_date: string | null;
   expiry_date: string | null;
@@ -62,7 +62,23 @@ type Quotation = {
   payment_terms?: string | null;
   created_at: string | null;
 };
-type QForm = { customer_id: string; project_id: string; quotation_date: string; expiry_date: string; status: string; notes: string; terms: string };
+type QForm = {
+  customer_id: string;
+  customer_name?: string;
+  customer_trn?: string;
+  customer_address?: string;
+  contact_person?: string;
+  contact_number?: string;
+  contact_email?: string;
+  custom_project_name?: string;
+  is_custom_customer?: boolean;
+  project_id: string;
+  quotation_date: string;
+  expiry_date: string;
+  status: string;
+  notes: string;
+  terms: string;
+};
 
 type QuotationStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
 
@@ -364,12 +380,14 @@ export default function QuotationsPage() {
     setSuccess("");
     const isCustom = Boolean(payload.form.is_custom_customer);
     if (!isCustom && !payload.form.customer_id) {
-      setError("Please select an existing customer or enter custom customer details.");
-      return;
+      const err = new Error("Please select an existing customer or enter custom customer details.");
+      setError(err.message);
+      throw err;
     }
     if (isCustom && !payload.form.customer_name?.trim()) {
-      setError("Please enter the custom customer / company name.");
-      return;
+      const err = new Error("Please enter the custom customer / company name.");
+      setError(err.message);
+      throw err;
     }
     setSaving(true);
     try {
@@ -389,7 +407,7 @@ export default function QuotationsPage() {
       const rawNotes = payload.form.notes?.trim() || "";
       const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
 
-      const dataPayload: Record<string, any> = {
+      const dataPayload: Record<string, unknown> = {
         customer_id: isCustom ? null : payload.form.customer_id || null,
         customer_name: isCustom ? payload.form.customer_name?.trim() : null,
         customer_address: isCustom ? payload.form.customer_address || null : null,
@@ -414,11 +432,11 @@ export default function QuotationsPage() {
         updated_at: new Date().toISOString(),
       };
 
-      const executeSave = async (recordPayload: Record<string, any>) => {
+      const executeSave = async (recordPayload: Record<string, unknown>) => {
         if (editing) {
           const { error: err } = await supabase.from("quotations").update(recordPayload).eq("id", editing.id);
           if (err) throw err;
-          return editing.id;
+          return { id: editing.id, quotationNumber: editing.quotation_number || editing.id };
         } else {
           const cid = await getCompanyId();
           const qno = await generateDocNumber(cid, "QUO");
@@ -428,15 +446,16 @@ export default function QuotationsPage() {
             ...recordPayload,
           }).select("id").single();
           if (err) throw err;
-          return ins.id;
+          return { id: ins.id, quotationNumber: qno };
         }
       };
 
-      let qid: string;
+      let saveRes: { id: string; quotationNumber: string };
       try {
-        qid = await executeSave(dataPayload);
-      } catch (saveErr: any) {
-        if (saveErr?.message && (saveErr.message.includes("column") || saveErr.code === "PGRST204" || saveErr.code === "42703")) {
+        saveRes = await executeSave(dataPayload);
+      } catch (saveErr: unknown) {
+        const errObj = saveErr as { message?: string; code?: string };
+        if (errObj?.message && (errObj.message.includes("column") || errObj.code === "PGRST204" || errObj.code === "42703")) {
           const minimalPayload = {
             customer_id: isCustom ? null : payload.form.customer_id || null,
             project_id: payload.form.project_id || null,
@@ -452,11 +471,12 @@ export default function QuotationsPage() {
             terms: payload.form.terms?.trim() || payload.form.payment_terms || null,
             updated_at: new Date().toISOString(),
           };
-          qid = await executeSave(minimalPayload);
+          saveRes = await executeSave(minimalPayload);
         } else {
           throw saveErr;
         }
       }
+      const qid = saveRes.id;
 
       // Upsert line items
       const { data: existingItems } = await supabase.from("quotation_items").select("id").eq("quotation_id", qid);
@@ -505,11 +525,13 @@ export default function QuotationsPage() {
         if (delErr) throw new Error(delErr.message);
       }
 
-      setSuccess(editing ? "Quotation updated." : "Quotation created.");
+      setSuccess(`Quotation ${saveRes.quotationNumber} ${editing ? "updated" : "saved"} successfully.`);
       closeForm();
       await loadAll();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error saving quotation");
+      const msg = err instanceof Error ? err.message : "Error saving quotation";
+      setError(msg);
+      throw err;
     } finally {
       setSaving(false);
     }
@@ -714,14 +736,14 @@ export default function QuotationsPage() {
               ? editing
               : {
                   customer_id: form.customer_id,
-                  customer_name: (form as any).customer_name,
-                  customer_trn: (form as any).customer_trn,
-                  customer_address: (form as any).customer_address,
-                  contact_person: (form as any).contact_person,
-                  contact_number: (form as any).contact_number,
-                  contact_email: (form as any).contact_email,
-                  custom_project_name: (form as any).custom_project_name,
-                  is_custom_customer: (form as any).is_custom_customer,
+                  customer_name: form.customer_name,
+                  customer_trn: form.customer_trn,
+                  customer_address: form.customer_address,
+                  contact_person: form.contact_person,
+                  contact_number: form.contact_number,
+                  contact_email: form.contact_email,
+                  custom_project_name: form.custom_project_name,
+                  is_custom_customer: form.is_custom_customer,
                   project_id: form.project_id,
                   quotation_date: form.quotation_date,
                   expiry_date: form.expiry_date,

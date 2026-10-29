@@ -102,6 +102,7 @@ export default function DeliveryNoteTemplate({
       noPadding={Boolean(customLayout)}
       showWatermark={!customLayout}
       totalPages={totalPages}
+      hideControls={true}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

@@ -39,7 +39,7 @@ type PO = {
   contact_email?: string;
   custom_project_name?: string | null;
   is_custom_supplier?: boolean | null;
-  custom_supplier?: any;
+  custom_supplier?: unknown;
   project_id?: string | null;
   order_date: string | null;
   expected_date: string | null;
@@ -50,7 +50,25 @@ type PO = {
   notes: string | null;
   created_at: string | null;
 };
-type POForm = { supplier_id: string; project_id: string; order_date: string; expected_date: string; status: PurchaseOrderStatus; notes: string };
+type POForm = {
+  supplier_id: string;
+  supplier_name?: string;
+  customer_name?: string;
+  supplier_trn?: string;
+  customer_trn?: string;
+  supplier_address?: string;
+  customer_address?: string;
+  contact_person?: string;
+  contact_number?: string;
+  contact_email?: string;
+  custom_project_name?: string;
+  is_custom_supplier?: boolean;
+  project_id: string;
+  order_date: string;
+  expected_date: string;
+  status: PurchaseOrderStatus;
+  notes: string;
+};
 const emptyForm: POForm = { supplier_id:"", project_id:"", order_date: todayISO(), expected_date:"", status:"draft", notes:"" };
 const emptyLine = (): POLine => ({ product_id:"", description:"", quantity:1, unit_price:0, discount_pct:0, vat_rate:5, line_total:0, vat_amount:0, sort_order:0 });
 const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none";
@@ -255,12 +273,14 @@ export default function PurchaseOrdersPage() {
     setSuccess("");
     const isCustom = Boolean(payload.form.is_custom_supplier);
     if (!isCustom && !payload.form.customer_id) {
-      setError("Please select an existing supplier or enter custom supplier details.");
-      return;
+      const err = new Error("Please select an existing supplier or enter custom supplier details.");
+      setError(err.message);
+      throw err;
     }
     if (isCustom && !payload.form.customer_name?.trim()) {
-      setError("Please enter the custom supplier / vendor name.");
-      return;
+      const err = new Error("Please enter the custom supplier / vendor name.");
+      setError(err.message);
+      throw err;
     }
     setSaving(true);
     try {
@@ -280,7 +300,7 @@ export default function PurchaseOrdersPage() {
       const rawNotes = payload.form.notes?.trim() || "";
       const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
 
-      const dataPayload: Record<string, any> = {
+      const dataPayload: Record<string, unknown> = {
         supplier_id: isCustom ? null : payload.form.customer_id || null,
         supplier_name: isCustom ? payload.form.customer_name?.trim() : null,
         supplier_address: isCustom ? payload.form.customer_address || null : null,
@@ -303,13 +323,13 @@ export default function PurchaseOrdersPage() {
         updated_at: new Date().toISOString(),
       };
 
-      const executeSave = async (recordPayload: Record<string, any>) => {
+      const executeSave = async (recordPayload: Record<string, unknown>) => {
         if (editing) {
           const { error: err } = await supabase.from("purchase_orders").update(recordPayload).eq("id", editing.id);
           if (err) throw err;
           const { error: delErr } = await supabase.from("purchase_order_items").delete().eq("purchase_order_id", editing.id);
           if (delErr) throw delErr;
-          return editing.id;
+          return { id: editing.id, poNumber: editing.purchase_order_number || editing.id };
         } else {
           const cid = await getCompanyId();
           const pno = await generateDocNumber(cid, "PO");
@@ -319,15 +339,16 @@ export default function PurchaseOrdersPage() {
             purchase_order_number: pno,
           }).select("id").single();
           if (err) throw err;
-          return ins.id;
+          return { id: ins.id, poNumber: pno };
         }
       };
 
-      let poid: string;
+      let saveRes: { id: string; poNumber: string };
       try {
-        poid = await executeSave(dataPayload);
-      } catch (saveErr: any) {
-        if (saveErr?.message && (saveErr.message.includes("column") || saveErr.code === "PGRST204" || saveErr.code === "42703")) {
+        saveRes = await executeSave(dataPayload);
+      } catch (saveErr: unknown) {
+        const errObj = saveErr as { message?: string; code?: string };
+        if (errObj?.message && (errObj.message.includes("column") || errObj.code === "PGRST204" || errObj.code === "42703")) {
           const minimalPayload = {
             supplier_id: isCustom ? null : payload.form.customer_id || null,
             project_id: payload.form.project_id || null,
@@ -341,11 +362,12 @@ export default function PurchaseOrdersPage() {
             notes: serializedNotes || null,
             updated_at: new Date().toISOString(),
           };
-          poid = await executeSave(minimalPayload);
+          saveRes = await executeSave(minimalPayload);
         } else {
           throw saveErr;
         }
       }
+      const poid = saveRes.id;
 
       // If Received, update stock
       if (normStatus === "received" && normalizePurchaseOrderStatus(editing?.status) !== "received") {
@@ -388,11 +410,13 @@ export default function PurchaseOrdersPage() {
       );
       if (itemErr) throw itemErr;
 
-      setSuccess(editing ? "PO updated." : "Purchase order created.");
+      setSuccess(`Purchase order ${saveRes.poNumber} ${editing ? "updated" : "saved"} successfully.`);
       closeForm();
       await loadAll();
     } catch (err: unknown) {
-      setError(parsePurchaseOrderError(err));
+      const msg = parsePurchaseOrderError(err);
+      setError(msg);
+      throw new Error(msg);
     } finally {
       setSaving(false);
     }
@@ -536,14 +560,14 @@ export default function PurchaseOrdersPage() {
               : {
                   customer_id: form.supplier_id,
                   supplier_id: form.supplier_id,
-                  customer_name: (form as any).supplier_name || (form as any).customer_name,
-                  customer_trn: (form as any).supplier_trn || (form as any).customer_trn,
-                  customer_address: (form as any).supplier_address || (form as any).customer_address,
-                  contact_person: (form as any).contact_person,
-                  contact_number: (form as any).contact_number,
-                  contact_email: (form as any).contact_email,
-                  custom_project_name: (form as any).custom_project_name,
-                  is_custom_supplier: (form as any).is_custom_supplier,
+                  customer_name: form.supplier_name || form.customer_name,
+                  customer_trn: form.supplier_trn || form.customer_trn,
+                  customer_address: form.supplier_address || form.customer_address,
+                  contact_person: form.contact_person,
+                  contact_number: form.contact_number,
+                  contact_email: form.contact_email,
+                  custom_project_name: form.custom_project_name,
+                  is_custom_supplier: form.is_custom_supplier,
                   order_date: form.order_date,
                   invoice_date: form.order_date,
                   expected_date: form.expected_date,

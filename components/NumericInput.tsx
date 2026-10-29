@@ -176,6 +176,8 @@ export default function NumericInput({
       onChange={handleChange}
       onFocus={handleFocus}
       onBlur={handleBlur}
+      onWheel={(e) => (e.target as HTMLElement).blur()}
+      autoComplete="off"
       placeholder={defaultPlaceholder}
       className={className}
       {...rest}

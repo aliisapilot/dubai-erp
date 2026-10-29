@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
-import { Receipt, Plus, Search, Loader2, X, Printer, Pencil, Trash2, ZoomIn, ZoomOut, Maximize2, Minimize2, CheckCircle2 } from "lucide-react";
+import { Receipt, Plus, Search, Loader2, X, Printer, Pencil, Trash2, ZoomIn, ZoomOut, Maximize2, Minimize2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { getCompanyId, getCurrentCompany, fmtAED, statusClass, todayISO, generateDocNumber } from "@/lib/helpers";
 import ReceiptVoucherTemplate, { ReceiptVoucherData } from "@/components/documents/ReceiptVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -195,7 +195,7 @@ export default function ReceiptVouchersPage() {
       getCurrentCompany(),
     ]);
 
-    const enriched = (vchs || []).map((v: any) => withCustomerDocumentDetails(v));
+    const enriched = (vchs || []).map((v: Record<string, unknown>) => withCustomerDocumentDetails(v));
     setVouchers(enriched as RCV[]);
     setCustomers((custs || []) as Customer[]);
     setInvoices((invs || []) as Invoice[]);
@@ -267,7 +267,17 @@ export default function ReceiptVouchersPage() {
 
   async function saveVoucher(e: FormEvent) {
     e.preventDefault();
-    const effectivePayer = partyMode === "custom" ? customCustomer.name.trim() : form.received_from.trim();
+    let effectivePartyMode = partyMode;
+    if (effectivePartyMode === "existing" && !form.customer_id && customCustomer.name.trim()) {
+      effectivePartyMode = "custom";
+      setPartyMode("custom");
+    } else if (effectivePartyMode === "custom" && !customCustomer.name.trim() && form.customer_id) {
+      effectivePartyMode = "existing";
+      setPartyMode("existing");
+    }
+
+    const isCustom = effectivePartyMode === "custom";
+    const effectivePayer = isCustom ? customCustomer.name.trim() : form.received_from.trim();
     if (!effectivePayer || Number(form.amount) <= 0) {
       setError("Please provide a valid customer/payer name and an amount greater than 0.");
       return;
@@ -276,13 +286,14 @@ export default function ReceiptVouchersPage() {
     setError("");
     setSuccess("");
     try {
-      const serializedNotes = partyMode === "custom"
-        ? serializeCustomPartyNotes(form.notes.trim() || null, customCustomer)
-        : (form.notes.trim() || null);
+      const rawNotes = (form.notes || "").trim();
+      const serializedNotes = isCustom
+        ? serializeCustomPartyNotes(rawNotes || null, customCustomer)
+        : (rawNotes || null);
 
       const basePayload: Record<string, unknown> = {
         voucher_date: form.voucher_date || todayISO(),
-        customer_id: partyMode === "custom" ? null : (form.customer_id || null),
+        customer_id: isCustom ? null : (form.customer_id || null),
         received_from: effectivePayer,
         amount: Number(form.amount) || 0,
         payment_method: form.payment_method,
@@ -311,7 +322,7 @@ export default function ReceiptVouchersPage() {
       };
 
       if (editing) {
-        let updateErr = (await supabase.from("receipt_vouchers").update(fullPayload).eq("id", editing.id)).error;
+        const updateErr = (await supabase.from("receipt_vouchers").update(fullPayload).eq("id", editing.id)).error;
         if (updateErr) {
           console.warn("[ReceiptVoucher] Full update error, falling back to base columns + serialized notes:", updateErr.message);
           const fallbackRes = await supabase.from("receipt_vouchers").update(basePayload).eq("id", editing.id);
@@ -321,7 +332,7 @@ export default function ReceiptVouchersPage() {
       } else {
         const cid = await getCompanyId();
         const vno = await generateDocNumber(cid, "RCV");
-        let insertErr = (await supabase.from("receipt_vouchers").insert({
+        const insertErr = (await supabase.from("receipt_vouchers").insert({
           ...fullPayload,
           company_id: cid,
           voucher_number: vno,
@@ -346,6 +357,35 @@ export default function ReceiptVouchersPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function handlePrintCurrent() {
+    const isCustom = partyMode === "custom";
+    const cust = customers.find(c => c.id === form.customer_id);
+    const inv = invoices.find(i => i.id === form.tax_invoice_id);
+    const vData: ReceiptVoucherData = {
+      voucher_number: editing?.voucher_number || form.voucher_number || "RCV-DRAFT",
+      voucher_date: form.voucher_date || todayISO(),
+      received_from: isCustom ? customCustomer.name : form.received_from || cust?.name || "",
+      customer_address: isCustom ? customCustomer.address || undefined : undefined,
+      customer_trn: isCustom ? customCustomer.trn || undefined : cust?.trn || undefined,
+      contact_person: isCustom ? customCustomer.contact_person || undefined : undefined,
+      contact_number: isCustom ? customCustomer.phone || undefined : undefined,
+      contact_email: isCustom ? customCustomer.email || undefined : undefined,
+      project_name: isCustom ? customCustomer.project_name || undefined : undefined,
+      amount: Number(form.amount) || 0,
+      payment_method: form.payment_method,
+      cheque_number: form.cheque_number || undefined,
+      cheque_date: form.cheque_date || undefined,
+      bank_name: form.bank_name || undefined,
+      reference_invoice: inv?.invoice_number || undefined,
+      total_due: form.total_due ? Number(form.total_due) : undefined,
+      advance_amount: form.advance_amount ? Number(form.advance_amount) : undefined,
+      balance_amount: form.balance_amount ? Number(form.balance_amount) : undefined,
+      accountant_name: form.accountant_name || "Accounts Dept.",
+      notes: form.notes || undefined,
+    };
+    setPrintVoucher(vData);
   }
 
   function handlePrint(v: RCV) {
@@ -577,8 +617,9 @@ export default function ReceiptVouchersPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700"
+                onClick={handlePrintCurrent}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 cursor-pointer"
+                title="Print or Export PDF"
               >
                 <Printer size={14} className="text-indigo-400" />
                 <span className="hidden sm:inline">Print / Export</span>
@@ -587,7 +628,7 @@ export default function ReceiptVouchersPage() {
                 type="submit"
                 form="rcv-form"
                 disabled={saving}
-                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 text-xs font-bold text-white shadow-md transition"
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 text-xs font-bold text-white shadow-md transition cursor-pointer"
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                 <span>{saving ? "Saving…" : editing ? "Save Changes" : "Save Voucher"}</span>
@@ -595,12 +636,30 @@ export default function ReceiptVouchersPage() {
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
           </header>
+
+          {/* Top Global Error Banner: Visible across all scroll positions and mobile tabs */}
+          {error && (
+            <div className="z-20 flex shrink-0 items-center justify-between border-b border-rose-500/40 bg-rose-950/95 px-4 py-2 text-xs text-rose-200 shadow-md">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={15} className="shrink-0 text-rose-400" />
+                <span className="font-semibold">{error}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setError("")}
+                className="rounded p-1 text-rose-300 hover:bg-rose-900 transition cursor-pointer"
+                title="Dismiss error"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
 
           {/* Split Workspace */}
           <div className="relative flex flex-1 overflow-hidden">
