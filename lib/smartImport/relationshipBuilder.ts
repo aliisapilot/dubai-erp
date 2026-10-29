@@ -115,7 +115,7 @@ export function buildRelationshipTrees(documents: ParsedDocument[]): Relationshi
 
 export function computeBeforeAndAfterSummary(
   documents: ParsedDocument[],
-  cache: ExistingEntitiesCache
+  cache?: ExistingEntitiesCache
 ): {
   beforeCounts: {
     customers: number;
@@ -126,10 +126,10 @@ export function computeBeforeAndAfterSummary(
   proposedSummary: ImportBatchSummary;
 } {
   const beforeCounts = {
-    customers: cache.customers.length,
-    suppliers: cache.suppliers.length,
-    projects: cache.projects.length,
-    documents: Object.keys(cache.existingDocuments).length,
+    customers: cache ? cache.customers.length : 0,
+    suppliers: cache ? cache.suppliers.length : 0,
+    projects: cache ? cache.projects.length : 0,
+    documents: cache ? Object.keys(cache.existingDocuments).length : 0,
   };
 
   const summary: ImportBatchSummary = {

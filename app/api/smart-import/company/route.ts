@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
-export const runtime = "edge";
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   try {

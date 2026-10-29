@@ -104,7 +104,10 @@ export function extractFromDocx(
   for (const table of parsed.tables) {
     const headerRow = table.rows[0];
     const headerTexts = headerRow.cells.map(c => c.text.toLowerCase().trim());
-    const descCol = headerTexts.findIndex(h => /desc|item|particular|details|service/i.test(h));
+    let descCol = headerTexts.findIndex(h => /desc|particular|specification|service|scope|details/i.test(h));
+    if (descCol === -1) {
+      descCol = headerTexts.findIndex(h => /item/i.test(h) && !/item\s*(?:no|number|#|code|seq|id|sr)/i.test(h));
+    }
     const isItemTable = descCol !== -1 && headerTexts.some(h => /qty|unit|rate|price|amount|total/i.test(h));
 
     if (!isItemTable) {
@@ -118,7 +121,7 @@ export function extractFromDocx(
 
           // Customer / Supplier
           if (!fields.customer_name && !fields.supplier_name) {
-            if (/^(?:company|customer|client|m\/s|sold\s*to|bill\s*to)$/i.test(text) && nextText) {
+            if (/^(?:company|customer(?:\s*name)?|client(?:\s*name)?|supplier(?:\s*name)?|vendor(?:\s*name)?|m\/s|sold\s*to|bill\s*to)$/i.test(text) && nextText) {
               if (!/al\s*safwah|golden\s*elite/i.test(nextText)) {
                 const targetKey = docType === "purchase_order" || docType === "supplier_bill" ? "supplier_name" : "customer_name";
                 fields[targetKey] = {
@@ -184,7 +187,7 @@ export function extractFromDocx(
 
           // Document Number
           if (!fields.document_number) {
-            if (/^(?:invoice\s*no\.?|quotation\s*no\.?|qtn\s*no\.?|dn\s*no\.?|po\s*no\.?|lpo\s*no\.?|ref\s*no\.?)$/i.test(text) && nextText) {
+            if (/^(?:invoice\s*(?:no\.?|number)|quotation\s*(?:no\.?|number)|qtn\s*(?:no\.?|number)|dn\s*(?:no\.?|number)|po\s*(?:no\.?|number)|lpo\s*(?:no\.?|number)|ref\s*(?:no\.?|number))$/i.test(text) && nextText) {
               fields.document_number = {
                 fieldKey: "document_number",
                 label: "Document Number",
@@ -195,7 +198,7 @@ export function extractFromDocx(
                 originalRawValue: nextText,
               };
             } else {
-              const dnMatch = text.match(/(?:invoice\s*no\.?|quotation\s*no\.?|qtn\s*no\.?|dn\s*no\.?|po\s*no\.?|ref\s*no\.?)[:\s]+([A-Za-z0-9/_-]+)/i);
+              const dnMatch = text.match(/(?:invoice\s*(?:no\.?|number)|quotation\s*(?:no\.?|number)|qtn\s*(?:no\.?|number)|dn\s*(?:no\.?|number)|po\s*(?:no\.?|number)|ref\s*(?:no\.?|number))[:\s]+([A-Za-z0-9/_-]+)/i);
               if (dnMatch) {
                 fields.document_number = {
                   fieldKey: "document_number",
@@ -316,9 +319,9 @@ export function extractFromDocx(
     // Document Number fallback
     if (!fields.document_number) {
       const match =
-        text.match(/(?:quotation\s*no|invoice\s*no|qtn\s*no|dn\s*no|po\s*no|reference|ref)[:\s#]+([A-Za-z0-9\-_#/]{3,})/i) ||
-        text.match(/\b(QTN[-/_#\w]+|INV[-/_#\w]+|TAX[-/_#\w]+|DN[-/_#\w]+|PO[-/_#\w]+|LPO[-/_#\w]+)\b/i);
-      if (match && match[1].length >= 3 && !/^(no|number|date|dated|client|customer|messrs|tax\s+invoice|quotation)$/i.test(match[1])) {
+        text.match(/(?:quotation\s*(?:no\.?|number)|invoice\s*(?:no\.?|number)|qtn\s*(?:no\.?|number)|dn\s*(?:no\.?|number)|po\s*(?:no\.?|number)|reference|ref)[:\s#]+([A-Za-z0-9\-_#/]{3,})/i) ||
+        text.match(/\b((?:QTN|INV|TAX|DN|PO|LPO)[-/_#0-9][\w\-_#/]*)\b/i);
+      if (match && match[1].length >= 3 && !/^(no|number|date|dated|client|customer|messrs|tax\s+invoice|quotation|invoice|invoices|inventory)$/i.test(match[1])) {
         fields.document_number = {
           fieldKey: "document_number",
           label: "Document Number",
@@ -352,7 +355,7 @@ export function extractFromDocx(
 
     // Customer Name fallback from paragraph
     if (!fields.customer_name && !fields.supplier_name) {
-      const custMatch = text.match(/(?:customer|client|messrs|m\/s|sold\s+to|bill\s+to)[:\s.]+([A-Za-z0-9\s&.,\-]+)/i);
+      const custMatch = text.match(/(?:customer\s*name|client\s*name|supplier\s*name|vendor\s*name|customer|client|supplier|vendor|messrs|m\/s|sold\s+to|bill\s+to)[:\s.]+([A-Za-z0-9\s&.,\-]+)/i);
       if (custMatch && custMatch[1].trim().length > 3) {
         const nameVal = custMatch[1].trim();
         if (!/advance|balance|order|released|terms|payment/i.test(nameVal)) {
@@ -380,6 +383,21 @@ export function extractFromDocx(
           value: trnMatch[1],
           source: loc,
           confidence: 0.99,
+          validationStatus: "valid",
+          originalRawValue: text,
+        };
+      }
+    }
+    // Address fallback from paragraph
+    if (!fields.customer_address && !fields.address) {
+      const addrMatch = text.match(/(?:address|location|site)[:\s.]+([A-Za-z0-9\s&.,\-#]+)/i);
+      if (addrMatch && addrMatch[1].trim().length > 3) {
+        fields.customer_address = {
+          fieldKey: "customer_address",
+          label: "Address",
+          value: addrMatch[1].trim(),
+          source: loc,
+          confidence: 0.9,
           validationStatus: "valid",
           originalRawValue: text,
         };
@@ -464,7 +482,10 @@ export function extractFromDocx(
     const headerRow = table.rows[0];
     const headerTexts = headerRow.cells.map(c => c.text.toLowerCase().trim());
 
-    const descCol = headerTexts.findIndex(h => /desc|item|particular|details|service/i.test(h));
+    let descCol = headerTexts.findIndex(h => /desc|particular|specification|service|scope|details/i.test(h));
+    if (descCol === -1) {
+      descCol = headerTexts.findIndex(h => /item/i.test(h) && !/item\s*(?:no|number|#|code|seq|id|sr)/i.test(h));
+    }
     const qtyCol = headerTexts.findIndex(h => /qty|quantity|count/i.test(h));
     const unitCol = headerTexts.findIndex(h => /unit|uom/i.test(h));
     const rateCol = headerTexts.findIndex(h => /unit\s*price|rate|price/i.test(h));

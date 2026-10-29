@@ -66,10 +66,10 @@ function extractTextFromWp(pXml: string): string {
 
 export async function parseDocx(
   buffer: ArrayBuffer,
-  fileName: string
+  fileName: string = "document.docx"
 ): Promise<DocxParseResult> {
-  const baseName = fileName.split(/[/\\]/).pop() || fileName;
-  if (baseName.startsWith("~$") || baseName.startsWith(".~") || buffer.byteLength < 400) {
+  const baseName = (fileName || "document.docx").split(/[/\\]/).pop() || "document.docx";
+  if (baseName.startsWith("~$") || baseName.startsWith(".~")) {
     const cleanDocName = baseName.replace(/^[~.$]+/, "");
     throw new Error(
       `'${baseName}' is a Microsoft Office temporary lock file (${buffer.byteLength} bytes) created by Word while editing. Please select the actual document '${cleanDocName}' instead.`

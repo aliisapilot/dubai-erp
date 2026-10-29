@@ -10,9 +10,10 @@ import { executeTopologicalImport } from "@/lib/smartImport/importer";
 import type { ParsedDocument } from "@/lib/smartImport/types";
 
 export const dynamic = "force-dynamic";
-export const runtime = "edge";
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  const requestId = `req_commit_${crypto.randomUUID().slice(0, 8)}`;
   try {
     const body = await req.json();
     const { documents, companyId: requestedCompanyId, userEmail } = body as {
@@ -22,7 +23,10 @@ export async function POST(req: NextRequest) {
     };
 
     if (!documents || documents.length === 0) {
-      return NextResponse.json({ error: "No documents provided for import." }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "No documents provided for import.", requestId },
+        { status: 400, headers: { "x-request-id": requestId } }
+      );
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -127,12 +131,15 @@ export async function POST(req: NextRequest) {
     // Execute import
     const result = await executeTopologicalImport(supabase, companyId, documents, userEmail);
 
-    return NextResponse.json(result);
+    return NextResponse.json(
+      { ...result, requestId },
+      { status: 200, headers: { "x-request-id": requestId } }
+    );
   } catch (err: unknown) {
     console.error("Smart import commit error:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Commit failed" },
-      { status: 500 }
+      { success: false, error: err instanceof Error ? err.message : "Commit failed", requestId },
+      { status: 500, headers: { "x-request-id": requestId } }
     );
   }
 }

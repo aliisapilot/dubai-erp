@@ -1,6 +1,9 @@
 /**
  * Dubai ERP: Smart Import - Parse & Preview API Route
  * Processes uploaded Word, Excel, CSV, PDF, and ZIP files.
+ * Supports BOTH:
+ *  1) Direct Supabase Storage references ({ storageBucket, storagePath, fileName, ... })
+ *  2) Multipart FormData uploads (single or bounded small batches)
  * Classifies, extracts, matches entities, audits calculations, and prepares preview.
  * Strictly Read-Only (Stages 1-9: Zero database mutations).
  */
@@ -39,16 +42,22 @@ import {
 import type { ParsedDocument, SupportedFileType, CalculationAuditRow } from "@/lib/smartImport/types";
 
 export const dynamic = "force-dynamic";
-export const runtime = "edge";
+export const maxDuration = 60; // 60s timeout for heavy parsing on Node.js Serverless runtime
+
+interface StorageReferenceInput {
+  storageBucket?: string;
+  storagePath: string;
+  fileName: string;
+  fileType?: string;
+  fileSize?: number;
+}
 
 export async function POST(req: NextRequest) {
-  try {
-    const formData = await req.formData();
-    const files = formData.getAll("files") as File[];
+  const requestId = `req_parse_${crypto.randomUUID().slice(0, 8)}`;
 
-    if (!files || files.length === 0) {
-      return NextResponse.json({ error: "No files uploaded." }, { status: 400 });
-    }
+  try {
+    const contentType = req.headers.get("content-type") || "";
+    const isJson = contentType.toLowerCase().includes("application/json");
 
     // Initialize Supabase reader with auth context
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -65,49 +74,128 @@ export async function POST(req: NextRequest) {
       global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
     });
 
-    // Pre-load existing entities (customers, suppliers, projects, permanent employees, existing docs)
-    const existingCache = await loadExistingEntities(supabase);
-
-    // Expand ZIPs and collect all individual files
+    // Expand files from either Storage References (JSON) or Direct Upload (FormData)
     const fileQueue: { name: string; buffer: ArrayBuffer; fileType: SupportedFileType; size: number }[] = [];
     const lockFilesDetected: string[] = [];
 
-    for (const f of files) {
-      const baseName = f.name.split(/[/\\]/).pop() || f.name;
-      if (baseName.startsWith("~$") || baseName.startsWith(".~") || (f.size < 400 && (baseName.endsWith(".docx") || baseName.endsWith(".xlsx")))) {
-        lockFilesDetected.push(baseName);
-        continue;
+    if (isJson) {
+      // -------------------------------------------------------------
+      // PATH A: Storage References (Zero Request Size Limit Issue!)
+      // -------------------------------------------------------------
+      const body = await req.json();
+      const rawRefs: StorageReferenceInput[] = Array.isArray(body.references)
+        ? body.references
+        : body.storagePath
+        ? [body as StorageReferenceInput]
+        : [];
+
+      if (rawRefs.length === 0) {
+        return NextResponse.json(
+          { success: false, error: "No storage references or files provided.", requestId },
+          { status: 400, headers: { "x-request-id": requestId } }
+        );
       }
 
-      const arrayBuffer = await f.arrayBuffer();
-      const detected = detectFileType(f.name);
+      for (const ref of rawRefs) {
+        const bucket = ref.storageBucket || "smart-imports";
+        const baseName = ref.fileName.split(/[/\\]/).pop() || ref.fileName;
 
-      if (!detected) {
-        continue;
-      }
+        if (baseName.startsWith("~$") || baseName.startsWith(".~")) {
+          lockFilesDetected.push(baseName);
+          continue;
+        }
 
-      if (detected === "zip") {
-        const unpacked = await unpackZipArchive(arrayBuffer);
-        for (const item of unpacked) {
-          const itemBase = item.name.split(/[/\\]/).pop() || item.name;
-          if (itemBase.startsWith("~$") || itemBase.startsWith(".~")) {
-            lockFilesDetected.push(itemBase);
-            continue;
+        // Download directly from private Supabase Storage
+        const { data: fileBlob, error: dlErr } = await supabase.storage
+          .from(bucket)
+          .download(ref.storagePath);
+
+        if (dlErr || !fileBlob) {
+          console.warn(`Could not download storage path ${ref.storagePath}:`, dlErr?.message);
+          continue;
+        }
+
+        const arrayBuffer = await fileBlob.arrayBuffer();
+        const detected = detectFileType(ref.fileName);
+        if (!detected) continue;
+
+        if (detected === "zip") {
+          const unpacked = await unpackZipArchive(arrayBuffer);
+          for (const item of unpacked) {
+            const itemBase = item.name.split(/[/\\]/).pop() || item.name;
+            if (itemBase.startsWith("~$") || itemBase.startsWith(".~")) {
+              lockFilesDetected.push(itemBase);
+              continue;
+            }
+            fileQueue.push({
+              name: item.name,
+              buffer: item.buffer,
+              fileType: item.fileType,
+              size: item.size,
+            });
           }
+        } else {
           fileQueue.push({
-            name: item.name,
-            buffer: item.buffer,
-            fileType: item.fileType,
-            size: item.size,
+            name: ref.fileName,
+            buffer: arrayBuffer,
+            fileType: detected,
+            size: arrayBuffer.byteLength,
           });
         }
-      } else {
-        fileQueue.push({
-          name: f.name,
-          buffer: arrayBuffer,
-          fileType: detected,
-          size: f.size,
-        });
+      }
+    } else {
+      // -------------------------------------------------------------
+      // PATH B: Multipart FormData Direct Upload
+      // -------------------------------------------------------------
+      const formData = await req.formData();
+      const files = formData.getAll("files") as File[];
+
+      if (!files || files.length === 0) {
+        return NextResponse.json(
+          { success: false, error: "No files uploaded.", requestId },
+          { status: 400, headers: { "x-request-id": requestId } }
+        );
+      }
+
+      for (const f of files) {
+        const baseName = f.name.split(/[/\\]/).pop() || f.name;
+        if (
+          baseName.startsWith("~$") ||
+          baseName.startsWith(".~") ||
+          (f.size < 400 && (baseName.endsWith(".docx") || baseName.endsWith(".xlsx")))
+        ) {
+          lockFilesDetected.push(baseName);
+          continue;
+        }
+
+        const arrayBuffer = await f.arrayBuffer();
+        const detected = detectFileType(f.name);
+
+        if (!detected) continue;
+
+        if (detected === "zip") {
+          const unpacked = await unpackZipArchive(arrayBuffer);
+          for (const item of unpacked) {
+            const itemBase = item.name.split(/[/\\]/).pop() || item.name;
+            if (itemBase.startsWith("~$") || itemBase.startsWith(".~")) {
+              lockFilesDetected.push(itemBase);
+              continue;
+            }
+            fileQueue.push({
+              name: item.name,
+              buffer: item.buffer,
+              fileType: item.fileType,
+              size: item.size,
+            });
+          }
+        } else {
+          fileQueue.push({
+            name: f.name,
+            buffer: arrayBuffer,
+            fileType: detected,
+            size: f.size,
+          });
+        }
       }
     }
 
@@ -117,13 +205,25 @@ export async function POST(req: NextRequest) {
         const actualName = lockName.replace(/^[~.$]+/, "");
         return NextResponse.json(
           {
+            success: false,
             error: `'${lockName}' is a Microsoft Office temporary lock file created by Word/Excel while a file is open. Please select the actual document '${actualName}' instead.`,
+            requestId,
           },
-          { status: 400 }
+          { status: 400, headers: { "x-request-id": requestId } }
         );
       }
-      return NextResponse.json({ error: "No supported documents (.docx, .xlsx, .xls, .csv, .pdf) found in upload." }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "No supported documents (.docx, .xlsx, .xls, .csv, .pdf) found in upload.",
+          requestId,
+        },
+        { status: 400, headers: { "x-request-id": requestId } }
+      );
     }
+
+    // Pre-load existing entities (customers, suppliers, projects, permanent employees, existing docs)
+    const existingCache = await loadExistingEntities(supabase);
 
     const parsedDocuments: ParsedDocument[] = [];
     const allAuditRows: CalculationAuditRow[] = [];
@@ -302,7 +402,7 @@ export async function POST(req: NextRequest) {
         };
       }
 
-      // 7. Generate Destination Mappings (The 12 preview columns)
+      // 7. Generate Destination Mappings
       const destinationMappings = generateDestinationMappings(
         fileItem.name,
         classification.documentType,
@@ -340,23 +440,28 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 7. Relationship Tree & Summary
+    // 8. Relationship Trees & Summary
     const relationshipTrees = buildRelationshipTrees(parsedDocuments);
     const { beforeCounts, proposedSummary } = computeBeforeAndAfterSummary(parsedDocuments, existingCache);
 
-    return NextResponse.json({
-      success: true,
-      documents: parsedDocuments,
-      auditRows: allAuditRows,
-      relationshipTrees,
-      beforeCounts,
-      proposedSummary,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        documents: parsedDocuments,
+        auditRows: allAuditRows,
+        relationshipTrees,
+        beforeCounts,
+        proposedSummary,
+        requestId,
+      },
+      { status: 200, headers: { "x-request-id": requestId } }
+    );
   } catch (err: unknown) {
     console.error("Smart import parsing error:", err);
+    const errMsg = err instanceof Error ? err.message : "Failed to process files.";
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to process files." },
-      { status: 500 }
+      { success: false, error: errMsg, requestId },
+      { status: 500, headers: { "x-request-id": requestId } }
     );
   }
 }

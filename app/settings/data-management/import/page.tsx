@@ -28,6 +28,11 @@ import {
   ShoppingCart,
   DollarSign,
   Ruler,
+  RotateCcw,
+  StopCircle,
+  CheckSquare,
+  Square,
+  ArrowRight,
 } from "lucide-react";
 import type {
   ParsedDocument,
@@ -41,6 +46,11 @@ import { TEMPLATE_DEFINITIONS } from "@/lib/smartImport/templateGenerator";
 import { STATUS_OPTIONS_BY_MODULE } from "@/lib/smartImport/statusResolver";
 import { getCurrentCompany, type CompanyDocDetails } from "@/lib/helpers";
 import { supabase } from "@/lib/supabase";
+import { safeFetchJson } from "@/lib/safeFetch";
+import {
+  buildRelationshipTrees,
+  computeBeforeAndAfterSummary,
+} from "@/lib/smartImport/relationshipBuilder";
 
 type ActiveTab =
   | "upload"
@@ -55,11 +65,32 @@ type ActiveTab =
   | "export"
   | "templates";
 
+export interface QueueItem {
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  status: "waiting" | "uploading" | "extracting" | "ready" | "failed" | "imported" | "cancelled";
+  progressPercent: number;
+  errorMessage?: string;
+  requestId?: string;
+  parsedDoc?: ParsedDocument;
+  retries: number;
+  selectedForImport: boolean;
+  storagePath?: string;
+}
+
 export default function SmartImportPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("upload");
   const [files, setFiles] = useState<File[]>([]);
-  const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
+
+  // Bulk Queue State
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [isProcessingQueue, setIsProcessingQueue] = useState(false);
+  const cancelRequestedRef = useRef(false);
+  const [skipDuplicates, setSkipDuplicates] = useState(true);
+  const [filterStatus, setFilterStatus] = useState<"all" | "ready" | "failed" | "waiting">("all");
 
   // Parsed documents state
   const [documents, setDocuments] = useState<ParsedDocument[]>([]);
@@ -73,6 +104,17 @@ export default function SmartImportPage() {
     documents: 0,
   });
   const [proposedSummary, setProposedSummary] = useState<ImportBatchSummary | null>(null);
+
+  useEffect(() => {
+    if (documents.length > 0) {
+      const result = computeBeforeAndAfterSummary(documents);
+      setProposedSummary(result.proposedSummary);
+      setBeforeCounts(result.beforeCounts);
+    } else {
+      setProposedSummary(null);
+      setBeforeCounts({ customers: 0, suppliers: 0, projects: 0, documents: 0 });
+    }
+  }, [documents]);
 
   // Split-screen inspector state
   const [selectedMapping, setSelectedMapping] = useState<DestinationMapping | null>(null);
@@ -169,14 +211,11 @@ export default function SmartImportPage() {
       // Tier 3: Query server-side company resolution endpoint
       if (!co && token) {
         try {
-          const res = await fetch("/api/smart-import/company", {
+          const res = await safeFetchJson<{ company?: CompanyDocDetails }>("/api/smart-import/company", {
             headers: { Authorization: `Bearer ${token}` },
           });
-          if (res.ok) {
-            const apiData = await res.json();
-            if (apiData.company?.id) {
-              co = apiData.company as CompanyDocDetails;
-            }
+          if (res.ok && res.data?.company?.id) {
+            co = res.data.company;
           }
         } catch {}
       }
@@ -205,9 +244,8 @@ export default function SmartImportPage() {
   async function loadHistory() {
     setLoadingBatches(true);
     try {
-      const res = await fetch("/api/smart-import/history");
-      const data = await res.json();
-      if (data.batches) setBatches(data.batches);
+      const res = await safeFetchJson<{ batches?: ImportBatchRecord[] }>("/api/smart-import/history");
+      if (res.ok && res.data?.batches) setBatches(res.data.batches);
     } catch {
       // ignore
     } finally {
@@ -248,61 +286,332 @@ export default function SmartImportPage() {
 
     if (validList.length > 0) {
       setFiles(prev => [...prev, ...validList]);
+      const newItems: QueueItem[] = validList.map(f => ({
+        id: `q_${crypto.randomUUID()}`,
+        file: f,
+        name: f.name,
+        size: f.size,
+        status: "waiting",
+        progressPercent: 0,
+        retries: 0,
+        selectedForImport: true,
+      }));
+      setQueue(prev => [...prev, ...newItems]);
     }
   }
 
-  function removeFile(index: number) {
-    setFiles(prev => prev.filter((_, i) => i !== index));
+  function removeQueueItem(id: string) {
+    const item = queue.find(q => q.id === id);
+    if (!item) return;
+    setQueue(prev => prev.filter(q => q.id !== id));
+    setFiles(prev => prev.filter(f => f.name !== item.name));
+    setDocuments(prev => prev.filter(d => d.filename !== item.name));
+  }
+
+  function clearAll() {
+    setFiles([]);
+    setQueue([]);
+    setDocuments([]);
+    setAuditRows([]);
+    setRelationshipTrees([]);
+    setParseError(null);
+    setSelectedDocId(null);
+    setSelectedMapping(null);
+  }
+
+  function toggleSelectQueueItem(id: string) {
+    setQueue(prev =>
+      prev.map(q => (q.id === id ? { ...q, selectedForImport: !q.selectedForImport } : q))
+    );
+  }
+
+  function toggleSelectAll(select: boolean) {
+    setQueue(prev =>
+      prev.map(q => ({
+        ...q,
+        selectedForImport: select ? (skipDuplicates ? !q.parsedDoc?.isDuplicate : true) : false,
+      }))
+    );
+  }
+
+  function cancelRemainingQueue() {
+    cancelRequestedRef.current = true;
+    setQueue(prev =>
+      prev.map(q => (q.status === "waiting" ? { ...q, status: "cancelled", progressPercent: 0 } : q))
+    );
+    setIsProcessingQueue(false);
+  }
+
+  // Upload and parse single file with automatic storage upload or fallback
+  async function processSingleFile(
+    item: QueueItem,
+    companyId: string | undefined,
+    token: string | null
+  ): Promise<{ doc?: ParsedDocument; error?: string; requestId?: string; storagePath?: string }> {
+    let storagePath: string | undefined;
+    let uploadedToStorage = false;
+
+    // A. Attempt secure company-scoped Supabase Storage upload
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const storeRes = await safeFetchJson<{
+        success: boolean;
+        signedUrl?: string;
+        path?: string;
+        bucket?: string;
+        fallback?: string;
+        error?: string;
+        requestId?: string;
+      }>("/api/smart-import/storage", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          fileName: item.name,
+          fileSize: item.size,
+          companyId: companyId || "general",
+        }),
+      });
+
+      if (storeRes.ok && storeRes.data?.signedUrl && storeRes.data.path) {
+        storagePath = storeRes.data.path;
+        const uploadRes = await fetch(storeRes.data.signedUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": item.file.type || "application/octet-stream",
+          },
+          body: item.file,
+        });
+
+        if (uploadRes.ok) {
+          uploadedToStorage = true;
+        }
+      }
+    } catch (storeErr) {
+      console.warn("Storage upload fallback:", storeErr);
+    }
+
+    // B. Call Parse API
+    const authHeaders: Record<string, string> = {};
+    if (token) authHeaders["Authorization"] = `Bearer ${token}`;
+
+    if (uploadedToStorage && storagePath) {
+      authHeaders["Content-Type"] = "application/json";
+      const parseRes = await safeFetchJson<{
+        success: boolean;
+        documents: ParsedDocument[];
+        auditRows: CalculationAuditRow[];
+        relationshipTrees?: RelationshipTreeNode[];
+        beforeCounts?: { customers: number; suppliers: number; projects: number; documents: number };
+        proposedSummary?: ImportBatchSummary;
+        error?: string;
+        requestId?: string;
+      }>("/api/smart-import/parse", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          storageBucket: "smart-imports",
+          storagePath,
+          fileName: item.name,
+          fileSize: item.size,
+        }),
+      });
+
+      if (!parseRes.ok || !parseRes.data?.documents || parseRes.data.documents.length === 0) {
+        return {
+          error: parseRes.error || parseRes.data?.error || "Failed to extract document.",
+          requestId: parseRes.requestId || parseRes.data?.requestId,
+          storagePath,
+        };
+      }
+
+      return {
+        doc: parseRes.data.documents[0],
+        requestId: parseRes.requestId || parseRes.data?.requestId,
+        storagePath,
+      };
+    } else {
+      // Direct FormData fallback (for smaller files or storage fallback)
+      const formData = new FormData();
+      formData.append("files", item.file);
+
+      const parseRes = await safeFetchJson<{
+        success: boolean;
+        documents: ParsedDocument[];
+        auditRows: CalculationAuditRow[];
+        error?: string;
+        requestId?: string;
+      }>("/api/smart-import/parse", {
+        method: "POST",
+        headers: authHeaders,
+        body: formData,
+      });
+
+      if (!parseRes.ok || !parseRes.data?.documents || parseRes.data.documents.length === 0) {
+        return {
+          error: parseRes.error || parseRes.data?.error || "Failed to extract document.",
+          requestId: parseRes.requestId || parseRes.data?.requestId,
+        };
+      }
+
+      return {
+        doc: parseRes.data.documents[0],
+        requestId: parseRes.requestId || parseRes.data?.requestId,
+      };
+    }
+  }
+
+  // Controlled Concurrency Queue Runner (Concurrency = 2)
+  async function runBatchQueue(customTargets?: QueueItem[]) {
+    if (isProcessingQueue) return;
+    setIsProcessingQueue(true);
+    setParseError(null);
+    cancelRequestedRef.current = false;
+
+    try {
+      const { token } = await getValidAuthSession();
+      const companyId = company?.id;
+
+      // Identify pending targets
+      const targets =
+        customTargets ||
+        queue.filter(q => q.status === "waiting" || q.status === "failed" || q.status === "cancelled");
+
+      if (targets.length === 0) {
+        setIsProcessingQueue(false);
+        return;
+      }
+
+      const CONCURRENCY = 2; // Bounded parallelism to prevent network saturation
+      let targetIndex = 0;
+
+      async function worker() {
+        while (targetIndex < targets.length) {
+          if (cancelRequestedRef.current) break;
+          const currentItem = targets[targetIndex++];
+          if (!currentItem) break;
+
+          // 1. Uploading state
+          setQueue(prev =>
+            prev.map(q =>
+              q.id === currentItem.id ? { ...q, status: "uploading", progressPercent: 30, errorMessage: undefined } : q
+            )
+          );
+
+          let attempt = 0;
+          let docResult: ParsedDocument | undefined;
+          let lastError: string | undefined;
+          let lastReqId: string | undefined;
+          let savedStoragePath: string | undefined;
+
+          while (attempt < 2 && !docResult && !cancelRequestedRef.current) {
+            attempt++;
+            try {
+              setQueue(prev =>
+                prev.map(q =>
+                  q.id === currentItem.id ? { ...q, status: "extracting", progressPercent: 70 } : q
+                )
+              );
+
+              const res = await processSingleFile(currentItem, companyId, token);
+              if (res.doc) {
+                docResult = res.doc;
+                lastReqId = res.requestId;
+                savedStoragePath = res.storagePath;
+              } else {
+                lastError = res.error || "Failed to extract document";
+                lastReqId = res.requestId;
+                savedStoragePath = res.storagePath;
+                if (attempt < 2 && !cancelRequestedRef.current) {
+                  await new Promise(r => setTimeout(r, 1500));
+                }
+              }
+            } catch (err: unknown) {
+              lastError = err instanceof Error ? err.message : String(err);
+              if (attempt < 2 && !cancelRequestedRef.current) {
+                await new Promise(r => setTimeout(r, 1500));
+              }
+            }
+          }
+
+          if (docResult) {
+            const finalDoc = docResult;
+            setQueue(prev =>
+              prev.map(q =>
+                q.id === currentItem.id
+                  ? {
+                      ...q,
+                      status: "ready",
+                      progressPercent: 100,
+                      parsedDoc: finalDoc,
+                      requestId: lastReqId,
+                      storagePath: savedStoragePath,
+                      selectedForImport: !finalDoc.isDuplicate,
+                    }
+                  : q
+              )
+            );
+
+            // Add to documents incrementally
+            setDocuments(prev => {
+              const idx = prev.findIndex(d => d.filename === finalDoc.filename);
+              const updated = idx !== -1 ? [...prev.slice(0, idx), finalDoc, ...prev.slice(idx + 1)] : [...prev, finalDoc];
+
+              // Automatically recompute relationship trees
+              const trees = buildRelationshipTrees(updated);
+              setRelationshipTrees(trees);
+
+              return updated;
+            });
+
+            setSelectedDocId(prev => prev || finalDoc.id);
+          } else {
+            setQueue(prev =>
+              prev.map(q =>
+                q.id === currentItem.id
+                  ? {
+                      ...q,
+                      status: "failed",
+                      progressPercent: 0,
+                      errorMessage: lastError || "Extraction failed.",
+                      requestId: lastReqId,
+                      retries: attempt,
+                    }
+                  : q
+              )
+            );
+          }
+        }
+      }
+
+      const workers = Array.from({ length: Math.min(CONCURRENCY, targets.length) }, () => worker());
+      await Promise.all(workers);
+    } catch (err: unknown) {
+      setParseError(err instanceof Error ? err.message : "Error processing files.");
+    } finally {
+      setIsProcessingQueue(false);
+    }
+  }
+
+  function retrySingleItem(id: string) {
+    const item = queue.find(q => q.id === id);
+    if (item) {
+      runBatchQueue([item]);
+    }
+  }
+
+  function retryFailedQueue() {
+    const failedItems = queue.filter(q => q.status === "failed");
+    if (failedItems.length > 0) {
+      runBatchQueue(failedItems);
+    }
   }
 
   // Trigger parsing
   async function handleStartExtraction() {
-    if (files.length === 0) return;
-    setParsing(true);
-    setParseError(null);
-
-    const formData = new FormData();
-    for (const f of files) {
-      formData.append("files", f);
-    }
-
-    try {
-      const { token } = await getValidAuthSession();
-      const headers: HeadersInit = {};
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-
-      const res = await fetch("/api/smart-import/parse", {
-        method: "POST",
-        headers,
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to process documents.");
-      }
-
-      setDocuments(data.documents);
-      setAuditRows(data.auditRows);
-      setRelationshipTrees(data.relationshipTrees);
-      setBeforeCounts(data.beforeCounts);
-      setProposedSummary(data.proposedSummary);
-
-      if (data.documents.length > 0) {
-        setSelectedDocId(data.documents[0].id);
-        if (data.documents[0].destinationMappings.length > 0) {
-          setSelectedMapping(data.documents[0].destinationMappings[0]);
-        }
-      }
-
-      setActiveTab("preview"); // Switch straight to the crucial Import Preview tab
-    } catch (err: unknown) {
-      setParseError(err instanceof Error ? err.message : "Error extracting files.");
-    } finally {
-      setParsing(false);
-    }
+    if (queue.length === 0) return;
+    await runBatchQueue();
   }
 
   // Selected document helper
@@ -415,36 +724,80 @@ export default function SmartImportPage() {
       return;
     }
 
+    // Filter only selected documents (and skip duplicates if toggle is on)
+    const approvedDocs = documents.filter(d => {
+      const qItem = queue.find(q => q.name === d.filename || q.parsedDoc?.id === d.id);
+      if (qItem && !qItem.selectedForImport) return false;
+      if (skipDuplicates && d.isDuplicate) return false;
+      return true;
+    });
+
+    if (approvedDocs.length === 0) {
+      setCommitResult({
+        success: false,
+        message: "No documents selected for import. Please ensure at least one document is checked.",
+      });
+      return;
+    }
+
     setCommitting(true);
     setCommitResult(null);
 
     try {
       const { token, email } = await getValidAuthSession();
-      const headers: HeadersInit = { "Content-Type": "application/json" };
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
-      const res = await fetch("/api/smart-import/commit", {
+      const res = await safeFetchJson<{
+        success: boolean;
+        batchId?: string;
+        recordsCreated?: Record<string, number>;
+        errors?: string[];
+        error?: string;
+      }>("/api/smart-import/commit", {
         method: "POST",
         headers,
         body: JSON.stringify({
-          documents,
+          documents: approvedDocs,
           companyId: company.id,
           userEmail: email,
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.errors?.join(", ") || data.error || "Failed to import records.");
+      if (!res.ok || !res.data?.success) {
+        throw new Error(res.data?.errors?.join(", ") || res.data?.error || res.error || "Failed to import records.");
       }
 
-      const createdTotal = Object.values(data.recordsCreated || {}).reduce((a: number, b: unknown) => a + (Number(b) || 0), 0);
+      const createdTotal = Object.values(res.data.recordsCreated || {}).reduce(
+        (a: number, b: unknown) => a + (Number(b) || 0),
+        0
+      );
+
       setCommitResult({
         success: true,
-        message: `Successfully imported ${createdTotal} records into Dubai ERP! Batch ID: ${data.batchId}`,
+        message: `Successfully imported ${createdTotal} records into Dubai ERP! Batch ID: ${res.data.batchId}`,
       });
+
+      // Mark imported in queue
+      setQueue(prev =>
+        prev.map(item => {
+          const wasImported = approvedDocs.some(d => d.filename === item.name);
+          return wasImported ? { ...item, status: "imported" } : item;
+        })
+      );
+
+      // Clean up temporary storage objects in background
+      const pathsToClean = queue.map(q => q.storagePath).filter(Boolean) as string[];
+      if (pathsToClean.length > 0) {
+        safeFetchJson("/api/smart-import/storage", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paths: pathsToClean }),
+        }).catch(() => {});
+      }
+
       loadHistory();
     } catch (err: unknown) {
       setCommitResult({
@@ -624,49 +977,437 @@ export default function SmartImportPage() {
                 </div>
               </div>
 
-              {/* Uploaded files listing */}
-              {files.length > 0 && (
-                <div className="mt-6 text-left space-y-3">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>{files.length} Files Selected for Smart Analysis</span>
-                    <button onClick={() => setFiles([])} className="hover:text-red-400 transition">Clear All</button>
-                  </div>
-                  <div className="space-y-1.5 max-h-56 overflow-y-auto">
-                    {files.map((f, i) => (
-                      <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-xs">
-                        <div className="flex items-center gap-2.5 truncate">
-                          <FileText size={15} className="text-emerald-400 shrink-0" />
-                          <span className="font-medium text-slate-200 truncate">{f.name}</span>
-                          <span className="text-[10px] text-slate-500 shrink-0">({(f.size / 1024).toFixed(1)} KB)</span>
-                        </div>
-                        <button onClick={() => removeFile(i)} className="text-slate-500 hover:text-rose-400 p-1">
-                          <X size={14} />
+              {/* ============================================================== */}
+              {/* BULK QUEUE DASHBOARD (40-100+ FILES RESILIENT RUNNER) */}
+              {/* ============================================================== */}
+              {queue.length > 0 && (() => {
+                const readyCount = queue.filter(q => q.status === "ready").length;
+                const inProgressCount = queue.filter(q => q.status === "uploading" || q.status === "extracting").length;
+                const failedCount = queue.filter(q => q.status === "failed").length;
+                const waitingCount = queue.filter(q => q.status === "waiting").length;
+                const importedCount = queue.filter(q => q.status === "imported").length;
+                const selectedCount = queue.filter(q => q.selectedForImport && (q.status === "ready" || q.status === "imported")).length;
+                const progressPct = queue.length > 0 ? Math.round(((readyCount + importedCount) / queue.length) * 100) : 0;
+
+                const filteredQueue = queue.filter(q => {
+                  if (filterStatus === "ready") return q.status === "ready" || q.status === "imported";
+                  if (filterStatus === "failed") return q.status === "failed";
+                  if (filterStatus === "waiting") return q.status === "waiting" || q.status === "cancelled";
+                  return true;
+                });
+
+                return (
+                  <div className="mt-6 text-left space-y-4">
+                    {/* Header metrics pills */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-white">Bulk Queue:</span>
+                        <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[11px]">
+                          {queue.length} Total Files
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold text-[11px]">
+                          ✓ {readyCount} Ready
+                        </span>
+                        {inProgressCount > 0 && (
+                          <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 font-semibold text-[11px] flex items-center gap-1">
+                            <RefreshCw size={11} className="animate-spin" /> {inProgressCount} Processing
+                          </span>
+                        )}
+                        {failedCount > 0 && (
+                          <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-semibold text-[11px]">
+                            ⚠️ {failedCount} Failed
+                          </span>
+                        )}
+                        {waitingCount > 0 && (
+                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[11px]">
+                            ⏳ {waitingCount} Waiting
+                          </span>
+                        )}
+                        {importedCount > 0 && (
+                          <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-semibold text-[11px]">
+                            ★ {importedCount} Imported
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={skipDuplicates}
+                            onChange={e => setSkipDuplicates(e.target.checked)}
+                            className="rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-0 cursor-pointer"
+                          />
+                          <span>Skip Duplicates</span>
+                        </label>
+                        <button
+                          onClick={clearAll}
+                          disabled={isProcessingQueue}
+                          className="text-[11px] text-slate-400 hover:text-rose-400 transition disabled:opacity-50"
+                        >
+                          Clear All
                         </button>
                       </div>
-                    ))}
-                  </div>
+                    </div>
 
-                  <div className="pt-4 flex justify-end">
-                    <button
-                      onClick={handleStartExtraction}
-                      disabled={parsing}
-                      className="flex items-center gap-2 px-6 py-2.5 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950 transition disabled:opacity-50"
-                    >
-                      {parsing ? (
-                        <>
-                          <RefreshCw size={15} className="animate-spin" />
-                          <span>Extracting & Validating ERP Data...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles size={15} />
-                          <span>Run Smart Extraction & Verification</span>
-                        </>
-                      )}
-                    </button>
+                    {/* Overall Progress Bar */}
+                    {(isProcessingQueue || readyCount > 0 || failedCount > 0) && (
+                      <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/60 border border-slate-800/80">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-300 font-medium flex items-center gap-1.5">
+                            {isProcessingQueue ? (
+                              <>
+                                <RefreshCw size={12} className="animate-spin text-emerald-400" />
+                                <span>Extracting Documents ({readyCount} of {queue.length} ready)...</span>
+                              </>
+                            ) : failedCount > 0 ? (
+                              <span className="text-amber-400">
+                                Extraction Paused: {readyCount} ready, {failedCount} failed. You can retry failed files below.
+                              </span>
+                            ) : (
+                              <span className="text-emerald-400 font-semibold">
+                                ✓ Extraction Complete: All {readyCount} documents verified and ready for review!
+                              </span>
+                            )}
+                          </span>
+                          <span className="font-mono text-emerald-400 font-bold">{progressPct}%</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-300 ${
+                              failedCount > 0 && readyCount === 0 ? "bg-rose-500" : "bg-gradient-to-r from-emerald-500 to-sky-400"
+                            }`}
+                            style={{ width: `${Math.max(5, progressPct)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Filter tabs & Bulk Controls */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-1 text-[11px]">
+                        <button
+                          onClick={() => setFilterStatus("all")}
+                          className={`px-2.5 py-1 rounded-lg transition ${
+                            filterStatus === "all" ? "bg-slate-800 text-white font-medium" : "text-slate-400 hover:text-slate-200"
+                          }`}
+                        >
+                          All ({queue.length})
+                        </button>
+                        <button
+                          onClick={() => setFilterStatus("ready")}
+                          className={`px-2.5 py-1 rounded-lg transition ${
+                            filterStatus === "ready" ? "bg-emerald-500/20 text-emerald-300 font-medium" : "text-slate-400 hover:text-slate-200"
+                          }`}
+                        >
+                          Ready ({readyCount + importedCount})
+                        </button>
+                        {failedCount > 0 && (
+                          <button
+                            onClick={() => setFilterStatus("failed")}
+                            className={`px-2.5 py-1 rounded-lg transition ${
+                              filterStatus === "failed" ? "bg-rose-500/20 text-rose-300 font-medium" : "text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            Failed ({failedCount})
+                          </button>
+                        )}
+                        {waitingCount > 0 && (
+                          <button
+                            onClick={() => setFilterStatus("waiting")}
+                            className={`px-2.5 py-1 rounded-lg transition ${
+                              filterStatus === "waiting" ? "bg-slate-800 text-slate-300 font-medium" : "text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            Waiting ({waitingCount})
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 text-xs">
+                        {readyCount > 0 && (
+                          <button
+                            onClick={() => toggleSelectAll(selectedCount < readyCount)}
+                            className="text-[11px] text-slate-400 hover:text-white transition flex items-center gap-1"
+                          >
+                            {selectedCount < readyCount ? <CheckSquare size={13} /> : <Square size={13} />}
+                            <span>{selectedCount < readyCount ? "Select All" : "Deselect All"}</span>
+                          </button>
+                        )}
+
+                        {failedCount > 0 && !isProcessingQueue && (
+                          <button
+                            onClick={retryFailedQueue}
+                            className="flex items-center gap-1 px-3 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-medium transition"
+                          >
+                            <RotateCcw size={12} />
+                            <span>Retry Failed ({failedCount})</span>
+                          </button>
+                        )}
+
+                        {isProcessingQueue ? (
+                          <button
+                            onClick={cancelRemainingQueue}
+                            className="flex items-center gap-1 px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[11px] font-medium transition"
+                          >
+                            <StopCircle size={12} />
+                            <span>Cancel Remaining</span>
+                          </button>
+                        ) : waitingCount > 0 ? (
+                          <button
+                            onClick={handleStartExtraction}
+                            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-md transition"
+                          >
+                            <Sparkles size={13} />
+                            <span>Run Smart Extraction ({waitingCount})</span>
+                          </button>
+                        ) : null}
+
+                        {readyCount > 0 && (
+                          <button
+                            onClick={() => setActiveTab("preview")}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 border border-sky-500/30 text-xs font-semibold transition"
+                          >
+                            <Eye size={13} />
+                            <span>Review Data ({readyCount})</span>
+                          </button>
+                        )}
+
+                        {selectedCount > 0 && (
+                          <button
+                            onClick={() => setShowConfirmModal(true)}
+                            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-md transition"
+                          >
+                            <CheckCircle2 size={13} />
+                            <span>Approve Selected ({selectedCount})</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* File Cards Listing */}
+                    <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                      {filteredQueue.map((item, idx) => {
+                        const isDocx = item.name.endsWith(".docx") || item.name.endsWith(".doc");
+                        const isXlsx = item.name.endsWith(".xlsx") || item.name.endsWith(".xls") || item.name.endsWith(".csv");
+                        const isPdf = item.name.endsWith(".pdf");
+                        const isZip = item.name.endsWith(".zip");
+                        const sizeStr = item.size > 1024 * 1024
+                          ? `${(item.size / 1024 / 1024).toFixed(2)} MB`
+                          : `${(item.size / 1024).toFixed(1)} KB`;
+
+                        return (
+                          <div
+                            key={item.id}
+                            className={`p-3 rounded-xl border text-xs transition flex flex-col gap-2 ${
+                              item.status === "ready"
+                                ? "bg-slate-900/90 border-slate-800 hover:border-emerald-500/40"
+                                : item.status === "failed"
+                                ? "bg-rose-950/20 border-rose-900/50"
+                                : item.status === "uploading" || item.status === "extracting"
+                                ? "bg-slate-900/90 border-sky-500/40"
+                                : item.status === "imported"
+                                ? "bg-purple-950/20 border-purple-800/40"
+                                : "bg-slate-900/60 border-slate-800"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              {/* Left: Checkbox + Icon + Filename */}
+                              <div className="flex items-center gap-2.5 truncate flex-1 min-w-0">
+                                {item.status === "ready" || item.status === "imported" ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={item.selectedForImport}
+                                    onChange={() => toggleSelectQueueItem(item.id)}
+                                    className="rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-0 cursor-pointer shrink-0"
+                                    title="Include in import"
+                                  />
+                                ) : (
+                                  <span className="w-3.5 text-slate-600 font-mono text-[10px] shrink-0 text-center">
+                                    {idx + 1}
+                                  </span>
+                                )}
+
+                                {isDocx ? (
+                                  <FileText size={16} className="text-blue-400 shrink-0" />
+                                ) : isXlsx ? (
+                                  <FileSpreadsheet size={16} className="text-emerald-400 shrink-0" />
+                                ) : isPdf ? (
+                                  <FileText size={16} className="text-rose-400 shrink-0" />
+                                ) : isZip ? (
+                                  <Layers size={16} className="text-purple-400 shrink-0" />
+                                ) : (
+                                  <FileText size={16} className="text-slate-400 shrink-0" />
+                                )}
+
+                                <div className="truncate">
+                                  <span className="font-medium text-slate-200 truncate block text-xs" title={item.name}>
+                                    {item.name}
+                                  </span>
+                                  <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                                    <span>{sizeStr}</span>
+                                    {item.parsedDoc?.fields?.document_number?.value && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="text-emerald-400 font-mono">
+                                          #{String(item.parsedDoc.fields.document_number.value)}
+                                        </span>
+                                      </>
+                                    )}
+                                    {item.parsedDoc?.fields?.customer_name?.value && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="text-slate-400 truncate max-w-[150px]">
+                                          {String(item.parsedDoc.fields.customer_name.value)}
+                                        </span>
+                                      </>
+                                    )}
+                                    {item.parsedDoc?.isDuplicate && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="text-amber-400 font-semibold">Existing Duplicate</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Right: Status Pill & Actions */}
+                              <div className="flex items-center gap-2 shrink-0">
+                                {item.status === "waiting" && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
+                                    <Clock size={11} />
+                                    <span>Waiting</span>
+                                  </span>
+                                )}
+
+                                {item.status === "uploading" && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-sky-500/10 text-sky-400 border border-sky-500/30 flex items-center gap-1.5">
+                                    <UploadCloud size={11} className="animate-pulse" />
+                                    <span>Uploading ({item.progressPercent}%)</span>
+                                  </span>
+                                )}
+
+                                {item.status === "extracting" && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                                    <Sparkles size={11} className="animate-spin" />
+                                    <span>Extracting & Auditing</span>
+                                  </span>
+                                )}
+
+                                {item.status === "ready" && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                      <CheckCircle2 size={11} />
+                                      <span>Ready for Review</span>
+                                    </span>
+                                    {item.parsedDoc && (
+                                      <span className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase bg-slate-800 text-slate-400">
+                                        {item.parsedDoc.documentType}
+                                      </span>
+                                    )}
+                                    <button
+                                      onClick={() => {
+                                        if (item.parsedDoc) {
+                                          setSelectedDocId(item.parsedDoc.id);
+                                          if (item.parsedDoc.destinationMappings.length > 0) {
+                                            setSelectedMapping(item.parsedDoc.destinationMappings[0]);
+                                          }
+                                        }
+                                        setActiveTab("preview");
+                                      }}
+                                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-sky-300 font-medium transition flex items-center gap-1"
+                                      title="Inspect extracted fields in split-screen editor"
+                                    >
+                                      <span>Inspect</span>
+                                      <ArrowRight size={10} />
+                                    </button>
+                                  </div>
+                                )}
+
+                                {item.status === "failed" && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1">
+                                      <AlertTriangle size={11} />
+                                      <span>Failed</span>
+                                    </span>
+                                    <button
+                                      onClick={() => retrySingleItem(item.id)}
+                                      disabled={isProcessingQueue}
+                                      className="px-2 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[10px] font-semibold transition flex items-center gap-1 disabled:opacity-50"
+                                      title="Retry extracting this file"
+                                    >
+                                      <RotateCcw size={10} />
+                                      <span>Retry</span>
+                                    </button>
+                                  </div>
+                                )}
+
+                                {item.status === "imported" && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                    <CheckCircle2 size={11} />
+                                    <span>Imported</span>
+                                  </span>
+                                )}
+
+                                {item.status === "cancelled" && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                      Cancelled
+                                    </span>
+                                    <button
+                                      onClick={() => retrySingleItem(item.id)}
+                                      disabled={isProcessingQueue}
+                                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 transition"
+                                    >
+                                      Resume
+                                    </button>
+                                  </div>
+                                )}
+
+                                {!isProcessingQueue && (
+                                  <button
+                                    onClick={() => removeQueueItem(item.id)}
+                                    className="text-slate-500 hover:text-rose-400 p-1 transition"
+                                    title="Remove from queue"
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Failure details if failed */}
+                            {item.status === "failed" && item.errorMessage && (
+                              <div className="p-2 rounded-lg bg-rose-950/30 border border-rose-900/60 text-[11px] text-rose-300 space-y-1">
+                                <div className="flex items-start gap-1.5">
+                                  <AlertTriangle size={13} className="shrink-0 text-rose-400 mt-0.5" />
+                                  <span className="font-medium">{item.errorMessage}</span>
+                                </div>
+                                {item.requestId && (
+                                  <div className="text-[10px] font-mono text-slate-500 pl-5">
+                                    Request Tracking ID: {item.requestId}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Progress bar for individual uploading item */}
+                            {item.status === "uploading" && (
+                              <div className="w-full h-1 rounded-full bg-slate-800 overflow-hidden">
+                                <div
+                                  className="h-full bg-sky-400 transition-all duration-300"
+                                  style={{ width: `${item.progressPercent}%` }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {parseError && (
                 <div className="mt-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 text-left">
@@ -1600,26 +2341,33 @@ export default function SmartImportPage() {
 
             {/* Dynamic Destinations & Integrity Logic */}
             {(() => {
+              const approvedDocs = documents.filter(d => {
+                const qItem = queue.find(q => q.name === d.filename || q.parsedDoc?.id === d.id);
+                if (qItem && !qItem.selectedForImport) return false;
+                if (skipDuplicates && d.isDuplicate) return false;
+                return true;
+              });
+
               const distinctCustomers = Array.from(
-                new Set(documents.map(d => d.customerResolution?.extractedName).filter(Boolean))
+                new Set(approvedDocs.map(d => d.customerResolution?.extractedName).filter(Boolean))
               ) as string[];
               const distinctSuppliers = Array.from(
-                new Set(documents.map(d => d.supplierResolution?.extractedName).filter(Boolean))
+                new Set(approvedDocs.map(d => d.supplierResolution?.extractedName).filter(Boolean))
               ) as string[];
               const distinctProjects = Array.from(
-                new Set(documents.map(d => d.projectResolution?.extractedName).filter(Boolean))
+                new Set(approvedDocs.map(d => d.projectResolution?.extractedName).filter(Boolean))
               ) as string[];
-              const docTypesPresent = Array.from(new Set(documents.map(d => d.documentType)));
+              const docTypesPresent = Array.from(new Set(approvedDocs.map(d => d.documentType)));
 
-              // Critical errors check (Task 10)
+              // Critical errors check
               const criticalErrors: string[] = [];
               if (!company?.id) {
                 criticalErrors.push("Company profile unresolved. Database execution blocked.");
               }
-              if (documents.length === 0) {
-                criticalErrors.push("No documents loaded for import.");
+              if (approvedDocs.length === 0) {
+                criticalErrors.push("No documents selected for import. Please check at least one valid document.");
               }
-              documents.forEach(d => {
+              approvedDocs.forEach(d => {
                 if (d.validationErrors && d.validationErrors.length > 0) {
                   d.validationErrors.forEach(err => criticalErrors.push(`${d.filename}: ${err}`));
                 }
@@ -1692,7 +2440,7 @@ export default function SmartImportPage() {
 
                       {/* Project Destination */}
                       {distinctProjects.length > 0 && (() => {
-                        const projStatus = documents.find(d => d.projectResolution?.extractedName)?.statusResolution?.projectStatusResolution;
+                        const projStatus = approvedDocs.find(d => d.projectResolution?.extractedName)?.statusResolution?.projectStatusResolution;
                         const statusLabel = projStatus?.proposedStatus || "Planning";
                         const isAssumed = projStatus?.isAssumed ?? true;
                         return (
@@ -1720,7 +2468,7 @@ export default function SmartImportPage() {
 
                       {/* Quotations Destination */}
                       {docTypesPresent.includes("quotation") && (() => {
-                        const quotes = documents.filter(d => d.documentType === "quotation");
+                        const quotes = approvedDocs.filter(d => d.documentType === "quotation");
                         const qItemsCount = quotes.reduce((acc, d) => acc + (d.items?.length || 0), 0);
                         const qNumbers = quotes.map(d => String(d.fields?.document_number?.value || "")).filter(Boolean);
                         const distinctStatuses = Array.from(new Set(quotes.map(d => `${d.statusResolution?.proposedStatus || 'draft'}${d.statusResolution?.isAssumed ? ' [Neutral Assumption]' : ' [Verified]'}`)));
@@ -1751,7 +2499,7 @@ export default function SmartImportPage() {
 
                       {/* Tax Invoices Destination */}
                       {docTypesPresent.includes("tax_invoice") && (() => {
-                        const invs = documents.filter(d => d.documentType === "tax_invoice");
+                        const invs = approvedDocs.filter(d => d.documentType === "tax_invoice");
                         const invItemsCount = invs.reduce((acc, d) => acc + (d.items?.length || 0), 0);
                         const invNumbers = invs.map(d => String(d.fields?.document_number?.value || "")).filter(Boolean);
                         const distinctStatuses = Array.from(new Set(invs.map(d => `${d.statusResolution?.proposedStatus || 'draft'}${d.statusResolution?.isAssumed ? ' [Neutral Assumption]' : ' [Verified]'}`)));
@@ -1785,7 +2533,7 @@ export default function SmartImportPage() {
 
                       {/* Delivery Notes Destination */}
                       {docTypesPresent.includes("delivery_note") && (() => {
-                        const dns = documents.filter(d => d.documentType === "delivery_note");
+                        const dns = approvedDocs.filter(d => d.documentType === "delivery_note");
                         const dnItemsCount = dns.reduce((acc, d) => acc + (d.items?.length || 0), 0);
                         const dnNumbers = dns.map(d => String(d.fields?.document_number?.value || "")).filter(Boolean);
                         const distinctStatuses = Array.from(new Set(dns.map(d => `${d.statusResolution?.proposedStatus || 'draft'}${d.statusResolution?.isAssumed ? ' [Neutral Assumption]' : ' [Verified]'}`)));
@@ -1816,7 +2564,7 @@ export default function SmartImportPage() {
 
                       {/* Purchase Orders Destination */}
                       {docTypesPresent.includes("purchase_order") && (() => {
-                        const pos = documents.filter(d => d.documentType === "purchase_order");
+                        const pos = approvedDocs.filter(d => d.documentType === "purchase_order");
                         const poItemsCount = pos.reduce((acc, d) => acc + (d.items?.length || 0), 0);
                         const poNumbers = pos.map(d => String(d.fields?.document_number?.value || "")).filter(Boolean);
                         const distinctStatuses = Array.from(new Set(pos.map(d => `${d.statusResolution?.proposedStatus || 'draft'}${d.statusResolution?.isAssumed ? ' [Neutral Assumption]' : ' [Verified]'}`)));
@@ -1847,7 +2595,7 @@ export default function SmartImportPage() {
 
                       {/* Expenses Destination */}
                       {docTypesPresent.includes("expense") && (() => {
-                        const exps = documents.filter(d => d.documentType === "expense");
+                        const exps = approvedDocs.filter(d => d.documentType === "expense");
                         return (
                           <div className="flex items-start justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
                             <div className="flex items-center gap-2">
@@ -1870,7 +2618,7 @@ export default function SmartImportPage() {
 
                       {/* Measurements Destination */}
                       {docTypesPresent.includes("measurement_project") && (() => {
-                        const meas = documents.filter(d => d.documentType === "measurement_project");
+                        const meas = approvedDocs.filter(d => d.documentType === "measurement_project");
                         return (
                           <div className="flex items-start justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
                             <div className="flex items-center gap-2">

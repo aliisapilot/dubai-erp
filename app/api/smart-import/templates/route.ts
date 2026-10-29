@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateTemplateWorkbook, TemplateType } from "@/lib/smartImport/templateGenerator";
 
 export const dynamic = "force-dynamic";
-export const runtime = "edge";
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   try {
