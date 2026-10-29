@@ -207,9 +207,9 @@ export const DOC_TYPE_DB_INFO: Record<
 > = {
   tax_invoice: { table: "tax_invoices", column: "invoice_number", label: "Tax Invoice" },
   quotation: { table: "quotations", column: "quotation_number", label: "Quotation" },
-  proforma_invoice: { table: "proforma_invoices", column: "invoice_number", label: "Proforma Invoice" },
+  proforma_invoice: { table: "proforma_invoices", column: "proforma_number", label: "Proforma Invoice" },
   delivery_note: { table: "delivery_notes", column: "delivery_note_number", label: "Delivery Note" },
-  purchase_order: { table: "purchase_orders", column: "po_number", label: "Purchase Order" },
+  purchase_order: { table: "purchase_orders", column: "purchase_order_number", label: "Purchase Order" },
   receipt_voucher: { table: "receipt_vouchers", column: "voucher_number", label: "Receipt Voucher" },
   customer_statement: { table: "", column: "", label: "Statement of Account" },
   supplier_bill: { table: "supplier_bills", column: "bill_number", label: "Supplier Bill" },

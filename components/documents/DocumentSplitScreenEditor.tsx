@@ -32,6 +32,7 @@ import DynamicDocumentRenderer, {
 import { usePersistedDocumentDesign } from "./usePersistedDocumentDesign";
 import { calcLineItem, fmtAED, todayISO } from "@/lib/helpers";
 import { NumericCellInput } from "@/components/ui/NumericCellInput";
+import PrintModal from "./PrintModal";
 
 export interface EditorLineItem {
   id?: string;
@@ -341,6 +342,8 @@ function DocumentSplitScreenEditorWorkspace({
   const [previewPage, setPreviewPage] = useState<number>(1);
   const [dirty, setDirty] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const isIssuedOriginal =
     (initialInvoice?.status || "").toLowerCase() === "issued" ||
@@ -562,7 +565,53 @@ function DocumentSplitScreenEditorWorkspace({
     onClose();
   };
 
+  const statusOptions = useMemo(() => {
+    if (documentType === "proforma_invoice") {
+      return [
+        { value: "draft", label: "Draft" },
+        { value: "sent", label: "Sent" },
+        { value: "accepted", label: "Accepted / Approved" },
+        { value: "invoiced", label: "Invoiced / Converted" },
+        { value: "cancelled", label: "Cancelled" },
+      ];
+    }
+    if (documentType === "quotation") {
+      return [
+        { value: "draft", label: "Draft" },
+        { value: "sent", label: "Sent" },
+        { value: "accepted", label: "Accepted" },
+        { value: "rejected", label: "Rejected" },
+        { value: "expired", label: "Expired" },
+      ];
+    }
+    if (documentType === "purchase_order") {
+      return [
+        { value: "draft", label: "Draft" },
+        { value: "sent", label: "Sent" },
+        { value: "approved", label: "Approved" },
+        { value: "received", label: "Received" },
+        { value: "cancelled", label: "Cancelled" },
+      ];
+    }
+    if (documentType === "delivery_note") {
+      return [
+        { value: "draft", label: "Draft" },
+        { value: "dispatched", label: "Dispatched" },
+        { value: "delivered", label: "Delivered" },
+        { value: "cancelled", label: "Cancelled" },
+      ];
+    }
+    return [
+      { value: "draft", label: "Draft" },
+      { value: "issued", label: "Final / Issued" },
+      { value: "paid", label: "Paid" },
+      { value: "partially_paid", label: "Partially Paid" },
+      { value: "cancelled", label: "Cancelled" },
+    ];
+  }, [documentType]);
+
   const handleSaveDocument = async (targetStatus?: string) => {
+    if (isSubmitting || saving) return;
     const isCustom = partyMode === "custom";
     if (isCustom) {
       if (!customParty.name.trim()) {
@@ -575,75 +624,80 @@ function DocumentSplitScreenEditorWorkspace({
         return;
       }
     }
-    if (lines.length === 0 || !lines[0].description) {
+    if (lines.length === 0 || !lines.some((l) => l.description.trim())) {
       setError("Please add at least one line item with a description.");
       return;
     }
 
     setError("");
-    const finalStatus = targetStatus || form.status;
-    const finalCustomerName = isCustom
-      ? customParty.name.trim()
-      : isSupplierParty
-      ? selectedSupplier?.name || ""
-      : selectedCustomer?.name || "";
-    const finalTrn = isCustom
-      ? customParty.trn.trim() || null
-      : isSupplierParty
-      ? selectedSupplier?.trn || null
-      : selectedCustomer?.trn || null;
-    const finalAddress = isCustom
-      ? customParty.address.trim() || null
-      : isSupplierParty
-      ? selectedSupplier?.address || null
-      : selectedCustomer?.address || null;
-    const finalContact = isCustom
-      ? customParty.contact_person.trim() || null
-      : isSupplierParty
-      ? selectedSupplier?.contact_person || null
-      : selectedCustomer?.contact_person || null;
-    const finalPhone = isCustom
-      ? customParty.phone.trim() || null
-      : isSupplierParty
-      ? selectedSupplier?.phone || null
-      : selectedCustomer?.phone || selectedCustomer?.mobile || null;
-    const finalEmail = isCustom
-      ? customParty.email.trim() || null
-      : isSupplierParty
-      ? selectedSupplier?.email || null
-      : selectedCustomer?.email || null;
-    const finalProjectName = isCustom
-      ? customParty.project_name.trim() || null
-      : selectedProject?.name || null;
+    setIsSubmitting(true);
+    try {
+      const finalStatus = targetStatus || form.status;
+      const finalCustomerName = isCustom
+        ? customParty.name.trim()
+        : isSupplierParty
+        ? selectedSupplier?.name || ""
+        : selectedCustomer?.name || "";
+      const finalTrn = isCustom
+        ? customParty.trn.trim() || null
+        : isSupplierParty
+        ? selectedSupplier?.trn || null
+        : selectedCustomer?.trn || null;
+      const finalAddress = isCustom
+        ? customParty.address.trim() || null
+        : isSupplierParty
+        ? selectedSupplier?.address || null
+        : selectedCustomer?.address || null;
+      const finalContact = isCustom
+        ? customParty.contact_person.trim() || null
+        : isSupplierParty
+        ? selectedSupplier?.contact_person || null
+        : selectedCustomer?.contact_person || null;
+      const finalPhone = isCustom
+        ? customParty.phone.trim() || null
+        : isSupplierParty
+        ? selectedSupplier?.phone || null
+        : selectedCustomer?.phone || selectedCustomer?.mobile || null;
+      const finalEmail = isCustom
+        ? customParty.email.trim() || null
+        : isSupplierParty
+        ? selectedSupplier?.email || null
+        : selectedCustomer?.email || null;
+      const finalProjectName = isCustom
+        ? customParty.project_name.trim() || null
+        : selectedProject?.name || null;
 
-    await onSave({
-      form: {
-        ...form,
-        status: finalStatus,
-        party_mode: partyMode,
-        is_custom_customer: isCustom && !isSupplierParty,
-        is_custom_supplier: isCustom && isSupplierParty,
-        customer_name: finalCustomerName,
-        customer_trn: finalTrn,
-        customer_address: finalAddress,
-        contact_person: finalContact,
-        contact_number: finalPhone,
-        contact_email: finalEmail,
-        custom_project_name: finalProjectName,
-        supplier_name: isSupplierParty ? finalCustomerName : undefined,
-        supplier_trn: isSupplierParty ? finalTrn : undefined,
-        supplier_address: isSupplierParty ? finalAddress : undefined,
-      },
-      lines,
-      subtotal: totals.sub,
-      vat_amount: totals.vat,
-      total_amount: totals.total,
-    });
-    setDirty(false);
+      await onSave({
+        form: {
+          ...form,
+          status: finalStatus,
+          party_mode: partyMode,
+          is_custom_customer: isCustom && !isSupplierParty,
+          is_custom_supplier: isCustom && isSupplierParty,
+          customer_name: finalCustomerName,
+          customer_trn: finalTrn,
+          customer_address: finalAddress,
+          contact_person: finalContact,
+          contact_number: finalPhone,
+          contact_email: finalEmail,
+          custom_project_name: finalProjectName,
+          supplier_name: isSupplierParty ? finalCustomerName : undefined,
+          supplier_trn: isSupplierParty ? finalTrn : undefined,
+          supplier_address: isSupplierParty ? finalAddress : undefined,
+        },
+        lines,
+        subtotal: totals.sub,
+        vat_amount: totals.vat,
+        total_amount: totals.total,
+      });
+      setDirty(false);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handlePrint = () => {
-    window.print();
+    setIsPrintModalOpen(true);
   };
 
   // Label helpers based on document type
@@ -748,7 +802,7 @@ function DocumentSplitScreenEditorWorkspace({
           <button
             type="button"
             onClick={() => handleSaveDocument("draft")}
-            disabled={saving || isFormDisabled}
+            disabled={saving || isSubmitting || isFormDisabled}
             className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white cursor-pointer disabled:opacity-50"
             title="Save as Draft"
           >
@@ -759,11 +813,21 @@ function DocumentSplitScreenEditorWorkspace({
           <button
             type="button"
             onClick={() => handleSaveDocument()}
-            disabled={saving || isFormDisabled}
+            disabled={saving || isSubmitting || isFormDisabled}
             className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 text-xs font-bold text-white shadow-md transition cursor-pointer disabled:opacity-50"
           >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-            <span>{saving ? "Saving…" : effectiveDocNumber ? "Save Changes" : "Save Document"}</span>
+            {saving || isSubmitting ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <CheckCircle2 size={14} />
+            )}
+            <span>
+              {saving || isSubmitting
+                ? "Saving…"
+                : effectiveDocNumber
+                ? "Save Changes"
+                : "Save Document"}
+            </span>
           </button>
 
           <button
@@ -1098,13 +1162,11 @@ function DocumentSplitScreenEditorWorkspace({
                     disabled={isFormDisabled}
                     className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
                   >
-                    <option value="draft">Draft</option>
-                    <option value="sent">Sent</option>
-                    <option value="accepted">Accepted / Approved</option>
-                    <option value="issued">Final / Issued</option>
-                    <option value="partially_paid">Partially Paid</option>
-                    <option value="paid">Paid</option>
-                    <option value="cancelled">Cancelled</option>
+                    {statusOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -1458,6 +1520,17 @@ function DocumentSplitScreenEditorWorkspace({
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Print / PDF direct modal launch */}
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="flex items-center gap-1 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white px-2 py-0.5 text-[11px] font-semibold transition cursor-pointer"
+                title="Open A4 Print and PDF Export modal"
+              >
+                <Printer size={12} className="text-indigo-400" />
+                <span className="hidden sm:inline">Print / PDF</span>
+              </button>
+
               {/* Fullscreen Expand Toggle */}
               <button
                 type="button"
@@ -1572,6 +1645,30 @@ function DocumentSplitScreenEditorWorkspace({
           </div>
         </div>
       </div>
+
+      {/* A4 Print & PDF Export Modal */}
+      {isPrintModalOpen && (
+        <PrintModal
+          isOpen={isPrintModalOpen}
+          onClose={() => setIsPrintModalOpen(false)}
+          editorHref={`/settings/document-designer?type=${documentType}`}
+        >
+          <div className="flex flex-col gap-6 print:gap-0">
+            {Array.from({ length: totalPreviewPages }, (_, index) => (
+              <DynamicDocumentRenderer
+                key={index}
+                layout={design.layout}
+                company={company}
+                data={previewData}
+                isDesignerPreview={false}
+                scale={1}
+                pageNumber={index + 1}
+                totalPages={totalPreviewPages}
+              />
+            ))}
+          </div>
+        </PrintModal>
+      )}
     </div>
   );
 }

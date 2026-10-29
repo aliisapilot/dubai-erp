@@ -1,15 +1,15 @@
 "use client";
-import { FormEvent, useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Search, FileSpreadsheet, X, Save, Loader2, Pencil, Eye, ArrowRight, Printer, Trash2 } from "lucide-react";
-import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, calcLineItem } from "@/lib/helpers";
+import { Plus, Search, FileSpreadsheet, X, Loader2, Pencil, Eye, ArrowRight, Printer, Trash2 } from "lucide-react";
+import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber } from "@/lib/helpers";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import ProformaInvoiceTemplate from "@/components/documents/ProformaInvoiceTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { withCustomerDocumentDetails, stripCustomPartyTags } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails, stripCustomPartyTags, serializeCustomPartyNotes } from "@/lib/documentCustomer";
 import DocumentSplitScreenEditor, {
   DocumentEditorFormState,
   EditorLineItem,
@@ -32,7 +32,7 @@ type PI = {
   contact_email?: string;
   custom_project_name?: string | null;
   is_custom_customer?: boolean | null;
-  custom_customer?: any;
+  custom_customer?: unknown;
   quotation_id: string | null;
   proforma_date: string | null;
   valid_until: string | null;
@@ -43,12 +43,24 @@ type PI = {
   notes: string | null;
   created_at: string | null;
 };
-type PIForm = { customer_id: string; proforma_date: string; valid_until: string; status: string; payment_terms: string; notes: string };
+type PIForm = {
+  customer_id: string;
+  customer_name?: string;
+  customer_trn?: string;
+  customer_address?: string;
+  contact_person?: string;
+  contact_number?: string;
+  contact_email?: string;
+  custom_project_name?: string;
+  is_custom_customer?: boolean;
+  proforma_date: string;
+  valid_until: string;
+  status: string;
+  payment_terms: string;
+  notes: string;
+};
 const emptyForm: PIForm = { customer_id:"", proforma_date: todayISO(), valid_until:"", status:"draft", payment_terms:"30 days", notes:"" };
 const emptyLine = (): LineItem => ({ product_id:"", description:"", quantity:1, unit:"Nos", unit_price:0, discount_pct:0, vat_rate:5, line_total:0, vat_amount:0, sort_order:0 });
-const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none";
-const sel = inp + " appearance-none";
-function recalc(item: LineItem): LineItem { const { vatAmount, lineTotal } = calcLineItem(item.quantity, item.unit_price, item.discount_pct, item.vat_rate); return { ...item, line_total: lineTotal, vat_amount: vatAmount }; }
 // DB schema mapping (verified against live Supabase):
 // proforma_invoices: valid_until (NOT due_date), NO project_id, NO payment_terms
 // proforma_invoice_items: proforma_invoice_id (FK), discount_percent (NOT discount_pct), NO vat_category
@@ -119,7 +131,7 @@ function PIContent() {
         ...f,
         customer_id: enrichedQ.customer_id || "",
         notes: enrichedQ.notes || "",
-        payment_terms: enrichedQ.payment_terms || (enrichedQ as any).terms || "30 days",
+        payment_terms: enrichedQ.payment_terms || ((enrichedQ as Record<string, unknown>).terms as string) || "30 days",
       }));
       type QuotationItemSource = { product_id?: string; description?: string; quantity?: number; unit_price?: number; discount_percent?: number; vat_rate?: number; line_total?: number; vat_amount?: number; sort_order?: number };
       setLines(((items || []) as QuotationItemSource[]).map((it) => ({
@@ -138,20 +150,6 @@ function PIContent() {
     }
   }
 
-  const totals = useCallback(() => {
-    const sub = lines.reduce((s,l) => s + l.quantity*l.unit_price*(1-l.discount_pct/100), 0);
-    const vat = lines.reduce((s,l) => s + l.vat_amount, 0);
-    return { sub, vat, total: sub + vat };
-  }, [lines]);
-
-  function onProductSelect(idx: number, pid: string) {
-    const prod = products.find(p => p.id === pid);
-    setLines(ls => ls.map((l,i) => i!==idx?l:recalc({ ...l, product_id: pid, description: prod?.name||l.description, unit: prod?.unit || l.unit || "Nos", unit_price: prod?.selling_price??l.unit_price, vat_rate: prod?.vat_rate??5 })));
-  }
-  function updateLine(idx: number, u: Partial<LineItem>) { setLines(ls => ls.map((l,i) => i!==idx?l:recalc({...l,...u}))); }
-  function addLine() { setLines(ls => [...ls, emptyLine()]); }
-  function removeLine(idx: number) { if (lines.length===1) return; setLines(ls => ls.filter((_,i)=>i!==idx)); }
-  const ff = (k: keyof PIForm, v: string) => setForm(c => ({...c,[k]:v}));
   function openAdd() { setError(""); setSuccess(""); setEditing(null); setForm(emptyForm); setLines([emptyLine()]); setShowForm(true); }
   async function openEdit(pi: PI) {
     setError(""); setSuccess("");
@@ -159,6 +157,14 @@ function PIContent() {
     setEditing(enriched);
     setForm({
       customer_id: enriched.customer_id||"",
+      customer_name: enriched.customer_name,
+      customer_trn: enriched.customer_trn,
+      customer_address: enriched.customer_address,
+      contact_person: enriched.contact_person,
+      contact_number: enriched.contact_number,
+      contact_email: enriched.contact_email,
+      custom_project_name: enriched.custom_project_name || undefined,
+      is_custom_customer: enriched.is_custom_customer || false,
       proforma_date: enriched.proforma_date||todayISO(),
       valid_until: enriched.valid_until||"",
       status: (enriched.status||"draft").toLowerCase(),
@@ -176,50 +182,6 @@ function PIContent() {
     setViewing({ pi: withCustomerDocumentDetails(pi) as PI, lines: (items||[]) as LineItem[] });
   }
   function closeForm() { if (saving) return; setShowForm(false); setEditing(null); setError(""); }
-
-  async function save(e: FormEvent) {
-    e.preventDefault(); setError(""); setSuccess("");
-    if (!form.customer_id) { setError("Please select a customer."); return; }
-    setSaving(true);
-    try {
-      const { sub, vat, total } = totals();
-      // DB columns: valid_until (not due_date), no project_id, terms_conditions (not payment_terms)
-      const payload = { customer_id: form.customer_id, proforma_date: form.proforma_date||null, valid_until: form.valid_until||null, terms_conditions: form.payment_terms.trim()||null, status: String(form.status || "draft").toLowerCase(), subtotal: sub, vat_amount: vat, total_amount: total, notes: form.notes.trim()||null, updated_at: new Date().toISOString() };
-      let pid: string;
-      if (editing) {
-        const { error: updateErr } = await supabase.from("proforma_invoices").update(payload).eq("id", editing.id);
-        if (updateErr) throw updateErr;
-        pid = editing.id;
-        // Upsert line items: preserve existing IDs, insert new ones, delete removed ones
-        const { data: existingItems } = await supabase.from("proforma_invoice_items").select("id").eq("proforma_invoice_id", pid);
-        const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
-        const currentIds = new Set<string>();
-        for (const l of lines) {
-          if (l.id && existingIds.has(l.id)) {
-            const { error: updErr } = await supabase.from("proforma_invoice_items").update({ product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, line_total: l.line_total, vat_amount: l.vat_amount }).eq("id", l.id);
-            if (updErr) throw updErr;
-            currentIds.add(l.id);
-          } else {
-            const { error: insErr } = await supabase.from("proforma_invoice_items").insert({ proforma_invoice_id: pid, product_id: l.product_id||null, description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount_percent: l.discount_pct, vat_rate: l.vat_rate, line_total: l.line_total, vat_amount: l.vat_amount, sort_order: lines.indexOf(l) });
-            if (insErr) throw insErr;
-          }
-        }
-        // Delete items no longer in the form
-        const toDelete = [...existingIds].filter(id => !currentIds.has(id));
-        if (toDelete.length > 0) {
-          const { error: delErr } = await supabase.from("proforma_invoice_items").delete().in("id", toDelete);
-          if (delErr) throw delErr;
-        }
-      } else {
-        const cid = await getCompanyId(); const pno = await generateDocNumber(cid, "PRO");
-        const { data: ins, error: err } = await supabase.from("proforma_invoices").insert({ ...payload, company_id: cid, proforma_number: pno }).select("id").single();
-        if (err) throw new Error(err.message);
-        pid = ins.id;
-      }
-           setSuccess(editing?"Proforma updated.":"Proforma invoice created."); closeForm(); await loadAll();
-    } catch (err: unknown) { setError(err instanceof Error ? err.message : "Error"); }
-    finally { setSaving(false); }
-  }
 
   async function handleSaveSplitScreen(payload: {
     form: DocumentEditorFormState;
@@ -239,6 +201,10 @@ function PIContent() {
       setError("Please enter the custom customer / company name.");
       return;
     }
+    if (!payload.lines || payload.lines.length === 0 || !payload.lines.some((l) => l.description?.trim())) {
+      setError("Please add at least one line item with a description.");
+      return;
+    }
     setSaving(true);
     try {
       const customPayload = isCustom
@@ -253,21 +219,36 @@ function PIContent() {
           }
         : null;
 
-      const dbPayload: Record<string, any> = {
+      const selectedCustomer = !isCustom && payload.form.customer_id
+        ? customers.find((c) => c.id === payload.form.customer_id)
+        : null;
+
+      // Status check constraint normalization: only allowed DB statuses
+      const validStatuses = ["draft", "sent", "accepted", "invoiced", "cancelled"];
+      let normalizedStatus = (payload.form.status || "draft").toLowerCase();
+      if (normalizedStatus === "issued" || normalizedStatus === "final") {
+        normalizedStatus = "sent";
+      } else if (normalizedStatus === "approved") {
+        normalizedStatus = "accepted";
+      } else if (!validStatuses.includes(normalizedStatus)) {
+        normalizedStatus = "draft";
+      }
+
+      const dbPayload: Record<string, unknown> = {
         customer_id: isCustom ? null : payload.form.customer_id || null,
-        customer_name: isCustom ? payload.form.customer_name?.trim() : null,
-        customer_address: isCustom ? payload.form.customer_address || null : null,
-        customer_trn: isCustom ? payload.form.customer_trn || null : null,
-        contact_person: isCustom ? payload.form.contact_person || null : null,
-        contact_number: isCustom ? payload.form.contact_number || null : null,
-        contact_email: isCustom ? payload.form.contact_email || null : null,
+        customer_name: isCustom ? payload.form.customer_name?.trim() : (selectedCustomer?.name || null),
+        customer_address: isCustom ? payload.form.customer_address || null : (selectedCustomer?.address || null),
+        customer_trn: isCustom ? payload.form.customer_trn || null : (selectedCustomer?.trn || null),
+        contact_person: isCustom ? payload.form.contact_person || null : (selectedCustomer?.contact_person || null),
+        contact_number: isCustom ? payload.form.contact_number || null : (selectedCustomer?.phone || selectedCustomer?.mobile || null),
+        contact_email: isCustom ? payload.form.contact_email || null : (selectedCustomer?.email || null),
         custom_project_name: isCustom ? payload.form.custom_project_name || null : null,
         is_custom_customer: isCustom,
         custom_customer: customPayload,
         proforma_date: payload.form.invoice_date || null,
         valid_until: payload.form.supply_date || null,
         terms_conditions: payload.form.payment_terms?.trim() || null,
-        status: payload.form.status || "draft",
+        status: normalizedStatus,
         subtotal: payload.subtotal,
         vat_amount: payload.vat_amount,
         total_amount: payload.total_amount,
@@ -275,7 +256,7 @@ function PIContent() {
         updated_at: new Date().toISOString(),
       };
 
-      const executeSave = async (recordPayload: Record<string, any>) => {
+      const executeSave = async (recordPayload: Record<string, unknown>) => {
         if (editing) {
           const { error: err } = await supabase.from("proforma_invoices").update(recordPayload).eq("id", editing.id);
           if (err) throw err;
@@ -296,18 +277,19 @@ function PIContent() {
       let pid: string;
       try {
         pid = await executeSave(dbPayload);
-      } catch (saveErr: any) {
-        if (saveErr?.message && (saveErr.message.includes("column") || saveErr.code === "PGRST204" || saveErr.code === "42703")) {
-          const minimalPayload = {
+      } catch (saveErr: unknown) {
+        const sErr = saveErr as { message?: string; code?: string };
+        if (sErr?.message && (sErr.message.includes("column") || sErr.code === "PGRST204" || sErr.code === "42703")) {
+          const minimalPayload: Record<string, unknown> = {
             customer_id: isCustom ? null : payload.form.customer_id || null,
             proforma_date: payload.form.invoice_date || null,
             valid_until: payload.form.supply_date || null,
             terms_conditions: payload.form.payment_terms?.trim() || null,
-            status: payload.form.status || "draft",
+            status: normalizedStatus,
             subtotal: payload.subtotal,
             vat_amount: payload.vat_amount,
             total_amount: payload.total_amount,
-            notes: payload.form.notes.trim() || null,
+            notes: isCustom && customPayload ? serializeCustomPartyNotes(payload.form.notes.trim(), customPayload) : payload.form.notes.trim() || null,
             updated_at: new Date().toISOString(),
           };
           pid = await executeSave(minimalPayload);
@@ -323,27 +305,46 @@ function PIContent() {
 
       for (let i = 0; i < payload.lines.length; i++) {
         const l = payload.lines[i];
-        const itemPayload = {
+        const itemPayload: Record<string, unknown> = {
           product_id: l.product_id || null,
           description: l.description,
-          quantity: l.quantity,
-          unit_price: l.unit_price,
-          discount_percent: l.discount_pct,
-          vat_rate: l.vat_rate,
-          line_total: l.line_total,
-          vat_amount: l.vat_amount,
+          quantity: Number(l.quantity) || 0,
+          unit: l.unit || "Nos",
+          unit_price: Number(l.unit_price) || 0,
+          discount_percent: Number(l.discount_pct) || 0,
+          vat_rate: Number(l.vat_rate) || 0,
+          line_total: Number(l.line_total) || 0,
+          vat_amount: Number(l.vat_amount) || 0,
           sort_order: i,
         };
-        if (l.id && existingIds.has(l.id)) {
-          const { error: updErr } = await supabase.from("proforma_invoice_items").update(itemPayload).eq("id", l.id);
-          if (updErr) throw updErr;
-          currentIds.add(l.id);
-        } else {
-          const { error: insErr } = await supabase.from("proforma_invoice_items").insert({
-            proforma_invoice_id: pid,
-            ...itemPayload,
-          });
-          if (insErr) throw insErr;
+
+        const executeItemUpsert = async (payloadToSave: Record<string, unknown>) => {
+          if (l.id && existingIds.has(l.id)) {
+            const { error: updErr } = await supabase.from("proforma_invoice_items").update(payloadToSave).eq("id", l.id);
+            if (updErr) throw updErr;
+            currentIds.add(l.id);
+          } else {
+            const { data: insItem, error: insErr } = await supabase.from("proforma_invoice_items").insert({
+              proforma_invoice_id: pid,
+              ...payloadToSave,
+            }).select("id").single();
+            if (insErr) throw insErr;
+            if (insItem?.id) currentIds.add(insItem.id);
+          }
+        };
+
+        try {
+          await executeItemUpsert(itemPayload);
+        } catch (itemErr: unknown) {
+          const iErr = itemErr as { message?: string; code?: string };
+          if (iErr?.message && (iErr.message.includes("column") || iErr.code === "PGRST204" || iErr.code === "42703")) {
+            // Graceful fallback if 'unit' column is missing in legacy schema
+            const fallbackPayload = { ...itemPayload };
+            delete fallbackPayload.unit;
+            await executeItemUpsert(fallbackPayload);
+          } else {
+            throw itemErr;
+          }
         }
       }
 
@@ -354,7 +355,8 @@ function PIContent() {
       }
 
       setSuccess(editing ? "Proforma updated." : "Proforma invoice created.");
-      closeForm();
+      setShowForm(false);
+      setEditing(null);
       await loadAll();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error saving proforma");
@@ -364,14 +366,12 @@ function PIContent() {
   }
 
   const custMap = Object.fromEntries(customers.map(c=>[c.id,c]));
-  const selectableCustomers = customers.filter(c => c.active !== false || c.id === form.customer_id);
   const filtered = invoices.filter(pi => {
     if (filterStatus && pi.status?.toLowerCase()!==filterStatus.toLowerCase()) return false;
     const cn = pi.customer_name || custMap[pi.customer_id||""]?.name||"";
     const pn = pi.custom_project_name || "";
     return [pi.proforma_number, cn, pn, pi.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
-  const { sub: fSub, vat: fVAT, total: fTotal } = totals();
 
   async function deleteProforma(pi: PI) {
     if (!window.confirm(`Are you sure you want to delete proforma invoice ${pi.proforma_number || "this proforma"}? This cannot be undone.`)) {
@@ -435,10 +435,11 @@ function PIContent() {
                   <td className="px-4 py-3 text-right font-bold text-slate-900">{fmtAED(pi.total_amount)}</td>
                   <td className="px-4 py-3 text-center"><span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass(pi.status||"Draft")}`}>{pi.status||"Draft"}</span></td>
                   <td className="px-4 py-3"><div className="flex justify-center gap-1">
-                    <button onClick={()=>openView(pi)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Eye size={14}/></button>
-                    {["draft", "sent"].includes((pi.status||"").toLowerCase())&&<button onClick={()=>openEdit(pi)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14}/></button>}
-                    {!(["cancelled", "invoiced"].includes((pi.status||"").toLowerCase()))&&<button onClick={()=>router.push(`/tax-invoices?from_proforma=${pi.id}`)} title="Convert to Tax Invoice" className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"><ArrowRight size={14}/></button>}
-                    <button onClick={()=>deleteProforma(pi)} title="Delete Proforma Invoice" className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"><Trash2 size={14}/></button>
+                    <button onClick={()=>openView(pi)} title="View Summary" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"><Eye size={14}/></button>
+                    <button onClick={()=>openPrint(pi)} title="Print / PDF" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"><Printer size={14}/></button>
+                    {["draft", "sent"].includes((pi.status||"").toLowerCase())&&<button onClick={()=>openEdit(pi)} title="Edit Proforma" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"><Pencil size={14}/></button>}
+                    {!(["cancelled", "invoiced"].includes((pi.status||"").toLowerCase()))&&<button onClick={()=>router.push(`/tax-invoices?from_proforma=${pi.id}`)} title="Convert to Tax Invoice" className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 cursor-pointer"><ArrowRight size={14}/></button>}
+                    <button onClick={()=>deleteProforma(pi)} title="Delete Proforma Invoice" className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition cursor-pointer"><Trash2 size={14}/></button>
                   </div></td>
                 </tr>
               ))}</tbody>
@@ -469,14 +470,14 @@ function PIContent() {
                 }
               : {
                   customer_id: form.customer_id,
-                  customer_name: (form as any).customer_name,
-                  customer_trn: (form as any).customer_trn,
-                  customer_address: (form as any).customer_address,
-                  contact_person: (form as any).contact_person,
-                  contact_number: (form as any).contact_number,
-                  contact_email: (form as any).contact_email,
-                  custom_project_name: (form as any).custom_project_name,
-                  is_custom_customer: (form as any).is_custom_customer,
+                  customer_name: form.customer_name,
+                  customer_trn: form.customer_trn,
+                  customer_address: form.customer_address,
+                  contact_person: form.contact_person,
+                  contact_number: form.contact_number,
+                  contact_email: form.contact_email,
+                  custom_project_name: form.custom_project_name,
+                  is_custom_customer: form.is_custom_customer,
                   proforma_date: form.proforma_date,
                   valid_until: form.valid_until,
                   status: form.status,
@@ -575,6 +576,7 @@ function PIContent() {
               items: printRec.lines.map(l => ({
                 description: l.description,
                 quantity: l.quantity,
+                unit: l.unit || "Nos",
                 unit_price: l.unit_price,
                 discount_pct: l.discount_pct,
                 taxable_amount: (l.quantity * l.unit_price) * (1 - (l.discount_pct || 0) / 100),
