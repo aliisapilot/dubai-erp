@@ -9,7 +9,7 @@ import ProformaInvoiceTemplate from "@/components/documents/ProformaInvoiceTempl
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { withCustomerDocumentDetails, serializeCustomPartyNotes } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails, stripCustomPartyTags } from "@/lib/documentCustomer";
 import DocumentSplitScreenEditor, {
   DocumentEditorFormState,
   EditorLineItem,
@@ -167,7 +167,7 @@ function PIContent() {
     });
     const { data: items } = await supabase.from("proforma_invoice_items").select("*").eq("proforma_invoice_id", pi.id).order("sort_order");
     // Map DB discount_percent back to UI discount_pct
-    type DBItem = { id?: string; proforma_invoice_id?: string; product_id?: string; description?: string; quantity?: number; unit_price?: number; discount_percent?: number; vat_rate?: number; line_total?: number; vat_amount?: number; sort_order?: number };
+    type DBItem = { id?: string; proforma_invoice_id?: string; product_id?: string; description?: string; quantity?: number; unit?: string; unit_price?: number; discount_percent?: number; vat_rate?: number; line_total?: number; vat_amount?: number; sort_order?: number };
     setLines((items||[]).length>0?(items as DBItem[]).map(it => ({ ...it, discount_pct: Number(it.discount_percent ?? 0) } as LineItem)):[emptyLine()]);
     setShowForm(true);
   }
@@ -253,9 +253,6 @@ function PIContent() {
           }
         : null;
 
-      const rawNotes = payload.form.notes.trim() || payload.form.payment_terms || "";
-      const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
-
       const dbPayload: Record<string, any> = {
         customer_id: isCustom ? null : payload.form.customer_id || null,
         customer_name: isCustom ? payload.form.customer_name?.trim() : null,
@@ -269,11 +266,12 @@ function PIContent() {
         custom_customer: customPayload,
         proforma_date: payload.form.invoice_date || null,
         valid_until: payload.form.supply_date || null,
+        terms_conditions: payload.form.payment_terms?.trim() || null,
         status: payload.form.status || "draft",
         subtotal: payload.subtotal,
         vat_amount: payload.vat_amount,
         total_amount: payload.total_amount,
-        notes: serializedNotes || null,
+        notes: payload.form.notes.trim() || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -304,11 +302,12 @@ function PIContent() {
             customer_id: isCustom ? null : payload.form.customer_id || null,
             proforma_date: payload.form.invoice_date || null,
             valid_until: payload.form.supply_date || null,
+            terms_conditions: payload.form.payment_terms?.trim() || null,
             status: payload.form.status || "draft",
             subtotal: payload.subtotal,
             vat_amount: payload.vat_amount,
             total_amount: payload.total_amount,
-            notes: serializedNotes || null,
+            notes: payload.form.notes.trim() || null,
             updated_at: new Date().toISOString(),
           };
           pid = await executeSave(minimalPayload);
@@ -459,7 +458,15 @@ function PIContent() {
           company={company}
           initialInvoice={
             editing
-              ? editing
+              ? {
+                  ...editing,
+                  // Map DB column terms_conditions → payment_terms so the editor
+                  // initialises the payment-terms bullet list correctly.
+                  payment_terms:
+                    (editing as unknown as { terms_conditions?: string | null }).terms_conditions ||
+                    editing.notes ||
+                    "30 days",
+                }
               : {
                   customer_id: form.customer_id,
                   customer_name: (form as any).customer_name,
@@ -559,8 +566,8 @@ function PIContent() {
               contact_person: printRec.pi.contact_person,
               contact_number: printRec.pi.contact_number,
               contact_email: printRec.pi.contact_email,
-              payment_terms: "30 days",
-              notes: printRec.pi.notes,
+              payment_terms: (printRec.pi as unknown as { terms_conditions?: string | null }).terms_conditions || printRec.pi.notes || undefined,
+              notes: stripCustomPartyTags(printRec.pi.notes) || undefined,
               status: printRec.pi.status,
               subtotal: printRec.pi.subtotal || 0,
               vat_amount: printRec.pi.vat_amount || 0,
