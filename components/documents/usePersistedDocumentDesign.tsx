@@ -14,10 +14,14 @@ export function usePersistedDocumentDesign(companyId: string | null | undefined,
     let cancelled = false;
     loadDocumentLayout(companyId, documentType, {preview: true, fresh: retry > 0}).then(result => {
       if (cancelled) return;
-      setState({key, layout: result.layout, ready: result.source === 'database' && !result.error,
-        error: result.error || (result.source !== 'database' ? 'No cloud design is selected. Open PDF Designer and save your design to cloud first.' : undefined)});
+      setState({
+        key,
+        layout: result.layout,
+        ready: Boolean(result.layout),
+        error: result.error,
+      });
     }).catch(error => {
-      if (!cancelled) setState({key, layout: createDefaultLayout(documentType), ready: false, error: String(error)});
+      if (!cancelled) setState({ key, layout: createDefaultLayout(documentType), ready: true, error: String(error) });
     });
     return () => { cancelled = true; };
   }, [companyId, documentType, key, retry]);
@@ -32,7 +36,7 @@ export function usePersistedDocumentDesign(companyId: string | null | undefined,
   };
 }
 export function DesignLoadState({ error, retry }: {error?: string; retry: () => void}) {
-  return <div data-design-print-blocked="true" role="status" className="bg-white p-8 text-slate-800">
+  return <div data-design-print-blocked={error ? "true" : undefined} role="status" className="bg-white p-8 text-slate-800">
     <p>{error || 'Loading saved design…'}</p>
     {error && <button type="button" onClick={retry} className="mt-3 underline">Retry cloud load</button>}
   </div>;

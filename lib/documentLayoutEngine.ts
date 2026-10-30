@@ -31,7 +31,7 @@ const FALLBACK_SMART_FIT: SmartFitSettings = {
 export function prepareSavedAutoFit(layout: DocumentLayout): DocumentLayout {
   return {
     ...layout,
-    layoutMode: "auto_fit",
+    layoutMode: layout.layoutMode === "manual" ? "manual" : "auto_fit",
     page: {
       ...layout.page,
       smartFit: {

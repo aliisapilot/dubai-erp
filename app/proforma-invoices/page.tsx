@@ -9,7 +9,8 @@ import ProformaInvoiceTemplate from "@/components/documents/ProformaInvoiceTempl
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { withCustomerDocumentDetails, stripCustomPartyTags, serializeCustomPartyNotes } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails, stripCustomPartyTags } from "@/lib/documentCustomer";
+import { parseDatabaseError } from "@/lib/paymentTypes";
 import DocumentSplitScreenEditor, {
   DocumentEditorFormState,
   EditorLineItem,
@@ -262,15 +263,38 @@ function PIContent() {
           if (err) throw err;
           return { id: editing.id, proformaNumber: editing.proforma_number || editing.id };
         } else {
-          const cid = await getCompanyId();
-          const pno = await generateDocNumber(cid, "PRO");
-          const { data: ins, error: err } = await supabase.from("proforma_invoices").insert({
-            company_id: cid,
-            proforma_number: pno,
-            ...recordPayload,
-          }).select("id").single();
-          if (err) throw err;
-          return { id: ins.id, proformaNumber: pno };
+          const cid = company?.id || (await getCompanyId());
+          let pno = await generateDocNumber(cid, "PRO");
+          let insertedId = "";
+          let attempts = 0;
+          while (attempts < 3) {
+            attempts++;
+            const { data: ins, error: err } = await supabase.from("proforma_invoices").insert({
+              company_id: cid,
+              proforma_number: pno,
+              ...recordPayload,
+            }).select("id");
+            if (err) {
+              if (err.code === "23505" && attempts < 3) {
+                pno = await generateDocNumber(cid, "PRO");
+                continue;
+              }
+              throw err;
+            }
+            insertedId = ins?.[0]?.id || "";
+            break;
+          }
+          if (!insertedId) {
+            // RLS fallback: fetch generated record by number
+            const { data: fetched } = await supabase
+              .from("proforma_invoices")
+              .select("id")
+              .eq("company_id", cid)
+              .eq("proforma_number", pno)
+              .maybeSingle();
+            return { id: fetched?.id || "", proformaNumber: pno };
+          }
+          return { id: insertedId, proformaNumber: pno };
         }
       };
 
@@ -279,9 +303,17 @@ function PIContent() {
         saveRes = await executeSave(dbPayload);
       } catch (saveErr: unknown) {
         const sErr = saveErr as { message?: string; code?: string };
-        if (sErr?.message && (sErr.message.includes("column") || sErr.code === "PGRST204" || sErr.code === "42703")) {
-          const minimalPayload: Record<string, unknown> = {
-            customer_id: isCustom ? null : payload.form.customer_id || null,
+        const isColErr = sErr?.message && (sErr.message.includes("column") || sErr.code === "PGRST204" || sErr.code === "42703");
+        if (isColErr) {
+          if (isCustom) {
+            throw new Error(
+              "Database schema is missing custom customer columns (customer_name, custom_customer, etc.). Please run migration 20261028000000_custom_customer_direct_pdf.sql in Supabase SQL editor to enable custom customers."
+            );
+          }
+
+          // Tier 2 fallback for legacy schema: standard columns + terms_conditions + updated_at
+          const tier2Payload: Record<string, unknown> = {
+            customer_id: payload.form.customer_id || null,
             proforma_date: payload.form.invoice_date || null,
             valid_until: payload.form.supply_date || null,
             terms_conditions: payload.form.payment_terms?.trim() || null,
@@ -289,70 +321,112 @@ function PIContent() {
             subtotal: payload.subtotal,
             vat_amount: payload.vat_amount,
             total_amount: payload.total_amount,
-            notes: isCustom && customPayload ? serializeCustomPartyNotes((payload.form.notes || "").trim(), customPayload) : (payload.form.notes || "").trim() || null,
+            notes: (payload.form.notes || "").trim() || null,
             updated_at: new Date().toISOString(),
           };
-          saveRes = await executeSave(minimalPayload);
+
+          try {
+            saveRes = await executeSave(tier2Payload);
+          } catch (tier2Err: unknown) {
+            const t2Err = tier2Err as { message?: string; code?: string };
+            const isT2ColErr = t2Err?.message && (t2Err.message.includes("column") || t2Err.code === "PGRST204" || t2Err.code === "42703");
+            if (isT2ColErr) {
+              // Tier 3 fallback: base legacy schema without terms_conditions or updated_at
+              const termsText = payload.form.payment_terms?.trim() ? `Payment Terms: ${payload.form.payment_terms.trim()}` : "";
+              const combinedNotes = [(payload.form.notes || "").trim(), termsText].filter(Boolean).join("\n\n") || null;
+
+              const tier3Payload: Record<string, unknown> = {
+                customer_id: payload.form.customer_id || null,
+                proforma_date: payload.form.invoice_date || null,
+                valid_until: payload.form.supply_date || null,
+                status: normalizedStatus,
+                subtotal: payload.subtotal,
+                vat_amount: payload.vat_amount,
+                total_amount: payload.total_amount,
+                notes: combinedNotes,
+              };
+              saveRes = await executeSave(tier3Payload);
+            } else {
+              throw tier2Err;
+            }
+          }
         } else {
           throw saveErr;
         }
       }
       const pid = saveRes.id;
 
-      // Upsert proforma line items
-      const { data: existingItems } = await supabase.from("proforma_invoice_items").select("id").eq("proforma_invoice_id", pid);
-      const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
-      const currentIds = new Set<string>();
-
-      for (let i = 0; i < payload.lines.length; i++) {
-        const l = payload.lines[i];
-        const itemPayload: Record<string, unknown> = {
-          product_id: l.product_id || null,
-          description: l.description,
-          quantity: Number(l.quantity) || 0,
-          unit: l.unit || "Nos",
-          unit_price: Number(l.unit_price) || 0,
-          discount_percent: Number(l.discount_pct) || 0,
-          vat_rate: Number(l.vat_rate) || 0,
-          line_total: Number(l.line_total) || 0,
-          vat_amount: Number(l.vat_amount) || 0,
-          sort_order: i,
-        };
-
-        const executeItemUpsert = async (payloadToSave: Record<string, unknown>) => {
-          if (l.id && existingIds.has(l.id)) {
-            const { error: updErr } = await supabase.from("proforma_invoice_items").update(payloadToSave).eq("id", l.id);
-            if (updErr) throw updErr;
-            currentIds.add(l.id);
-          } else {
-            const { data: insItem, error: insErr } = await supabase.from("proforma_invoice_items").insert({
-              proforma_invoice_id: pid,
-              ...payloadToSave,
-            }).select("id").single();
-            if (insErr) throw insErr;
-            if (insItem?.id) currentIds.add(insItem.id);
-          }
-        };
-
+      // Upsert proforma line items if proforma ID is available
+      if (pid) {
         try {
-          await executeItemUpsert(itemPayload);
-        } catch (itemErr: unknown) {
-          const iErr = itemErr as { message?: string; code?: string };
-          if (iErr?.message && (iErr.message.includes("column") || iErr.code === "PGRST204" || iErr.code === "42703")) {
-            // Graceful fallback if 'unit' column is missing in legacy schema
-            const fallbackPayload = { ...itemPayload };
-            delete fallbackPayload.unit;
-            await executeItemUpsert(fallbackPayload);
-          } else {
-            throw itemErr;
-          }
-        }
-      }
+          const { data: existingItems } = await supabase.from("proforma_invoice_items").select("id").eq("proforma_invoice_id", pid);
+          const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
+          const currentIds = new Set<string>();
 
-      const toDelete = [...existingIds].filter((id) => !currentIds.has(id));
-      if (toDelete.length > 0) {
-        const { error: delErr } = await supabase.from("proforma_invoice_items").delete().in("id", toDelete);
-        if (delErr) throw delErr;
+          for (let i = 0; i < payload.lines.length; i++) {
+            const l = payload.lines[i];
+            const itemPayload: Record<string, unknown> = {
+              product_id: l.product_id || null,
+              description: l.description,
+              quantity: Number(l.quantity) || 0,
+              unit: l.unit || "Nos",
+              unit_price: Number(l.unit_price) || 0,
+              discount_percent: Number(l.discount_pct) || 0,
+              vat_rate: Number(l.vat_rate) || 0,
+              line_total: Number(l.line_total) || 0,
+              vat_amount: Number(l.vat_amount) || 0,
+              sort_order: i,
+            };
+
+            const executeItemUpsert = async (payloadToSave: Record<string, unknown>) => {
+              if (l.id && existingIds.has(l.id)) {
+                const { error: updErr } = await supabase.from("proforma_invoice_items").update(payloadToSave).eq("id", l.id);
+                if (updErr) throw updErr;
+                currentIds.add(l.id);
+              } else {
+                const { data: insItem, error: insErr } = await supabase.from("proforma_invoice_items").insert({
+                  proforma_invoice_id: pid,
+                  ...payloadToSave,
+                }).select("id");
+                if (insErr) throw insErr;
+                const insId = insItem?.[0]?.id;
+                if (insId) currentIds.add(insId);
+              }
+            };
+
+            try {
+              await executeItemUpsert(itemPayload);
+            } catch (itemErr: unknown) {
+              const iErr = itemErr as { message?: string; code?: string };
+              if (iErr?.message && (iErr.message.includes("column") || iErr.code === "PGRST204" || iErr.code === "42703")) {
+                // Graceful fallback if 'unit' column is missing in legacy schema
+                const fallbackPayload = { ...itemPayload };
+                delete fallbackPayload.unit;
+                await executeItemUpsert(fallbackPayload);
+              } else {
+                throw itemErr;
+              }
+            }
+          }
+
+          const toDelete = [...existingIds].filter((id) => !currentIds.has(id));
+          if (toDelete.length > 0) {
+            const { error: delErr } = await supabase.from("proforma_invoice_items").delete().in("id", toDelete);
+            if (delErr) throw delErr;
+          }
+        } catch (itemErr: unknown) {
+          // Atomic cleanup: If line items fail on a new document, rollback the created header
+          // so an incomplete invoice is never left behind
+          if (!editing && pid) {
+            try {
+              await supabase.from("proforma_invoice_items").delete().eq("proforma_invoice_id", pid);
+              await supabase.from("proforma_invoices").delete().eq("id", pid);
+            } catch (cleanupErr) {
+              console.error("Failed to clean up incomplete proforma invoice:", cleanupErr);
+            }
+          }
+          throw itemErr;
+        }
       }
 
       setSuccess(`Proforma invoice ${saveRes.proformaNumber} ${editing ? "updated" : "saved"} successfully.`);
@@ -360,9 +434,9 @@ function PIContent() {
       setEditing(null);
       await loadAll();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Error saving proforma";
+      const msg = parseDatabaseError(err, "Failed to save proforma invoice. Please check required fields and network.");
       setError(msg);
-      throw err;
+      throw new Error(msg);
     } finally {
       setSaving(false);
     }

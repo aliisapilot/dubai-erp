@@ -139,8 +139,8 @@ export default function PrintModal({ isOpen, onClose, children, editorHref, extr
           </button>
         </div>
       </header>
-      <div ref={surfaceRef} className="print-preview-surface flex min-h-0 flex-1 items-start justify-center overflow-auto overscroll-contain bg-slate-200 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:p-4">
-        <div className="print-preview-scale-shell relative shrink-0" style={{ width: dimensions.width * scale, height: dimensions.height * scale }}>
+      <div ref={surfaceRef} className="print-preview-surface flex flex-col min-h-0 flex-1 items-center justify-start overflow-auto overscroll-contain bg-slate-200 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:p-4 min-w-0">
+        <div className="print-preview-scale-shell relative shrink-0" style={{ width: dimensions.width * scale, height: dimensions.height * scale, margin: "auto" }}>
           <div ref={previewRef} className="print-preview-scale-content absolute left-0 top-0 origin-top-left" style={{ width: dimensions.width, transform: `scale(${scale})` }}>
             {children}
           </div>

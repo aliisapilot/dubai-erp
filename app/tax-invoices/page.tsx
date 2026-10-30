@@ -9,7 +9,8 @@ import TaxInvoiceTemplate from "@/components/documents/TaxInvoiceTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { withCustomerDocumentDetails, serializeCustomPartyNotes } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
+import { parseDatabaseError } from "@/lib/paymentTypes";
 import DocumentSplitScreenEditor, {
   EditorLineItem,
   DocumentEditorFormState,
@@ -329,8 +330,7 @@ function TIContent() {
           }
         : null;
 
-      const rawNotes = payload.form.notes || "";
-      const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
+      const rawNotes = (payload.form.notes || "").trim();
 
       const dataPayload: Record<string, unknown> = {
         customer_id: isCustom ? null : payload.form.customer_id || null,
@@ -351,7 +351,7 @@ function TIContent() {
         vat_amount: payload.vat_amount,
         total_amount: payload.total_amount,
         payment_terms: payload.form.payment_terms || null,
-        notes: serializedNotes || null,
+        notes: rawNotes || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -361,15 +361,36 @@ function TIContent() {
           if (updateErr) throw updateErr;
           return { id: editing.id, invoiceNumber: editing.invoice_number || editing.id };
         } else {
-          const cid = await getCompanyId();
-          const ino = await generateDocNumber(cid, "INV");
-          const { data: ins, error: err } = await supabase
-            .from("tax_invoices")
-            .insert({ ...recordPayload, company_id: cid, invoice_number: ino })
-            .select("id")
-            .single();
-          if (err) throw new Error(err.message);
-          return { id: ins.id, invoiceNumber: ino };
+          const cid = company?.id || (await getCompanyId());
+          let ino = await generateDocNumber(cid, "INV");
+          let insertedId = "";
+          let attempts = 0;
+          while (attempts < 3) {
+            attempts++;
+            const { data: ins, error: err } = await supabase
+              .from("tax_invoices")
+              .insert({ ...recordPayload, company_id: cid, invoice_number: ino })
+              .select("id");
+            if (err) {
+              if (err.code === "23505" && attempts < 3) {
+                ino = await generateDocNumber(cid, "INV");
+                continue;
+              }
+              throw err;
+            }
+            insertedId = ins?.[0]?.id || "";
+            break;
+          }
+          if (!insertedId) {
+            const { data: fetched } = await supabase
+              .from("tax_invoices")
+              .select("id")
+              .eq("company_id", cid)
+              .eq("invoice_number", ino)
+              .maybeSingle();
+            return { id: fetched?.id || "", invoiceNumber: ino };
+          }
+          return { id: insertedId, invoiceNumber: ino };
         }
       };
 
@@ -380,8 +401,14 @@ function TIContent() {
         const errObj = saveErr as { message?: string; code?: string };
         // Safe fallback in case remote DB does not yet have newly added columns cached
         if (errObj?.message && (errObj.message.includes("column") || errObj.code === "PGRST204" || errObj.code === "42703")) {
+          if (isCustom) {
+            throw new Error(
+              "Database schema is missing custom customer columns (customer_name, custom_customer, etc.). Please run migration 20261028000000_custom_customer_direct_pdf.sql in Supabase SQL editor to enable custom customers."
+            );
+          }
+
           const minimalPayload = {
-            customer_id: isCustom ? null : payload.form.customer_id || null,
+            customer_id: payload.form.customer_id || null,
             project_id: payload.form.project_id || null,
             invoice_date: payload.form.invoice_date || null,
             supply_date: payload.form.supply_date || null,
@@ -390,7 +417,7 @@ function TIContent() {
             vat_amount: payload.vat_amount,
             total_amount: payload.total_amount,
             payment_terms: payload.form.payment_terms || null,
-            notes: serializedNotes || null,
+            notes: rawNotes || null,
             updated_at: new Date().toISOString(),
           };
           saveRes = await executeSave(minimalPayload);
@@ -467,23 +494,36 @@ function TIContent() {
           });
         } catch {}
       } else {
-        const { error: itemErr } = await supabase.from("tax_invoice_items").insert(
-          payload.lines.map((l, i) => ({
-            tax_invoice_id: iid,
-            product_id: l.product_id || null,
-            description: l.description,
-            quantity: l.quantity,
-            unit: l.unit || null,
-            unit_price: l.unit_price,
-            discount_percent: l.discount_pct,
-            vat_rate: l.vat_rate,
-            taxable_amount: l.taxable_amount,
-            vat_amount: l.vat_amount,
-            line_total: l.line_total,
-            sort_order: i,
-          }))
-        );
-        if (itemErr) throw itemErr;
+        try {
+          const { error: itemErr } = await supabase.from("tax_invoice_items").insert(
+            payload.lines.map((l, i) => ({
+              tax_invoice_id: iid,
+              product_id: l.product_id || null,
+              description: l.description,
+              quantity: l.quantity,
+              unit: l.unit || null,
+              unit_price: l.unit_price,
+              discount_percent: l.discount_pct,
+              vat_rate: l.vat_rate,
+              taxable_amount: l.taxable_amount,
+              vat_amount: l.vat_amount,
+              line_total: l.line_total,
+              sort_order: i,
+            }))
+          );
+          if (itemErr) throw itemErr;
+        } catch (itemErr: unknown) {
+          // Atomic cleanup: If line items fail on a new document, rollback the created header
+          if (iid) {
+            try {
+              await supabase.from("tax_invoice_items").delete().eq("tax_invoice_id", iid);
+              await supabase.from("tax_invoices").delete().eq("id", iid);
+            } catch (cleanupErr) {
+              console.error("Failed to clean up incomplete tax invoice:", cleanupErr);
+            }
+          }
+          throw itemErr;
+        }
       }
 
       setShowForm(false);
@@ -491,9 +531,9 @@ function TIContent() {
       setSuccess(`Tax invoice ${saveRes.invoiceNumber} ${editing ? "updated" : "saved"} successfully.`);
       await loadAll();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Error saving tax invoice";
+      const msg = parseDatabaseError(err, "Failed to save tax invoice. Please check required fields and network.");
       setError(msg);
-      throw err;
+      throw new Error(msg);
     } finally {
       setSaving(false);
     }

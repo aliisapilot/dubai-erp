@@ -450,22 +450,50 @@ export async function generateNextDocumentNumber(
 
   // Counter key prefix (use config.prefix if set, else document type code)
   const counterPrefix = config.prefix || cleanInput || "DOC";
+  const dbInfo = DOC_TYPE_DB_INFO[docType];
 
-  // Use the atomic database RPC function to acquire next sequence number
-  const { data: rawRpcVal, error: rpcErr } = await supabase.rpc("next_doc_number", {
-    p_company_id: companyId,
-    p_prefix: counterPrefix,
-  });
-
-  if (rpcErr) {
-    throw new Error(`Could not generate next number for ${docType}: ${rpcErr.message}`);
-  }
-
-  // Extract the atomic sequence number from the RPC result (format: PREFIX-YYYY-XXXX)
   let seqNumber = 1;
-  const match = String(rawRpcVal).match(/-(\d+)$/);
-  if (match) {
-    seqNumber = parseInt(match[1], 10);
+
+  // Attempt atomic database RPC function first
+  try {
+    const { data: rawRpcVal, error: rpcErr } = await supabase.rpc("next_doc_number", {
+      p_company_id: companyId,
+      p_prefix: counterPrefix,
+    });
+
+    if (!rpcErr && rawRpcVal) {
+      const match = String(rawRpcVal).match(/-(\d+)$/);
+      if (match) {
+        seqNumber = parseInt(match[1], 10);
+      }
+    } else {
+      // Graceful fallback if RPC is unavailable, locked, or permissions-restricted
+      if (dbInfo && dbInfo.table && dbInfo.column) {
+        const { data: recentDocs } = await supabase
+          .from(dbInfo.table)
+          .select(dbInfo.column)
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        if (recentDocs && recentDocs.length > 0) {
+          let highest = 0;
+          for (const doc of recentDocs) {
+            const val = String((doc as unknown as Record<string, unknown>)[dbInfo.column] || "");
+            const m = val.match(/(\d+)$/);
+            if (m) {
+              const num = parseInt(m[1], 10);
+              if (num > highest) highest = num;
+            }
+          }
+          if (highest > 0) {
+            seqNumber = highest + 1;
+          }
+        }
+      }
+    }
+  } catch {
+    // If RPC call threw an exception, sequence starts at minimum
   }
 
   // Honor minimum sequence if configured
@@ -477,7 +505,6 @@ export async function generateNextDocumentNumber(
   let candidateNumber = formatDocNumber(config, seqNumber);
 
   // Collision check against database table if applicable
-  const dbInfo = DOC_TYPE_DB_INFO[docType];
   if (dbInfo && dbInfo.table && dbInfo.column) {
     let attempts = 0;
     while (attempts < 50) {

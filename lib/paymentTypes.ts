@@ -198,6 +198,15 @@ export function parseDatabaseError(error: unknown, fallbackMessage = "Failed to 
   if (message.includes("payments_payment_type_check")) {
     return "Invalid payment type. Supported types are: Customer Receipt, Supplier Payment, or Other Payment.";
   }
+  if (message.includes("proforma_invoices_status_check")) {
+    return "Invalid proforma invoice status. Allowed values are: Draft, Sent, Accepted, Invoiced, or Cancelled.";
+  }
+  if (message.includes("quotations_status_check")) {
+    return "Invalid quotation status. Allowed values are: Draft, Sent, Accepted, Rejected, or Expired.";
+  }
+  if (message.includes("tax_invoices_status_check")) {
+    return "Invalid tax invoice status. Allowed values are: Draft, Issued, Overdue, Paid, Partially Paid, or Cancelled.";
+  }
   if (message.includes("salary_statements_status_check")) {
     return "Invalid salary statement status. Allowed values are: Draft, Paid, or Cancelled.";
   }
@@ -215,6 +224,9 @@ export function parseDatabaseError(error: unknown, fallbackMessage = "Failed to 
   if (message.includes("violates not-null constraint")) {
     const match = message.match(/column "([^"]+)"/);
     const col = match ? match[1] : "required field";
+    if (col === "customer_id") {
+      return "Missing customer selection: 'customer_id' cannot be empty. Please select an existing customer or apply the database migration for custom customers.";
+    }
     return `Missing required information: '${col}' cannot be empty.`;
   }
   if (message.includes("violates foreign key constraint")) {

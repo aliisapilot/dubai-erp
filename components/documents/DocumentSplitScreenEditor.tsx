@@ -31,6 +31,7 @@ import DynamicDocumentRenderer, {
 } from "./DynamicDocumentRenderer";
 import { usePersistedDocumentDesign } from "./usePersistedDocumentDesign";
 import { calcLineItem, fmtAED, todayISO } from "@/lib/helpers";
+import { parseDatabaseError } from "@/lib/paymentTypes";
 import { NumericCellInput } from "@/components/ui/NumericCellInput";
 import PrintModal from "./PrintModal";
 
@@ -345,6 +346,34 @@ function DocumentSplitScreenEditorWorkspace({
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const leftPanelRef = useRef<HTMLDivElement>(null);
+  const previewScrollRef = useRef<HTMLDivElement>(null);
+
+  const handleFitWidth = useCallback(() => {
+    if (!previewScrollRef.current || !design.layout) return;
+    const padding = 64;
+    const availableWidth = previewScrollRef.current.clientWidth - padding;
+    const docWidthPx = (design.layout.page.widthMm || 210) * 3.7795296;
+    if (docWidthPx > 0 && availableWidth > 0) {
+      const calculated = Math.min(1.5, Math.max(0.3, Number((availableWidth / docWidthPx).toFixed(2))));
+      setZoom(calculated);
+    }
+  }, [design.layout]);
+
+  const handleFitPage = useCallback(() => {
+    if (!previewScrollRef.current || !design.layout) return;
+    const paddingX = 64;
+    const paddingY = 64;
+    const availableWidth = previewScrollRef.current.clientWidth - paddingX;
+    const availableHeight = previewScrollRef.current.clientHeight - paddingY;
+    const docWidthPx = (design.layout.page.widthMm || 210) * 3.7795296;
+    const docHeightPx = (design.layout.page.heightMm || 297) * 3.7795296;
+    if (docWidthPx > 0 && docHeightPx > 0 && availableWidth > 0 && availableHeight > 0) {
+      const scaleX = availableWidth / docWidthPx;
+      const scaleY = availableHeight / docHeightPx;
+      const calculated = Math.min(1.5, Math.max(0.3, Number(Math.min(scaleX, scaleY).toFixed(2))));
+      setZoom(calculated);
+    }
+  }, [design.layout]);
 
   const scrollToTopError = useCallback((msg?: string) => {
     if (msg) setError(msg);
@@ -711,7 +740,7 @@ function DocumentSplitScreenEditorWorkspace({
       });
       setDirty(false);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to save document. Please check required fields and network.";
+      const msg = parseDatabaseError(err, "Failed to save document. Please check required fields and network.");
       scrollToTopError(msg);
     } finally {
       setIsSubmitting(false);
@@ -1597,6 +1626,26 @@ function DocumentSplitScreenEditorWorkspace({
                 <span className="hidden sm:inline">{previewFullscreen ? "Split View" : "Full Screen"}</span>
               </button>
 
+              {/* Fit presets */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleFitWidth}
+                  className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer"
+                  title="Fit document to container width"
+                >
+                  Fit Width
+                </button>
+                <button
+                  type="button"
+                  onClick={handleFitPage}
+                  className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer"
+                  title="Fit entire document page inside viewport"
+                >
+                  Fit Page
+                </button>
+              </div>
+
               {/* Zoom Controls */}
               <div className="flex items-center gap-1 rounded bg-slate-800 p-0.5">
                 <button
@@ -1653,7 +1702,8 @@ function DocumentSplitScreenEditorWorkspace({
 
           {/* Canvas Scroll Area */}
           <div
-            className="flex-1 overflow-auto designer-scrollbar p-6 sm:p-8 flex justify-center items-start overscroll-contain bg-slate-950"
+            ref={previewScrollRef}
+            className="flex-1 overflow-auto designer-scrollbar p-6 sm:p-8 flex flex-col items-center justify-start overscroll-contain bg-slate-950 min-w-0"
             style={{
               backgroundImage: "radial-gradient(circle at center, rgba(148,163,184,0.15) 1px, transparent 1px)",
               backgroundSize: "20px 20px",
@@ -1666,7 +1716,7 @@ function DocumentSplitScreenEditorWorkspace({
                   height: `${design.layout.page.heightMm * zoom * 3.7795296}px`,
                   flexShrink: 0,
                   position: "relative",
-                  margin: "0 auto",
+                  margin: "auto",
                 }}
               >
                 <div

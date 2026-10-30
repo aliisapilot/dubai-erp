@@ -8,7 +8,8 @@ import QuotationTemplate from "@/components/documents/QuotationTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { withCustomerDocumentDetails, serializeCustomPartyNotes } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
+import { parseDatabaseError } from "@/lib/paymentTypes";
 import DocumentSplitScreenEditor, {
   DocumentEditorFormState,
   EditorLineItem,
@@ -405,7 +406,6 @@ export default function QuotationsPage() {
         : null;
 
       const rawNotes = payload.form.notes?.trim() || "";
-      const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
 
       const dataPayload: Record<string, unknown> = {
         customer_id: isCustom ? null : payload.form.customer_id || null,
@@ -427,7 +427,7 @@ export default function QuotationsPage() {
         vat_amount: payload.vat_amount,
         total_amount: payload.total_amount,
         payment_terms: payload.form.payment_terms || null,
-        notes: serializedNotes || null,
+        notes: rawNotes || null,
         terms: payload.form.terms?.trim() || payload.form.payment_terms || null,
         updated_at: new Date().toISOString(),
       };
@@ -438,15 +438,37 @@ export default function QuotationsPage() {
           if (err) throw err;
           return { id: editing.id, quotationNumber: editing.quotation_number || editing.id };
         } else {
-          const cid = await getCompanyId();
-          const qno = await generateDocNumber(cid, "QUO");
-          const { data: ins, error: err } = await supabase.from("quotations").insert({
-            company_id: cid,
-            quotation_number: qno,
-            ...recordPayload,
-          }).select("id").single();
-          if (err) throw err;
-          return { id: ins.id, quotationNumber: qno };
+          const cid = company?.id || (await getCompanyId());
+          let qno = await generateDocNumber(cid, "QUO");
+          let insertedId = "";
+          let attempts = 0;
+          while (attempts < 3) {
+            attempts++;
+            const { data: ins, error: err } = await supabase.from("quotations").insert({
+              company_id: cid,
+              quotation_number: qno,
+              ...recordPayload,
+            }).select("id");
+            if (err) {
+              if (err.code === "23505" && attempts < 3) {
+                qno = await generateDocNumber(cid, "QUO");
+                continue;
+              }
+              throw err;
+            }
+            insertedId = ins?.[0]?.id || "";
+            break;
+          }
+          if (!insertedId) {
+            const { data: fetched } = await supabase
+              .from("quotations")
+              .select("id")
+              .eq("company_id", cid)
+              .eq("quotation_number", qno)
+              .maybeSingle();
+            return { id: fetched?.id || "", quotationNumber: qno };
+          }
+          return { id: insertedId, quotationNumber: qno };
         }
       };
 
@@ -456,8 +478,15 @@ export default function QuotationsPage() {
       } catch (saveErr: unknown) {
         const errObj = saveErr as { message?: string; code?: string };
         if (errObj?.message && (errObj.message.includes("column") || errObj.code === "PGRST204" || errObj.code === "42703")) {
-          const minimalPayload = {
-            customer_id: isCustom ? null : payload.form.customer_id || null,
+          if (isCustom) {
+            throw new Error(
+              "Database schema is missing custom customer columns (customer_name, custom_customer, etc.). Please run migration 20261028000000_custom_customer_direct_pdf.sql in Supabase SQL editor to enable custom customers."
+            );
+          }
+
+          // Tier 2: standard columns with terms
+          const minimalPayload: Record<string, unknown> = {
+            customer_id: payload.form.customer_id || null,
             project_id: payload.form.project_id || null,
             quotation_date: payload.form.invoice_date || null,
             expiry_date: payload.form.supply_date || null,
@@ -466,12 +495,34 @@ export default function QuotationsPage() {
             discount_amount: 0,
             vat_amount: payload.vat_amount,
             total_amount: payload.total_amount,
-            payment_terms: payload.form.payment_terms || null,
-            notes: serializedNotes || null,
+            notes: rawNotes || null,
             terms: payload.form.terms?.trim() || payload.form.payment_terms || null,
             updated_at: new Date().toISOString(),
           };
-          saveRes = await executeSave(minimalPayload);
+          try {
+            saveRes = await executeSave(minimalPayload);
+          } catch (tier2Err: unknown) {
+            const t2Err = tier2Err as { message?: string; code?: string };
+            if (t2Err?.message && (t2Err.message.includes("column") || t2Err.code === "PGRST204" || t2Err.code === "42703")) {
+              // Tier 3: base legacy columns
+              const tier3Payload: Record<string, unknown> = {
+                customer_id: payload.form.customer_id || null,
+                project_id: payload.form.project_id || null,
+                quotation_date: payload.form.invoice_date || null,
+                expiry_date: payload.form.supply_date || null,
+                status: String(dbStatus),
+                subtotal: payload.subtotal,
+                discount_amount: 0,
+                vat_amount: payload.vat_amount,
+                total_amount: payload.total_amount,
+                notes: rawNotes || null,
+                terms: payload.form.terms?.trim() || payload.form.payment_terms || null,
+              };
+              saveRes = await executeSave(tier3Payload);
+            } else {
+              throw tier2Err;
+            }
+          }
         } else {
           throw saveErr;
         }
@@ -479,59 +530,88 @@ export default function QuotationsPage() {
       const qid = saveRes.id;
 
       // Upsert line items
-      const { data: existingItems } = await supabase.from("quotation_items").select("id").eq("quotation_id", qid);
-      const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
-      const currentIds = new Set<string>();
-      for (let i = 0; i < payload.lines.length; i++) {
-        const l = payload.lines[i];
-        const qty = Number(l.quantity) || 0;
-        const price = Number(l.unit_price) || 0;
-        const discPct = Number(l.discount_pct || 0);
-        const gross = qty * price;
-        const discAmt = gross * (discPct / 100);
-        const taxable = gross - discAmt;
-        const vatRate = Number(l.vat_rate) || 0;
-        const vatAmt = Number(l.vat_amount) || (taxable * (vatRate / 100));
-        const lineTot = Number(l.line_total) || (taxable + vatAmt);
-        const itemPayload = {
-          product_id: l.product_id || null,
-          description: l.description,
-          quantity: qty,
-          unit: l.unit || "Nos",
-          unit_price: price,
-          discount_percent: discPct,
-          discount_amount: discAmt,
-          taxable_amount: taxable,
-          vat_rate: vatRate,
-          vat_amount: vatAmt,
-          line_total: lineTot,
-          sort_order: i,
-        };
-        if (l.id && existingIds.has(l.id)) {
-          const { error: updErr } = await supabase.from("quotation_items").update(itemPayload).eq("id", l.id);
-          if (updErr) throw new Error(updErr.message);
-          currentIds.add(l.id);
-        } else {
-          const { error: insErr } = await supabase.from("quotation_items").insert({
-            quotation_id: qid,
-            ...itemPayload,
-          });
-          if (insErr) throw new Error(insErr.message);
+      try {
+        const { data: existingItems } = await supabase.from("quotation_items").select("id").eq("quotation_id", qid);
+        const existingIds = new Set((existingItems || []).map((it: { id: string }) => it.id));
+        const currentIds = new Set<string>();
+        for (let i = 0; i < payload.lines.length; i++) {
+          const l = payload.lines[i];
+          const qty = Number(l.quantity) || 0;
+          const price = Number(l.unit_price) || 0;
+          const discPct = Number(l.discount_pct || 0);
+          const gross = qty * price;
+          const discAmt = gross * (discPct / 100);
+          const taxable = gross - discAmt;
+          const vatRate = Number(l.vat_rate) || 0;
+          const vatAmt = Number(l.vat_amount) || (taxable * (vatRate / 100));
+          const lineTot = Number(l.line_total) || (taxable + vatAmt);
+          const itemPayload: Record<string, unknown> = {
+            product_id: l.product_id || null,
+            description: l.description,
+            quantity: qty,
+            unit: l.unit || "Nos",
+            unit_price: price,
+            discount_percent: discPct,
+            discount_amount: discAmt,
+            taxable_amount: taxable,
+            vat_rate: vatRate,
+            vat_amount: vatAmt,
+            line_total: lineTot,
+            sort_order: i,
+          };
+          const upsertItem = async (pLoad: Record<string, unknown>) => {
+            if (l.id && existingIds.has(l.id)) {
+              const { error: updErr } = await supabase.from("quotation_items").update(pLoad).eq("id", l.id);
+              if (updErr) throw updErr;
+              currentIds.add(l.id);
+            } else {
+              const { data: insItem, error: insErr } = await supabase.from("quotation_items").insert({
+                quotation_id: qid,
+                ...pLoad,
+              }).select("id");
+              if (insErr) throw insErr;
+              const insId = insItem?.[0]?.id;
+              if (insId) currentIds.add(insId);
+            }
+          };
+          try {
+            await upsertItem(itemPayload);
+          } catch (itErr: unknown) {
+            const iErr = itErr as { message?: string; code?: string };
+            if (iErr?.message && (iErr.message.includes("column") || iErr.code === "PGRST204" || iErr.code === "42703")) {
+              const fallbackItem = { ...itemPayload };
+              delete fallbackItem.unit;
+              await upsertItem(fallbackItem);
+            } else {
+              throw itErr;
+            }
+          }
         }
-      }
-      const toDelete = [...existingIds].filter(id => !currentIds.has(id));
-      if (toDelete.length > 0) {
-        const { error: delErr } = await supabase.from("quotation_items").delete().in("id", toDelete);
-        if (delErr) throw new Error(delErr.message);
+        const toDelete = [...existingIds].filter(id => !currentIds.has(id));
+        if (toDelete.length > 0) {
+          const { error: delErr } = await supabase.from("quotation_items").delete().in("id", toDelete);
+          if (delErr) throw delErr;
+        }
+      } catch (itemErr: unknown) {
+        // Atomic cleanup: If line items fail on a new document, rollback the created header
+        if (!editing && qid) {
+          try {
+            await supabase.from("quotation_items").delete().eq("quotation_id", qid);
+            await supabase.from("quotations").delete().eq("id", qid);
+          } catch (cleanupErr) {
+            console.error("Failed to clean up incomplete quotation:", cleanupErr);
+          }
+        }
+        throw itemErr;
       }
 
       setSuccess(`Quotation ${saveRes.quotationNumber} ${editing ? "updated" : "saved"} successfully.`);
       closeForm();
       await loadAll();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Error saving quotation";
+      const msg = parseDatabaseError(err, "Failed to save quotation. Please check required fields and network.");
       setError(msg);
-      throw err;
+      throw new Error(msg);
     } finally {
       setSaving(false);
     }
