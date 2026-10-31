@@ -951,21 +951,21 @@ const DOCUMENT_STYLES: Record<DocumentTypeId, DocumentBranding> = {
     footerTextColor: "#0F4C5C",
   },
   proforma_invoice: {
-    primaryColor: "#312E81",
-    companyHeaderColor: "#312E81",
-    titleBackground: "#3730A3",
+    primaryColor: "#0F172A",
+    companyHeaderColor: "#0F172A",
+    titleBackground: "#0F172A",
     titleTextColor: "#FFFFFF",
-    accentColor: "#F59E0B",
-    textColor: "#312E4A",
-    mutedColor: "#6B7280",
-    borderColor: "#C7D2FE",
-    tableHeaderColor: "#3730A3",
+    accentColor: "#C9A227",
+    textColor: "#334155",
+    mutedColor: "#64748B",
+    borderColor: "#CBD5E1",
+    tableHeaderColor: "#0F172A",
     tableHeaderTextColor: "#FFFFFF",
     tableRowBackground: "#FFFFFF",
-    tableRowAlternating: "#EEF2FF",
-    totalHighlightColor: "#FEF3C7",
+    tableRowAlternating: "#F8FAFC",
+    totalHighlightColor: "#F8F6ED",
     footerBackground: "#FFFFFF",
-    footerTextColor: "#312E81",
+    footerTextColor: "#64748B",
   },
   delivery_note: {
     primaryColor: "#065F46",
@@ -1992,6 +1992,7 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
   const sourceVersion = Number.isFinite(layout.version) ? layout.version : 1;
   const pageWidth = Number.isFinite(layout.page?.widthMm) ? layout.page.widthMm : 210;
   const pageHeight = Number.isFinite(layout.page?.heightMm) ? layout.page.heightMm : 297;
+  const isManualMode = (layout.layoutMode || "manual") === "manual";
 
   const migratedElements = sourceVersion < 7
     ? applyDocumentBusinessProfile(layout.elements, layout.documentType)
@@ -2090,7 +2091,7 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
   const tableEl = elements.find(
     (e) => e.visible && (e.type === "line_items" || e.id === "line_items" || e.id === "salary_statement")
   );
-  if (tableEl) {
+  if (tableEl && !isManualMode) {
     const headersAbove = elements.filter(
       (e) => e.visible && e.id !== tableEl.id && e.type !== "watermark" && e.type !== "footer" && e.y < tableEl.y + 10
     );
@@ -2246,7 +2247,10 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
       smartFit: normalizeSmartFit(layout.page?.smartFit),
       printSettings: normalizePrintSettings(layout.page?.printSettings),
     },
-    branding: sourceVersion < 7 ? DOCUMENT_STYLES[layout.documentType] : layout.branding,
+    branding: {
+      ...DOCUMENT_STYLES[layout.documentType],
+      ...(layout.branding || {}),
+    },
     numberingConfig:
       layout.numberingConfig ||
       JSON.parse(
@@ -2299,6 +2303,27 @@ export async function loadDocumentLayout(
         if (!options.preview) { try { window.localStorage.setItem('dubai-erp.design-cache.' + companyId + '.' + docType, JSON.stringify(layout)); } catch {} }
         return { layout, source: 'database', revision, updatedAt: snapshot.template.updated_at };
       }
+      try {
+        const { data: directTemplate, error: directErr } = await supabase
+          .from('document_templates')
+          .select('*')
+          .eq('company_id', companyId)
+          .eq('document_type', docType)
+          .order('is_default', { ascending: false })
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!directErr && directTemplate && directTemplate.layout_json) {
+          const layout = normalizeLayout({ ...directTemplate.layout_json, templateName: directTemplate.template_name });
+          if (!options.preview) { try { window.localStorage.setItem('dubai-erp.design-cache.' + companyId + '.' + docType, JSON.stringify(layout)); } catch {} }
+          return {
+            layout,
+            source: 'database',
+            revision: { templateId: directTemplate.id, version: directTemplate.version || 1, selectionVersion: snapshot.selection_version || 0 },
+            updatedAt: directTemplate.updated_at,
+          };
+        }
+      } catch {}
     } catch (failure) { error = cloudError(failure).message; }
   } else { error = 'Sign in to a company account to load or save cloud designs.'; }
   // Recovery is explicit and never removes, migrates, or overwrites the legacy keys.

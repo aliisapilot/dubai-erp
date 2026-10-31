@@ -29,9 +29,12 @@ const FALLBACK_SMART_FIT: SmartFitSettings = {
 
 /** Enable content fitting without replacing any saved element, asset or page decoration. */
 export function prepareSavedAutoFit(layout: DocumentLayout): DocumentLayout {
+  if (layout.layoutMode === "manual") {
+    return layout;
+  }
   return {
     ...layout,
-    layoutMode: layout.layoutMode === "manual" ? "manual" : "auto_fit",
+    layoutMode: "auto_fit",
     page: {
       ...layout.page,
       smartFit: {
@@ -1022,26 +1025,9 @@ export function computeEffectiveLayout(
   const headerLayoutMap = new Map<string, { y: number; height: number }>();
 
   if (isManualMode) {
-    // In MANUAL DESIGN mode: strictly preserve exact user positions and heights, but expand party/meta cards when needed for readability
+    // In MANUAL DESIGN mode: strictly preserve exact user positions and heights without rearranging
     for (const el of elementsAbove) {
-      const isParty = ["customer_info", "supplier_info", "project_info", "doc_meta"].includes(el.type);
-      const height = isParty && fitProfile.partyInfoHeight
-        ? Math.max(el.height, fitProfile.partyInfoHeight)
-        : el.height;
-      headerLayoutMap.set(el.id, { y: el.y, height });
-    }
-
-    // Clearance guard: guarantee table strictly clears all elements above it without overlapping
-    const allHeadersBottom = elementsAbove.length > 0
-      ? Math.max(...elementsAbove.map((el) => {
-          const mapped = headerLayoutMap.get(el.id);
-          return mapped ? mapped.y + mapped.height : el.y + el.height;
-        }))
-      : minHeaderY;
-
-    const minTableY = allHeadersBottom + fitProfile.gap;
-    if (effectiveTableY < minTableY) {
-      effectiveTableY = minTableY;
+      headerLayoutMap.set(el.id, { y: el.y, height: el.height });
     }
   } else {
     // ── ZONE 1: CORPORATE BRANDING HEADER (Logo, English Name, Arabic Name, Address/TRN, Title Banner) ──

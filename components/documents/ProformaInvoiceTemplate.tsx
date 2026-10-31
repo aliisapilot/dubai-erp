@@ -163,7 +163,7 @@ export default function ProformaInvoiceTemplate({
           <div className="rounded border border-slate-200 bg-slate-50/50 p-3">
             <div className="font-bold text-slate-900 uppercase text-[11px] mb-2 border-b border-slate-200 pb-1 flex justify-between">
               <span>Proforma Reference:</span>
-              <span className="text-purple-700 font-semibold font-mono">{proforma.proforma_number}</span>
+              <span className="text-slate-900 font-semibold font-mono">{proforma.proforma_number}</span>
             </div>
             <div className="grid grid-cols-2 gap-y-1.5 text-slate-700">
               <div>
@@ -246,9 +246,9 @@ export default function ProformaInvoiceTemplate({
                 <span className="text-slate-600">VAT (5%):</span>
                 <span className="font-mono font-semibold text-amber-700">{fmtAED(proforma.vat_amount)}</span>
               </div>
-              <div className="flex justify-between py-2.5 px-3 bg-purple-50/60 border-b border-purple-200 font-bold text-slate-900 text-sm">
+              <div className="flex justify-between py-2.5 px-3 bg-slate-100 border-b border-slate-200 font-bold text-slate-900 text-sm">
                 <span>Total Amount:</span>
-                <span className="font-mono text-purple-900">{fmtAED(proforma.total_amount)}</span>
+                <span className="font-mono text-slate-900">{fmtAED(proforma.total_amount)}</span>
               </div>
             </div>
           </div>

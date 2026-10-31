@@ -2066,10 +2066,13 @@ export default function DynamicDocumentRenderer({
         })
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((elem) => {
-          const posX = isDesignerPreview ? elem.x : (elem.effectiveX ?? elem.x);
-          const posY = isDesignerPreview ? elem.y : (elem.effectiveY ?? elem.y);
-          const width = isDesignerPreview ? elem.width : (elem.effectiveWidth ?? elem.width);
-          const height = isDesignerPreview ? elem.height : (elem.effectiveHeight ?? elem.height);
+          const isManual = (layout.layoutMode || "manual") === "manual";
+          const posX = (isDesignerPreview || isManual) ? elem.x : (elem.effectiveX ?? elem.x);
+          const posY = (isDesignerPreview || isManual)
+            ? (elem.isFollower && elem.effectiveY !== undefined ? elem.effectiveY : elem.y)
+            : (elem.effectiveY ?? elem.y);
+          const width = (isDesignerPreview || isManual) ? elem.width : (elem.effectiveWidth ?? elem.width);
+          const height = (isDesignerPreview || isManual) ? elem.height : (elem.effectiveHeight ?? elem.height);
 
           return (
             <div
