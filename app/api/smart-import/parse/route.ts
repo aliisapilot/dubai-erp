@@ -387,25 +387,40 @@ export async function POST(req: NextRequest) {
       // 5. Validation Warnings & Errors
       const validationErrors: string[] = [];
       const validationWarnings: string[] = [];
+      const docTypeLabel = classification.documentType === "quotation"
+        ? "Quotation"
+        : classification.documentType === "proforma_invoice"
+        ? "Proforma Invoice"
+        : classification.documentType === "delivery_note"
+        ? "Delivery Note"
+        : classification.documentType === "purchase_order"
+        ? "Purchase Order"
+        : classification.documentType === "supplier_bill"
+        ? "Supplier Bill"
+        : "Invoice";
 
       if (duplicateCheck.isDuplicate) {
         validationWarnings.push(duplicateCheck.reason || "Duplicate document detected.");
       }
       if (lineAudit.hasMismatches) {
         validationWarnings.push("Line item taxable amount differs from Qty × Rate − Discount calculation.");
-        validationErrors.push("Line item financial calculation mismatch. Invoice marked as Needs Review.");
+        validationErrors.push(`Line item financial calculation mismatch. ${docTypeLabel} marked as Needs Review.`);
       }
       if (totalsAudit.hasMismatches) {
+        const diff = fields.total_amount?.value !== null && fields.total_amount?.value !== undefined
+          ? Math.abs(Number(fields.total_amount.value) - totalsAudit.calculatedTotal).toFixed(2)
+          : "0.00";
         validationWarnings.push("Grand total differs from calculated subtotal + VAT.");
-        validationErrors.push("Grand total verification failed against line items sum. Invoice marked as Needs Review.");
+        validationErrors.push(`Grand total verification failed against line items sum (discrepancy: AED ${diff}). ${docTypeLabel} marked as Needs Review.`);
       }
       const docSub = typeof fields.subtotal?.value === "number" ? fields.subtotal.value : null;
       const docDisc = typeof fields.discount?.value === "number" ? fields.discount.value : 0;
       const docVat = typeof fields.vat_amount?.value === "number" ? fields.vat_amount.value : null;
       const docTot = typeof fields.total_amount?.value === "number" ? fields.total_amount.value : null;
       if (docSub !== null && docVat !== null && docTot !== null) {
-        if (Math.abs((docSub - docDisc + docVat) - docTot) > 0.05) {
-          validationErrors.push(`Document internal arithmetic mismatch: Subtotal (${docSub}) - Discount (${docDisc}) + VAT (${docVat}) != Total (${docTot}). Invoice marked as Needs Review.`);
+        const arithDiff = Math.abs((docSub - docDisc + docVat) - docTot);
+        if (arithDiff > 0.05) {
+          validationErrors.push(`Document internal arithmetic mismatch: Subtotal (${docSub}) - Discount (${docDisc}) + VAT (${docVat}) != Total (${docTot}) (discrepancy: AED ${arithDiff.toFixed(2)}). ${docTypeLabel} marked as Needs Review.`);
         }
       }
       if (!fields.document_number) {

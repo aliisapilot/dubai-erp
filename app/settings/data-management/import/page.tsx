@@ -1950,12 +1950,33 @@ export default function SmartImportPage() {
                                   <span>•</span>
                                   <span>{doc.items.length} items</span>
                                 </div>
-                                <div className="text-[11px] text-slate-200 font-semibold pt-0.5">
-                                  Total: AED {totalVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </div>
-                                <div className="text-[9px] text-slate-500">
-                                  Subtotal: AED {subtotalVal.toLocaleString("en-US", { minimumFractionDigits: 2 })} | VAT: AED {vatVal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                                </div>
+                                {(() => {
+                                  const calcTotalVal = doc.items.reduce((sum, it) => sum + (Number(it.total) || 0), 0);
+                                  const diffVal = Number(Math.abs(totalVal - calcTotalVal).toFixed(2));
+                                  const isMatch = diffVal <= 0.05 && doc.items.length > 0;
+                                  return (
+                                    <>
+                                      <div className="text-[11px] text-slate-200 font-semibold pt-0.5">
+                                        Total: AED {totalVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </div>
+                                      {doc.items.length > 0 && (
+                                        <div className="flex items-center gap-1.5 text-[10px]">
+                                          <span className="text-slate-400">Calc: AED {calcTotalVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                          {isMatch ? (
+                                            <span className="text-emerald-400 font-mono text-[9px] bg-emerald-500/10 px-1 rounded">✓ Match</span>
+                                          ) : (
+                                            <span className="text-rose-400 font-mono text-[9px] bg-rose-500/15 px-1 rounded font-semibold">
+                                              Δ AED {diffVal.toFixed(2)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                      <div className="text-[9px] text-slate-500">
+                                        Subtotal: AED {subtotalVal.toLocaleString("en-US", { minimumFractionDigits: 2 })} | VAT: AED {vatVal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                                      </div>
+                                    </>
+                                  );
+                                })()}
                               </div>
                             </td>
 
@@ -1993,10 +2014,10 @@ export default function SmartImportPage() {
                             <td className="py-3 px-3">
                               <div className="space-y-0.5 text-[10px] font-mono">
                                 <div className="text-slate-300">
-                                  <span className="text-emerald-400">Insert:</span> tax_invoices
+                                  <span className="text-emerald-400">Insert:</span> {doc.documentType === "quotation" ? "quotations" : doc.documentType === "delivery_note" ? "delivery_notes" : doc.documentType === "purchase_order" ? "purchase_orders" : doc.documentType === "supplier_bill" ? "supplier_bills" : "tax_invoices"}
                                 </div>
                                 <div className="text-slate-400">
-                                  <span className="text-emerald-400">Insert:</span> tax_invoice_items ({doc.items.length})
+                                  <span className="text-emerald-400">Insert:</span> {doc.documentType === "quotation" ? "quotation_items" : doc.documentType === "delivery_note" ? "delivery_note_items" : doc.documentType === "purchase_order" ? "purchase_order_items" : doc.documentType === "supplier_bill" ? "supplier_bill_items" : "tax_invoice_items"} ({doc.items.length})
                                 </div>
                                 <div className="text-slate-500">
                                   Supplier: <span className="text-slate-600">Skipped</span>
@@ -3029,30 +3050,50 @@ export default function SmartImportPage() {
                       Return to Preview
                     </button>
 
-                    <div className="flex items-center gap-2">
-                      {hasCriticalErrors && (
-                        <span className="text-[11px] text-rose-400 font-medium">
-                          Resolve critical errors to enable import
-                        </span>
-                      )}
-                      <button
-                        onClick={handleCommitImport}
-                        disabled={hasCriticalErrors || committing}
-                        className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-                      >
-                        {committing ? (
-                          <>
-                            <RefreshCw size={14} className="animate-spin" />
-                            <span>Saving to Database...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Check size={14} />
-                            <span>Execute Import</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
+                    {(() => {
+                      const approvedCount = documents.filter(d => {
+                        const qItem = queue.find(q => q.name === d.filename || q.parsedDoc?.id === d.id);
+                        if (qItem && !qItem.selectedForImport) return false;
+                        if (skipDuplicates && d.isDuplicate) return false;
+                        if (d.validationErrors && d.validationErrors.length > 0) return false;
+                        if (d.destinationMappings?.some(m => m.proposedAction === "needs_review")) return false;
+                        return true;
+                      }).length;
+
+                      const blockedCount = documents.length - approvedCount;
+
+                      return (
+                        <div className="flex items-center gap-2">
+                          {hasCriticalErrors && (
+                            <span className="text-[11px] text-rose-400 font-medium">
+                              {blockedCount > 0 ? `${blockedCount} unverified document(s) blocked from import` : "Resolve critical errors to enable import"}
+                            </span>
+                          )}
+                          <button
+                            onClick={handleCommitImport}
+                            disabled={approvedCount === 0 || committing}
+                            className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                            title={approvedCount === 0 ? "No verified documents selected for import" : `Import ${approvedCount} verified documents`}
+                          >
+                            {committing ? (
+                              <>
+                                <RefreshCw size={14} className="animate-spin" />
+                                <span>Saving to Database...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Check size={14} />
+                                <span>
+                                  {approvedCount === documents.length
+                                    ? `Execute Import (${approvedCount} Documents)`
+                                    : `Execute Import (${approvedCount} Verified Documents)`}
+                                </span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </>
               );

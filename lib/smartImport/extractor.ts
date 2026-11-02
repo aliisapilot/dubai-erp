@@ -969,17 +969,17 @@ export function extractFromPdf(
     }
   }
 
-  // 4. Scan for Invoice Number
+  // 4. Scan for Document / Invoice / Quotation Number
   for (let lIdx = 0; lIdx < lines.length; lIdx++) {
     const line = lines[lIdx];
     const combined = line + " " + (lines[lIdx + 1] || "");
-    if (!fields.document_number && /(?:invoice\s*no\.?|ref\s*:|invoice\s*ref)/i.test(combined)) {
-      const im = combined.match(/(?:invoice\s*no\.?|ref\s*:|invoice\s*ref\s*:)\s*([A-Za-z0-9\s/_#-]+)/i);
+    if (!fields.document_number && /(?:invoice\s*no\.?|quotation\s*no\.?|quote\s*no\.?|qtn\s*no\.?|ref\s*:|invoice\s*ref)/i.test(combined)) {
+      const im = combined.match(/(?:invoice\s*no\.?|quotation\s*no\.?|quote\s*no\.?|qtn\s*no\.?|ref\s*:|invoice\s*ref\s*:)\s*([A-Za-z0-9\s/_#-]+)/i);
       if (im) {
         let rawNum = im[1].trim();
-        rawNum = rawNum.replace(/\s+(Location|Ref|Mobile|Date|Supply|Terms|Company|Buyer).*$/i, "");
+        rawNum = rawNum.replace(/\s+(Location|Ref|Mobile|Date|Supply|Terms|Company|Buyer|To|From).*$/i, "");
         const clean = rawNum.replace(/\s+/g, "");
-        if (clean.length >= 3 && /^INV/i.test(clean)) {
+        if (clean.length >= 3 && /^(?:INV|TAX|QTN|QUO|PI|DN|PO|LPO|BILL|SOA)/i.test(clean)) {
           fields.document_number = {
             fieldKey: "document_number",
             label: "Document Number",
@@ -1121,57 +1121,81 @@ export function extractFromPdf(
     s = s.replace(/\bP\s*c\s*s\b/gi, "Pcs");
     s = s.replace(/\bL\s*U\s*M\b/gi, "LUM");
     s = s.replace(/\bR\s*o\s*l\s*l\b/gi, "Roll");
+    s = s.replace(/\bB\s*A\s*Y\b/gi, "BAY");
+    s = s.replace(/\bm\s*²\b/gi, "m²");
     return s;
   }
 
-  let tableHeaderIndex = -1;
+  let tableHeaderStart = -1;
+  let tableHeaderEnd = -1;
   let tableEndIndex = lines.length;
 
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
-    if (/^(?:SN|#)\s+(?:DESCRIPTION|Item\s+Description)/i.test(l)) {
-      tableHeaderIndex = i;
-    } else if (tableHeaderIndex !== -1 && /net\s*amount|subtotal|sub-total|total\s*amount|grand\s*total|payment\s*terms/i.test(l)) {
-      tableEndIndex = i;
-      break;
+    if (/offer\s*price|sl\s*\.?\s*no|description.*qty|description.*unit|^(?:SN|#)\s+(?:DESCRIPTION|Item\s+Description)/i.test(l)) {
+      if (tableHeaderStart === -1) tableHeaderStart = i;
+    }
+    if (tableHeaderStart !== -1 && tableHeaderEnd === -1) {
+      if (/amount.*amount|net.*vat.*total|no\.\s+price|qty\s+unit\s+rate/i.test(l)) {
+        tableHeaderEnd = i;
+      }
+    }
+    if (tableHeaderStart !== -1 && i > (tableHeaderEnd !== -1 ? tableHeaderEnd : tableHeaderStart)) {
+      if (/net\s*amount|subtotal|sub-total|total\s*amount|grand\s*total/i.test(l)) {
+        tableEndIndex = i;
+        break;
+      }
     }
   }
 
-  if (tableHeaderIndex !== -1) {
+  if (tableHeaderEnd === -1 && tableHeaderStart !== -1) {
+    tableHeaderEnd = tableHeaderStart + 3;
+  }
+
+  if (tableHeaderStart !== -1) {
     let itemSeq = 1;
     let pendingDesc: string[] = [];
-    const is7Col = /vat\s*(?:\(5%\)|5%)/i.test(lines[tableHeaderIndex]);
 
-    for (let i = tableHeaderIndex + 1; i < tableEndIndex; i++) {
+    for (let i = tableHeaderEnd + 1; i < tableEndIndex; i++) {
       const rawLine = lines[i].trim();
       if (!rawLine || /^[0-9]\s*\.?$/.test(rawLine)) continue;
+      // Skip validity / terms
+      if (/price\s*validity|payment\s*terms|all\s*options\s*given/i.test(rawLine)) break;
+      // Skip running headers / footers across multi-page tables
+      if (/goldenelitetents|P\.\s*O\.\s*Box|AL SAFWAH|\+971/i.test(rawLine)) continue;
+
+      if (/^note\s*:/i.test(rawLine)) {
+        if (items.length > 0) {
+          items[items.length - 1].description += " (" + rawLine + ")";
+        }
+        continue;
+      }
+
       const line = cleanLineForTable(rawLine);
+      const combinedLine = pendingDesc.length > 0 ? pendingDesc.join(" ") + " " + line : line;
 
-      // Check if line ends with column figures
-      // In 7-column layout (INV143): Qty Unit Rate VAT Total
-      // In 6-column layout (Standard): Qty Unit Rate Amount
-      const m7 = is7Col
-        ? line.match(/^(?:([0-9]+)\.?\s+)?(.*?)\s*(-|[0-9][0-9,.]*)\s+([A-Za-z]+)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)$/i)
-        : null;
-      const m6 = !is7Col
-        ? line.match(/^(?:([0-9]+)\.?\s+)?(.*?)\s*(-|[0-9][0-9,.]*)\s+([A-Za-z]+)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)$/i)
-        : null;
+      // 1. Check for 8/7-column layout (Quotation / Tax Invoice with separate Net, VAT, Total):
+      // [itemNo] [desc] [unit] [qty] [rate] [net] [vat] [total]
+      const m8 = combinedLine.match(/^(?:([0-9]+)\.?\s+)?(.*?)\s+([A-Za-z²m]+|\S+)\s+([0-9][0-9,.]*)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)$/i);
 
-      if (m7) {
-        const itemNo = m7[1] ? parseInt(m7[1]) : itemSeq;
-        const lineDesc = m7[2]?.trim() || "";
-        const qty = m7[3] === "-" ? 1 : parseNumber(m7[3]) || 1;
-        const unit = m7[4].trim();
-        const rate = parseNumber(m7[5]) || 0;
-        const vatAmt = parseNumber(m7[6]) || 0;
-        const grossTotal = parseNumber(m7[7]) || (qty * rate + vatAmt);
-        const taxableAmount = Number((qty * rate).toFixed(2));
+      // 2. Check for 6-column layout (Standard Invoice: Qty Unit Rate Amount):
+      const m6 = !m8 ? combinedLine.match(/^(?:([0-9]+)\.?\s+)?(.*?)\s*(-|[0-9][0-9,.]*)\s+([A-Za-z]+)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)$/i) : null;
 
-        const finalDesc = [...pendingDesc, lineDesc].filter(Boolean).join(" ").trim();
+      if (m8) {
+        const itemNo = m8[1] ? parseInt(m8[1]) : itemSeq;
+        let lineDesc = m8[2]?.trim() || "";
+        lineDesc = lineDesc.replace(/^Description\s+Unit\s+Qty\s+No\.\s+price\s+Amount\s+Amount\s+Amount\s*/i, "");
+        const unit = m8[3].trim();
+        const qty = parseNumber(m8[4]) || 1;
+        const rate = parseNumber(m8[5]) || 0;
+        const taxableAmount = parseNumber(m8[6]) || Number((qty * rate).toFixed(2));
+        const vatAmt = parseNumber(m8[7]) || Number((taxableAmount * 0.05).toFixed(2));
+        const grossTotal = parseNumber(m8[8]) || Number((taxableAmount + vatAmt).toFixed(2));
+
         items.push({
           id: `item_pdf_${itemSeq}`,
           itemNumber: itemSeq++,
-          description: finalDesc || `Item ${itemNo}`,
+          description: lineDesc || `Item ${itemNo}`,
           quantity: qty,
           unit,
           unitPrice: rate,
@@ -1206,11 +1230,10 @@ export function extractFromPdf(
           grossTotal = Number((taxableAmount + vatAmt).toFixed(2));
         }
 
-        const finalDesc = [...pendingDesc, lineDesc].filter(Boolean).join(" ").trim();
         items.push({
           id: `item_pdf_${itemSeq}`,
           itemNumber: itemSeq++,
-          description: finalDesc || `Item ${itemNo}`,
+          description: lineDesc || `Item ${itemNo}`,
           quantity: qty,
           unit,
           unitPrice: rate,

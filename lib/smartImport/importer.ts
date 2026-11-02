@@ -357,7 +357,7 @@ export async function executeTopologicalImport(
                 unit_price: it.unitPrice,
                 discount_percent: it.discount || 0,
                 discount_amount: 0,
-                taxable_amount: it.quantity * it.unitPrice,
+                taxable_amount: it.taxableAmount !== undefined ? it.taxableAmount : it.quantity * it.unitPrice,
                 vat_rate: it.vatRate || 5,
                 vat_amount: it.vatAmount || 0,
                 line_total: it.total,
