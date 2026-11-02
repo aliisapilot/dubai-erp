@@ -27,11 +27,6 @@ export interface ExtractionOutput {
   };
 }
 
-function cleanStr(val: unknown): string {
-  if (val === null || val === undefined) return "";
-  return String(val).replace(/\s+/g, " ").trim();
-}
-
 function parseNumber(val: unknown): number | null {
   if (val === null || val === undefined) return null;
   if (typeof val === "number") return isNaN(val) ? null : val;
@@ -481,33 +476,67 @@ export function extractFromDocx(
   }
 
   // 5. Scan tables for tabular line items and totals
+  let primaryTableExtracted = false;
+  let optionIndex = 1;
   for (const table of parsed.tables) {
     if (table.rows.length < 2) continue;
 
-    // Detect header row
-    const headerRow = table.rows[0];
-    const headerTexts = headerRow.cells.map(c => c.text.toLowerCase().trim());
+    // Detect header row (check first 3 rows to support titles/merged header banners)
+    let headerRowIdx = -1;
+    let descCol = -1;
+    let qtyCol = -1;
+    let unitCol = -1;
+    let rateCol = -1;
+    let netAmountCol = -1;
+    let totalCol = -1;
 
-    let descCol = headerTexts.findIndex(h => /desc|particular|specification|service|scope|details/i.test(h));
-    if (descCol === -1) {
-      descCol = headerTexts.findIndex(h => /item/i.test(h) && !/item\s*(?:no|number|#|code|seq|id|sr)/i.test(h));
+    for (let r = 0; r < Math.min(3, table.rows.length); r++) {
+      const texts = table.rows[r].cells.map(c => c.text.toLowerCase().trim());
+      let dCol = texts.findIndex(h => /desc|particular|specification|service|scope|details/i.test(h));
+      if (dCol === -1) {
+        dCol = texts.findIndex(h => /item/i.test(h) && !/item\s*(?:no|number|#|code|seq|id|sr)/i.test(h));
+      }
+      const qCol = texts.findIndex(h => /qty|quantity|count/i.test(h));
+      const rCol = texts.findIndex(h => /unit\s*price|rate|price/i.test(h));
+      const nCol = texts.findIndex(h => /net\s*amount|amount|line\s*total/i.test(h));
+      const tCol = texts.findIndex(h => /total\s*amount|gross\s*total|total/i.test(h));
+
+      if (dCol !== -1 && (qCol !== -1 || rCol !== -1 || nCol !== -1 || tCol !== -1)) {
+        headerRowIdx = r;
+        descCol = dCol;
+        qtyCol = qCol;
+        unitCol = texts.findIndex(h => /unit|uom/i.test(h));
+        rateCol = rCol;
+        netAmountCol = nCol;
+        totalCol = tCol;
+        break;
+      }
     }
-    const qtyCol = headerTexts.findIndex(h => /qty|quantity|count/i.test(h));
-    const unitCol = headerTexts.findIndex(h => /unit|uom/i.test(h));
-    const rateCol = headerTexts.findIndex(h => /unit\s*price|rate|price/i.test(h));
-    const netAmountCol = headerTexts.findIndex(h => /net\s*amount|amount|line\s*total/i.test(h));
-    const totalCol = headerTexts.findIndex(h => /total\s*amount|gross\s*total|total/i.test(h));
 
-    if (descCol !== -1 && (qtyCol !== -1 || rateCol !== -1 || netAmountCol !== -1 || totalCol !== -1)) {
+    if (headerRowIdx !== -1 && descCol !== -1 && (qtyCol !== -1 || rateCol !== -1 || netAmountCol !== -1 || totalCol !== -1)) {
+      const isSubsequentOption = primaryTableExtracted && fields.total_amount !== undefined;
+      const currentOptPrefix = isSubsequentOption ? `[Option ${++optionIndex}] ` : "";
       let itemSeq = 1;
-      for (let rIdx = 1; rIdx < table.rows.length; rIdx++) {
+      let hasLineItemsInTable = false;
+      for (let rIdx = headerRowIdx + 1; rIdx < table.rows.length; rIdx++) {
         const row = table.rows[rIdx];
         const rowTexts = row.cells.map(c => c.text.trim());
         const rowCombined = rowTexts.join(" ");
 
         // Summary row checks: Subtotal, VAT, Grand Total, Discount, In Words
+        const getRowNumber = () => {
+          for (let i = row.cells.length - 1; i >= 0; i--) {
+            const txt = row.cells[i]?.text?.trim();
+            if (txt) {
+              const parsedN = parseNumber(txt);
+              if (parsedN !== null) return parsedN;
+            }
+          }
+          return null;
+        };
+
         if (/net\s*amount|subtotal|sub-total|total\s*exclusive|taxable\s*amount/i.test(rowCombined)) {
-          const num = parseNumber(rowTexts[rowTexts.length - 1]);
+          const num = getRowNumber();
           if (num !== null && !fields.subtotal) {
             fields.subtotal = {
               fieldKey: "subtotal",
@@ -522,7 +551,7 @@ export function extractFromDocx(
         }
 
         if (/vat\s*amount|vat\s*5%|5%\s*vat|tax\s*amount/i.test(rowCombined)) {
-          const num = parseNumber(rowTexts[rowTexts.length - 1]);
+          const num = getRowNumber();
           if (num !== null && !fields.vat_amount) {
             fields.vat_amount = {
               fieldKey: "vat_amount",
@@ -537,7 +566,7 @@ export function extractFromDocx(
         }
 
         if (/grand\s*total|net\s*total|total\s*amount/i.test(rowCombined)) {
-          const num = parseNumber(rowTexts[rowTexts.length - 1]);
+          const num = getRowNumber();
           if (num !== null && !fields.total_amount) {
             fields.total_amount = {
               fieldKey: "total_amount",
@@ -583,7 +612,7 @@ export function extractFromDocx(
         items.push({
           id: `item_docx_${table.tableIndex}_${row.rowIndex}`,
           itemNumber: itemSeq++,
-          description: desc,
+          description: `${currentOptPrefix}${desc}`,
           quantity: qty,
           unit: unit || "Nos",
           unitPrice: rate,
@@ -594,6 +623,7 @@ export function extractFromDocx(
           calculatedTotal: total,
           difference: 0,
           calculationStatus: "match",
+          isOptional: isSubsequentOption,
           source: {
             file: fileName,
             table: table.tableIndex,
@@ -601,6 +631,10 @@ export function extractFromDocx(
             rawText: rowCombined,
           },
         });
+        hasLineItemsInTable = true;
+      }
+      if (hasLineItemsInTable) {
+        primaryTableExtracted = true;
       }
     }
   }

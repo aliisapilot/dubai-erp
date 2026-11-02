@@ -1133,6 +1133,16 @@ export default function SmartImportPage() {
                         <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold text-[11px]">
                           ✓ {readyCount} Ready
                         </span>
+                        {eligibleCount > 0 && (
+                          <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 font-semibold text-[11px]">
+                            ✓ {eligibleCount} Eligible
+                          </span>
+                        )}
+                        {blockedCount > 0 && (
+                          <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-semibold text-[11px]">
+                            ⛔ {blockedCount} Blocked
+                          </span>
+                        )}
                         {inProgressCount > 0 && (
                           <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 font-semibold text-[11px] flex items-center gap-1">
                             <RefreshCw size={11} className="animate-spin" /> {inProgressCount} Processing
@@ -1362,6 +1372,27 @@ export default function SmartImportPage() {
                         const isDup = skipDuplicates && Boolean(item.parsedDoc?.isDuplicate);
                         const isBlocked = hasErrors || isDup;
 
+                        let blockingReason: string | null = null;
+                        let blockingReasonShort: string | null = null;
+
+                        if (item.parsedDoc?.validationErrors && item.parsedDoc.validationErrors.length > 0) {
+                          blockingReason = item.parsedDoc.validationErrors[0];
+                          blockingReasonShort = item.parsedDoc.validationErrors[0];
+                          if (blockingReasonShort.length > 40) {
+                            blockingReasonShort = blockingReasonShort.slice(0, 37) + "...";
+                          }
+                        } else if (isDup) {
+                          blockingReason = "Duplicate document number detected. Skipped to prevent collision.";
+                          blockingReasonShort = "Duplicate Document";
+                        } else if (item.parsedDoc?.customerResolution?.action === "needs_review") {
+                          blockingReason = "Customer matching requires human confirmation.";
+                          blockingReasonShort = "Customer Review Required";
+                        } else if (item.parsedDoc?.destinationMappings?.some(m => m.proposedAction === "needs_review")) {
+                          const badM = item.parsedDoc.destinationMappings.find(m => m.proposedAction === "needs_review");
+                          blockingReason = `Destination mapping for ${badM?.destinationTable || "field"} requires review.`;
+                          blockingReasonShort = "Mapping Review Required";
+                        }
+
                         return (
                           <div
                             key={item.id}
@@ -1419,8 +1450,11 @@ export default function SmartImportPage() {
                                       {item.name}
                                     </label>
                                     {isBlocked && (
-                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 shrink-0">
-                                        ⛔ Blocked from Import
+                                      <span
+                                        className="px-2 py-0.5 rounded text-[9px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 shrink-0 truncate max-w-[280px]"
+                                        title={blockingReason || "Blocked from import"}
+                                      >
+                                        ⛔ Blocked: {blockingReasonShort || "Needs Review"}
                                       </span>
                                     )}
                                   </div>

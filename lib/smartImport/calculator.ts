@@ -100,6 +100,7 @@ export function auditDocumentTotals(
   let sumVat = 0;
 
   for (const item of lineItems) {
+    if (item.isOptional) continue;
     const qty = Number(item.quantity) || 0;
     const rate = Number(item.unitPrice) || 0;
     const discount = Number(item.discount) || 0;
@@ -115,7 +116,8 @@ export function auditDocumentTotals(
   // Check Subtotal
   if (extractedSubtotal !== null && extractedSubtotal !== undefined) {
     const subDiff = Number(Math.abs(extractedSubtotal - calculatedSubtotal).toFixed(2));
-    const isSubMatch = subDiff <= 0.05;
+    const allowedSubTol = Math.max(0.10, (lineItems.length || 1) * 0.06);
+    const isSubMatch = subDiff <= allowedSubTol;
     if (!isSubMatch) hasMismatches = true;
 
     auditRows.push({
@@ -135,7 +137,8 @@ export function auditDocumentTotals(
   // Check Grand Total
   if (extractedTotal !== null && extractedTotal !== undefined) {
     const totDiff = Number(Math.abs(extractedTotal - calculatedTotal).toFixed(2));
-    const isTotMatch = totDiff <= 0.05;
+    const allowedTol = Math.max(0.10, (lineItems.length || 1) * 0.06);
+    const isTotMatch = totDiff <= allowedTol;
     if (!isTotMatch) hasMismatches = true;
 
     auditRows.push({

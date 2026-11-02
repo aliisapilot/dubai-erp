@@ -530,7 +530,7 @@ export function checkDuplicateDocument(
   }
 
   const cleanNum = docNumber.trim().toLowerCase();
-  const existing = cache.existingDocuments[cleanNum];
+  const existing = cache?.existingDocuments ? cache.existingDocuments[cleanNum] : undefined;
 
   if (existing) {
     return {

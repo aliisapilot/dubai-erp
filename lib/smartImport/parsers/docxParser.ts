@@ -127,13 +127,16 @@ export async function parseDocx(
         const cellXml = tcMatch[0];
         const cellText = cleanXmlTags(cellXml);
 
-        if (cellText) {
-          cells.push({
-            rowIndex,
-            colIndex,
-            text: cellText,
-          });
+        const gridSpanMatch = cellXml.match(/<w:gridSpan[^>]+w:val="(\d+)"/i);
+        const span = gridSpanMatch ? parseInt(gridSpanMatch[1], 10) : 1;
 
+        cells.push({
+          rowIndex,
+          colIndex,
+          text: cellText || "",
+        });
+
+        if (cellText) {
           sourceSnippets.push({
             location: {
               file: fileName,
@@ -145,10 +148,19 @@ export async function parseDocx(
             text: cellText,
           });
         }
-        colIndex++;
+
+        // If cell spans multiple columns, pad remaining spanned columns to preserve grid alignment
+        for (let s = 1; s < span; s++) {
+          cells.push({
+            rowIndex,
+            colIndex: colIndex + s,
+            text: "",
+          });
+        }
+        colIndex += span;
       }
 
-      if (cells.length > 0) {
+      if (cells.some(c => c.text.trim().length > 0)) {
         rows.push({ rowIndex, cells });
       }
       rowIndex++;

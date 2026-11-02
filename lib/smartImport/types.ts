@@ -64,6 +64,7 @@ export interface ExtractedLineItem {
   calculatedTotal: number;
   difference: number;
   calculationStatus: "match" | "mismatch" | "warning";
+  isOptional?: boolean;
 }
 
 export interface ExtractedMeasurement {
