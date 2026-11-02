@@ -1030,11 +1030,27 @@ export function computeEffectiveLayout(
   const zone1Elements = elementsAbove.filter((el) => !isPartyCard(el.type));
 
   const headerLayoutMap = new Map<string, { y: number; height: number }>();
-
   if (isManualMode) {
-    // In MANUAL DESIGN mode: strictly preserve exact user positions and heights without rearranging
+    // In MANUAL DESIGN mode: strictly preserve exact user positions and heights, but expand party/meta cards when needed for readability
     for (const el of elementsAbove) {
-      headerLayoutMap.set(el.id, { y: el.y, height: el.height });
+      const isParty = ["customer_info", "supplier_info", "project_info", "doc_meta"].includes(el.type);
+      const height = isParty && fitProfile.partyInfoHeight
+        ? Math.max(el.height, fitProfile.partyInfoHeight)
+        : el.height;
+      headerLayoutMap.set(el.id, { y: el.y, height });
+    }
+
+    // Clearance guard: guarantee table strictly clears all elements above it without overlapping
+    const allHeadersBottom = elementsAbove.length > 0
+      ? Math.max(...elementsAbove.map((el) => {
+          const mapped = headerLayoutMap.get(el.id);
+          return mapped ? mapped.y + mapped.height : el.y + el.height;
+        }))
+      : minHeaderY;
+
+    const minTableY = allHeadersBottom + fitProfile.gap;
+    if (effectiveTableY < minTableY) {
+      effectiveTableY = minTableY;
     }
   } else {
     // ── ZONE 1: CORPORATE BRANDING HEADER (Logo, English Name, Arabic Name, Address/TRN, Title Banner) ──
@@ -1107,7 +1123,7 @@ export function computeEffectiveLayout(
         22.0
       );
 
-      if (tableShift > 0 && fitProfile.level !== "standard") {
+      if (tableShift > 0 && fitProfile.level !== "standard" && !fitProfile.partyInfoHeight) {
         if (fitProfile.level === "ultra_dense") {
           targetPartyHeight = Math.max(19.0, Math.min(targetPartyHeight, 20.5));
         } else if (fitProfile.level === "dense") {
@@ -1379,7 +1395,9 @@ export function computeEffectiveLayout(
 
     if (tableShift > 0 && el.y + el.height <= originalTableY + 2) {
       effectiveY = minHeaderY + (el.y - minHeaderY) * headerScale;
-      effectiveHeight = Math.max(3.5, Math.round(el.height * headerScale * 10) / 10);
+      if (!isPartyInfo) {
+        effectiveHeight = Math.max(3.5, Math.round(el.height * headerScale * 10) / 10);
+      }
     }
 
     return {

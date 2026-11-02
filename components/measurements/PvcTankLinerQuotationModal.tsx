@@ -887,7 +887,7 @@ export default function PvcTankLinerQuotationModal({
                           }`}
                         >
                           <UserPlus size={12} />
-                          <span>+ Add to CRM</span>
+                          <span>+ New Customer</span>
                         </button>
                       </div>
                     </div>

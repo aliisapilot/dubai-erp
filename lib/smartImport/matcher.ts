@@ -186,7 +186,7 @@ export function matchCustomer(
   }
 
   // 3. Normalized Name Match against DB cache
-  if (normClean.length > 2) {
+  if (normClean.length > 2 && cleanTrn) {
     const normMatch = cache.customers.find(c => {
       const nc = normalizeEntityName(c.name);
       return nc === normClean || (nc.length > 3 && (nc.includes(normClean) || normClean.includes(nc)));
@@ -444,7 +444,7 @@ export function matchProject(
   const isGenericWorkScope = /\b(fabrication|liner|tank|supply|installation|maintenance|repair|transportation|shades|canopy|fitting|pvc|hdpe|car\s*parking)\b/i.test(cleanName);
   const isExplicitProject = /\b(project|tower|building|villa|site|plot|mall|phase|residence|contract|prj[-_0-9]|job[-_0-9])\b/i.test(cleanName);
 
-  if (!isGenericWorkScope && isExplicitProject) {
+  if (isExplicitProject && (!isGenericWorkScope || /\b(plot\s*\d+|tower|building|villa|mall|site\s*\d+|phase\s*\d+|contract\s*\d+)/i.test(cleanName))) {
     return {
       action: "create_new",
       targetModule: "Projects",
