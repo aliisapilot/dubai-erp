@@ -227,6 +227,7 @@ export async function POST(req: NextRequest) {
 
     const parsedDocuments: ParsedDocument[] = [];
     const allAuditRows: CalculationAuditRow[] = [];
+    const batchProposedCustomers: { name: string; trn?: string }[] = [];
 
     for (const fileItem of fileQueue) {
       const docId = `doc_${crypto.randomUUID()}`;
@@ -267,32 +268,37 @@ export async function POST(req: NextRequest) {
           checksumSha256: `sha256_${fileItem.size}_${fileItem.name}`,
           documentType: "unknown",
           classificationConfidence: 0,
-          classificationReason: "Failed to parse document",
+          classificationReason: `Extraction failed: ${errMsg}`,
+          extractionStatus: "failed",
+          extractionError: errMsg,
           fields: {},
           items: [],
           customerResolution: {
-            action: "create_new",
+            action: "skip",
             targetModule: "Customers",
             targetTable: "customers",
-            extractedName: fileItem.name,
+            extractedName: "",
             matchConfidence: 0,
+            matchReason: `Extraction failed: ${errMsg}`,
           },
           supplierResolution: {
-            action: "create_new",
+            action: "skip",
             targetModule: "Suppliers",
             targetTable: "suppliers",
-            extractedName: fileItem.name,
+            extractedName: "",
             matchConfidence: 0,
+            matchReason: `Extraction failed: ${errMsg}`,
           },
           projectResolution: {
-            action: "create_new",
+            action: "skip",
             targetModule: "Projects",
             targetTable: "projects",
-            extractedName: fileItem.name,
+            extractedName: "",
             matchConfidence: 0,
+            matchReason: `Extraction failed: ${errMsg}`,
           },
           destinationMappings: [],
-          validationErrors: [errMsg],
+          validationErrors: [`Extraction Error: ${errMsg}`],
           validationWarnings: [],
           isDuplicate: false,
           rawContentSummary: { rawSnippets: [] },
@@ -328,14 +334,47 @@ export async function POST(req: NextRequest) {
         allAuditRows.push(...measAudit.auditRows);
       }
 
-      // 3. Entity Resolution
+      // 3. Entity Resolution with Sales/Purchase Distinctions and Batch Deduplication
       const extractedCustName = fields.customer_name?.value ? String(fields.customer_name.value) : null;
       const extractedSuppName = fields.supplier_name?.value ? String(fields.supplier_name.value) : null;
       const extractedTrn = fields.trn?.value ? String(fields.trn.value) : null;
       const extractedProjName = fields.project_name?.value ? String(fields.project_name.value) : null;
 
-      const customerResolution = matchCustomer(extractedCustName, extractedTrn, existingCache);
-      const supplierResolution = matchSupplier(extractedSuppName, extractedTrn, existingCache);
+      const isPurchaseDocument = ["supplier_bill", "purchase_order"].includes(classification.documentType);
+
+      // Customer matching (sales documents or when customer info is present)
+      const customerResolution = isPurchaseDocument && !extractedCustName
+        ? {
+            action: "skip" as const,
+            targetModule: "Customers",
+            targetTable: "customers",
+            extractedName: "",
+            matchConfidence: 0,
+            matchReason: "Purchase document; customer entity not required.",
+          }
+        : matchCustomer(extractedCustName, extractedTrn, existingCache, batchProposedCustomers);
+
+      // If customer is proposed for creation, track it for subsequent documents in the batch
+      if (customerResolution.action === "create_new" && extractedCustName) {
+        batchProposedCustomers.push({
+          name: extractedCustName,
+          trn: extractedTrn || undefined,
+        });
+      }
+
+      // Supplier matching (only for purchase documents)
+      const supplierResolution = !isPurchaseDocument
+        ? {
+            action: "skip" as const,
+            targetModule: "Suppliers",
+            targetTable: "suppliers",
+            extractedName: "",
+            matchConfidence: 0,
+            matchReason: "Sales invoice - no supplier entity required",
+          }
+        : matchSupplier(extractedSuppName, extractedTrn, existingCache);
+
+      // Project matching (only if explicitly identified and justified)
       const projectResolution = matchProject(extractedProjName, customerResolution.matchedId || null, existingCache);
 
       // 4. Duplicate Check
@@ -353,10 +392,21 @@ export async function POST(req: NextRequest) {
         validationWarnings.push(duplicateCheck.reason || "Duplicate document detected.");
       }
       if (lineAudit.hasMismatches) {
-        validationWarnings.push("Line item total differs from Qty × Rate calculation.");
+        validationWarnings.push("Line item taxable amount differs from Qty × Rate − Discount calculation.");
+        validationErrors.push("Line item financial calculation mismatch. Invoice marked as Needs Review.");
       }
       if (totalsAudit.hasMismatches) {
         validationWarnings.push("Grand total differs from calculated subtotal + VAT.");
+        validationErrors.push("Grand total verification failed against line items sum. Invoice marked as Needs Review.");
+      }
+      const docSub = typeof fields.subtotal?.value === "number" ? fields.subtotal.value : null;
+      const docDisc = typeof fields.discount?.value === "number" ? fields.discount.value : 0;
+      const docVat = typeof fields.vat_amount?.value === "number" ? fields.vat_amount.value : null;
+      const docTot = typeof fields.total_amount?.value === "number" ? fields.total_amount.value : null;
+      if (docSub !== null && docVat !== null && docTot !== null) {
+        if (Math.abs((docSub - docDisc + docVat) - docTot) > 0.05) {
+          validationErrors.push(`Document internal arithmetic mismatch: Subtotal (${docSub}) - Discount (${docDisc}) + VAT (${docVat}) != Total (${docTot}). Invoice marked as Needs Review.`);
+        }
       }
       if (!fields.document_number) {
         validationWarnings.push("No explicit document number detected.");
@@ -415,6 +465,14 @@ export async function POST(req: NextRequest) {
         statusResolution
       );
 
+      if (validationErrors.length > 0) {
+        destinationMappings.forEach(m => {
+          if (m.proposedAction === "create_new") {
+            m.proposedAction = "needs_review";
+          }
+        });
+      }
+
       parsedDocuments.push({
         id: docId,
         filename: fileItem.name,
@@ -424,6 +482,7 @@ export async function POST(req: NextRequest) {
         documentType: classification.documentType,
         classificationConfidence: classification.confidence,
         classificationReason: classification.reason,
+        extractionStatus: "success",
         fields,
         items,
         measurements,

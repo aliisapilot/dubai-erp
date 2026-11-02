@@ -8,6 +8,7 @@ import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
 import DocSignatureArea from "./DocSignatureArea";
 import DocumentContainer from "./DocumentContainer";
+import { stripCustomPartyTags } from "@/lib/documentCustomer";
 
 export type DeliveryNoteItem = {
   id?: string;
@@ -80,7 +81,7 @@ export default function DeliveryNoteTemplate({
     subtotal: 0,
     vat_amount: 0,
     total_amount: 0,
-    notes: deliveryNote.notes || undefined,
+    notes: stripCustomPartyTags(deliveryNote.notes) || undefined,
   };
   const totalPages = customLayout
     ? getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData)

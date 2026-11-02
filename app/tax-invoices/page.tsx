@@ -2,14 +2,15 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, FileCheck2, X, Save, Loader2, Pencil, Printer, Trash2, Ban, FileEdit } from "lucide-react";
-import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, calcLineItem } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, calcLineItem, formatDisplayDocNumber, detectDocumentCollisions, DocumentMappingItem } from "@/lib/helpers";
+import DocumentNumberMappingPreviewModal from "@/components/documents/DocumentNumberMappingPreviewModal";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import TaxInvoiceTemplate from "@/components/documents/TaxInvoiceTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { withCustomerDocumentDetails } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails, stripCustomPartyTags } from "@/lib/documentCustomer";
 import { parseDatabaseError } from "@/lib/paymentTypes";
 import DocumentSplitScreenEditor, {
   EditorLineItem,
@@ -87,6 +88,7 @@ function TIContent() {
   const [showForm, setShowForm] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renamingInvoice, setRenamingInvoice] = useState<TI | null>(null);
+  const [showMappingModal, setShowMappingModal] = useState(false);
   const [editing, setEditing] = useState<TI | null>(null);
   const [printRec, setPrintRec] = useState<{ti: TI; lines: LineItem[]} | null>(null);
   const [loading, setLoading] = useState(true);
@@ -554,7 +556,8 @@ function TIContent() {
     if (filterStatus && ti.status!==filterStatus) return false;
     const cn = ti.customer_name || custMap[ti.customer_id||""]?.name || "";
     const pn = ti.custom_project_name || projMap[ti.project_id||""]?.project_number || "";
-    return [ti.invoice_number, cn, pn, ti.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
+    const simplifiedNum = formatDisplayDocNumber(ti.invoice_number, "tax_invoice");
+    return [ti.invoice_number, simplifiedNum, cn, pn, ti.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
 
   return (
@@ -562,7 +565,17 @@ function TIContent() {
       <div className="app-screen-content no-print">
         <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
         <div className="flex items-center gap-3"><div className="rounded-xl bg-slate-900 p-2.5 text-white"><FileCheck2 size={22}/></div><div><h1 className="text-2xl font-bold text-slate-900">Tax Invoices</h1><p className="text-sm text-slate-500">UAE VAT-compliant tax invoices</p></div></div>
-        <button onClick={openAdd} className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"><Plus size={18}/>New Invoice</button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowMappingModal(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm"
+            title="Preview numbering simplification and check for collisions"
+          >
+            Numbering Preview
+          </button>
+          <button onClick={openAdd} className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"><Plus size={18}/>New Invoice</button>
+        </div>
       </div></header>
       <div className="mx-auto max-w-7xl px-6 py-8">
         {success && <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
@@ -582,7 +595,16 @@ function TIContent() {
               <thead><tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><th className="px-4 py-3">Invoice No.</th><th className="px-4 py-3">Customer / Project</th><th className="px-4 py-3">Date</th><th className="px-4 py-3 text-right">Taxable</th><th className="px-4 py-3 text-right">VAT</th><th className="px-4 py-3 text-right">Total (AED)</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Actions</th></tr></thead>
               <tbody className="divide-y divide-slate-100">{filtered.map(ti=>(
                 <tr key={ti.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-mono text-xs font-bold text-slate-700">{ti.invoice_number||"—"}</td>
+                  <td className="px-4 py-3 font-mono text-xs">
+                    <span className="font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                      {formatDisplayDocNumber(ti.invoice_number, "tax_invoice") || "—"}
+                    </span>
+                    {ti.invoice_number && ti.invoice_number !== formatDisplayDocNumber(ti.invoice_number, "tax_invoice") && (
+                      <span className="text-[10px] text-slate-400 block font-normal mt-0.5" title="Original Database Identifier">
+                        {ti.invoice_number}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 flex-wrap font-semibold text-slate-900">
                       <span>{ti.customer_name || custMap[ti.customer_id||""]?.name || "—"}</span>
@@ -716,8 +738,8 @@ function TIContent() {
               contact_email: printRec.ti.contact_email,
               project_number: printRec.ti.project_id ? projMap[printRec.ti.project_id]?.project_number : undefined,
               project_name: printRec.ti.project_id ? projMap[printRec.ti.project_id]?.name : undefined,
-              payment_terms: printRec.ti.payment_terms,
-              notes: printRec.ti.notes,
+              payment_terms: stripCustomPartyTags(printRec.ti.payment_terms) || undefined,
+              notes: stripCustomPartyTags(printRec.ti.notes) || undefined,
               status: printRec.ti.status,
               subtotal: printRec.ti.subtotal || 0,
               vat_amount: printRec.ti.vat_amount || 0,

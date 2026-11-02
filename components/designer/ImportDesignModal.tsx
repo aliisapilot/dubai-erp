@@ -1,5 +1,7 @@
 "use client";
 
+import DesignerPortal from "./DesignerPortal";
+
 import React, { useState, useRef, useMemo } from "react";
 import {
   Upload,
@@ -205,8 +207,9 @@ export default function ImportDesignModal({
   const selectedBlock = draft?.detectedBlocks.find((b) => b.id === selectedBlockId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/75 backdrop-blur-sm">
-      <div className="relative w-full max-w-7xl h-[94vh] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
+    <DesignerPortal>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm">
+      <div className="relative z-[101] w-full max-w-7xl h-[94vh] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
         {/* Top Header Bar */}
         <div className="flex items-center justify-between border-b border-slate-800 px-6 py-3.5 bg-slate-950">
           <div className="flex items-center gap-3">
@@ -703,5 +706,6 @@ export default function ImportDesignModal({
         )}
       </div>
     </div>
+    </DesignerPortal>
   );
 }

@@ -8,7 +8,8 @@ import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
 import DocSignatureArea from "./DocSignatureArea";
 import { numberToWordsEnglish, numberToWordsArabic } from "@/lib/amountInWords";
-import { fmtAED, fmtDate } from "@/lib/helpers";
+import { fmtAED, fmtDate, formatDisplayDocNumber } from "@/lib/helpers";
+import { stripCustomPartyTags } from "@/lib/documentCustomer";
 import DocumentContainer from "./DocumentContainer";
 
 export type POLineItem = {
@@ -85,8 +86,8 @@ export default function PurchaseOrderTemplate({
     subtotal: po.subtotal,
     vat_amount: po.vat_amount,
     total_amount: po.total_amount,
-    payment_terms: po.payment_terms || undefined,
-    notes: po.notes || po.terms_conditions || undefined,
+    payment_terms: stripCustomPartyTags(po.payment_terms) || undefined,
+    notes: stripCustomPartyTags(po.notes || po.terms_conditions) || undefined,
   };
   const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
   const effectiveTitle =
@@ -174,16 +175,16 @@ export default function PurchaseOrderTemplate({
                   <div className="font-semibold text-slate-900">{po.vendor_reference}</div>
                 </div>
               )}
-              {po.payment_terms && (
+              {stripCustomPartyTags(po.payment_terms) && (
                 <div>
                   <span className="text-slate-500">Payment Terms:</span>
-                  <div className="font-semibold text-slate-900">{po.payment_terms}</div>
+                  <div className="font-semibold text-slate-900">{stripCustomPartyTags(po.payment_terms)}</div>
                 </div>
               )}
-              {po.delivery_terms && (
+              {stripCustomPartyTags(po.delivery_terms) && (
                 <div>
                   <span className="text-slate-500">Delivery Terms:</span>
-                  <div className="font-semibold text-slate-900">{po.delivery_terms}</div>
+                  <div className="font-semibold text-slate-900">{stripCustomPartyTags(po.delivery_terms)}</div>
                 </div>
               )}
               {po.project_number && (
@@ -237,10 +238,10 @@ export default function PurchaseOrderTemplate({
               </div>
             </div>
 
-            {po.terms_conditions && (
+            {stripCustomPartyTags(po.terms_conditions) && (
               <div className="rounded border border-slate-200 bg-slate-50/30 p-2.5 text-[11px] text-slate-600">
                 <div className="font-bold text-slate-800 text-xs mb-1">Purchasing Terms &amp; Conditions:</div>
-                <div className="whitespace-pre-line leading-relaxed">{po.terms_conditions}</div>
+                <div className="whitespace-pre-line leading-relaxed">{stripCustomPartyTags(po.terms_conditions)}</div>
               </div>
             )}
           </div>

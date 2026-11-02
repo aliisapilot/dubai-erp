@@ -13,10 +13,11 @@ import {
   normalizePrintSettings,
   DOCUMENT_TYPE_OPTIONS,
 } from "@/lib/documentDesigner";
-import { formatDocNumber, type DocNumberingConfig } from "@/lib/documentNumbering";
+import { formatDocNumber, formatDisplayDocNumber, type DocNumberingConfig } from "@/lib/documentNumbering";
 import { CompanyDocInfo } from "./DocHeader";
 import { numberToWordsArabic, numberToWordsEnglish } from "@/lib/amountInWords";
 import { fmtAED, fmtDate } from "@/lib/helpers";
+import { stripCustomPartyTags } from "@/lib/documentCustomer";
 import PageDecorativeBorders from "./PageDecorativeBorders";
 import MeasurementTotals from "./MeasurementTotals";
 import { fitMeasurementSummaryLayout } from "@/lib/measurementPdfSummary";
@@ -70,6 +71,10 @@ export interface MockDocumentData {
   advance_amount?: number;
   payment_terms?: string;
   notes?: string;
+  customer_code?: string;
+  customer_id?: string;
+  opening_balance?: number;
+  total_credits?: number;
 }
 
 export const SAMPLE_DOCUMENT_DATA: MockDocumentData = {
@@ -139,14 +144,14 @@ export const SAMPLE_DOCUMENT_DATA: MockDocumentData = {
 };
 
 const SAMPLE_NUMBERS: Record<DocumentTypeId, string> = {
-  tax_invoice: "INV-2026-0042",
-  quotation: "QUO-2026-0042",
-  proforma_invoice: "PRO-2026-0042",
-  delivery_note: "DN-2026-0042",
-  purchase_order: "PO-2026-0042",
-  receipt_voucher: "RCV-2026-0042",
-  customer_statement: "SOA-2026-0042",
-  supplier_bill: "BILL-2026-0042",
+  tax_invoice: "INV-001",
+  quotation: "QUO-001",
+  proforma_invoice: "PI-001",
+  delivery_note: "DN-001",
+  purchase_order: "PO-001",
+  receipt_voucher: "RV-001",
+  customer_statement: "SOA-001",
+  supplier_bill: "BILL-001",
   salary_statement: "SLIP-2026-0042",
   project_handover: "HO-2026-0042",
   work_method_statement: "WMS-2026-0042",
@@ -199,16 +204,24 @@ export function getSampleDocumentData(
   if (docType === "customer_statement") {
     return {
       ...base,
+      document_number: "SOA-001",
+      document_date: "2026-03-10",
+      customer_name: "Al Karwan Solution FZC",
+      customer_address: "Sharjah",
+      customer_code: "CUST-101",
+      opening_balance: 0,
+      total_credits: 9000,
       items: [
-        { description: "Opening balance", date: "01/09/2026", type: "Opening", reference: "-", debit: 0, credit: 0, balance: 50000, quantity: 1, unit_price: 0, vat_amount: 0, line_total: 50000 },
-        { description: "Tax invoice", date: "05/09/2026", type: "Invoice", reference: "INV-0041", debit: 145300, credit: 0, balance: 195300, quantity: 1, unit_price: 145300, vat_amount: 0, line_total: 195300 },
-        { description: "Payment received", date: "18/09/2026", type: "Receipt", reference: "RCV-0042", debit: 0, credit: 50000, balance: 145300, quantity: 1, unit_price: 50000, vat_amount: 0, line_total: 145300 },
+        { description: "Previous Balance (Forwarded)", date: "", type: "Opening", reference: "—", debit: 0, credit: 0, balance: 0, quantity: 1, unit_price: 0, vat_amount: 0, line_total: 0 },
+        { description: "Advance Payment for QTN104/26 & QTN105/26", date: "2026-02-09", type: "Payment", reference: "—", debit: 0, credit: 9000, balance: -9000, quantity: 1, unit_price: 9000, vat_amount: 0, line_total: -9000 },
+        { description: "Pvc Water Tank Liner", date: "2026-03-07", type: "Invoice", reference: "INV-108", debit: 17673.60, credit: 0, balance: 8673.60, quantity: 1, unit_price: 17673.60, vat_amount: 0, line_total: 8673.60 },
+        { description: "Pvc Water Tank Liner", date: "2026-03-10", type: "Invoice", reference: "INV-109", debit: 3028.72, credit: 0, balance: 11702.32, quantity: 1, unit_price: 3028.72, vat_amount: 0, line_total: 11702.32 },
       ],
-      subtotal: 145300,
+      subtotal: 20702.32,
       vat_amount: 0,
-      total_amount: 145300,
+      total_amount: 11702.32,
       advance_amount: undefined,
-      payment_terms: undefined,
+      payment_terms: "Your account balance is 11,702.32 AED. Please make your payment to cover the balance by the due date.\nMake all checks payable to Al Safwah Al Qabdha Tents IND L.L.C SP\n\nThank you for your business!",
       notes: undefined,
     };
   }
@@ -408,11 +421,11 @@ export function replaceDocumentTokens(
     document_date: fmtDate(data.document_date) || "",
     due_date: data.due_date ? fmtDate(data.due_date) : "",
     supply_date: data.supply_date ? fmtDate(data.supply_date) : fmtDate(data.document_date) || "",
-    payment_terms: data.payment_terms || "",
-    project_name: data.project_name || "",
+    payment_terms: stripCustomPartyTags(data.payment_terms) || "",
+    project_name: stripCustomPartyTags(data.project_name) || "",
     project_number: data.project_number || "",
     site_location: data.location || "",
-    notes: data.notes || "",
+    notes: stripCustomPartyTags(data.notes) || "",
 
     customer_name: data.customer_name || "",
     customer_trn: data.customer_trn || "",
@@ -429,11 +442,22 @@ export function replaceDocumentTokens(
     vat: data.vat_amount ? fmtAED(data.vat_amount) : "0.00",
     vat_amount: data.vat_amount ? fmtAED(data.vat_amount) : "0.00",
     vat_rate: data.vat_rate ? `${data.vat_rate}%` : "5%",
-    grand_total: data.total_amount ? fmtAED(data.total_amount) : "0.00",
-    total_amount: data.total_amount ? fmtAED(data.total_amount) : "0.00",
+    grand_total: data.total_amount != null ? fmtAED(data.total_amount) : "AED 0.00",
+    total_amount: data.total_amount != null ? fmtAED(data.total_amount) : "AED 0.00",
+    balance: data.total_amount != null ? fmtAED(data.total_amount) : "AED 0.00",
     balance_due: fmtAED((data.total_amount || 0) - (data.advance_amount || 0)),
+    closing_balance: data.total_amount != null ? fmtAED(data.total_amount) : "AED 0.00",
+    current_balance: data.total_amount != null ? fmtAED(data.total_amount) : "AED 0.00",
     advance_amount: data.advance_amount ? fmtAED(data.advance_amount) : "0.00",
     amount_in_words: numberToWordsEnglish(data.total_amount),
+    opening_balance: data.opening_balance != null ? fmtAED(data.opening_balance) : "AED 0.00",
+    previous_balance: data.opening_balance != null ? fmtAED(data.opening_balance) : "AED 0.00",
+    total_credits: data.total_credits != null ? fmtAED(data.total_credits) : "AED 0.00",
+    credits: data.total_credits != null ? fmtAED(data.total_credits) : "AED 0.00",
+    new_charges: data.subtotal != null ? fmtAED(data.subtotal) : "AED 0.00",
+    charges: data.subtotal != null ? fmtAED(data.subtotal) : "AED 0.00",
+    customer_id: data.customer_code || data.customer_id || "",
+    customer_code: data.customer_code || data.customer_id || "",
 
     // HR & Payroll tokens
     employee_name: typeof hr.employee_name === "string" ? hr.employee_name : data.customer_name || "",
@@ -467,7 +491,7 @@ export default function DynamicDocumentRenderer({
 }: DynamicDocumentRendererProps) {
   const rawData = providedData || getSampleDocumentData(savedLayout.documentType, savedLayout.numberingConfig);
   const effectiveDocNumber = (!isDesignerPreview && providedData?.document_number)
-    ? providedData.document_number
+    ? formatDisplayDocNumber(providedData.document_number, savedLayout.documentType) || providedData.document_number
     : savedLayout.numberingConfig
     ? formatDocNumber(
         savedLayout.numberingConfig,
@@ -475,7 +499,13 @@ export default function DynamicDocumentRenderer({
         rawData.document_date ? new Date(rawData.document_date) : new Date(2026, 8, 24)
       )
     : rawData.document_number;
-  const data = { ...rawData, document_number: effectiveDocNumber };
+  const data = {
+    ...rawData,
+    document_number: effectiveDocNumber,
+    payment_terms: stripCustomPartyTags(rawData.payment_terms),
+    notes: stripCustomPartyTags(rawData.notes),
+    project_name: stripCustomPartyTags(rawData.project_name),
+  };
   const layout = fitMeasurementSummaryLayout(savedLayout, data);
   const brand = getBrandConfig(company);
   const [logoFailed, setLogoFailed] = useState(false);
@@ -769,6 +799,38 @@ export default function DynamicDocumentRenderer({
           ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}`
           : undefined;
         const titlePt = resolvePt(elem.fontSize, 12);
+        const isRightTitle = elem.textAlign === "right" || (titleBg === "transparent" && !titleBorder);
+
+        if (isRightTitle) {
+          return (
+            <div
+              className="w-full h-full flex items-center justify-end px-1 select-text overflow-hidden"
+              style={{
+                backgroundColor: titleBg === "transparent" ? "transparent" : titleBg,
+                color: titleColor,
+                border: titleBorder,
+                borderRadius: `${elem.borderRadius || 4}px`,
+                opacity: elem.opacity ?? 1,
+                padding: elem.padding !== undefined ? `${elem.padding}mm` : undefined,
+                ...elementAppearance(elem),
+                fontSize: `${titlePt}pt`,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: `${titlePt}pt`,
+                  fontWeight: elem.fontWeight === "extrabold" ? 800 : elem.fontWeight === "bold" ? 700 : 700,
+                  fontStyle: elem.fontStyle || "normal",
+                  fontFamily: elem.fontFamily || "inherit",
+                  letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
+                  textAlign: "right",
+                }}
+              >
+                {elem.customText || "Statement of Account"}
+              </span>
+            </div>
+          );
+        }
 
         return (
           <div
@@ -839,6 +901,57 @@ export default function DynamicDocumentRenderer({
         void detailFontSize;
         const padMm = isUltraCompact ? 1.8 : Math.min(configuredPaddingMm, 2.5);
         const cardPt = resolvePt(elem.fontSize, isUltraCompact ? 7.2 : 8.0);
+
+        if (layout.documentType === "customer_statement") {
+          return (
+            <div
+              className="w-full h-full min-h-0 overflow-hidden flex flex-col justify-start select-text"
+              style={{
+                boxSizing: "border-box",
+                backgroundColor: elem.backgroundColor || "#FFFFFF",
+                border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+                borderRadius: `${elem.borderRadius !== undefined ? elem.borderRadius : 2}px`,
+                color: colors.text,
+                ...elementAppearance(elem),
+                fontSize: `${cardPt}pt`,
+              }}
+            >
+              <div
+                className="w-full px-2.5 py-1 font-bold text-slate-900 border-b select-none flex justify-between items-center"
+                style={{
+                  backgroundColor: "#9CA3AF",
+                  color: "#0F172A",
+                  borderColor: elem.borderColor || colors.border,
+                  fontSize: `${Math.max(6, cardPt * 0.95)}pt`,
+                  lineHeight: 1.2,
+                }}
+              >
+                <span>Bill To:</span>
+              </div>
+              <div className="p-2 space-y-0.5 leading-tight select-text overflow-hidden">
+                <div className="font-bold text-slate-900 break-words" style={{ fontSize: `${cardPt * 1.05}pt` }}>
+                  {data.customer_name}
+                </div>
+                {data.customer_address && (
+                  <div className="text-slate-700 break-words" style={{ fontSize: `${cardPt * 0.95}pt` }}>
+                    {data.customer_address}
+                  </div>
+                )}
+                {data.customer_trn && (
+                  <div className="text-slate-600" style={{ fontSize: `${cardPt * 0.9}pt` }}>
+                    TRN: <span className="font-mono font-semibold">{data.customer_trn}</span>
+                  </div>
+                )}
+                {data.contact_number && (
+                  <div className="text-slate-600" style={{ fontSize: `${cardPt * 0.9}pt` }}>
+                    Tel: {data.contact_number}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        }
+
         return (
           <div
             className="w-full h-full min-h-0 overflow-hidden flex flex-col justify-start select-text"
@@ -874,7 +987,7 @@ export default function DynamicDocumentRenderer({
                   lineHeight: isUltraCompact ? 1.1 : isCompactPartyCard ? 1.15 : 1.25,
                 }}
               >
-                {replaceDocumentTokens(elem.customText)}
+                {replaceTokens(elem.customText)}
               </div>
             ) : (
               <div
@@ -963,7 +1076,7 @@ export default function DynamicDocumentRenderer({
             </div>
             {elem.customText ? (
               <div className="space-y-0.5 mt-1.5 whitespace-pre-line leading-tight select-text" style={{ fontSize: `${suppPt}pt` }}>
-                {replaceDocumentTokens(elem.customText)}
+                {replaceTokens(elem.customText)}
               </div>
             ) : (
               <div className="space-y-0.5 mt-1.5 leading-tight select-text" style={{ fontSize: `${suppPt}pt` }}>
@@ -1022,7 +1135,7 @@ export default function DynamicDocumentRenderer({
             </div>
             {elem.customText ? (
               <div className="space-y-0.5 mt-1.5 whitespace-pre-line leading-tight select-text" style={{ fontSize: `${prjPt}pt` }}>
-                {replaceDocumentTokens(elem.customText)}
+                {replaceTokens(elem.customText)}
               </div>
             ) : (
               <div className="space-y-0.5 mt-1.5 leading-tight select-text" style={{ fontSize: `${prjPt}pt` }}>
@@ -1051,6 +1164,43 @@ export default function DynamicDocumentRenderer({
         const isUltraCompact = elem.height <= 22;
         const padMm = isUltraCompact ? 1.8 : Math.min(configuredPaddingMm, 2.5);
         const metaPt = resolvePt(elem.fontSize, isUltraCompact ? 7.2 : 8.0);
+
+        if (layout.documentType === "customer_statement" && !elem.customText) {
+          return (
+            <div
+              className="w-full h-full flex flex-col justify-center select-text overflow-hidden"
+              style={{
+                backgroundColor: elem.backgroundColor || "#FFFFFF",
+                border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+                borderRadius: `${elem.borderRadius !== undefined ? elem.borderRadius : 2}px`,
+                fontSize: `${metaPt}pt`,
+                ...elementAppearance(elem),
+              }}
+            >
+              <table className="w-full h-full text-left border-collapse" style={{ tableLayout: "fixed" }}>
+                <tbody>
+                  <tr className="border-b" style={{ borderColor: elem.borderColor || colors.border }}>
+                    <td className="px-2.5 py-0.5 font-medium text-slate-700 w-28" style={{ borderRight: `1px solid ${elem.borderColor || colors.border}` }}>Date:</td>
+                    <td className="px-2.5 py-0.5 font-semibold text-slate-900">{fmtDate(data.document_date)}</td>
+                  </tr>
+                  <tr className="border-b" style={{ borderColor: elem.borderColor || colors.border }}>
+                    <td className="px-2.5 py-0.5 font-medium text-slate-700" style={{ borderRight: `1px solid ${elem.borderColor || colors.border}` }}>Statement #</td>
+                    <td className="px-2.5 py-0.5 font-mono font-bold text-slate-900">{data.document_number}</td>
+                  </tr>
+                  <tr className="border-b" style={{ borderColor: elem.borderColor || colors.border }}>
+                    <td className="px-2.5 py-0.5 font-medium text-slate-700" style={{ borderRight: `1px solid ${elem.borderColor || colors.border}` }}>Customer ID:</td>
+                    <td className="px-2.5 py-0.5 font-mono text-slate-900">{data.customer_code || data.customer_id || ""}</td>
+                  </tr>
+                  <tr>
+                    <td className="px-2.5 py-0.5 font-medium text-slate-700" style={{ borderRight: `1px solid ${elem.borderColor || colors.border}` }}>Page</td>
+                    <td className="px-2.5 py-0.5 font-semibold text-slate-900">{pageNumber} of {resolvedTotalPages}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
         return (
           <div
             className="w-full h-full flex flex-col justify-start select-text overflow-hidden"
@@ -1179,22 +1329,24 @@ export default function DynamicDocumentRenderer({
               <thead>
                 <tr
                   style={{
-                    backgroundColor: isPrinterFriendly ? "#FFFFFF" : (tSettings.headerBg || colors.tableHeader),
-                    color: isPrinterFriendly ? colors.titleBg : (tSettings.headerTextColor || colors.tableHeaderTextColor),
+                    backgroundColor: layout.documentType === "customer_statement" ? "#9CA3AF" : (isPrinterFriendly ? "#FFFFFF" : (tSettings.headerBg || colors.tableHeader)),
+                    color: layout.documentType === "customer_statement" ? "#0F172A" : (isPrinterFriendly ? colors.titleBg : (tSettings.headerTextColor || colors.tableHeaderTextColor)),
                     height: `${headerHeightMm}mm`,
-                    borderTop: isPrinterFriendly ? `2px solid ${colors.primary}` : undefined,
-                    borderBottom: isPrinterFriendly ? `2px solid ${colors.primary}` : `${tSettings.borderThickness}px solid ${tableBorderColor}`,
+                    borderTop: isPrinterFriendly && layout.documentType !== "customer_statement" ? `2px solid ${colors.primary}` : undefined,
+                    borderBottom: layout.documentType === "customer_statement" ? "1px solid #94A3B8" : (isPrinterFriendly ? `2px solid ${colors.primary}` : `${tSettings.borderThickness}px solid ${tableBorderColor}`),
                   }}
                 >
                   {activeCols.map((col, cIdx) => {
                     const colHeaderPt = col.fontSize !== undefined ? col.fontSize : tableHeaderFontSizePt;
                     const labelContent = col.labelAr ? `${col.label}<br/><span dir="rtl" className="font-arabic text-[9px] text-slate-300">${col.labelAr}</span>` : col.label;
                     const isTargetAmountCol = ["unit_price", "vat_amount", "line_total", "rate", "discount"].includes(col.key);
-                    const effectiveAlign = isTargetAmountCol && (col.align === "right" || !col.align) ? "center" : (col.align || "left");
+                    const effectiveAlign = layout.documentType === "customer_statement"
+                      ? (col.align || "left")
+                      : (isTargetAmountCol && (col.align === "right" || !col.align) ? "center" : (col.align || "left"));
                     return (
                       <th
                         key={col.key}
-                        className={`${cellPadding} font-semibold`}
+                        className={`${cellPadding} font-bold whitespace-nowrap`}
                         style={{
                           ...customPaddingStyle,
                           width: `${col.widthPct}%`,
@@ -1202,9 +1354,9 @@ export default function DynamicDocumentRenderer({
                           textAlign: effectiveAlign,
                           borderRight: cIdx === activeCols.length - 1
                             ? undefined
-                            : isPrinterFriendly
+                            : isPrinterFriendly && layout.documentType !== "customer_statement"
                             ? `1px solid ${colors.border}`
-                            : `${tSettings.borderThickness}px solid rgba(255,255,255,0.18)`,
+                            : `${tSettings.borderThickness}px solid rgba(148, 163, 184, 0.5)`,
                           lineHeight: 1.15,
                         }}
                       >
@@ -1257,7 +1409,12 @@ export default function DynamicDocumentRenderer({
                         else if (col.key === "reference") val = item.reference || "";
                         else if (col.key === "debit") val = item.debit ? Number(item.debit).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
                         else if (col.key === "credit") val = item.credit ? Number(item.credit).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
-                        else if (col.key === "balance") val = item.balance == null ? "—" : Number(item.balance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        else if (col.key === "balance" || (layout.documentType === "customer_statement" && col.key === "line_total")) {
+                          const b = item.balance !== undefined ? item.balance : item.line_total;
+                          if (b == null) val = "—";
+                          else if (b < 0) val = `(${Math.abs(Number(b)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+                          else val = Number(b).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        }
                         else if (col.key === "area_name") val = item.area_name || `Area ${firstItemIndex + idx + 1}`;
                         else if (col.key === "dimensions") val = item.dimensions || "—";
                         else if (col.key === "calc_type") val = item.calc_type_formula || item.calc_type || "—";
@@ -1284,18 +1441,22 @@ export default function DynamicDocumentRenderer({
                         }
 
                         const isTargetAmountCol = ["unit_price", "vat_amount", "line_total", "rate", "discount"].includes(col.key);
-                        const effectiveAlign = isTargetAmountCol && (col.align === "right" || !col.align) ? "center" : (col.align || "left");
+                        const effectiveAlign = layout.documentType === "customer_statement" && ["debit", "credit", "balance", "line_total"].includes(col.key)
+                          ? (col.align || "right")
+                          : isTargetAmountCol && (col.align === "right" || !col.align) ? "center" : (col.align || "left");
+
+                        const isNoWrap = isMonetary || ["type", "date", "reference"].includes(col.key);
 
                         return (
                           <td
                             key={col.key}
-                            className={`${cellPadding} break-words ${col.key === "dimensions" || col.key === "calc_type" || col.key === "description" ? "whitespace-pre-line" : ""} ${isMonetary ? "whitespace-nowrap font-mono" : ""}`}
+                            className={`${cellPadding} ${isNoWrap ? "whitespace-nowrap" : "break-words"} ${col.key === "dimensions" || col.key === "calc_type" || col.key === "description" ? "whitespace-pre-line" : ""} ${isMonetary ? "font-mono" : ""}`}
                             style={{
                               ...customPaddingStyle,
                               fontSize: `${colBodyPt}pt`,
                               textAlign: effectiveAlign,
                               fontFamily: isMonetary ? "monospace" : "inherit",
-                              fontWeight: col.key === "line_total" ? 700 : 400,
+                              fontWeight: col.key === "line_total" || col.key === "balance" ? 700 : 400,
                               lineHeight: 1.15,
                               borderRight: cIdx === activeCols.length - 1
                                 ? undefined
@@ -1340,6 +1501,30 @@ export default function DynamicDocumentRenderer({
           );
         }
 
+        if (layout.documentType === "customer_statement") {
+          const wordsPt = resolvePt(elem.fontSize, 9);
+          return (
+            <div
+              className="w-full h-full px-3 py-1 flex items-center justify-between select-text overflow-hidden font-bold"
+              style={{
+                backgroundColor: elem.backgroundColor || "#9CA3AF",
+                border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
+                borderRadius: `${elem.borderRadius !== undefined ? elem.borderRadius : 2}px`,
+                fontSize: `${wordsPt}pt`,
+                color: elem.color || "#0F172A",
+                ...elementAppearance(elem),
+              }}
+            >
+              <span className="uppercase tracking-wide font-extrabold text-slate-900">
+                {elem.customText || "Account Current Balance"}
+              </span>
+              <span className="font-mono font-extrabold text-slate-900" style={{ fontSize: `${wordsPt * 1.15}pt` }}>
+                {fmtAED(data.total_amount)}
+              </span>
+            </div>
+          );
+        }
+
         const isDenseWords = elem.height <= 22;
         const wordsPadding = isDenseWords ? "p-1.5" : "p-2";
         const baseWordsPt = resolvePt(elem.fontSize, isDenseWords ? 7.2 : 7.6);
@@ -1361,7 +1546,7 @@ export default function DynamicDocumentRenderer({
           >
             {elem.customText ? (
               <div className="w-full h-full min-h-0 overflow-hidden whitespace-pre-line leading-relaxed select-text" style={{ fontSize: `${textPt}pt` }}>
-                {replaceDocumentTokens(elem.customText)}
+                {replaceTokens(elem.customText)}
               </div>
             ) : (
               <>
@@ -1427,34 +1612,72 @@ export default function DynamicDocumentRenderer({
         }
 
         if (layout.documentType === "customer_statement") {
+          const totalsPt = resolvePt(elem.fontSize, 7.8);
+          const opening = data.opening_balance ?? (data.items[0]?.type === "Opening" ? data.items[0].balance : 0);
           return (
             <div
-              className="w-full h-fit overflow-hidden rounded select-text flex flex-col justify-start"
+              className="w-full h-full min-h-0 overflow-hidden rounded select-text flex flex-col justify-start"
               style={{
                 border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
-                borderRadius: `${elem.borderRadius || 4}px`,
+                borderRadius: `${elem.borderRadius !== undefined ? elem.borderRadius : 2}px`,
+                backgroundColor: elem.backgroundColor || "#FFFFFF",
                 ...elementAppearance(elem),
                 fontSize: `${totalsPt}pt`,
               }}
             >
-              <div className="flex justify-between py-1 px-2.5 bg-slate-50 border-b" style={{ borderColor: colors.border }}>
-                <span className="font-bold" style={{ color: colors.muted }}>Total Invoiced (Debits):</span>
-                <span className="font-mono font-bold">{fmtAED(data.subtotal)}</span>
-              </div>
-              <div className="flex justify-between py-1 px-2.5 border-b" style={{ borderColor: colors.border }}>
-                <span className="font-bold" style={{ color: colors.muted }}>Total Paid (Credits):</span>
-                <span className="font-mono font-bold">{fmtAED(totalCredits)}</span>
-              </div>
               <div
-                className="flex justify-between py-1.5 px-2.5 font-bold text-slate-900 border-b"
+                className="w-full px-2.5 py-0.5 font-bold text-slate-900 border-b select-none flex items-center"
                 style={{
-                  backgroundColor: colors.totalHighlight,
-                  borderColor: colors.border,
+                  backgroundColor: "#9CA3AF",
+                  color: "#0F172A",
+                  borderColor: elem.borderColor || colors.border,
+                  fontSize: `${Math.max(6, totalsPt * 0.95)}pt`,
+                  lineHeight: 1.15,
+                  minHeight: "4.8mm",
                 }}
               >
-                <span>Closing Balance:</span>
-                <span className="font-mono" style={{ color: colors.primary }}>{fmtAED(data.total_amount)}</span>
+                Account Summary
               </div>
+              <table className="w-full border-collapse" style={{ tableLayout: "fixed" }}>
+                <colgroup>
+                  <col style={{ width: "54%" }} />
+                  <col style={{ width: "46%" }} />
+                </colgroup>
+                <tbody className="text-slate-800" style={{ fontSize: `${totalsPt}pt` }}>
+                  <tr className="border-b" style={{ borderColor: elem.borderColor || colors.border }}>
+                    <td className="px-2 py-[1px] font-medium text-slate-700 whitespace-nowrap">Previous Balance</td>
+                    <td className="px-2 py-[1px] text-right font-mono font-bold whitespace-nowrap">
+                      {fmtAED(opening || 0)}
+                    </td>
+                  </tr>
+                  <tr className="border-b" style={{ borderColor: elem.borderColor || colors.border }}>
+                    <td className="px-2 py-[1px] font-medium text-slate-700 whitespace-nowrap">Credits</td>
+                    <td className="px-2 py-[1px] text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
+                      {fmtAED(totalCredits || 0)}
+                    </td>
+                  </tr>
+                  <tr className="border-b" style={{ borderColor: elem.borderColor || colors.border }}>
+                    <td className="px-2 py-[1px] font-medium text-slate-700 whitespace-nowrap">New Charges</td>
+                    <td className="px-2 py-[1px] text-right font-mono font-bold text-rose-700 whitespace-nowrap">
+                      {fmtAED(data.subtotal || 0)}
+                    </td>
+                  </tr>
+                  <tr className={data.due_date ? "border-b" : ""} style={{ borderColor: elem.borderColor || colors.border }}>
+                    <td className="px-2 py-[1.2px] font-extrabold text-slate-900 whitespace-nowrap">Total Balance Due</td>
+                    <td className="px-2 py-[1.2px] text-right font-mono font-extrabold text-slate-900 whitespace-nowrap">
+                      {fmtAED(data.total_amount)}
+                    </td>
+                  </tr>
+                  {data.due_date && (
+                    <tr>
+                      <td className="px-2 py-[1px] font-medium text-slate-600 whitespace-nowrap">Payment Due Date</td>
+                      <td className="px-2 py-[1px] text-right font-mono text-slate-700 whitespace-nowrap">
+                        {fmtDate(data.due_date)}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           );
         }
@@ -1594,7 +1817,7 @@ export default function DynamicDocumentRenderer({
           >
             {elem.customText ? (
               <div className="whitespace-pre-line leading-snug select-text" style={{ fontSize: `${bankPt}pt` }}>
-                {replaceDocumentTokens(elem.customText)}
+                {replaceTokens(elem.customText)}
               </div>
             ) : (
               <>
@@ -1636,6 +1859,37 @@ export default function DynamicDocumentRenderer({
           "purchase_order",
         ].includes(layout.documentType);
 
+        if (layout.documentType === "customer_statement") {
+          return (
+            <div
+              className={`w-full h-full leading-relaxed select-text flex flex-col justify-center items-center text-center ${termsPadding}`}
+              style={{
+                color: elem.color || "#0F172A",
+                ...elementAppearance(elem),
+                fontSize: `${termsPt}pt`,
+              }}
+            >
+              {elem.customText ? (
+                <div className="whitespace-pre-line leading-relaxed select-text font-medium" style={{ fontSize: `${termsPt}pt` }}>
+                  {replaceTokens(elem.customText)}
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <div className="text-slate-800">
+                    Your account balance is {fmtAED(data.total_amount)}. Please make your payment to cover the balance by the due date.
+                  </div>
+                  <div className="font-bold text-slate-900">
+                    Make all checks payable to {brand.legal_name || brand.name}
+                  </div>
+                  <div className="font-extrabold text-[12pt] text-slate-900 pt-1">
+                    Thank you for your business!
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
+
         return (
           <div
             className={`w-full h-full leading-snug select-text ${termsPadding}`}
@@ -1647,7 +1901,7 @@ export default function DynamicDocumentRenderer({
           >
             {elem.customText ? (
               <div className="whitespace-pre-line leading-snug select-text" style={{ fontSize: `${termsPt}pt` }}>
-                {replaceDocumentTokens(elem.customText)}
+                {replaceTokens(elem.customText)}
               </div>
             ) : hasBulletedTerms && isStandardInvoiceOrQuotation ? (
               <div className="flex flex-col h-full justify-start text-left">
@@ -1857,7 +2111,7 @@ export default function DynamicDocumentRenderer({
             }}
           >
             {elem.customText ? (
-              <span>{replaceDocumentTokens(elem.customText)}</span>
+              <span>{replaceTokens(elem.customText)}</span>
             ) : (
               <>
                 <span className="font-semibold mr-1">TRN:</span>
@@ -1901,9 +2155,25 @@ export default function DynamicDocumentRenderer({
             }}
           >
             {hasCustom ? (
-              <div className="w-full leading-normal" style={{ whiteSpace: "pre-wrap" }}>
-                {formattedCustomText}
-              </div>
+              layout.documentType === "customer_statement" && formattedCustomText.includes("\n") ? (
+                <div className="w-full flex flex-col items-center justify-center space-y-0.5 text-center select-text">
+                  {formattedCustomText.split("\n").map((line, idx) => (
+                    idx === 0 ? (
+                      <div key={idx} className="w-full py-0.5 border-t border-b border-slate-300 font-medium text-slate-800" style={{ fontSize: `${footerPt}pt` }}>
+                        {line}
+                      </div>
+                    ) : (
+                      <div key={idx} className="w-full text-slate-600 leading-tight" style={{ fontSize: `${footerPt}pt` }}>
+                        {line}
+                      </div>
+                    )
+                  ))}
+                </div>
+              ) : (
+                <div className="w-full leading-normal" style={{ whiteSpace: "pre-wrap" }}>
+                  {formattedCustomText}
+                </div>
+              )
             ) : (
               <>
                 <div className="w-full font-medium text-slate-800 leading-snug truncate" style={{ fontSize: `${footerPt}pt` }}>
@@ -2044,20 +2314,7 @@ export default function DynamicDocumentRenderer({
         isDesignerPreview={isDesignerPreview}
         elements={effectiveGeometry.elements}
       />
-
-      {/* Margin Guidelines (designer visual guides only) */}
-      {isDesignerPreview && (
-        <div
-          className="absolute inset-0 pointer-events-none z-0 border border-dashed border-blue-200/50"
-          style={{
-            top: `${layout.page.margins.top}mm`,
-            left: `${layout.page.margins.left}mm`,
-            right: `${layout.page.margins.right}mm`,
-            bottom: `${layout.page.margins.bottom}mm`,
-          }}
-        />
-      )}
-
+      {/* Dynamic Document Elements */}
       {/* Render all visible layout elements with dynamic flow-aware geometry */}
       {effectiveGeometry.elements
         .filter((elem) => {

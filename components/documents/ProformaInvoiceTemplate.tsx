@@ -8,7 +8,8 @@ import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
 import DocSignatureArea from "./DocSignatureArea";
 import { numberToWordsEnglish, numberToWordsArabic } from "@/lib/amountInWords";
-import { fmtAED, fmtDate } from "@/lib/helpers";
+import { fmtAED, fmtDate, formatDisplayDocNumber } from "@/lib/helpers";
+import { stripCustomPartyTags } from "@/lib/documentCustomer";
 import DocumentContainer from "./DocumentContainer";
 
 export type ProformaLineItem = {
@@ -60,7 +61,7 @@ export default function ProformaInvoiceTemplate({
   if (!design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
 
   const rendererData: MockDocumentData = {
-    document_number: proforma.proforma_number,
+    document_number: formatDisplayDocNumber(proforma.proforma_number, "proforma_invoice") || proforma.proforma_number,
     document_date: proforma.proforma_date,
     status: proforma.status || undefined,
     customer_name: proforma.customer_name,
@@ -84,8 +85,8 @@ export default function ProformaInvoiceTemplate({
     subtotal: proforma.subtotal,
     vat_amount: proforma.vat_amount,
     total_amount: proforma.total_amount,
-    payment_terms: proforma.payment_terms || undefined,
-    notes: proforma.notes || undefined,
+    payment_terms: stripCustomPartyTags(proforma.payment_terms) || undefined,
+    notes: stripCustomPartyTags(proforma.notes) || undefined,
   };
   const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
   const effectiveTitle =
@@ -170,10 +171,10 @@ export default function ProformaInvoiceTemplate({
                 <span className="text-slate-500">Date:</span>
                 <div className="font-semibold text-slate-900">{fmtDate(proforma.proforma_date)}</div>
               </div>
-              {proforma.payment_terms && (
+              {stripCustomPartyTags(proforma.payment_terms) && (
                 <div>
                   <span className="text-slate-500">Payment Terms:</span>
-                  <div className="font-semibold text-slate-900">{proforma.payment_terms}</div>
+                  <div className="font-semibold text-slate-900">{stripCustomPartyTags(proforma.payment_terms)}</div>
                 </div>
               )}
               {proforma.project_number && (

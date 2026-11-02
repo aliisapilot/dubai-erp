@@ -55,10 +55,21 @@ export async function executeTopologicalImport(
   const projectIdMap = new Map<string, string>(); // nameKey -> UUID
 
   try {
+    // Pre-validation safeguard: filter out any documents with validation errors or needs_review
+    const eligibleDocuments = approvedDocuments.filter(doc => {
+      const hasErrors = (doc.validationErrors && doc.validationErrors.length > 0) ||
+        doc.destinationMappings?.some(m => m.proposedAction === "needs_review");
+      if (hasErrors) {
+        errors.push(`Document ${doc.filename} has unresolved validation errors / needs review and was blocked from import.`);
+        return false;
+      }
+      return true;
+    });
+
     // ---------------------------------------------------------
     // STAGE A: Customers
     // ---------------------------------------------------------
-    for (const doc of approvedDocuments) {
+    for (const doc of eligibleDocuments) {
       const cRes = doc.customerResolution;
       if (!cRes || !cRes.extractedName || cRes.action === "skip") continue;
 
@@ -126,7 +137,7 @@ export async function executeTopologicalImport(
     // ---------------------------------------------------------
     // STAGE B: Suppliers
     // ---------------------------------------------------------
-    for (const doc of approvedDocuments) {
+    for (const doc of eligibleDocuments) {
       const sRes = doc.supplierResolution;
       if (!sRes || !sRes.extractedName || sRes.action === "skip") continue;
 
@@ -193,7 +204,7 @@ export async function executeTopologicalImport(
     // ---------------------------------------------------------
     // STAGE C: Projects
     // ---------------------------------------------------------
-    for (const doc of approvedDocuments) {
+    for (const doc of eligibleDocuments) {
       const pRes = doc.projectResolution;
       if (!pRes || !pRes.extractedName || pRes.action === "skip") continue;
 
@@ -268,7 +279,7 @@ export async function executeTopologicalImport(
     // ---------------------------------------------------------
     // STAGE D: Documents & Line Items
     // ---------------------------------------------------------
-    for (const doc of approvedDocuments) {
+    for (const doc of eligibleDocuments) {
       if (doc.isDuplicate) continue; // Skip duplicates to preserve integrity
 
       const custName = doc.customerResolution?.extractedName?.toLowerCase().trim();
@@ -428,7 +439,7 @@ export async function executeTopologicalImport(
                 unit: it.unit || "Nos",
                 unit_price: it.unitPrice,
                 discount_percent: it.discount || 0,
-                taxable_amount: it.quantity * it.unitPrice,
+                taxable_amount: it.taxableAmount !== undefined ? it.taxableAmount : (it.quantity * it.unitPrice - (it.discount || 0)),
                 vat_rate: it.vatRate || 5,
                 vat_amount: it.vatAmount || 0,
                 line_total: it.total,

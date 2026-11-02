@@ -28,7 +28,7 @@ const start = renderer.indexOf('let val: React.ReactNode = "";');
 const end = renderer.indexOf('const isMonetary', start);
 const format = vm.runInNewContext(ts.transpileModule(`(function(col,item){const firstItemIndex=0,idx=0;${renderer.slice(start,end)}return val;})`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, { fmtDate: value => value.split('-').reverse().join('/') });
 assert.equal(format({key:'balance'}, {balance:0}), '0.00');
-assert.equal(format({key:'balance'}, {balance:-24199}), '-24,199.00');
+assert.equal(format({key:'balance'}, {balance:-24199}), '(24,199.00)');
 assert.equal(format({key:'credit'}, {credit:18000}), '18,000.00');
 assert.equal(format({key:'debit'}, {debit:0}), '—');
 assert.equal(format({key:'date'}, {date:'2026-09-22'}), '22/09/2026');

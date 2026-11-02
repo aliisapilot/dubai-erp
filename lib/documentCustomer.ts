@@ -89,15 +89,22 @@ export function parseCustomPartyFromNotes(
 }
 
 /**
- * Strips custom party metadata tags from notes for clean human-readable rendering.
+ * Strips custom party metadata tags from notes, terms, or remarks for clean human-readable rendering.
+ * Safely removes markers and serialized JSON while completely preserving genuine user content.
  */
 export function stripCustomPartyTags(notes: unknown): string {
   if (typeof notes !== "string" || !notes) return "";
-  return notes
-    .replace(/<!--\[CUSTOM_CUSTOMER:[\s\S]*?\]-->/g, "")
-    .replace(/<!--\[CUSTOM_SUPPLIER:[\s\S]*?\]-->/g, "")
-    .replace(/<!--\[CUSTOM_PARTY:[\s\S]*?\]-->/g, "")
-    .trim();
+  let clean = notes;
+  // 1. Standard HTML comment tags <!--[CUSTOM_CUSTOMER: ... ]--> or unclosed / variant endings
+  clean = clean.replace(/<!--\s*\[?\s*CUSTOM_(?:CUSTOMER|SUPPLIER|PARTY):\s*[\s\S]*?(?:\]\s*-->|-->|$)/gi, "");
+  // 2. Bracketed tags without HTML comment [CUSTOM_CUSTOMER: ... ]
+  clean = clean.replace(/\[\s*CUSTOM_(?:CUSTOMER|SUPPLIER|PARTY):\s*[\s\S]*?(?:\]|$)/gi, "");
+  // 3. Raw CUSTOM_CUSTOMER: { ... } or CUSTOM_SUPPLIER: { ... } if serialized JSON without comment wrappers
+  clean = clean.replace(/CUSTOM_(?:CUSTOMER|SUPPLIER|PARTY):\s*\{[\s\S]*?\}/gi, "");
+  // 4. Any leftover markers like <!--[CUSTOM_CUSTOMER: or [CUSTOM_CUSTOMER:
+  clean = clean.replace(/<!--\s*\[?\s*CUSTOM_(?:CUSTOMER|SUPPLIER|PARTY):[^\n\r]*/gi, "");
+  clean = clean.replace(/\[?\s*CUSTOM_(?:CUSTOMER|SUPPLIER|PARTY):[^\n\r]*/gi, "");
+  return clean.trim();
 }
 
 /**
@@ -140,6 +147,7 @@ export function isCustomCustomerRecord(record: DocumentRecord): boolean {
  * on a document win so historical contact/address snapshots are preserved.
  *
  * Supports direct columns, custom_customer JSONB, encoded notes fallback, and master DB customers.
+ * Sanitizes internal party tags from notes, payment_terms, and terms_conditions.
  */
 export function withCustomerDocumentDetails<T extends DocumentRecord>(record: T): T & {
   customer_name: string;
@@ -208,6 +216,12 @@ export function withCustomerDocumentDetails<T extends DocumentRecord>(record: T)
     Boolean(customNotes) ||
     (!record.customer_id && Boolean(name));
 
+  const cleanNotes = stripCustomPartyTags(record.notes);
+  const rawTerms =
+    (record as { terms_conditions?: unknown }).terms_conditions ??
+    (record as { payment_terms?: unknown }).payment_terms;
+  const cleanTerms = stripCustomPartyTags(rawTerms);
+
   return {
     ...record,
     customer_name: name,
@@ -219,6 +233,9 @@ export function withCustomerDocumentDetails<T extends DocumentRecord>(record: T)
     project_name: projectName,
     custom_project_name: projectName,
     is_custom_customer: isCustom,
+    notes: cleanNotes || undefined,
+    terms_conditions: cleanTerms || undefined,
+    payment_terms: cleanTerms || undefined,
   };
 }
 
@@ -299,6 +316,12 @@ export function withSupplierDocumentDetails<T extends DocumentRecord>(record: T)
     Boolean(customNotes) ||
     (!record.supplier_id && Boolean(name));
 
+  const cleanNotes = stripCustomPartyTags(record.notes);
+  const rawTerms =
+    (record as { terms_conditions?: unknown }).terms_conditions ??
+    (record as { payment_terms?: unknown }).payment_terms;
+  const cleanTerms = stripCustomPartyTags(rawTerms);
+
   return {
     ...record,
     supplier_name: name,
@@ -310,6 +333,9 @@ export function withSupplierDocumentDetails<T extends DocumentRecord>(record: T)
     project_name: projectName,
     custom_project_name: projectName,
     is_custom_supplier: isCustom,
+    notes: cleanNotes || undefined,
+    terms_conditions: cleanTerms || undefined,
+    payment_terms: cleanTerms || undefined,
   };
 }
 

@@ -1,5 +1,7 @@
 "use client";
 
+import DesignerPortal from "./DesignerPortal";
+
 import { useState } from "react";
 import { Copy, Download, Pencil, Save, Star, Trash2, X } from "lucide-react";
 import { DOCUMENT_TYPE_OPTIONS, DocumentTypeId } from "@/lib/documentDesigner";
@@ -49,8 +51,9 @@ export default function StylePresetsModal({
 
   const isSaveMode = mode === "save";
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section role="dialog" aria-modal="true" aria-labelledby="style-presets-title" className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl">
+    <DesignerPortal>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section role="dialog" aria-modal="true" aria-labelledby="style-presets-title" className="relative z-[101] flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl">
         <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <div>
             <h2 id="style-presets-title" className="text-sm font-bold text-white">{isSaveMode ? "Save My Style" : "Manage Saved Styles"}</h2>
@@ -127,5 +130,6 @@ export default function StylePresetsModal({
         )}
       </section>
     </div>
+    </DesignerPortal>
   );
 }

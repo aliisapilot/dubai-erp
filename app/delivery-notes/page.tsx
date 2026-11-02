@@ -4,7 +4,7 @@ import { planDeliveryStock } from "@/lib/deliveryStock";
 import { FormEvent, useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, X, Save, Loader2, Pencil, Printer, Trash2, ClipboardList, ZoomIn, ZoomOut, Maximize2, Minimize2, CheckCircle2, AlertTriangle } from "lucide-react";
-import { getCompanyId, getCurrentCompany, statusClass, fmtDate, todayISO, generateDocNumber } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, statusClass, fmtDate, todayISO, generateDocNumber, formatDisplayDocNumber } from "@/lib/helpers";
 import DeliveryNoteTemplate, { DeliveryNoteData } from "@/components/documents/DeliveryNoteTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
@@ -563,7 +563,8 @@ export default function DeliveryNotesPage() {
     if (filterStatus && (n.status || "").toLowerCase() !== filterStatus.toLowerCase()) return false;
     const cname = n.customer_name || custMap[n.customer_id || ""]?.name || "";
     const pname = n.custom_project_name || prjMap[n.project_id || ""]?.name || "";
-    return [n.delivery_note_number, cname, pname, n.order_ref, n.driver_name, n.vehicle_number, n.receiver_name, n.status]
+    const simplifiedNum = formatDisplayDocNumber(n.delivery_note_number, "delivery_note");
+    return [n.delivery_note_number, simplifiedNum, cname, pname, n.order_ref, n.driver_name, n.vehicle_number, n.receiver_name, n.status]
       .filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
 
@@ -667,7 +668,16 @@ export default function DeliveryNotesPage() {
               <tbody className="divide-y divide-slate-100">
                 {filtered.map(dn => (
                   <tr key={dn.id} className="hover:bg-slate-50 transition">
-                    <td className="px-4 py-3 font-mono text-xs font-bold text-slate-800">{dn.delivery_note_number || "—"}</td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      <span className="font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                        {formatDisplayDocNumber(dn.delivery_note_number, "delivery_note") || "—"}
+                      </span>
+                      {dn.delivery_note_number && dn.delivery_note_number !== formatDisplayDocNumber(dn.delivery_note_number, "delivery_note") && (
+                        <span className="text-[10px] text-slate-400 block font-normal mt-0.5" title="Original Database Identifier">
+                          {dn.delivery_note_number}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 font-semibold text-slate-900">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span>{dn.customer_name || custMap[dn.customer_id || ""]?.name || "—"}</span>

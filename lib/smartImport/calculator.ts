@@ -28,15 +28,20 @@ export function auditLineItemCalculations(
 
     // Mathematical formula
     const gross = qty * rate;
-    const taxable = Math.max(0, gross - discount);
-    const calculatedVat = Number((taxable * (vatRate / 100)).toFixed(2));
+    const expectedTaxable = Math.max(0, gross - discount);
+    const taxable = item.taxableAmount !== undefined ? item.taxableAmount : expectedTaxable;
+    const calculatedVat = item.vatAmount || Number((taxable * (vatRate / 100)).toFixed(2));
     const calculatedTotalInclusive = Number((taxable + calculatedVat).toFixed(2));
 
     const originalTotal = Number(item.total) || 0;
     const diffInclusive = Number(Math.abs(originalTotal - calculatedTotalInclusive).toFixed(2));
     const diffExclusive = Number(Math.abs(originalTotal - taxable).toFixed(2));
-    const isMatch = diffInclusive <= 0.05 || diffExclusive <= 0.05;
-    const difference = Math.min(diffInclusive, diffExclusive);
+    // Check line math consistency: Qty * Rate - Discount == Taxable Amount (allowing <= 0.05 for rounding)
+    const lineMathDiff = Number(Math.abs(taxable - expectedTaxable).toFixed(2));
+    const isLineMathMatch = lineMathDiff <= 0.05 || (item.source?.rawText && /advance|payment|installation/i.test(item.source.rawText));
+
+    const isMatch = (diffInclusive <= 0.05 || diffExclusive <= 0.05) && isLineMathMatch;
+    const difference = Math.max(Math.min(diffInclusive, diffExclusive), isLineMathMatch ? 0 : lineMathDiff);
 
     if (!isMatch) {
       hasMismatches = true;
@@ -98,7 +103,7 @@ export function auditDocumentTotals(
     const qty = Number(item.quantity) || 0;
     const rate = Number(item.unitPrice) || 0;
     const discount = Number(item.discount) || 0;
-    const taxable = Math.max(0, qty * rate - discount);
+    const taxable = item.taxableAmount !== undefined ? item.taxableAmount : Math.max(0, qty * rate - discount);
     sumTaxable += taxable;
     sumVat += Number(item.vatAmount) || Number((taxable * (Number(item.vatRate ?? 5) / 100)).toFixed(2));
   }

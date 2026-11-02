@@ -44,7 +44,6 @@ export default function SmartFitSection({
   const layoutMode: DesignerLayoutMode = layout.layoutMode || "manual";
   const isManual = layoutMode === "manual";
   const isAssisted = layoutMode === "assisted";
-  const isAutoFit = layoutMode === "auto_fit";
 
   // In manual mode, collapse auto-fit controls by default so they do not distract
   const [showAutoFitConfig, setShowAutoFitConfig] = useState(!isManual);
@@ -127,6 +126,28 @@ export default function SmartFitSection({
           <p className="text-[10px] text-slate-300 leading-relaxed">
             All user-defined font sizes, exact coordinates, row heights, and table dimensions are strictly preserved. Automatic fitting calculations are completely bypassed.
           </p>
+          <div className="pt-2 border-t border-amber-500/20 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-amber-200 block">
+                Compact Empty Space
+              </span>
+              <span className="text-[9px] text-slate-300">
+                Move totals, bank details, terms, signature &amp; footer upward based on actual line items
+              </span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer ml-2">
+              <input
+                type="checkbox"
+                checked={Boolean(smartFit.compactEmptySpace || layout.page?.compactEmptySpace)}
+                onChange={(e) => {
+                  updateSmartFit({ compactEmptySpace: e.target.checked });
+                  onUpdatePageSettings({ compactEmptySpace: e.target.checked });
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-8 h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+            </label>
+          </div>
           {onChangeLayoutMode && (
             <div className="pt-0.5 flex items-center gap-2">
               <button
@@ -415,6 +436,26 @@ export default function SmartFitSection({
                 type="checkbox"
                 checked={smartFit.printSafeBorders}
                 onChange={(e) => updateSmartFit({ printSafeBorders: e.target.checked })}
+                className="rounded accent-emerald-500 w-4 h-4 cursor-pointer"
+              />
+            </label>
+
+            <label className="flex items-center justify-between cursor-pointer p-2 rounded bg-slate-900/60 border border-slate-800/80">
+              <div className="pr-2">
+                <span className="text-[10px] font-semibold text-slate-200 block">
+                  Compact Empty Space
+                </span>
+                <span className="text-[9px] text-slate-400">
+                  Move totals, bank details, terms, signature, and footer upward to eliminate empty space after short tables
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={Boolean(smartFit.compactEmptySpace || layout.page?.compactEmptySpace)}
+                onChange={(e) => {
+                  updateSmartFit({ compactEmptySpace: e.target.checked });
+                  onUpdatePageSettings({ compactEmptySpace: e.target.checked });
+                }}
                 className="rounded accent-emerald-500 w-4 h-4 cursor-pointer"
               />
             </label>

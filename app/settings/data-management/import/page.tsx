@@ -322,10 +322,14 @@ export default function SmartImportPage() {
 
   function toggleSelectAll(select: boolean) {
     setQueue(prev =>
-      prev.map(q => ({
-        ...q,
-        selectedForImport: select ? (skipDuplicates ? !q.parsedDoc?.isDuplicate : true) : false,
-      }))
+      prev.map(q => {
+        const hasErrors = (q.parsedDoc?.validationErrors && q.parsedDoc.validationErrors.length > 0) ||
+          q.parsedDoc?.destinationMappings?.some(m => m.proposedAction === "needs_review");
+        return {
+          ...q,
+          selectedForImport: select ? (skipDuplicates ? !q.parsedDoc?.isDuplicate : true) && !hasErrors : false,
+        };
+      })
     );
   }
 
@@ -532,35 +536,56 @@ export default function SmartImportPage() {
 
           if (docResult) {
             const finalDoc = docResult;
-            setQueue(prev =>
-              prev.map(q =>
-                q.id === currentItem.id
-                  ? {
-                      ...q,
-                      status: "ready",
-                      progressPercent: 100,
-                      parsedDoc: finalDoc,
-                      requestId: lastReqId,
-                      storagePath: savedStoragePath,
-                      selectedForImport: !finalDoc.isDuplicate,
-                    }
-                  : q
-              )
-            );
+            if (finalDoc.extractionStatus === "failed") {
+              setQueue(prev =>
+                prev.map(q =>
+                  q.id === currentItem.id
+                    ? {
+                        ...q,
+                        status: "failed",
+                        progressPercent: 0,
+                        errorMessage: `Extraction Error: ${finalDoc.extractionError || finalDoc.classificationReason || "Extraction failed"}`,
+                        parsedDoc: finalDoc,
+                        requestId: lastReqId,
+                        retries: attempt,
+                      }
+                    : q
+                )
+              );
+            } else {
+              setQueue(prev =>
+                prev.map(q =>
+                  q.id === currentItem.id
+                    ? {
+                        ...q,
+                        status: "ready",
+                        progressPercent: 100,
+                        parsedDoc: finalDoc,
+                        requestId: lastReqId,
+                        storagePath: savedStoragePath,
+                        selectedForImport:
+                          !finalDoc.isDuplicate &&
+                          (!finalDoc.validationErrors || finalDoc.validationErrors.length === 0) &&
+                          finalDoc.destinationMappings.every(m => m.proposedAction !== "needs_review"),
+                      }
+                    : q
+                )
+              );
 
-            // Add to documents incrementally
-            setDocuments(prev => {
-              const idx = prev.findIndex(d => d.filename === finalDoc.filename);
-              const updated = idx !== -1 ? [...prev.slice(0, idx), finalDoc, ...prev.slice(idx + 1)] : [...prev, finalDoc];
+              // Add to documents incrementally
+              setDocuments(prev => {
+                const idx = prev.findIndex(d => d.filename === finalDoc.filename);
+                const updated = idx !== -1 ? [...prev.slice(0, idx), finalDoc, ...prev.slice(idx + 1)] : [...prev, finalDoc];
 
-              // Automatically recompute relationship trees
-              const trees = buildRelationshipTrees(updated);
-              setRelationshipTrees(trees);
+                // Automatically recompute relationship trees
+                const trees = buildRelationshipTrees(updated);
+                setRelationshipTrees(trees);
 
-              return updated;
-            });
+                return updated;
+              });
 
-            setSelectedDocId(prev => prev || finalDoc.id);
+              setSelectedDocId(prev => prev || finalDoc.id);
+            }
           } else {
             setQueue(prev =>
               prev.map(q =>
@@ -719,11 +744,13 @@ export default function SmartImportPage() {
       return;
     }
 
-    // Filter only selected documents (and skip duplicates if toggle is on)
+    // Filter only selected documents (and skip duplicates, validation errors, or needs_review docs)
     const approvedDocs = documents.filter(d => {
       const qItem = queue.find(q => q.name === d.filename || q.parsedDoc?.id === d.id);
       if (qItem && !qItem.selectedForImport) return false;
       if (skipDuplicates && d.isDuplicate) return false;
+      if (d.validationErrors && d.validationErrors.length > 0) return false;
+      if (d.destinationMappings?.some(m => m.proposedAction === "needs_review")) return false;
       return true;
     });
 
@@ -1758,62 +1785,265 @@ export default function SmartImportPage() {
         {/* ============================================================== */}
         {activeTab === "extracted" && (
           <div className="space-y-4">
-            <h2 className="text-sm font-semibold text-white">Extracted Business Documents Summary</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {documents.map(doc => (
-                <div key={doc.id} className="p-4 rounded-xl border border-slate-800 bg-slate-950/60 space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
-                    <div className="flex items-center gap-2">
-                      <FileText size={16} className="text-emerald-400" />
-                      <span className="font-semibold text-white text-xs">{doc.filename}</span>
-                    </div>
-                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      {doc.documentType} ({Math.round(doc.classificationConfidence * 100)}%)
-                    </span>
-                  </div>
+            {/* Top Summary Banner */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl bg-slate-900 border border-slate-800">
+              <div>
+                <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <FileText size={16} className="text-emerald-400" />
+                  <span>Smart Import Document Review Table</span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Comprehensive audit of extracted invoice values, relational customer mappings, and planned database operations.
+                </p>
+              </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase">Document Number:</span>
-                      <p className="font-medium text-slate-200">{String(doc.fields.document_number?.value || "N/A")}</p>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase">Document Date:</span>
-                      <p className="font-medium text-slate-200">{String(doc.fields.document_date?.value || "N/A")}</p>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase">Customer:</span>
-                      <p className="font-medium text-slate-200">{String(doc.fields.customer_name?.value || "N/A")}</p>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase">Project:</span>
-                      <p className="font-medium text-slate-200">{String(doc.fields.project_name?.value || "N/A")}</p>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase">Line Items:</span>
-                      <p className="font-medium text-slate-200">{doc.items.length} items</p>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase">Total Amount:</span>
-                      <p className="font-medium text-emerald-400">AED {String(doc.fields.total_amount?.value || "0")}</p>
-                    </div>
-                  </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 font-mono">
+                  {documents.length} Total Documents
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+                  {documents.filter(d => d.documentType === "tax_invoice").length} Tax Invoices
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20 font-semibold">
+                  {proposedSummary?.newCustomers || 0} New Customers ({proposedSummary?.reusedCustomers || 0} Reused)
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-400 border border-slate-700">
+                  0 Suppliers (Skipped)
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-400 border border-slate-700">
+                  0 Projects (Skipped)
+                </span>
+              </div>
+            </div>
 
-                  {doc.measurements && (
-                    <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-xs">
-                      <span className="text-[10px] uppercase text-sky-400 font-bold block mb-1">
-                        PVC Tank Liner Measurements
-                      </span>
-                      <div className="flex gap-4 text-[11px] text-slate-300">
-                        <span>Diameter: {doc.measurements.diameter}m</span>
-                        <span>Height: {doc.measurements.height}m</span>
-                        <span>Area: {doc.measurements.calculatedArea}m²</span>
-                        <span>RM: {doc.measurements.calculatedRunningMeter}m</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+            {/* Table Container */}
+            <div className="rounded-xl border border-slate-800 bg-slate-950/70 overflow-hidden shadow-xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-900/90 text-slate-400 text-[10px] uppercase font-semibold border-b border-slate-800 sticky top-0 z-10">
+                    <tr>
+                      <th className="py-3 px-3">#</th>
+                      <th className="py-3 px-3">Source PDF File</th>
+                      <th className="py-3 px-3">Detected Document Type</th>
+                      <th className="py-3 px-3">Customer Entity Match</th>
+                      <th className="py-3 px-3">Extracted Values & Totals</th>
+                      <th className="py-3 px-3">Warnings & Validation</th>
+                      <th className="py-3 px-3">Intended DB Operations</th>
+                      <th className="py-3 px-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                    {documents.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-12 text-center text-slate-500 text-xs">
+                          No documents extracted yet. Please upload files and click &quot;Run Smart Extraction&quot;.
+                        </td>
+                      </tr>
+                    ) : (
+                      documents.map((doc, idx) => {
+                        const isTaxInvoice = doc.documentType === "tax_invoice";
+                        const custRes = doc.customerResolution;
+                        const subtotalVal = Number(doc.fields.subtotal?.value) || 0;
+                        const vatVal = Number(doc.fields.vat_amount?.value) || 0;
+                        const totalVal = Number(doc.fields.total_amount?.value) || (subtotalVal + vatVal);
+                        const hasErrors = doc.validationErrors && doc.validationErrors.length > 0;
+                        const hasWarnings = doc.validationWarnings && doc.validationWarnings.length > 0;
+                        const isExtractionFailed = doc.extractionStatus === "failed";
+
+                        return (
+                          <tr
+                            key={doc.id}
+                            className={`hover:bg-slate-900/50 transition ${
+                              isExtractionFailed ? "bg-rose-950/20" : doc.id === selectedDocId ? "bg-emerald-500/5" : ""
+                            }`}
+                          >
+                            {/* # */}
+                            <td className="py-3 px-3 font-mono text-[10px] text-slate-500">{idx + 1}</td>
+
+                            {/* Source PDF File */}
+                            <td className="py-3 px-3 max-w-[200px]">
+                              <div className="flex items-center gap-2">
+                                <FileText size={15} className={isExtractionFailed ? "text-rose-400" : "text-emerald-400 shrink-0"} />
+                                <div className="truncate">
+                                  <span className="font-medium text-slate-200 block truncate" title={doc.filename}>
+                                    {doc.filename}
+                                  </span>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                                    <span>{(doc.fileSize / 1024).toFixed(1)} KB</span>
+                                    <span>•</span>
+                                    {isExtractionFailed ? (
+                                      <span className="text-rose-400 font-semibold">Extraction Failed</span>
+                                    ) : (
+                                      <span className="text-emerald-400">Extraction OK</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Detected Document Type */}
+                            <td className="py-3 px-3">
+                              <div className="space-y-0.5">
+                                <span
+                                  className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                    isTaxInvoice
+                                      ? "bg-indigo-500/10 text-indigo-300 border border-indigo-500/30"
+                                      : doc.documentType === "unknown"
+                                      ? "bg-rose-500/10 text-rose-300 border border-rose-500/30"
+                                      : "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
+                                  }`}
+                                >
+                                  {doc.documentType.replace("_", " ")}
+                                </span>
+                                <span className="block text-[10px] text-slate-500">
+                                  Confidence: {Math.round(doc.classificationConfidence * 100)}%
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Customer Entity Match */}
+                            <td className="py-3 px-3 max-w-[200px]">
+                              <div className="space-y-1">
+                                <div className="font-medium text-slate-200 truncate" title={custRes?.extractedName || "None"}>
+                                  {custRes?.extractedName || (
+                                    <span className="text-slate-500 italic">No customer extracted</span>
+                                  )}
+                                </div>
+                                {custRes?.extractedTrn && (
+                                  <div className="font-mono text-[10px] text-emerald-400">
+                                    TRN: {custRes.extractedTrn}
+                                  </div>
+                                )}
+                                <div>
+                                  {custRes?.action === "reuse_existing" ? (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-300 border border-sky-500/20">
+                                      <span>✓ Reused:</span>
+                                      <span className="truncate max-w-[120px]">{custRes.matchedName || "Batch proposed"}</span>
+                                    </span>
+                                  ) : custRes?.action === "create_new" ? (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                      + Proposed New Customer
+                                    </span>
+                                  ) : custRes?.action === "needs_review" ? (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                      ⚠️ Review Match
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-500">Skipped</span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Extracted Values & Totals */}
+                            <td className="py-3 px-3 font-mono">
+                              <div className="space-y-0.5 text-[11px]">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-slate-500 font-sans text-[10px]">Doc:</span>
+                                  <span className="text-emerald-400 font-bold">
+                                    {String(doc.fields.document_number?.value || "N/A")}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                                  <span className="text-slate-500 font-sans">Date:</span>
+                                  <span>{String(doc.fields.document_date?.value || "N/A")}</span>
+                                  <span>•</span>
+                                  <span>{doc.items.length} items</span>
+                                </div>
+                                <div className="text-[11px] text-slate-200 font-semibold pt-0.5">
+                                  Total: AED {totalVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                                <div className="text-[9px] text-slate-500">
+                                  Subtotal: AED {subtotalVal.toLocaleString("en-US", { minimumFractionDigits: 2 })} | VAT: AED {vatVal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Warnings & Validation */}
+                            <td className="py-3 px-3 max-w-[180px]">
+                              {isExtractionFailed ? (
+                                <span className="text-rose-400 text-[11px] font-medium flex items-center gap-1">
+                                  <AlertTriangle size={12} className="shrink-0" />
+                                  <span className="truncate">{doc.extractionError || "Extraction failed"}</span>
+                                </span>
+                              ) : doc.isDuplicate ? (
+                                <span className="text-amber-400 text-[11px] font-medium flex items-center gap-1">
+                                  <AlertTriangle size={12} className="shrink-0" />
+                                  <span>Duplicate document number</span>
+                                </span>
+                              ) : hasErrors ? (
+                                <span className="text-rose-400 text-[11px] font-medium flex items-center gap-1">
+                                  <AlertTriangle size={12} className="shrink-0" />
+                                  <span className="truncate">{doc.validationErrors[0]}</span>
+                                </span>
+                              ) : hasWarnings ? (
+                                <span className="text-amber-300 text-[10px] flex items-center gap-1">
+                                  <AlertTriangle size={11} className="shrink-0 text-amber-400" />
+                                  <span className="truncate">{doc.validationWarnings[0]}</span>
+                                </span>
+                              ) : (
+                                <span className="text-emerald-400 text-[10px] font-semibold flex items-center gap-1">
+                                  <CheckCircle2 size={12} className="shrink-0" />
+                                  <span>Verified & Valid</span>
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Intended DB Operations */}
+                            <td className="py-3 px-3">
+                              <div className="space-y-0.5 text-[10px] font-mono">
+                                <div className="text-slate-300">
+                                  <span className="text-emerald-400">Insert:</span> tax_invoices
+                                </div>
+                                <div className="text-slate-400">
+                                  <span className="text-emerald-400">Insert:</span> tax_invoice_items ({doc.items.length})
+                                </div>
+                                <div className="text-slate-500">
+                                  Supplier: <span className="text-slate-600">Skipped</span>
+                                </div>
+                                <div className="text-slate-500">
+                                  Project: <span className="text-slate-600">Skipped</span>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Action */}
+                            <td className="py-3 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    setSelectedDocId(doc.id);
+                                    if (doc.destinationMappings.length > 0) {
+                                      setSelectedMapping(doc.destinationMappings[0]);
+                                    }
+                                    setActiveTab("preview");
+                                  }}
+                                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 font-medium text-[11px] transition flex items-center gap-1"
+                                >
+                                  <Eye size={12} />
+                                  <span>Inspect</span>
+                                </button>
+                                {isExtractionFailed && (
+                                  <button
+                                    onClick={() => {
+                                      const qItem = queue.find(q => q.name === doc.filename || q.id === doc.id);
+                                      if (qItem) retrySingleItem(qItem.id);
+                                    }}
+                                    className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-medium text-[11px] transition flex items-center gap-1"
+                                  >
+                                    <RotateCcw size={11} />
+                                    <span>Retry</span>
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -2354,33 +2584,63 @@ export default function SmartImportPage() {
               ) as string[];
               const docTypesPresent = Array.from(new Set(approvedDocs.map(d => d.documentType)));
 
-              // Critical errors check
-              const criticalErrors: string[] = [];
+              // Clearly distinguish error categories (Task 11)
+              const extractionErrors: { file: string; message: string }[] = [];
+              const classificationErrors: { file: string; message: string }[] = [];
+              const databaseValidationErrors: { file: string; message: string }[] = [];
+
               if (!company?.id) {
-                criticalErrors.push("Company profile unresolved. Database execution blocked.");
+                databaseValidationErrors.push({
+                  file: "Company Context",
+                  message: "Company profile unresolved. Database execution blocked.",
+                });
               }
               if (approvedDocs.length === 0) {
-                criticalErrors.push("No documents selected for import. Please check at least one valid document.");
+                databaseValidationErrors.push({
+                  file: "Selection",
+                  message: "No documents selected for import. Please check at least one valid document.",
+                });
               }
               approvedDocs.forEach(d => {
-                if (d.validationErrors && d.validationErrors.length > 0) {
-                  d.validationErrors.forEach(err => criticalErrors.push(`${d.filename}: ${err}`));
+                if (d.extractionStatus === "failed" || d.extractionError) {
+                  extractionErrors.push({
+                    file: d.filename,
+                    message: d.extractionError || "PDF text extraction failed",
+                  });
                 }
-                if (d.documentType === "unknown") {
-                  criticalErrors.push(`${d.filename}: Unrecognized document type.`);
+                if (d.documentType === "unknown" && d.extractionStatus !== "failed") {
+                  classificationErrors.push({
+                    file: d.filename,
+                    message: d.classificationReason || "Unrecognized document format or classification failed",
+                  });
                 }
                 if (
                   (d.documentType === "quotation" || d.documentType === "tax_invoice" || d.documentType === "delivery_note") &&
-                  !d.customerResolution?.extractedName
+                  !d.customerResolution?.extractedName &&
+                  d.extractionStatus !== "failed"
                 ) {
-                  criticalErrors.push(`${d.filename}: Missing customer name.`);
+                  databaseValidationErrors.push({
+                    file: d.filename,
+                    message: "Missing linked customer entity required by relational constraints.",
+                  });
                 }
-                if (d.documentType === "purchase_order" && !d.supplierResolution?.extractedName) {
-                  criticalErrors.push(`${d.filename}: Missing supplier name.`);
+                if (d.documentType === "purchase_order" && !d.supplierResolution?.extractedName && d.extractionStatus !== "failed") {
+                  databaseValidationErrors.push({
+                    file: d.filename,
+                    message: "Missing linked supplier entity required for purchase orders.",
+                  });
+                }
+                if (d.validationErrors && d.validationErrors.length > 0 && d.extractionStatus !== "failed") {
+                  d.validationErrors
+                    .filter(err => !err.toLowerCase().startsWith("extraction error"))
+                    .forEach(err => {
+                      databaseValidationErrors.push({ file: d.filename, message: err });
+                    });
                 }
               });
 
-              const hasCriticalErrors = criticalErrors.length > 0;
+              const totalCriticalErrors = extractionErrors.length + classificationErrors.length + databaseValidationErrors.length;
+              const hasCriticalErrors = totalCriticalErrors > 0;
 
               return (
                 <>
@@ -2688,21 +2948,61 @@ export default function SmartImportPage() {
                     )}
                   </div>
 
-                  {/* Critical Validation Alert if blocked */}
+                  {/* Critical Validation Alert with Categorized Distinctions (Task 11) */}
                   {hasCriticalErrors && (
-                    <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/80 text-rose-300 text-xs space-y-1.5">
+                    <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-800/80 text-rose-300 text-xs space-y-2.5">
                       <div className="flex items-center gap-2 font-semibold text-rose-400">
-                        <AlertTriangle size={15} className="shrink-0" />
-                        <span>Database Execution Blocked ({criticalErrors.length} Critical Issue{criticalErrors.length > 1 ? "s" : ""})</span>
+                        <AlertTriangle size={16} className="shrink-0" />
+                        <span>Database Execution Blocked ({totalCriticalErrors} Critical Issue{totalCriticalErrors > 1 ? "s" : ""})</span>
                       </div>
                       <p className="text-[11px] text-rose-200/80">
-                        The following validation errors must be resolved before executing import into Dubai ERP:
+                        Import approval is strictly blocked until all critical issues are resolved:
                       </p>
-                      <ul className="list-disc list-inside text-[11px] text-rose-300/90 space-y-0.5 max-h-24 overflow-y-auto">
-                        {criticalErrors.map((err, idx) => (
-                          <li key={idx}>{err}</li>
-                        ))}
-                      </ul>
+
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {/* 1. Extraction Failures */}
+                        {extractionErrors.length > 0 && (
+                          <div className="p-2 rounded-lg bg-rose-900/30 border border-rose-800/60 space-y-1">
+                            <span className="font-semibold text-rose-300 text-[11px] flex items-center gap-1.5">
+                              <span>⚠️ PDF Text Extraction Failures ({extractionErrors.length})</span>
+                              <span className="text-[10px] text-rose-400 font-normal">(Retry extraction without re-uploading)</span>
+                            </span>
+                            <ul className="list-disc list-inside text-[10px] text-rose-200/90 space-y-0.5">
+                              {extractionErrors.map((err, idx) => (
+                                <li key={idx}><strong className="text-white">{err.file}:</strong> {err.message}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* 2. Classification Failures */}
+                        {classificationErrors.length > 0 && (
+                          <div className="p-2 rounded-lg bg-amber-950/30 border border-amber-800/60 space-y-1">
+                            <span className="font-semibold text-amber-300 text-[11px]">
+                              ⚠️ Document Classification Failures ({classificationErrors.length})
+                            </span>
+                            <ul className="list-disc list-inside text-[10px] text-amber-200/90 space-y-0.5">
+                              {classificationErrors.map((err, idx) => (
+                                <li key={idx}><strong className="text-white">{err.file}:</strong> {err.message}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* 3. Database Validation Errors */}
+                        {databaseValidationErrors.length > 0 && (
+                          <div className="p-2 rounded-lg bg-slate-900/80 border border-rose-800/50 space-y-1">
+                            <span className="font-semibold text-rose-300 text-[11px]">
+                              ⚠️ Relational & Database Validation Errors ({databaseValidationErrors.length})
+                            </span>
+                            <ul className="list-disc list-inside text-[10px] text-rose-200/90 space-y-0.5">
+                              {databaseValidationErrors.map((err, idx) => (
+                                <li key={idx}><strong className="text-white">{err.file}:</strong> {err.message}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 

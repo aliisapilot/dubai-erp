@@ -25,11 +25,11 @@ export const DEFAULT_NUMBERING_CONFIGS: Record<DocumentTypeId, DocNumberingConfi
     customTitle: "TAX INVOICE",
     customTitleAr: "فاتورة ضريبية",
     prefix: "INV",
-    includeYear: true,
+    includeYear: false,
     yearFormat: "YYYY",
     yearPosition: "after_prefix",
     separator: "-",
-    padding: 4,
+    padding: 3,
     nextSequence: 1,
   },
   quotation: {
@@ -37,23 +37,23 @@ export const DEFAULT_NUMBERING_CONFIGS: Record<DocumentTypeId, DocNumberingConfi
     customTitle: "QUOTATION",
     customTitleAr: "عرض أسعار",
     prefix: "QUO",
-    includeYear: true,
+    includeYear: false,
     yearFormat: "YYYY",
     yearPosition: "after_prefix",
     separator: "-",
-    padding: 4,
+    padding: 3,
     nextSequence: 1,
   },
   proforma_invoice: {
     docType: "proforma_invoice",
     customTitle: "PROFORMA INVOICE",
     customTitleAr: "فاتورة شكلية",
-    prefix: "PRO",
-    includeYear: true,
+    prefix: "PI",
+    includeYear: false,
     yearFormat: "YYYY",
     yearPosition: "after_prefix",
     separator: "-",
-    padding: 4,
+    padding: 3,
     nextSequence: 1,
   },
   delivery_note: {
@@ -61,11 +61,11 @@ export const DEFAULT_NUMBERING_CONFIGS: Record<DocumentTypeId, DocNumberingConfi
     customTitle: "DELIVERY NOTE",
     customTitleAr: "إذن تسليم",
     prefix: "DN",
-    includeYear: true,
+    includeYear: false,
     yearFormat: "YYYY",
     yearPosition: "after_prefix",
     separator: "-",
-    padding: 4,
+    padding: 3,
     nextSequence: 1,
   },
   purchase_order: {
@@ -73,23 +73,23 @@ export const DEFAULT_NUMBERING_CONFIGS: Record<DocumentTypeId, DocNumberingConfi
     customTitle: "PURCHASE ORDER",
     customTitleAr: "أمر شراء",
     prefix: "PO",
-    includeYear: true,
+    includeYear: false,
     yearFormat: "YYYY",
     yearPosition: "after_prefix",
     separator: "-",
-    padding: 4,
+    padding: 3,
     nextSequence: 1,
   },
   receipt_voucher: {
     docType: "receipt_voucher",
     customTitle: "RECEIPT VOUCHER",
     customTitleAr: "سند قبض",
-    prefix: "RCV",
-    includeYear: true,
+    prefix: "RV",
+    includeYear: false,
     yearFormat: "YYYY",
     yearPosition: "after_prefix",
     separator: "-",
-    padding: 4,
+    padding: 3,
     nextSequence: 1,
   },
   customer_statement: {
@@ -97,11 +97,11 @@ export const DEFAULT_NUMBERING_CONFIGS: Record<DocumentTypeId, DocNumberingConfi
     customTitle: "STATEMENT OF ACCOUNT",
     customTitleAr: "كشف حساب",
     prefix: "SOA",
-    includeYear: true,
+    includeYear: false,
     yearFormat: "YYYY",
     yearPosition: "after_prefix",
     separator: "-",
-    padding: 4,
+    padding: 3,
     nextSequence: 1,
   },
   supplier_bill: {
@@ -109,11 +109,11 @@ export const DEFAULT_NUMBERING_CONFIGS: Record<DocumentTypeId, DocNumberingConfi
     customTitle: "SUPPLIER BILL",
     customTitleAr: "فاتورة مورد",
     prefix: "BILL",
-    includeYear: true,
+    includeYear: false,
     yearFormat: "YYYY",
     yearPosition: "after_prefix",
     separator: "-",
-    padding: 4,
+    padding: 3,
     nextSequence: 1,
   },
   salary_statement: {
@@ -185,11 +185,12 @@ export const PREFIX_TO_DOC_TYPE: Record<string, DocumentTypeId> = {
   QT: "quotation",
   INV: "tax_invoice",
   TAX: "tax_invoice",
-  PRO: "proforma_invoice",
   PI: "proforma_invoice",
+  PRO: "proforma_invoice",
   DN: "delivery_note",
   DLV: "delivery_note",
   PO: "purchase_order",
+  RV: "receipt_voucher",
   RCV: "receipt_voucher",
   BILL: "supplier_bill",
   HO: "project_handover",
@@ -654,4 +655,184 @@ export async function renameDocumentReference(
   } catch {}
 
   return { success: true };
+}
+
+
+/**
+ * Universal Document Number Simplification
+ * Converts complex historical and custom document numbers into clean simplified formats:
+ * - Tax Invoice: INV-001, INV-002, INV-105, INV-150...
+ * - Quotation: QUO-001, QUO-002, QUO-009, QUO-145...
+ * - Proforma Invoice: PI-001, PI-002...
+ * - Delivery Note: DN-001, DN-002...
+ * - Purchase Order: PO-001, PO-002...
+ * - Receipt Voucher: RV-001, RV-002...
+ * - Supplier Bill: BILL-001, BILL-002...
+ * - Customer Statement: SOA-001, SOA-002...
+ *
+ * Preserves the original raw document number in the database for legal & audit compliance.
+ */
+export function formatDisplayDocNumber(
+  rawNumber: string | null | undefined,
+  docType?: DocumentTypeId
+): string {
+  if (!rawNumber || typeof rawNumber !== "string") return "";
+  const trimmed = rawNumber.trim();
+  if (!trimmed) return "";
+
+  let prefix = "";
+  const upper = trimmed.toUpperCase();
+
+  // Recognize known prefixes
+  if (upper.startsWith("INV") || upper.startsWith("TAX")) prefix = "INV";
+  else if (upper.startsWith("QUO") || upper.startsWith("QTN") || upper.startsWith("QT")) prefix = "QUO";
+  else if (upper.startsWith("PI") || upper.startsWith("PRO")) prefix = "PI";
+  else if (upper.startsWith("DN") || upper.startsWith("DLV")) prefix = "DN";
+  else if (upper.startsWith("PO")) prefix = "PO";
+  else if (upper.startsWith("RV") || upper.startsWith("RCV")) prefix = "RV";
+  else if (upper.startsWith("BILL")) prefix = "BILL";
+  else if (upper.startsWith("SOA")) prefix = "SOA";
+  else if (upper.startsWith("SLIP")) prefix = "SLIP";
+  else if (docType && DEFAULT_NUMBERING_CONFIGS[docType]) {
+    prefix = DEFAULT_NUMBERING_CONFIGS[docType].prefix;
+  } else {
+    const alphaMatch = upper.match(/^([A-Z]+)/);
+    prefix = alphaMatch ? alphaMatch[1] : "DOC";
+  }
+
+  // Remove prefix portion
+  const remainder = trimmed.replace(
+    new RegExp(`^(?:${prefix}|TAX|QTN|QT|PRO|DLV|RCV)[-_/\\s]*`, "i"),
+    ""
+  );
+
+  // Pattern 1: Year followed by sequence: e.g. "2026-0009", "2026/0009", "26-0009"
+  const yearSeqMatch = remainder.match(/^(?:20\d\d|\d{2})[-_/\\s]+(\d+)$/);
+  if (yearSeqMatch) {
+    const num = parseInt(yearSeqMatch[1], 10);
+    const padded = num < 1000 ? String(num).padStart(3, "0") : String(num);
+    return `${prefix}-${padded}`;
+  }
+
+  // Pattern 2: Main sequence followed by month/year slash suffix:
+  // e.g. "105/01/26", "150/10/26", "120/06/26", "116/04/26", "143/09/26"
+  const seqWithSlashMatch = remainder.match(/^(\d+)(?:[/-]\d+)+$/);
+  if (seqWithSlashMatch) {
+    const num = parseInt(seqWithSlashMatch[1], 10);
+    const padded = num < 1000 ? String(num).padStart(3, "0") : String(num);
+    return `${prefix}-${padded}`;
+  }
+
+  // Pattern 3: Simple numeric portion: e.g. "001", "143", "5"
+  const simpleNumMatch = remainder.match(/^(\d+)$/);
+  if (simpleNumMatch) {
+    const num = parseInt(simpleNumMatch[1], 10);
+    const padded = num < 1000 ? String(num).padStart(3, "0") : String(num);
+    return `${prefix}-${padded}`;
+  }
+
+  // Pattern 4: Any trailing sequence number: e.g. "AUD-56152" -> 56152
+  const anyTrailingNum = remainder.match(/(\d+)$/);
+  if (anyTrailingNum) {
+    const num = parseInt(anyTrailingNum[1], 10);
+    const padded = num < 1000 ? String(num).padStart(3, "0") : String(num);
+    return `${prefix}-${padded}`;
+  }
+
+  return trimmed;
+}
+
+export interface DocumentMappingItem {
+  id: string;
+  originalNumber: string;
+  simplifiedNumber: string;
+  displayNumber: string;
+  docType: DocumentTypeId;
+  customerName?: string;
+  date?: string;
+  totalAmount?: number;
+  hasCollision: boolean;
+  collisionDetails?: string;
+}
+
+/**
+ * Checks for numbering collisions across documents and provides a mapping preview.
+ * Disambiguates any colliding records (e.g. historical invoices with identical numeric portions like INV-143).
+ */
+export function detectDocumentCollisions(
+  documents: {
+    id: string;
+    number: string;
+    docType?: DocumentTypeId;
+    customerName?: string;
+    date?: string;
+    totalAmount?: number;
+  }[],
+  defaultDocType: DocumentTypeId = "tax_invoice"
+): {
+  mappings: DocumentMappingItem[];
+  totalAnalyzed: number;
+  collisionCount: number;
+  hasCollisions: boolean;
+} {
+  const simplifiedMap = new Map<string, typeof documents>();
+
+  // Pass 1: Group by simplified number
+  documents.forEach((doc) => {
+    const orig = String(doc.number || "").trim();
+    const type = doc.docType || defaultDocType;
+    const simp = formatDisplayDocNumber(orig, type);
+    const key = `${type}:${simp}`;
+    if (!simplifiedMap.has(key)) {
+      simplifiedMap.set(key, []);
+    }
+    simplifiedMap.get(key)!.push(doc);
+  });
+
+  const mappings: DocumentMappingItem[] = [];
+  let collisionCount = 0;
+
+  // Pass 2: Build mappings and flag collisions
+  documents.forEach((doc) => {
+    const orig = String(doc.number || "").trim();
+    const type = doc.docType || defaultDocType;
+    const simp = formatDisplayDocNumber(orig, type);
+    const key = `${type}:${simp}`;
+    const group = simplifiedMap.get(key) || [];
+    const hasCollision = group.length > 1;
+
+    let displayNumber = simp;
+    let collisionDetails: string | undefined;
+
+    if (hasCollision) {
+      collisionCount++;
+      const others = group.filter((g) => g.id !== doc.id);
+      const otherNames = others.map((o) => o.customerName || o.number).join(", ");
+      collisionDetails = `Shared numeric sequence with ${others.length} other record(s): ${otherNames}`;
+      // Disambiguate for display safety
+      displayNumber = doc.customerName
+        ? `${simp} (${doc.customerName.slice(0, 15).trim()})`
+        : orig;
+    }
+
+    mappings.push({
+      id: doc.id,
+      originalNumber: orig,
+      simplifiedNumber: simp,
+      displayNumber,
+      docType: type,
+      customerName: doc.customerName,
+      date: doc.date,
+      totalAmount: doc.totalAmount,
+      hasCollision,
+      collisionDetails,
+    });
+  });
+
+  return {
+    mappings,
+    totalAnalyzed: documents.length,
+    collisionCount,
+    hasCollisions: collisionCount > 0,
+  };
 }

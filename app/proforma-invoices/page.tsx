@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, FileSpreadsheet, X, Loader2, Pencil, Eye, ArrowRight, Printer, Trash2 } from "lucide-react";
-import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, formatDisplayDocNumber } from "@/lib/helpers";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import ProformaInvoiceTemplate from "@/components/documents/ProformaInvoiceTemplate";
@@ -272,7 +272,7 @@ function PIContent() {
           return { id: editing.id, proformaNumber: editing.proforma_number || editing.id };
         } else {
           const cid = company?.id || (await getCompanyId());
-          let pno = await generateDocNumber(cid, "PRO");
+          let pno = await generateDocNumber(cid, "PI");
           let insertedId = "";
           let attempts = 0;
           while (attempts < 3) {
@@ -284,7 +284,7 @@ function PIContent() {
             }).select("id");
             if (err) {
               if (err.code === "23505" && attempts < 3) {
-                pno = await generateDocNumber(cid, "PRO");
+                pno = await generateDocNumber(cid, "PI");
                 continue;
               }
               throw err;
@@ -471,7 +471,8 @@ function PIContent() {
     if (filterStatus && pi.status?.toLowerCase()!==filterStatus.toLowerCase()) return false;
     const cn = pi.customer_name || custMap[pi.customer_id||""]?.name||"";
     const pn = pi.custom_project_name || "";
-    return [pi.proforma_number, cn, pn, pi.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
+    const simplifiedNum = formatDisplayDocNumber(pi.proforma_number, "proforma_invoice");
+    return [pi.proforma_number, simplifiedNum, cn, pn, pi.status].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
 
   async function deleteProforma(pi: PI) {
@@ -515,7 +516,16 @@ function PIContent() {
               <thead><tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><th className="px-4 py-3">No.</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Valid Until</th><th className="px-4 py-3 text-right">Total (AED)</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Actions</th></tr></thead>
               <tbody className="divide-y divide-slate-100">{filtered.map(pi=>(
                 <tr key={pi.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{pi.proforma_number||"—"}</td>
+                  <td className="px-4 py-3 font-mono text-xs">
+                    <span className="font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                      {formatDisplayDocNumber(pi.proforma_number, "proforma_invoice") || "—"}
+                    </span>
+                    {pi.proforma_number && pi.proforma_number !== formatDisplayDocNumber(pi.proforma_number, "proforma_invoice") && (
+                      <span className="text-[10px] text-slate-400 block font-normal mt-0.5" title="Original Database Identifier">
+                        {pi.proforma_number}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 flex-wrap font-semibold text-slate-900">
                       <span>{pi.customer_name || custMap[pi.customer_id||""]?.name||"—"}</span>
@@ -563,11 +573,13 @@ function PIContent() {
               ? {
                   ...editing,
                   // Map DB column terms_conditions → payment_terms so the editor
-                  // initialises the payment-terms bullet list correctly.
+                  // initialises the payment-terms bullet list correctly, ensuring
+                  // internal legacy custom customer metadata is completely stripped.
                   payment_terms:
-                    (editing as unknown as { terms_conditions?: string | null }).terms_conditions ||
-                    editing.notes ||
+                    stripCustomPartyTags((editing as unknown as { terms_conditions?: string | null }).terms_conditions) ||
+                    stripCustomPartyTags(editing.notes) ||
                     "30 days",
+                  notes: stripCustomPartyTags(editing.notes) || "",
                 }
               : {
                   customer_id: form.customer_id,
@@ -668,7 +680,10 @@ function PIContent() {
               contact_person: printRec.pi.contact_person,
               contact_number: printRec.pi.contact_number,
               contact_email: printRec.pi.contact_email,
-              payment_terms: (printRec.pi as unknown as { terms_conditions?: string | null }).terms_conditions || printRec.pi.notes || undefined,
+              payment_terms:
+                stripCustomPartyTags((printRec.pi as unknown as { terms_conditions?: string | null }).terms_conditions) ||
+                stripCustomPartyTags(printRec.pi.notes) ||
+                undefined,
               notes: stripCustomPartyTags(printRec.pi.notes) || undefined,
               status: printRec.pi.status,
               subtotal: printRec.pi.subtotal || 0,

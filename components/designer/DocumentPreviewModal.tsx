@@ -1,5 +1,7 @@
 "use client";
 
+import DesignerPortal from "./DesignerPortal";
+
 import React, { useEffect, useState } from "react";
 import { Download, Printer, X, ZoomIn, ZoomOut, Maximize2, FileText, ChevronLeft } from "lucide-react";
 import { DocumentLayout, formatDocNumber } from "@/lib/documentDesigner";
@@ -252,8 +254,9 @@ export default function DocumentPreviewModal({
   if (!isOpen) return null;
 
   return (
+    <DesignerPortal>
     <div
-      className="print-modal-container fixed inset-0 z-50 flex flex-col bg-slate-950/85 backdrop-blur-md overflow-hidden print:static print:inset-auto print:bg-transparent print:p-0 print:m-0 print:overflow-visible print:block print:w-[210mm]"
+      className="print-modal-container fixed inset-0 z-[100] flex flex-col bg-slate-950/90 backdrop-blur-md overflow-hidden print:static print:inset-auto print:bg-transparent print:p-0 print:m-0 print:overflow-visible print:block print:w-[210mm]"
     >
       {/* ── Screen-Only Control Toolbar ────────────────────────────────────────── */}
       <header className="no-print print-hide h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between text-white shrink-0 z-10 shadow-lg">
@@ -425,5 +428,6 @@ export default function DocumentPreviewModal({
         })}
       </div>
     </div>
+    </DesignerPortal>
   );
 }

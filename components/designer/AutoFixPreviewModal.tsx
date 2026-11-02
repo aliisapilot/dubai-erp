@@ -1,5 +1,7 @@
 "use client";
 
+import DesignerPortal from "./DesignerPortal";
+
 import { AlertTriangle, CheckCircle2, Eye, X } from "lucide-react";
 import { FitLevel } from "@/lib/documentLayoutEngine";
 
@@ -30,8 +32,9 @@ export default function AutoFixPreviewModal({
   const overflows = totalPages > 1;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-sm" role="presentation">
-      <section role="dialog" aria-modal="true" aria-labelledby="auto-fix-preview-title" className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl">
+    <DesignerPortal>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="auto-fix-preview-title" className="relative z-[101] w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl">
         <header className="flex items-start justify-between gap-3 border-b border-slate-800 p-4">
           <div className="flex items-start gap-3">
             <div className={`mt-0.5 rounded-lg p-2 ${overflows ? "bg-amber-500/15 text-amber-300" : "bg-emerald-500/15 text-emerald-300"}`}>
@@ -67,5 +70,6 @@ export default function AutoFixPreviewModal({
         </footer>
       </section>
     </div>
+    </DesignerPortal>
   );
 }

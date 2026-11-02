@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { Receipt, Plus, Search, Loader2, X, Printer, Pencil, Trash2, ZoomIn, ZoomOut, Maximize2, Minimize2, CheckCircle2, AlertTriangle } from "lucide-react";
-import { getCompanyId, getCurrentCompany, fmtAED, statusClass, todayISO, generateDocNumber } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, fmtAED, statusClass, todayISO, generateDocNumber, formatDisplayDocNumber } from "@/lib/helpers";
 import ReceiptVoucherTemplate, { ReceiptVoucherData } from "@/components/documents/ReceiptVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
@@ -331,7 +331,7 @@ export default function ReceiptVouchersPage() {
         setSuccess("Receipt voucher updated successfully.");
       } else {
         const cid = await getCompanyId();
-        const vno = await generateDocNumber(cid, "RCV");
+        const vno = await generateDocNumber(cid, "RV");
         const insertErr = (await supabase.from("receipt_vouchers").insert({
           ...fullPayload,
           company_id: cid,
@@ -436,7 +436,7 @@ export default function ReceiptVouchersPage() {
   }
 
   const filtered = vouchers.filter(v =>
-    [v.voucher_number, v.customer_name, v.received_from, v.payment_method, v.cheque_number, v.custom_project_name]
+    [v.voucher_number, formatDisplayDocNumber(v.voucher_number, "receipt_voucher"), v.customer_name, v.received_from, v.payment_method, v.cheque_number, v.custom_project_name]
       .filter(Boolean)
       .join(" ")
       .toLowerCase()
@@ -508,7 +508,16 @@ export default function ReceiptVouchersPage() {
               <tbody className="divide-y divide-slate-100">
                 {filtered.map(v => (
                   <tr key={v.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-mono text-xs font-bold text-slate-800">{v.voucher_number}</td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      <span className="font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                        {formatDisplayDocNumber(v.voucher_number, "receipt_voucher") || v.voucher_number}
+                      </span>
+                      {v.voucher_number && v.voucher_number !== formatDisplayDocNumber(v.voucher_number, "receipt_voucher") && (
+                        <span className="text-[10px] text-slate-400 block font-normal mt-0.5" title="Original Database Identifier">
+                          {v.voucher_number}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-600">{v.voucher_date}</td>
                     <td className="px-4 py-3 font-semibold text-slate-900">
                       <div className="flex items-center gap-1.5 flex-wrap">

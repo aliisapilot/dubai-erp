@@ -444,6 +444,10 @@ export function isFollowerElement(
   if (element.flowMode === "fixed") return false;
   if (element.flowMode === "flow") return true;
 
+  // Upper cards positioned above the table header (e.g. Bill To, Account Summary, doc_meta)
+  // are NOT table followers and must never be shifted under the table.
+  if (element.y < tableElement.y) return false;
+
   // Well-known business follower cards
   const standardFollowerTypes = [
     "totals",
@@ -994,6 +998,9 @@ export function computeEffectiveLayout(
 
   const layoutMode = layout.layoutMode || "manual";
   const isManualMode = layoutMode === "manual";
+  const isCompactEmptySpace = Boolean(
+    layout.page?.compactEmptySpace || layout.page?.smartFit?.compactEmptySpace
+  );
 
   let effectiveTableY = pageNumber > 1
     ? 22
@@ -1153,11 +1160,30 @@ export function computeEffectiveLayout(
 
   if (followers.length > 0 && isLastPage) {
     if (isManualMode) {
-      for (const el of followers) {
-        if (el.flowMode === "fixed") {
-          followerMap.set(el.id, { y: el.y, height: el.height });
-        } else {
-          followerMap.set(el.id, { y: el.y + Math.max(0, totalTableShift), height: el.height });
+      if (isCompactEmptySpace && table) {
+        // "Compact Empty Space" enabled in manual mode:
+        // Move Amount in Words, Totals, Bank Details, Terms, Signature upward based on actual line-item rows,
+        // maintaining consistent relative spacing and alignment, preventing collisions, and keeping baseline manual coordinates untouched.
+        const firstFollowerManualY = Math.min(...followers.map((f) => f.y));
+        const tableDesignedBottom = table.y + table.height;
+        const baselineGap = Math.max(2.5, firstFollowerManualY - tableDesignedBottom);
+        const targetFirstFollowerY = actualTableBottom + baselineGap;
+        const emptySpaceShift = targetFirstFollowerY - firstFollowerManualY;
+
+        for (const el of followers) {
+          if (el.flowMode === "fixed") {
+            followerMap.set(el.id, { y: el.y, height: el.height });
+          } else {
+            followerMap.set(el.id, { y: el.y + emptySpaceShift, height: el.height });
+          }
+        }
+      } else {
+        for (const el of followers) {
+          if (el.flowMode === "fixed") {
+            followerMap.set(el.id, { y: el.y, height: el.height });
+          } else {
+            followerMap.set(el.id, { y: el.y + Math.max(0, totalTableShift), height: el.height });
+          }
         }
       }
     } else {
@@ -1254,12 +1280,35 @@ export function computeEffectiveLayout(
       };
     }
 
-    // 2. Footer: anchored at bottom baseline
+    // 2. Footer: anchored at bottom baseline (or shifted up when Compact Empty Space is active)
     if (el.type === "footer") {
-      const naturalY = Math.max(
+      let naturalY = Math.max(
         el.y,
         footerBaselineY - el.height
       );
+
+      if (isCompactEmptySpace && table && isLastPage) {
+        const firstFollowerManualY = followers.length > 0 ? Math.min(...followers.map((f) => f.y)) : (table.y + table.height + 2.5);
+        const baselineGap = Math.max(2.5, firstFollowerManualY - (table.y + table.height));
+        const targetFirstFollowerY = actualTableBottom + baselineGap;
+        const emptySpaceShift = targetFirstFollowerY - firstFollowerManualY;
+
+        if (emptySpaceShift < 0) {
+          // Find the lowest follower bottom
+          const maxFollowerBottom = followers.length > 0
+            ? Math.max(...followers.map((f) => {
+                const mapped = followerMap.get(f.id);
+                return mapped ? mapped.y + mapped.height : f.y + f.height;
+              }))
+            : actualTableBottom;
+
+          // Move footer upward while maintaining safety clearance above footer and within A4
+          const targetFooterY = el.y + emptySpaceShift;
+          const minFooterY = maxFollowerBottom + 2.5;
+          naturalY = Math.max(minFooterY, Math.min(footerBaselineY - el.height, targetFooterY));
+        }
+      }
+
       return {
         ...el,
         effectiveX: el.x,

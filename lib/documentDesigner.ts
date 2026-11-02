@@ -587,6 +587,7 @@ export interface SmartFitSettings {
   automaticSpacing: boolean;
   printSafeBorders: boolean;
   preventOverflow: boolean;
+  compactEmptySpace?: boolean;
 }
 
 export const DEFAULT_SMART_FIT_SETTINGS: SmartFitSettings = {
@@ -601,6 +602,7 @@ export const DEFAULT_SMART_FIT_SETTINGS: SmartFitSettings = {
   automaticSpacing: true,
   printSafeBorders: true,
   preventOverflow: true,
+  compactEmptySpace: false,
 };
 
 export function normalizeSmartFit(smartFit?: Partial<SmartFitSettings> | null): SmartFitSettings {
@@ -634,6 +636,7 @@ export function normalizeSmartFit(smartFit?: Partial<SmartFitSettings> | null): 
     automaticSpacing: smartFit?.automaticSpacing ?? DEFAULT_SMART_FIT_SETTINGS.automaticSpacing,
     printSafeBorders: smartFit?.printSafeBorders ?? DEFAULT_SMART_FIT_SETTINGS.printSafeBorders,
     preventOverflow: smartFit?.preventOverflow ?? DEFAULT_SMART_FIT_SETTINGS.preventOverflow,
+    compactEmptySpace: smartFit?.compactEmptySpace ?? false,
   };
 }
 
@@ -891,6 +894,7 @@ export interface DocumentLayout {
     borders?: PageBorderSettings;
     smartFit?: SmartFitSettings;
     printSettings?: PrintSettings;
+    compactEmptySpace?: boolean;
   };
   branding: DocumentBranding;
   elements: LayoutElement[];
@@ -1159,13 +1163,23 @@ export const DEFAULT_DELIVERY_COLUMNS: TableColumnConfig[] = [
 ];
 
 export const DEFAULT_STATEMENT_COLUMNS: TableColumnConfig[] = [
-  { key: "date", label: "Date", visible: true, widthPct: 12, align: "center" },
-  { key: "type", label: "Type", visible: true, widthPct: 14, align: "left" },
-  { key: "reference", label: "Reference #", visible: true, widthPct: 18, align: "left" },
+  { key: "date", label: "Date", visible: true, widthPct: 11, align: "center" },
+  { key: "type", label: "Type", visible: true, widthPct: 14, align: "center" },
+  { key: "reference", label: "Ref #", visible: true, widthPct: 12, align: "center" },
   { key: "description", label: "Description", visible: true, widthPct: 26, align: "left" },
-  { key: "debit", label: "Debit (AED)", visible: true, widthPct: 10, align: "right" },
-  { key: "credit", label: "Credit (AED)", visible: true, widthPct: 10, align: "right" },
-  { key: "balance", label: "Balance (AED)", visible: true, widthPct: 10, align: "right" },
+  { key: "debit", label: "Charges (AED)", visible: true, widthPct: 12, align: "right" },
+  { key: "credit", label: "Credits (AED)", visible: true, widthPct: 11, align: "right" },
+  { key: "balance", label: "Balance (AED)", visible: true, widthPct: 14, align: "right" },
+];
+
+export const SOA_REFERENCE_STATEMENT_COLUMNS: TableColumnConfig[] = [
+  { key: "date", label: "Date", visible: true, widthPct: 11, align: "center" },
+  { key: "type", label: "Type", visible: true, widthPct: 14, align: "center" },
+  { key: "reference", label: "Ref #", visible: true, widthPct: 12, align: "center" },
+  { key: "description", label: "Description", visible: true, widthPct: 26, align: "left" },
+  { key: "debit", label: "Charges (AED)", visible: true, widthPct: 12, align: "right" },
+  { key: "credit", label: "Credits (AED)", visible: true, widthPct: 11, align: "right" },
+  { key: "balance", label: "Balance (AED)", visible: true, widthPct: 14, align: "right" },
 ];
 
 export const DEFAULT_SALARY_COLUMNS: TableColumnConfig[] = [
@@ -1280,11 +1294,7 @@ function applyDocumentBusinessProfile(
       company_stamp: { x: 167, y: 204, width: 31, height: 44 },
     });
   } else if (docType === "customer_statement") {
-    add("customer_info", "line_items", "totals");
-    Object.assign(overrides, {
-      line_items: { x: 12, y: 95, width: 186, height: 39, label: "Account Transactions" },
-      totals: { x: 121, y: 137, width: 77, height: 38, label: "Account Summary" },
-    });
+    return createSOA101ReferenceLayout().elements;
   } else if (docType === "salary_statement") {
     add("customer_info", "line_items", "totals", "payment_terms", "company_signature", "company_stamp");
     Object.assign(overrides, {
@@ -1409,6 +1419,9 @@ function applyDocumentBusinessProfile(
 
 // ── Default UAE Corporate Template Generator ───────────────────────────────────
 export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
+  if (docType === "customer_statement") {
+    return createSOA101ReferenceLayout();
+  }
   const docConfig = DOCUMENT_TYPE_OPTIONS.find((d) => d.id === docType) || DOCUMENT_TYPE_OPTIONS[0];
   const documentStyle = DOCUMENT_STYLES[docType];
 
@@ -1586,8 +1599,6 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
         columns:
           docType === "delivery_note"
             ? DEFAULT_DELIVERY_COLUMNS
-            : docType === "customer_statement"
-            ? DEFAULT_STATEMENT_COLUMNS
             : docType === "salary_statement"
             ? DEFAULT_SALARY_COLUMNS
             : docType === "measurement_sheet"
@@ -1972,6 +1983,269 @@ export function createDefaultLayout(docType: DocumentTypeId): DocumentLayout {
       JSON.stringify(DEFAULT_NUMBERING_CONFIGS[docType] || DEFAULT_NUMBERING_CONFIGS.quotation)
     ),
     elements: applyDocumentBusinessProfile(elements, docType),
+  };
+}
+
+export const SOA_REFERENCE_TEMPLATE_NAME = "SOA-101 Al Karwan Reference (Classic Ledger)";
+
+/**
+ * Recreates the exact A4 layout of "SOA101-26 Al Karwan Solution FZC.pdf"
+ * as fully editable, individual PDF Designer elements with mm coordinates.
+ */
+export function createSOA101ReferenceLayout(): DocumentLayout {
+  return {
+    version: CURRENT_LAYOUT_VERSION,
+    documentType: "customer_statement",
+    templateName: SOA_REFERENCE_TEMPLATE_NAME,
+    layoutMode: "manual",
+    page: {
+      paper: "A4",
+      orientation: "portrait",
+      widthMm: 210,
+      heightMm: 297,
+      margins: { top: 10, right: 12, bottom: 12, left: 12 },
+      background: "#FFFFFF",
+      watermarkOpacity: 0.04,
+      borders: JSON.parse(JSON.stringify(DEFAULT_PAGE_BORDERS)),
+      smartFit: {
+        ...DEFAULT_SMART_FIT_SETTINGS,
+        compactEmptySpace: false,
+      },
+      printSettings: JSON.parse(JSON.stringify(DEFAULT_PRINT_SETTINGS)),
+    },
+    branding: {
+      primaryColor: "#0F172A",
+      companyHeaderColor: "#B58A2A",
+      titleBackground: "transparent",
+      titleTextColor: "#0F172A",
+      accentColor: "#B58A2A",
+      textColor: "#1E293B",
+      mutedColor: "#64748B",
+      borderColor: "#94A3B8",
+      tableHeaderColor: "#9CA3AF",
+      tableHeaderTextColor: "#0F172A",
+      tableRowBackground: "#FFFFFF",
+      tableRowAlternating: "#F1F5F9",
+      totalHighlightColor: "#9CA3AF",
+      footerBackground: "#FFFFFF",
+      footerTextColor: "#334155",
+    },
+    documentTitle: "Statement of Account",
+    documentTitleAr: "كشف حساب",
+    numberingConfig: JSON.parse(
+      JSON.stringify(DEFAULT_NUMBERING_CONFIGS.customer_statement || DEFAULT_NUMBERING_CONFIGS.quotation)
+    ),
+    elements: [
+      // 1. Company Logo at top left
+      {
+        id: "logo",
+        type: "logo",
+        label: "Company Logo",
+        x: 12,
+        y: 10,
+        width: 48,
+        height: 24,
+        visible: true,
+        locked: false,
+        zIndex: 10,
+        imageFit: "contain",
+      },
+      // 2. Arabic Company Name below logo
+      {
+        id: "company_name_ar",
+        type: "company_name_ar",
+        label: "Arabic Company Name",
+        x: 12,
+        y: 35,
+        width: 72,
+        height: 5.5,
+        visible: true,
+        locked: false,
+        zIndex: 11,
+        fontSize: 9.5,
+        fontWeight: "bold",
+        color: "#B58A2A",
+        textAlign: "left",
+        customText: "الصفوه الذهبيه لصناعه الخيام ذ.م.م.ش.و",
+      },
+      // 3. English Company Name below Arabic
+      {
+        id: "company_name_en",
+        type: "company_name_en",
+        label: "English Company Name",
+        x: 12,
+        y: 40.5,
+        width: 72,
+        height: 5,
+        visible: true,
+        locked: false,
+        zIndex: 12,
+        fontSize: 8,
+        fontWeight: "bold",
+        color: "#B58A2A",
+        textAlign: "left",
+        customText: "AL SAFWAH AL QABDHA TENTS IND L.L.C SP",
+      },
+      // 4. Statement of Account title at top right
+      {
+        id: "doc_title",
+        type: "doc_title",
+        label: "Statement of Account Title",
+        x: 95,
+        y: 10,
+        width: 103,
+        height: 14,
+        visible: true,
+        locked: false,
+        zIndex: 13,
+        fontSize: 22,
+        fontWeight: "extrabold",
+        textAlign: "right",
+        color: "#0F172A",
+        backgroundColor: "transparent",
+        customText: "Statement of Account",
+      },
+      // 5. Date, Statement #, Customer ID, Page number box
+      {
+        id: "doc_meta",
+        type: "doc_meta",
+        label: "Statement Details (Date, SOA #, Customer ID, Page)",
+        x: 120,
+        y: 26,
+        width: 78,
+        height: 22,
+        visible: true,
+        locked: false,
+        zIndex: 14,
+        fontSize: 8.5,
+        borderWidth: 1,
+        borderColor: "#94A3B8",
+        borderRadius: 2,
+        backgroundColor: "#FFFFFF",
+        padding: 1.5,
+      },
+      // 6. Bill To Section (Customer Information)
+      {
+        id: "customer_info",
+        type: "customer_info",
+        label: "Bill To (Customer Information)",
+        x: 12,
+        y: 49.5,
+        width: 88,
+        height: 27,
+        visible: true,
+        locked: false,
+        zIndex: 15,
+        fontSize: 8.5,
+        borderWidth: 1,
+        borderColor: "#94A3B8",
+        borderRadius: 2,
+        backgroundColor: "#FFFFFF",
+        padding: 2,
+      },
+      // 7. Account Summary Section
+      {
+        id: "totals",
+        type: "totals",
+        label: "Account Summary",
+        x: 108,
+        y: 49.5,
+        width: 90,
+        height: 27,
+        visible: true,
+        locked: false,
+        zIndex: 16,
+        fontSize: 8.5,
+        borderWidth: 1,
+        borderColor: "#94A3B8",
+        borderRadius: 2,
+        backgroundColor: "#FFFFFF",
+        padding: 1.5,
+      },
+      // 8. Grey-and-white alternating transaction table
+      {
+        id: "line_items",
+        type: "line_items",
+        label: "Transactions Ledger Table",
+        x: 12,
+        y: 79.5,
+        width: 186,
+        height: 131,
+        visible: true,
+        locked: false,
+        zIndex: 17,
+        tableSettings: {
+          headerBg: "#9CA3AF",
+          headerTextColor: "#0F172A",
+          fontSize: 8.5,
+          headerFontSize: 8.5,
+          rowHeight: 7.5,
+          borderThickness: 1,
+          borderColor: "#94A3B8",
+          bodyTextColor: "#0F172A",
+          columns: SOA_REFERENCE_STATEMENT_COLUMNS.map((col) => ({ ...col })),
+        },
+      },
+      // 9. Account Current Balance banner at the bottom of the table
+      {
+        id: "amount_in_words",
+        type: "amount_in_words",
+        label: "Account Current Balance Banner",
+        x: 108,
+        y: 212.5,
+        width: 90,
+        height: 8,
+        visible: true,
+        locked: false,
+        zIndex: 18,
+        fontSize: 9,
+        fontWeight: "bold",
+        color: "#0F172A",
+        backgroundColor: "#9CA3AF",
+        borderWidth: 1,
+        borderColor: "#94A3B8",
+        borderRadius: 2,
+        customText: "Account Current Balance",
+      },
+      // 10. Payment message and thank you
+      {
+        id: "payment_terms",
+        type: "payment_terms",
+        label: "Payment Instructions & Thank You",
+        x: 12,
+        y: 223,
+        width: 186,
+        height: 22,
+        visible: true,
+        locked: false,
+        zIndex: 19,
+        fontSize: 8.5,
+        textAlign: "center",
+        color: "#0F172A",
+        customText:
+          "Your account balance is {{balance}} Please make your payment to cover the balance by the due date.\nMake all checks payable to {{company_name}}\n\nThank you for your business!",
+      },
+      // 11. Company contact details and footer
+      {
+        id: "footer",
+        type: "footer",
+        label: "Company Contact Details & Footer",
+        x: 12,
+        y: 248,
+        width: 186,
+        height: 24,
+        visible: true,
+        locked: false,
+        zIndex: 20,
+        fontSize: 7.5,
+        textAlign: "center",
+        color: "#334155",
+        borderColor: "#94A3B8",
+        borderWidth: 1,
+        customText:
+          "Should you have any enquiries concerning this statement, please contact Mohammed Ali on +971 50 404 1805\nWarehouse No. 29 Emirates Road, Al Sajaa Industrial , Sharjah , United Arab Emirates , P.O. Box: 6226\nTel: +971 6 767 9058 Fax: +971 6 767 9058 E-mail: info@goldenelitetents.ae Web: www.goldenelitetents.ae",
+      },
+    ],
   };
 }
 

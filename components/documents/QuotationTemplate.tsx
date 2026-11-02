@@ -8,7 +8,8 @@ import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
 import DocSignatureArea from "./DocSignatureArea";
 import { numberToWordsEnglish, numberToWordsArabic } from "@/lib/amountInWords";
-import { fmtAED, fmtDate } from "@/lib/helpers";
+import { fmtAED, fmtDate, formatDisplayDocNumber } from "@/lib/helpers";
+import { stripCustomPartyTags } from "@/lib/documentCustomer";
 
 import DocumentContainer from "./DocumentContainer";
 
@@ -71,7 +72,7 @@ export default function QuotationTemplate({
   if (!design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
 
   const rendererData: MockDocumentData = {
-    document_number: quotation.quotation_number,
+    document_number: formatDisplayDocNumber(quotation.quotation_number, "quotation") || quotation.quotation_number,
     document_date: quotation.quotation_date,
     due_date: quotation.expiry_date || undefined,
     status: quotation.status || undefined,
@@ -97,8 +98,8 @@ export default function QuotationTemplate({
     subtotal: quotation.subtotal,
     vat_amount: quotation.vat_amount,
     total_amount: quotation.total_amount,
-    payment_terms: quotation.payment_terms || undefined,
-    notes: quotation.notes || quotation.terms_conditions || undefined,
+    payment_terms: stripCustomPartyTags(quotation.payment_terms) || undefined,
+    notes: stripCustomPartyTags(quotation.notes || quotation.terms_conditions) || undefined,
   };
   const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
   const effectiveTitle =
@@ -190,10 +191,10 @@ export default function QuotationTemplate({
                 <span className="text-slate-500">Validity:</span>
                 <div className="font-semibold text-slate-900">{quotation.price_validity || (quotation.expiry_date ? fmtDate(quotation.expiry_date) : "30 Days")}</div>
               </div>
-              {quotation.payment_terms && (
+              {stripCustomPartyTags(quotation.payment_terms) && (
                 <div>
                   <span className="text-slate-500">Payment Terms:</span>
-                  <div className="font-semibold text-slate-900">{quotation.payment_terms}</div>
+                  <div className="font-semibold text-slate-900">{stripCustomPartyTags(quotation.payment_terms)}</div>
                 </div>
               )}
               {quotation.supply_time && (
@@ -261,10 +262,10 @@ export default function QuotationTemplate({
               </div>
             </div>
 
-            {quotation.terms_conditions && (
+            {stripCustomPartyTags(quotation.terms_conditions) && (
               <div className="rounded border border-slate-200 bg-slate-50/30 p-2.5 text-[11px] text-slate-600">
                 <div className="font-bold text-slate-800 text-xs mb-1">Terms &amp; Conditions (الشروط والأحكام):</div>
-                <div className="whitespace-pre-line leading-relaxed">{quotation.terms_conditions}</div>
+                <div className="whitespace-pre-line leading-relaxed">{stripCustomPartyTags(quotation.terms_conditions)}</div>
               </div>
             )}
           </div>

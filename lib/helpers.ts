@@ -1,8 +1,8 @@
 import { supabase } from "@/lib/supabase";
-import { generateNextDocumentNumber } from "@/lib/documentNumbering";
+import { generateNextDocumentNumber, formatDisplayDocNumber, detectDocumentCollisions } from "@/lib/documentNumbering";
 
-export { generateNextDocumentNumber } from "@/lib/documentNumbering";
-export type { DocNumberingConfig } from "@/lib/documentNumbering";
+export { generateNextDocumentNumber, formatDisplayDocNumber, detectDocumentCollisions } from "@/lib/documentNumbering";
+export type { DocNumberingConfig, DocumentMappingItem } from "@/lib/documentNumbering";
 
 export type CompanyDocDetails = {
   id: string;

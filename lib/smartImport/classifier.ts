@@ -23,19 +23,28 @@ interface PatternRule {
 }
 
 const RULES: PatternRule[] = [
-  // 1. PVC Tank Liner & Technical Measurements
+  // 1. PVC Tank Liner & Technical Measurements (Engineering calculation sheets only)
   {
     type: "measurement_project",
     primaryKeywords: [
-      /\b(pvc\s+tank\s+liner|tank\s+liner|liner\s+measurement|fabric\s+consumption|welding\s+allowance)\b/i,
+      /\b(liner\s+measurement|fabric\s+consumption|welding\s+allowance)\b/i,
       /\b(running\s+meter|square\s+meter|seam\s+overlap|bottom\s+base|cylinder\s+tank)\b/i,
     ],
     secondaryKeywords: [
-      /\b(diameter|height|fabric\s+width|welding\s+size|eyelet|centre\s+joint)\b/i,
+      /\b(diameter|height|fabric\s+width|welding\s+size|centre\s+joint)\b/i,
       /\b(m2|sqm|rm|lin\.m)\b/i,
     ],
-    fileNameKeywords: [/tank.*liner/i, /measurement/i, /fabric.*calc/i, /liner/i],
-    weight: 1.3,
+    negativeKeywords: [
+      /\btax\s+invoice\b/i,
+      /\bcommercial\s+invoice\b/i,
+      /\binvoice\s+no\b/i,
+      /\bvat\s*5%/i,
+      /\bvat\s*amount\b/i,
+      /\bnet\s+amount\b/i,
+      /\btax\s+registration\b/i,
+    ],
+    fileNameKeywords: [/measurement/i, /fabric.*calc/i, /liner_calc/i],
+    weight: 1.0,
   },
 
   // 2. Attendance
@@ -88,14 +97,15 @@ const RULES: PatternRule[] = [
       /\btax\s+invoice\b/i,
       /\bcommercial\s+invoice\b/i,
       /\bvat\s+invoice\b/i,
+      /\binvoice\s+ref\s*:\s*inv/i,
     ],
     secondaryKeywords: [
-      /\b(trn\s*:?\s*\d+|trn\s+number|tax\s+registration|vat\s+5%|supply\s+date)\b/i,
-      /\b(invoice\s+no|inv[-_#\s]\d+)\b/i,
+      /\b(trn\s*:?\s*\d+|trn\s+number|tax\s+registration|vat\s+5%|vat\s*amount|supply\s+date)\b/i,
+      /\b(invoice\s+no|inv[-_#\s]\d+|net\s+amount|total\s+amount)\b/i,
     ],
     negativeKeywords: [/\bproforma\b/i, /\bpurchase\s+order\b/i, /\bdelivery\s+note\b/i],
-    fileNameKeywords: [/tax.*invoice/i, /invoice/i, /\binv[-_]/i, /\binv\d+/i],
-    weight: 1.1,
+    fileNameKeywords: [/tax.*invoice/i, /invoice/i, /^inv[-_0-9]/i, /\binv[-_]/i, /\binv\d+/i],
+    weight: 1.4,
   },
 
   // 6. Delivery Note

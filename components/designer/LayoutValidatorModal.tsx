@@ -1,5 +1,7 @@
 "use client";
 
+import DesignerPortal from "./DesignerPortal";
+
 import React, { useState } from "react";
 import {
   CheckCircle2,
@@ -87,8 +89,9 @@ export default function LayoutValidatorModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-xl border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl">
+    <DesignerPortal>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in duration-150" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="relative z-[101] flex max-h-[90vh] w-full max-w-3xl flex-col rounded-xl border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 p-4">
           <div className="flex items-center gap-2.5">
@@ -321,5 +324,6 @@ export default function LayoutValidatorModal({
         </div>
       </div>
     </div>
+    </DesignerPortal>
   );
 }

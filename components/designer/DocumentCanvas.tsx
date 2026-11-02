@@ -677,44 +677,35 @@ export default function DocumentCanvas({
             transform: `scale(${zoom})`,
           }}
         >
-          {/* Printable Margin Guidelines */}
+          {/* Printable Margin Guidelines (Single non-overlapping visual guide) */}
           <div
-            className="absolute border border-dashed border-slate-300/70 pointer-events-none z-10"
+            className={`absolute border border-dashed pointer-events-none z-10 transition-colors ${
+              snapMargins ? "border-indigo-400/80 ring-1 ring-indigo-400/20" : "border-slate-300/70"
+            }`}
             style={{
-              top: `${layout.page.margins.top}mm`,
-              left: `${layout.page.margins.left}mm`,
-              width: `${Math.max(10, layout.page.widthMm - layout.page.margins.left - layout.page.margins.right)}mm`,
-              height: `${Math.max(10, layout.page.heightMm - layout.page.margins.top - layout.page.margins.bottom)}mm`,
+              top: `${layout.page.margins?.top ?? 10}mm`,
+              left: `${layout.page.margins?.left ?? 10}mm`,
+              width: `${Math.max(10, layout.page.widthMm - (layout.page.margins?.left ?? 10) - (layout.page.margins?.right ?? 10))}mm`,
+              height: `${Math.max(10, layout.page.heightMm - (layout.page.margins?.top ?? 10) - (layout.page.margins?.bottom ?? 10))}mm`,
             }}
+            title={snapMargins ? "Content Margins (Snap to Margins Active)" : "Content Margins (Printable Area)"}
           />
 
-          {/* Margin Guides */}
-          {snapMargins && (
-            <div
-              className="absolute border border-dashed border-indigo-400/40 pointer-events-none z-10"
-              style={{
-                top: `${layout.page.margins?.top ?? 10}mm`,
-                left: `${layout.page.margins?.left ?? 10}mm`,
-                width: `${layout.page.widthMm - (layout.page.margins?.left ?? 10) - (layout.page.margins?.right ?? 10)}mm`,
-                height: `${layout.page.heightMm - (layout.page.margins?.top ?? 10) - (layout.page.margins?.bottom ?? 10)}mm`,
-              }}
-              title="Content Margins (Printable Area)"
-            />
-          )}
-
-          {/* Snap Guide Lines */}
-          {guideLines.x !== undefined && (
-            <div
-              className="absolute top-0 bottom-0 border-l border-cyan-400 z-50 pointer-events-none"
-              style={{ left: `${guideLines.x}mm` }}
-            />
-          )}
-          {guideLines.y !== undefined && (
-            <div
-              className="absolute left-0 right-0 border-t border-cyan-400 z-50 pointer-events-none"
-              style={{ top: `${guideLines.y}mm` }}
-            />
-          )}
+          {/* Snap Guide Lines (Strictly clipped to Document Canvas bounds, z-20) */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none z-20">
+            {guideLines.x !== undefined && (
+              <div
+                className="absolute top-0 bottom-0 border-l-2 border-cyan-400 pointer-events-none shadow-[0_0_4px_rgba(34,211,238,0.5)]"
+                style={{ left: `${guideLines.x}mm` }}
+              />
+            )}
+            {guideLines.y !== undefined && (
+              <div
+                className="absolute left-0 right-0 border-t-2 border-cyan-400 pointer-events-none shadow-[0_0_4px_rgba(34,211,238,0.5)]"
+                style={{ top: `${guideLines.y}mm` }}
+              />
+            )}
+          </div>
 
           {/* The Live Document Renderer — visual source of truth */}
           <DynamicDocumentRenderer
@@ -727,7 +718,7 @@ export default function DocumentCanvas({
           />
 
           {/* Interactive Element Overlay */}
-          <div className="absolute inset-0 z-20 pointer-events-none">
+          <div className="absolute inset-0 z-30 pointer-events-none">
             {(() => {
               const borders = normalizePageBorders(layout.page?.borders);
               const selectableBorders: LayoutElement[] = [
@@ -960,7 +951,7 @@ export default function DocumentCanvas({
                           <div
                             key={handle}
                             onMouseDown={(e) => handleResizeHandleMouseDown(e, handle, elem)}
-                            className={`absolute w-3 h-3 bg-white border-2 border-blue-600 rounded-sm z-50 shadow-md ${
+                            className={`absolute w-3 h-3 bg-white border-2 border-blue-600 rounded-sm z-30 shadow-md ${
                               handle === "nw" ? "-top-1.5 -left-1.5 cursor-nwse-resize"
                               : handle === "n"  ? "-top-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize"
                               : handle === "ne" ? "-top-1.5 -right-1.5 cursor-nesw-resize"

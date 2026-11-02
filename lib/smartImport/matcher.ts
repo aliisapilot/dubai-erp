@@ -98,13 +98,24 @@ export async function loadExistingEntities(supabase: SupabaseClient): Promise<Ex
   };
 }
 
+export function normalizeEntityName(name: string): string {
+  if (!name) return "";
+  return name
+    .toLowerCase()
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, " ")
+    .replace(/\b(co|company|l\s*l\s*c|llc|fze|fzc|est|establishment|trading|general\s*trading)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // -------------------------------------------------------------
 // Match Customer
 // -------------------------------------------------------------
 export function matchCustomer(
   extractedName: string | null,
   extractedTrn: string | null,
-  cache: ExistingEntitiesCache
+  cache: ExistingEntitiesCache,
+  batchProposedCustomers?: { name: string; trn?: string }[]
 ): EntityMatchResult {
   if (!extractedName && !extractedTrn) {
     return {
@@ -119,6 +130,7 @@ export function matchCustomer(
 
   const cleanName = (extractedName || "").trim();
   const cleanTrn = (extractedTrn || "").trim();
+  const normClean = normalizeEntityName(cleanName);
 
   // 1. Exact TRN Match (Highest confidence)
   if (cleanTrn) {
@@ -133,8 +145,25 @@ export function matchCustomer(
         matchedId: trnMatch.id,
         matchedName: trnMatch.name,
         matchConfidence: 1.0,
-        matchReason: `Exact TRN match found (${cleanTrn}) with customer '${trnMatch.name}'. Reusing existing record.`,
+        matchReason: `Exact TRN match found (${cleanTrn}) with existing customer '${trnMatch.name}'. Reusing existing record.`,
       };
+    }
+
+    // Check TRN against customers already proposed in the current batch
+    if (batchProposedCustomers) {
+      const batchTrnMatch = batchProposedCustomers.find(b => b.trn && b.trn.trim() === cleanTrn);
+      if (batchTrnMatch) {
+        return {
+          action: "reuse_existing",
+          targetModule: "Customers",
+          targetTable: "customers",
+          extractedName: cleanName,
+          extractedTrn: cleanTrn,
+          matchedName: batchTrnMatch.name,
+          matchConfidence: 0.99,
+          matchReason: `Exact TRN match (${cleanTrn}) with customer '${batchTrnMatch.name}' proposed in this import batch. Reusing proposed record.`,
+        };
+      }
     }
   }
 
@@ -156,7 +185,49 @@ export function matchCustomer(
     };
   }
 
-  // 3. Fuzzy similarity search
+  // 3. Normalized Name Match against DB cache
+  if (normClean.length > 2) {
+    const normMatch = cache.customers.find(c => {
+      const nc = normalizeEntityName(c.name);
+      return nc === normClean || (nc.length > 3 && (nc.includes(normClean) || normClean.includes(nc)));
+    });
+    if (normMatch) {
+      return {
+        action: "reuse_existing",
+        targetModule: "Customers",
+        targetTable: "customers",
+        extractedName: cleanName,
+        extractedTrn: cleanTrn,
+        matchedId: normMatch.id,
+        matchedName: normMatch.name,
+        matchConfidence: 0.96,
+        matchReason: `Normalized customer name match with '${normMatch.name}'. Reusing existing record.`,
+      };
+    }
+  }
+
+  // 4. Match against customers proposed in this batch
+  if (batchProposedCustomers) {
+    const batchMatch = batchProposedCustomers.find(b => {
+      if (b.name.toLowerCase().trim() === cleanName.toLowerCase().trim()) return true;
+      const nb = normalizeEntityName(b.name);
+      return nb.length > 2 && (nb === normClean || nb.includes(normClean) || normClean.includes(nb));
+    });
+    if (batchMatch) {
+      return {
+        action: "reuse_existing",
+        targetModule: "Customers",
+        targetTable: "customers",
+        extractedName: cleanName,
+        extractedTrn: cleanTrn,
+        matchedName: batchMatch.name,
+        matchConfidence: 0.98,
+        matchReason: `Matches customer '${batchMatch.name}' proposed in this import batch. Reusing proposed record.`,
+      };
+    }
+  }
+
+  // 5. Fuzzy similarity search against DB cache
   const candidates: EntityMatchCandidate[] = [];
   for (const c of cache.customers) {
     const sim = calculateLevenshteinSimilarity(cleanName, c.name);
@@ -174,7 +245,6 @@ export function matchCustomer(
   candidates.sort((a, b) => b.similarity - a.similarity);
 
   if (candidates.length > 0) {
-    // If high similarity >= 0.85, do NOT auto-merge solely on similar names! Mark 'needs_review'
     return {
       action: "needs_review",
       targetModule: "Customers",
@@ -184,12 +254,12 @@ export function matchCustomer(
       matchedId: candidates[0].id,
       matchedName: candidates[0].name,
       matchConfidence: candidates[0].similarity,
-      matchReason: `Similar existing customer found ('${candidates[0].name}', ${Math.round(candidates[0].similarity * 100)}% match). Requires confirmation to prevent duplicate or accidental merge.`,
+      matchReason: `Similar existing customer found ('${candidates[0].name}', ${Math.round(candidates[0].similarity * 100)}% match). Requires confirmation before linking.`,
       candidateMatches: candidates,
     };
   }
 
-  // 4. No match -> Prepare New Customer
+  // 6. No match -> Propose New Customer
   return {
     action: "create_new",
     targetModule: "Customers",
@@ -370,13 +440,28 @@ export function matchProject(
     };
   }
 
+  // Work scopes, item descriptions, and trade activities must NOT automatically spawn ERP projects
+  const isGenericWorkScope = /\b(fabrication|liner|tank|supply|installation|maintenance|repair|transportation|shades|canopy|fitting|pvc|hdpe|car\s*parking)\b/i.test(cleanName);
+  const isExplicitProject = /\b(project|tower|building|villa|site|plot|mall|phase|residence|contract|prj[-_0-9]|job[-_0-9])\b/i.test(cleanName);
+
+  if (!isGenericWorkScope && isExplicitProject) {
+    return {
+      action: "create_new",
+      targetModule: "Projects",
+      targetTable: "projects",
+      extractedName: cleanName,
+      matchConfidence: 0.9,
+      matchReason: `New project identified: '${cleanName}'. Proposed for creation.`,
+    };
+  }
+
   return {
-    action: "create_new",
+    action: "skip",
     targetModule: "Projects",
     targetTable: "projects",
     extractedName: cleanName,
-    matchConfidence: 0.9,
-    matchReason: `New project identified: '${cleanName}'. Proposed for creation.`,
+    matchConfidence: 0,
+    matchReason: `Scope '${cleanName}' is an invoice item/service description, not an explicitly justified ERP project.`,
   };
 }
 

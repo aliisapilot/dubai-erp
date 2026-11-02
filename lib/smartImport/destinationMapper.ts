@@ -220,6 +220,7 @@ export function generateDestinationMappings(
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
+    const isMismatch = item.calculationStatus === "mismatch";
     mappings.push({
       sourceFilename: fileName,
       sourceLocation: getSourceLocStr(item.source),
@@ -228,9 +229,9 @@ export function generateDestinationMappings(
       erpModule: "Line Items",
       destinationTable: itemDestTable,
       destinationField: "description, quantity, unit_price, line_total",
-      proposedAction: "create_new",
-      validationStatus: item.calculationStatus === "mismatch" ? "warning" : "valid",
-      confidence: 0.95,
+      proposedAction: isMismatch ? "needs_review" : "create_new",
+      validationStatus: isMismatch ? "warning" : "valid",
+      confidence: isMismatch ? 0.6 : 0.95,
       editableValue: item.description,
     });
   }

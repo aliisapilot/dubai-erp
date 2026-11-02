@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useEffect } from "react";
+import DesignerPortal from "./DesignerPortal";
 import {
   Undo2,
   Redo2,
@@ -137,6 +138,18 @@ export default function TopToolbar({
   onChangeLayoutMode,
 }: TopToolbarProps) {
   const [showAdvancedModal, setShowAdvancedModal] = useState(false);
+  useEffect(() => {
+    if (!showAdvancedModal) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setShowAdvancedModal(false);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showAdvancedModal]);
   const [advancedTab, setAdvancedTab] = useState<"grid" | "styles" | "tools">("grid");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -180,7 +193,7 @@ export default function TopToolbar({
   });
 
   return (
-    <header className="shrink-0 border-b border-slate-800 bg-slate-900 text-white select-none z-30 shadow-md">
+    <header className="shrink-0 border-b border-slate-800 bg-slate-900 text-white select-none z-40 relative shadow-md">
       {/* ── Single Simplified Main Toolbar ───────────────────────────────────────────── */}
       <div className="flex h-13 w-full items-center justify-between px-2.5 sm:px-3 gap-1.5 sm:gap-2 overflow-x-auto overscroll-x-contain lg:overflow-x-visible">
         {/* 1. Template & Document Selection */}
@@ -554,8 +567,17 @@ export default function TopToolbar({
 
       {/* ── Unified Advanced Settings Modal ───────────────────────────────────────── */}
       {showAdvancedModal && (
-        <div className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full text-white shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150">
+        <DesignerPortal>
+        <div
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="advanced-settings-modal-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAdvancedModal(false);
+          }}
+        >
+          <div className="relative z-[101] bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full text-white shadow-2xl overflow-hidden flex flex-col max-h-[88vh] my-auto animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
             <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
               <div className="flex items-center gap-2">
@@ -563,7 +585,7 @@ export default function TopToolbar({
                   <Sliders size={16} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">Advanced Settings &amp; Tools</h3>
+                  <h3 id="advanced-settings-modal-title" className="text-sm font-bold text-white">Advanced Settings &amp; Tools</h3>
                   <p className="text-[11px] text-slate-400">
                     Fine-tune grid, alignment, margins, templates, and utilities
                   </p>
@@ -913,6 +935,7 @@ export default function TopToolbar({
             </div>
           </div>
         </div>
+        </DesignerPortal>
       )}
     </header>
   );

@@ -8,7 +8,7 @@ import type {
   ParsedDocument,
   RelationshipTreeNode,
 } from "./types";
-import type { ExistingEntitiesCache } from "./matcher";
+import { type ExistingEntitiesCache, normalizeEntityName } from "./matcher";
 
 export function buildRelationshipTrees(documents: ParsedDocument[]): RelationshipTreeNode[] {
   const trees: RelationshipTreeNode[] = [];
@@ -162,35 +162,54 @@ export function computeBeforeAndAfterSummary(
     }
 
     // Customer
-    if (doc.customerResolution && doc.customerResolution.extractedName) {
-      const nameKey = doc.customerResolution.extractedName.toLowerCase();
-      if (!seenCustomers.has(nameKey)) {
-        seenCustomers.add(nameKey);
-        if (doc.customerResolution.action === "create_new") summary.newCustomers++;
-        else if (doc.customerResolution.action === "reuse_existing") summary.reusedCustomers++;
-        else if (doc.customerResolution.action === "needs_review") summary.recordsRequiringReview++;
+    if (doc.customerResolution && doc.customerResolution.extractedName && doc.customerResolution.action !== "skip") {
+      const nameKey = normalizeEntityName(doc.customerResolution.extractedName);
+      if (doc.customerResolution.action === "reuse_existing") {
+        summary.reusedCustomers++;
+      } else if (doc.customerResolution.action === "needs_review") {
+        summary.recordsRequiringReview++;
+      } else if (doc.customerResolution.action === "create_new") {
+        if (!seenCustomers.has(nameKey)) {
+          seenCustomers.add(nameKey);
+          summary.newCustomers++;
+        } else {
+          // Additional invoices in the same batch share this proposed customer
+          summary.reusedCustomers++;
+        }
       }
     }
 
-    // Supplier
-    if (doc.supplierResolution && doc.supplierResolution.extractedName) {
-      const nameKey = doc.supplierResolution.extractedName.toLowerCase();
-      if (!seenSuppliers.has(nameKey)) {
-        seenSuppliers.add(nameKey);
-        if (doc.supplierResolution.action === "create_new") summary.newSuppliers++;
-        else if (doc.supplierResolution.action === "reuse_existing") summary.reusedSuppliers++;
-        else if (doc.supplierResolution.action === "needs_review") summary.recordsRequiringReview++;
+    // Supplier (Only for purchase documents or explicit suppliers)
+    if (doc.supplierResolution && doc.supplierResolution.extractedName && doc.supplierResolution.action !== "skip") {
+      const nameKey = normalizeEntityName(doc.supplierResolution.extractedName);
+      if (doc.supplierResolution.action === "reuse_existing") {
+        summary.reusedSuppliers++;
+      } else if (doc.supplierResolution.action === "needs_review") {
+        summary.recordsRequiringReview++;
+      } else if (doc.supplierResolution.action === "create_new") {
+        if (!seenSuppliers.has(nameKey)) {
+          seenSuppliers.add(nameKey);
+          summary.newSuppliers++;
+        } else {
+          summary.reusedSuppliers++;
+        }
       }
     }
 
-    // Project
+    // Project (Only if explicitly identified and not skipped)
     if (doc.projectResolution && doc.projectResolution.extractedName && doc.projectResolution.action !== "skip") {
-      const projKey = doc.projectResolution.extractedName.toLowerCase();
-      if (!seenProjects.has(projKey)) {
-        seenProjects.add(projKey);
-        if (doc.projectResolution.action === "create_new") summary.newProjects++;
-        else if (doc.projectResolution.action === "reuse_existing") summary.reusedProjects++;
-        else if (doc.projectResolution.action === "needs_review") summary.recordsRequiringReview++;
+      const projKey = doc.projectResolution.extractedName.toLowerCase().trim();
+      if (doc.projectResolution.action === "reuse_existing") {
+        summary.reusedProjects++;
+      } else if (doc.projectResolution.action === "needs_review") {
+        summary.recordsRequiringReview++;
+      } else if (doc.projectResolution.action === "create_new") {
+        if (!seenProjects.has(projKey)) {
+          seenProjects.add(projKey);
+          summary.newProjects++;
+        } else {
+          summary.reusedProjects++;
+        }
       }
     }
 

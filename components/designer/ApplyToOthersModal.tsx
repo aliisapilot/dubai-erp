@@ -1,5 +1,7 @@
 "use client";
 
+import DesignerPortal from "./DesignerPortal";
+
 import React, { useState } from "react";
 import {
   X,
@@ -151,8 +153,9 @@ export default function ApplyToOthersModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 select-none">
-      <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl border border-slate-700 bg-slate-900 shadow-2xl text-white overflow-hidden">
+    <DesignerPortal>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 select-none" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="relative z-[101] flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl border border-slate-700 bg-slate-900 shadow-2xl text-white overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4 bg-slate-950/60">
           <div className="flex items-center gap-2.5">
@@ -399,5 +402,6 @@ export default function ApplyToOthersModal({
         </div>
       </div>
     </div>
+    </DesignerPortal>
   );
 }

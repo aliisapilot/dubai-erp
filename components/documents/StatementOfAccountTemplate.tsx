@@ -9,9 +9,13 @@ import DocFooter from "./DocFooter";
 import { numberToWordsEnglish, numberToWordsArabic } from "@/lib/amountInWords";
 import DocumentContainer from "./DocumentContainer";
 
+import type { DocumentLayout } from "@/lib/documentDesigner";
+
 export type StatementEntry = {
   date: string;
   reference_no: string;
+  original_reference?: string;
+  invoice_id?: string;
   description: string;
   debit: number;   // Invoice charge
   credit: number;  // Payment receipt
@@ -27,6 +31,7 @@ export type StatementData = {
   customer_trn?: string | null;
   customer_address?: string | null;
   customer_phone?: string | null;
+  customer_code?: string | null;
   opening_balance: number;
   entries: StatementEntry[];
   closing_balance: number;
@@ -35,17 +40,19 @@ export type StatementData = {
 type StatementProps = {
   company: CompanyDocInfo | null;
   statement: StatementData;
+  overrideLayout?: DocumentLayout;
   onClose?: () => void;
 };
 
 export default function StatementOfAccountTemplate({
   company,
   statement,
+  overrideLayout,
   onClose,
 }: StatementProps) {
   const design = usePersistedDocumentDesign(company?.id, 'customer_statement');
-  const customLayout = design.layout;
-  if (!design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
+  const customLayout = overrideLayout || design.layout;
+  if (!overrideLayout && !design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
 
   const totalCharges = statement.entries.reduce((acc, curr) => acc + (Number(curr.debit) || 0), 0);
   const totalCredits = statement.entries.reduce((acc, curr) => acc + (Number(curr.credit) || 0), 0);
@@ -57,6 +64,9 @@ export default function StatementOfAccountTemplate({
     customer_trn: statement.customer_trn || undefined,
     customer_address: statement.customer_address || undefined,
     contact_number: statement.customer_phone || undefined,
+    customer_code: statement.customer_code || undefined,
+    opening_balance: statement.opening_balance,
+    total_credits: totalCredits,
     items: [{
       date: statement.from_date || "",
       type: "Opening",
@@ -71,7 +81,13 @@ export default function StatementOfAccountTemplate({
       line_total: statement.opening_balance,
     }, ...statement.entries.map((e) => ({
       date: e.date,
-      type: e.description.split(" (")[0],
+      type: e.description.startsWith("Tax Invoice")
+        ? "Tax Invoice"
+        : e.description.startsWith("Payment")
+        ? "Payment"
+        : e.description.startsWith("Receipt Voucher")
+        ? "Receipt Voucher"
+        : e.description.split(" (")[0],
       reference: e.reference_no,
       description: e.description,
       debit: e.debit,
@@ -85,6 +101,7 @@ export default function StatementOfAccountTemplate({
     subtotal: totalCharges,
     vat_amount: 0,
     total_amount: statement.closing_balance,
+    payment_terms: `Your account balance is ${statement.closing_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })} AED. Please make your payment to cover the balance by the due date.\nMake all checks payable to ${company?.name || "the company"}\n\nThank you for your business!`,
   };
   const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
 

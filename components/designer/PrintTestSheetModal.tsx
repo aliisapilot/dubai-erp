@@ -1,5 +1,7 @@
 "use client";
 
+import DesignerPortal from "./DesignerPortal";
+
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Printer,
@@ -104,8 +106,9 @@ export default function PrintTestSheetModal({
   };
 
   return (
+    <DesignerPortal>
     <div
-      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center select-none overflow-hidden print:bg-white print:p-0 print:m-0 print:block"
+      className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex flex-col items-center select-none overflow-hidden print:bg-white print:p-0 print:m-0 print:block"
       role="dialog"
       aria-modal="true"
       aria-labelledby="print-test-sheet-title"
@@ -236,5 +239,6 @@ export default function PrintTestSheetModal({
         </div>
       </div>
     </div>
+    </DesignerPortal>
   );
 }

@@ -6,7 +6,8 @@ import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
 import DocSignatureArea from "./DocSignatureArea";
 import { numberToWordsEnglish, numberToWordsArabic } from "@/lib/amountInWords";
-import { fmtAED, fmtDate } from "@/lib/helpers";
+import { fmtAED, fmtDate, formatDisplayDocNumber } from "@/lib/helpers";
+import { stripCustomPartyTags } from "@/lib/documentCustomer";
 import DocumentContainer from "./DocumentContainer";
 import DynamicDocumentRenderer, { getDocumentPageCount, MockDocumentData } from "./DynamicDocumentRenderer";
 
@@ -71,7 +72,7 @@ export default function TaxInvoiceTemplate({
   const netPayable = Math.max(0, invoice.total_amount - advance);
 
   const rendererData: MockDocumentData = {
-    document_number: invoice.invoice_number,
+    document_number: formatDisplayDocNumber(invoice.invoice_number, "tax_invoice") || invoice.invoice_number,
     document_date: invoice.invoice_date,
     supply_date: invoice.supply_date || invoice.invoice_date,
     due_date: invoice.due_date || undefined,
@@ -100,8 +101,8 @@ export default function TaxInvoiceTemplate({
     vat_amount: invoice.vat_amount,
     total_amount: invoice.total_amount,
     advance_amount: invoice.advance_amount,
-    payment_terms: invoice.payment_terms || undefined,
-    notes: invoice.notes || undefined,
+    payment_terms: stripCustomPartyTags(invoice.payment_terms) || undefined,
+    notes: stripCustomPartyTags(invoice.notes) || undefined,
   };
   const totalPages = getDocumentPageCount(customLayout, rendererData.items.length, rendererData.items, rendererData);
   const effectiveTitle =
@@ -207,10 +208,10 @@ export default function TaxInvoiceTemplate({
                   <div className="font-semibold text-slate-900">{fmtDate(invoice.due_date)}</div>
                 </div>
               )}
-              {invoice.payment_terms && (
+              {stripCustomPartyTags(invoice.payment_terms) && (
                 <div>
                   <span className="text-slate-500">Payment Terms:</span>
-                  <div className="font-semibold text-slate-900">{invoice.payment_terms}</div>
+                  <div className="font-semibold text-slate-900">{stripCustomPartyTags(invoice.payment_terms)}</div>
                 </div>
               )}
               {invoice.project_number && (

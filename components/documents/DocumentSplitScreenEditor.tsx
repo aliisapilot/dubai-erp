@@ -33,6 +33,7 @@ import { usePersistedDocumentDesign } from "./usePersistedDocumentDesign";
 import { calcLineItem, fmtAED, todayISO } from "@/lib/helpers";
 import { parseDatabaseError } from "@/lib/paymentTypes";
 import { NumericCellInput } from "@/components/ui/NumericCellInput";
+import { stripCustomPartyTags } from "@/lib/documentCustomer";
 import PrintModal from "./PrintModal";
 
 export interface EditorLineItem {
@@ -231,7 +232,9 @@ function recalc(item: EditorLineItem): EditorLineItem {
 
 function parseTermsToList(raw?: string | null): string[] {
   if (!raw) return [];
-  const lines = raw
+  const clean = stripCustomPartyTags(raw);
+  if (!clean) return [];
+  const lines = clean
     .split(/\r?\n/)
     .map((t) => t.trim().replace(/^[-•*➢]\s*/, ""))
     .filter(Boolean);
@@ -287,10 +290,10 @@ function DocumentSplitScreenEditorWorkspace({
     invoice_date: initialPrimaryDate,
     supply_date: initialSecondaryDate,
     due_date: initialInvoice?.due_date || "",
-    payment_terms: initialInvoice?.payment_terms || "30 days",
+    payment_terms: stripCustomPartyTags(initialInvoice?.payment_terms) || "30 days",
     status: initialInvoice?.status || "draft",
-    notes: initialInvoice?.notes || "",
-    terms: initialInvoice?.terms || "",
+    notes: stripCustomPartyTags(initialInvoice?.notes) || "",
+    terms: stripCustomPartyTags(initialInvoice?.terms) || "",
   }));
 
   const isSupplierParty = partyType === "supplier";
@@ -327,7 +330,8 @@ function DocumentSplitScreenEditorWorkspace({
   // Editable bullet terms state
   const [termsList, setTermsList] = useState<string[]>(() => {
     const parsed = parseTermsToList(initialInvoice?.payment_terms);
-    return parsed.length > 0 ? parsed : [initialInvoice?.payment_terms || "30 days"];
+    const fallback = stripCustomPartyTags(initialInvoice?.payment_terms) || "30 days";
+    return parsed.length > 0 ? parsed : [fallback];
   });
 
   const [lines, setLines] = useState<EditorLineItem[]>(() => {
@@ -555,8 +559,8 @@ function DocumentSplitScreenEditorWorkspace({
       contact_email: partyEmail,
       project_name: effectiveProjectName,
       project_number: selectedProject?.project_number || undefined,
-      payment_terms: form.payment_terms,
-      notes: form.notes,
+      payment_terms: stripCustomPartyTags(form.payment_terms),
+      notes: stripCustomPartyTags(form.notes),
       subtotal: totals.sub,
       vat_amount: totals.vat,
       total_amount: totals.total,

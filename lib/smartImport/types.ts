@@ -59,6 +59,7 @@ export interface ExtractedLineItem {
   vatRate: number;
   vatAmount: number;
   total: number;
+  taxableAmount?: number;
   source: SourceLocation;
   calculatedTotal: number;
   difference: number;
@@ -164,6 +165,8 @@ export interface ParsedDocument {
   validationWarnings: string[];
   isDuplicate: boolean;
   duplicateReason?: string;
+  extractionStatus?: "success" | "failed";
+  extractionError?: string;
   rawContentSummary: {
     sheetsCount?: number;
     tablesCount?: number;

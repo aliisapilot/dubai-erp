@@ -6,7 +6,7 @@ import {
   Plus, Search, X, Save, Loader2, Printer, CheckCircle,
   Clock, ShoppingBag, Pencil, Trash2
 } from "lucide-react";
-import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, calcLineItem } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, calcLineItem, formatDisplayDocNumber } from "@/lib/helpers";
 import SupplierBillTemplate, { SupplierBillData } from "@/components/documents/SupplierBillTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
@@ -329,7 +329,8 @@ export default function SupplierBillsPage() {
   const filtered = bills.filter(b => {
     if (filterStatus && b.status !== filterStatus) return false;
     const sName = supMap[b.supplier_id] || "";
-    return [b.bill_number, sName, b.supplier_invoice_ref]
+    const simplifiedNum = formatDisplayDocNumber(b.bill_number, "supplier_bill");
+    return [b.bill_number, simplifiedNum, sName, b.supplier_invoice_ref]
       .filter(Boolean)
       .join(" ")
       .toLowerCase()
@@ -469,7 +470,14 @@ export default function SupplierBillsPage() {
                   return (
                     <tr key={b.id} className="hover:bg-slate-700/30 transition-colors">
                       <td className="px-5 py-3.5 font-bold font-mono text-slate-100">
-                        {b.bill_number}
+                        <span className="font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                          {formatDisplayDocNumber(b.bill_number, "supplier_bill") || b.bill_number}
+                        </span>
+                        {b.bill_number && b.bill_number !== formatDisplayDocNumber(b.bill_number, "supplier_bill") && (
+                          <span className="text-[10px] text-slate-400 block font-normal mt-0.5" title="Original Database Identifier">
+                            {b.bill_number}
+                          </span>
+                        )}
                         {b.supplier_invoice_ref && (
                           <div className="text-[10px] text-slate-400 font-normal">Ref: {b.supplier_invoice_ref}</div>
                         )}

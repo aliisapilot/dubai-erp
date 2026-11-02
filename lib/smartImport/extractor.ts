@@ -35,7 +35,13 @@ function cleanStr(val: unknown): string {
 function parseNumber(val: unknown): number | null {
   if (val === null || val === undefined) return null;
   if (typeof val === "number") return isNaN(val) ? null : val;
-  const cleaned = String(val).replace(/[^0-9.-]/g, "");
+  let str = String(val).trim();
+  // Fix spaces before decimal point: "6 .00" -> "6.00"
+  str = str.replace(/(\d+)\s+\.\s*(\d+)/g, "$1.$2");
+  // Fix spaces before/in comma thousands: "2 ,719.00" -> "2719.00"
+  str = str.replace(/(\d+)\s*,\s*(\d+)/g, "$1$2");
+  str = str.replace(/(\d+)\s+(\d{3})(?=[^\d]|$)/g, "$1$2");
+  const cleaned = str.replace(/[^0-9.-]/g, "");
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
 }
@@ -889,243 +895,369 @@ export function extractFromPdf(
   const fnDoubleMatch = !fnTripleMatch ? baseName.match(/^([A-Za-z0-9/_-]+)\s+(.+?)\.(docx|pdf|xlsx|csv)$/i) : null;
 
   const fnDocNo = fnTripleMatch ? fnTripleMatch[1].trim() : fnDoubleMatch ? fnDoubleMatch[1].trim() : null;
-  const fnCustOrSupp = fnTripleMatch ? fnTripleMatch[2].trim() : fnDoubleMatch ? fnDoubleMatch[2].trim() : null;
-  const fnProj = fnTripleMatch ? fnTripleMatch[3].trim() : null;
+  const fnCust = fnTripleMatch ? fnTripleMatch[2].trim() : fnDoubleMatch ? fnDoubleMatch[2].trim() : null;
+  const fnScope = fnTripleMatch ? fnTripleMatch[3].trim() : null;
 
-  let itemSeq = 1;
+  // Primary customer name defaults from systematic file naming
+  if (fnCust) {
+    const targetKey = docType === "purchase_order" || docType === "supplier_bill" ? "supplier_name" : "customer_name";
+    fields[targetKey] = {
+      fieldKey: targetKey,
+      label: targetKey === "supplier_name" ? "Supplier Name" : "Customer Name",
+      value: fnCust,
+      source: { file: fileName, rawText: `Filename: ${fileName}` },
+      confidence: 0.99,
+      validationStatus: "valid",
+      originalRawValue: fnCust,
+    };
+  }
+  if (fnScope) {
+    fields.project_name = {
+      fieldKey: "project_name",
+      label: "Project Name",
+      value: fnScope,
+      source: { file: fileName, rawText: `Filename: ${fileName}` },
+      confidence: 0.95,
+      validationStatus: "valid",
+      originalRawValue: fnScope,
+    };
+  }
 
-  for (const page of parsed.pages) {
-    for (let lIdx = 0; lIdx < page.lines.length; lIdx++) {
-      const line = page.lines[lIdx].trim();
-      const loc: SourceLocation = { file: fileName, page: page.pageNumber, row: lIdx + 1, rawText: line };
+  const lines = parsed.pages.flatMap(p => p.lines);
 
-      // Company / Customer
-      if (!fields.customer_name && !fields.supplier_name) {
-        const compMatch = line.match(/(?:company|customer|client|m\/s|to:?)\s+([A-Za-z0-9\s&.,\-]+?)(?:\s+date|\s*$)/i);
-        if (compMatch && compMatch[1].trim().length > 3) {
-          const val = compMatch[1].trim();
-          if (!/al\s*safwah|golden\s*elite|advance|balance|order|released/i.test(val)) {
-            const targetKey = docType === "purchase_order" || docType === "supplier_bill" ? "supplier_name" : "customer_name";
-            fields[targetKey] = {
-              fieldKey: targetKey,
-              label: targetKey === "supplier_name" ? "Supplier Name" : "Customer Name",
-              value: val,
-              source: loc,
-              confidence: 0.98,
-              validationStatus: "valid",
-              originalRawValue: line,
-            };
-          }
-        }
+  // 2. Scan for Customer TRN (any 15-digit number that is not the seller TRN 105319816200003)
+  for (let lIdx = 0; lIdx < lines.length; lIdx++) {
+    const line = lines[lIdx];
+    const trnMatches = line.matchAll(/\b(10[0-9]{13})\b/g);
+    for (const m of trnMatches) {
+      const trn = m[1];
+      if (trn !== "105319816200003") {
+        fields.trn = {
+          fieldKey: "trn",
+          label: "Tax Registration Number (TRN)",
+          value: trn,
+          source: { file: fileName, page: 1, row: lIdx + 1, rawText: line },
+          confidence: 0.99,
+          validationStatus: "valid",
+          originalRawValue: trn,
+        };
       }
+    }
+  }
 
-      // Date
-      if (!fields.document_date) {
-        const dtMatch = line.match(/(?:date|dated)[:\s]+([0-9]{1,2}\s*[/-]\s*[0-9]{1,2}\s*[/-]\s*[0-9]{2,4}|[0-9]{4}-[0-9]{2}-[0-9]{2})/i);
-        if (dtMatch) {
-          const cleanDateStr = dtMatch[1].replace(/\s+/g, "");
-          const parsedD = parseDate(cleanDateStr);
-          if (parsedD) {
-            fields.document_date = {
-              fieldKey: "document_date",
-              label: "Document Date",
-              value: parsedD,
-              source: loc,
-              confidence: 0.98,
-              validationStatus: "valid",
-              originalRawValue: line,
-            };
-          }
-        }
-      }
-
-      // Document Number
-      if (!fields.document_number) {
-        const dnMatch = line.match(/(?:invoice\s*no\.?|quotation\s*no\.?|qtn\s*no\.?|dn\s*no\.?|po\s*no\.?|ref\s*no\.?)[:\s]+([A-Za-z0-9\s/_#-]{3,})/i);
-        if (dnMatch) {
-          const cleanDocNo = dnMatch[1].replace(/\s+/g, "").trim();
-          if (cleanDocNo.length >= 3 && !/^(no|date|client|customer)$/i.test(cleanDocNo)) {
-            fields.document_number = {
-              fieldKey: "document_number",
-              label: "Document Number",
-              value: cleanDocNo,
-              source: loc,
-              confidence: 0.98,
-              validationStatus: "valid",
-              originalRawValue: line,
-            };
-          }
-        }
-      }
-
-      // Scope of Work / Project Name
-      if (!fields.project_name) {
-        const pMatch = line.match(/(?:scope\s*of\s*work|sub|subject|project|site)[:\s]+(?:quotation\s*for\s*|invoice\s*for\s*)?([^\n]+)/i);
-        if (pMatch && pMatch[1].trim().length > 3) {
-          const projVal = pMatch[1].trim();
-          if (!/^(terms|al safwah|golden elite|advance)/i.test(projVal)) {
-            fields.project_name = {
-              fieldKey: "project_name",
-              label: "Project Name",
-              value: projVal,
-              source: loc,
-              confidence: 0.95,
-              validationStatus: "valid",
-              originalRawValue: line,
-            };
-          }
-        }
-      }
-
-      // Customer TRN
-      if (!fields.trn) {
-        const trnMatch = line.match(/(?:trn\s*no\.?|customer\s*trn)[:\s]*([0-9]{15})/i);
-        if (trnMatch && trnMatch[1] !== "105319816200003") {
-          fields.trn = {
-            fieldKey: "trn",
-            label: "Tax Registration Number (TRN)",
-            value: trnMatch[1],
-            source: loc,
-            confidence: 0.99,
+  // 3. Scan for Document Date (check line or line + next line)
+  for (let lIdx = 0; lIdx < lines.length; lIdx++) {
+    const line = lines[lIdx];
+    const combined = line + " " + (lines[lIdx + 1] || "");
+    if (!fields.document_date && /\b(?:date|supply|dated)\b/i.test(combined)) {
+      const dm = combined.match(/(?:date|supply|dated)[:\s]+([0-9\s/.-]{8,15})/i);
+      if (dm) {
+        const dStr = dm[1].replace(/\s+/g, "");
+        const pd = parseDate(dStr);
+        if (pd) {
+          fields.document_date = {
+            fieldKey: "document_date",
+            label: "Document Date",
+            value: pd,
+            source: { file: fileName, page: 1, row: lIdx + 1, rawText: combined },
+            confidence: 0.98,
             validationStatus: "valid",
-            originalRawValue: line,
+            originalRawValue: dStr,
           };
-        }
-      }
-
-      // Subtotal (Net Amount)
-      if (!fields.subtotal && /net\s*amount|subtotal|sub-total/i.test(line)) {
-        const sMatch = line.match(/(?:net\s*amount|subtotal|sub-total)[:\s]*([0-9,.]+)/i);
-        if (sMatch) {
-          const num = parseNumber(sMatch[1]);
-          if (num !== null) {
-            fields.subtotal = {
-              fieldKey: "subtotal",
-              label: "Subtotal",
-              value: num,
-              source: loc,
-              confidence: 0.98,
-              validationStatus: "valid",
-              originalRawValue: line,
-            };
-          }
-        }
-      }
-
-      // VAT 5%
-      if (!fields.vat_amount && /vat\s*(?:amount)?\s*5%?/i.test(line)) {
-        const vMatch = line.match(/(?:vat\s*(?:amount)?\s*5%?)[:\s]*([0-9,.]+)/i);
-        if (vMatch) {
-          const num = parseNumber(vMatch[1]);
-          if (num !== null) {
-            fields.vat_amount = {
-              fieldKey: "vat_amount",
-              label: "VAT 5%",
-              value: num,
-              source: loc,
-              confidence: 0.98,
-              validationStatus: "valid",
-              originalRawValue: line,
-            };
-          }
-        }
-      }
-
-      // Grand Total
-      if (!fields.total_amount && /total\s*amount|grand\s*total|net\s*total/i.test(line)) {
-        const tMatch = line.match(/(?:total\s*amount|grand\s*total|net\s*total)[:\s]*([0-9,.]+)/i);
-        if (tMatch) {
-          const num = parseNumber(tMatch[1]);
-          if (num !== null) {
-            fields.total_amount = {
-              fieldKey: "total_amount",
-              label: "Grand Total",
-              value: num,
-              source: loc,
-              confidence: 0.98,
-              validationStatus: "valid",
-              originalRawValue: line,
-            };
-          }
-        }
-      }
-
-      // Line Items in PDF (e.g. '1. Fabrication of Pvc Fabric Canopy ( F2, F3 & F4 ) 3 LUM 4,500.00 13,500.00')
-      const itemMatch = line.match(/^([0-9]+)\.?\s+(.+?)\s+([0-9,.]+)\s+([A-Za-z]+)\s+([0-9,.]+)\s+([0-9,.]+)$/);
-      if (itemMatch) {
-        const desc = itemMatch[2].trim();
-        const qty = parseNumber(itemMatch[3]) || 1;
-        const unit = itemMatch[4].trim();
-        const rate = parseNumber(itemMatch[5]) || 0;
-        const total = parseNumber(itemMatch[6]) || (qty * rate);
-
-        items.push({
-          id: `item_pdf_${page.pageNumber}_${lIdx + 1}`,
-          itemNumber: itemSeq++,
-          description: desc,
-          quantity: qty,
-          unit: unit || "Nos",
-          unitPrice: rate,
-          discount: 0,
-          vatRate: 5,
-          vatAmount: Number((total * 0.05).toFixed(2)),
-          total,
-          calculatedTotal: total,
-          difference: 0,
-          calculationStatus: "match",
-          source: loc,
-        });
-      }
-
-      // PVC Tank Liner
-      if (docType === "measurement_project" || /tank\s+liner|diameter|height/i.test(line)) {
-        const dM = line.match(/diameter[:\s]*([0-9.]+)/i);
-        const hM = line.match(/height[:\s]*([0-9.]+)/i);
-        if (dM || hM) {
-          if (!measurement) measurement = { shape: "cylinder", source: loc, fabricWidth: 3, weldingAllowance: 3 };
-          if (dM) measurement.diameter = parseFloat(dM[1]);
-          if (hM) measurement.height = parseFloat(hM[1]);
         }
       }
     }
   }
 
-  // Fallbacks from Filename
+  // 4. Scan for Invoice Number
+  for (let lIdx = 0; lIdx < lines.length; lIdx++) {
+    const line = lines[lIdx];
+    const combined = line + " " + (lines[lIdx + 1] || "");
+    if (!fields.document_number && /(?:invoice\s*no\.?|ref\s*:|invoice\s*ref)/i.test(combined)) {
+      const im = combined.match(/(?:invoice\s*no\.?|ref\s*:|invoice\s*ref\s*:)\s*([A-Za-z0-9\s/_#-]+)/i);
+      if (im) {
+        let rawNum = im[1].trim();
+        rawNum = rawNum.replace(/\s+(Location|Ref|Mobile|Date|Supply|Terms|Company|Buyer).*$/i, "");
+        const clean = rawNum.replace(/\s+/g, "");
+        if (clean.length >= 3 && /^INV/i.test(clean)) {
+          fields.document_number = {
+            fieldKey: "document_number",
+            label: "Document Number",
+            value: clean,
+            source: { file: fileName, page: 1, row: lIdx + 1, rawText: combined },
+            confidence: 0.99,
+            validationStatus: "valid",
+            originalRawValue: clean,
+          };
+        }
+      }
+    }
+  }
   if (!fields.document_number && fnDocNo) {
     fields.document_number = {
       fieldKey: "document_number",
       label: "Document Number",
       value: fnDocNo,
       source: { file: fileName, rawText: `Filename: ${fileName}` },
-      confidence: 0.99,
+      confidence: 0.95,
       validationStatus: "valid",
       originalRawValue: fnDocNo,
     };
   }
 
-  if (!fields.customer_name && !fields.supplier_name && fnCustOrSupp) {
-    const targetKey = docType === "purchase_order" || docType === "supplier_bill" ? "supplier_name" : "customer_name";
-    fields[targetKey] = {
-      fieldKey: targetKey,
-      label: targetKey === "supplier_name" ? "Supplier Name" : "Customer Name",
-      value: fnCustOrSupp,
-      source: { file: fileName, rawText: `Filename: ${fileName}` },
-      confidence: 0.95,
-      validationStatus: "valid",
-      originalRawValue: fnCustOrSupp,
-    };
+  // 5. Financial totals (Net Amount / Subtotal, VAT 5%, Total Amount)
+  for (let lIdx = 0; lIdx < lines.length; lIdx++) {
+    const line = lines[lIdx];
+    const combined = line + " " + (lines[lIdx + 1] || "");
+    const loc: SourceLocation = { file: fileName, page: 1, row: lIdx + 1, rawText: combined };
+
+    // Advance / Progress billing check (e.g. "Advance 20% 76,000.00" or "...Installation 25% 95,000.00")
+    if (!fields.advance_billed && !/vat|tax/i.test(combined) && /(?:advance|material|commencement|milestone|progress|retention).+?\b(\d{1,2})%\s*[:]?\s*(?:AED)?\s*([0-9,]+(?:\.[0-9]+)?)/i.test(combined)) {
+      const mAdv = combined.match(/(?:advance|material|commencement|milestone|progress|retention).+?\b(\d{1,2})%\s*[:]?\s*(?:AED)?\s*([0-9,]+(?:\.[0-9]+)?)/i);
+      if (mAdv) {
+        const val = parseNumber(mAdv[2]);
+        if (val !== null && val > 0) {
+          fields.advance_billed = {
+            fieldKey: "advance_billed",
+            label: "Advance / Milestone Billed",
+            value: val,
+            source: loc,
+            confidence: 0.98,
+            validationStatus: "valid",
+            originalRawValue: mAdv[0],
+          };
+          // For progress/milestone tax invoices, taxable subtotal is the billed milestone amount
+          fields.subtotal = {
+            fieldKey: "subtotal",
+            label: "Subtotal",
+            value: val,
+            source: loc,
+            confidence: 0.98,
+            validationStatus: "valid",
+            originalRawValue: mAdv[0],
+          };
+        }
+      }
+    }
+
+    if (!fields.discount && /discount/i.test(combined)) {
+      const mDisc = combined.match(/discount\s*[:]?\s*(?:\(-?([0-9,.]+)\)|-?\s*([0-9,.]+))/i);
+      if (mDisc) {
+        const val = parseNumber(mDisc[1] || mDisc[2]);
+        if (val !== null && val > 0) {
+          fields.discount = {
+            fieldKey: "discount",
+            label: "Discount",
+            value: val,
+            source: loc,
+            confidence: 0.98,
+            validationStatus: "valid",
+            originalRawValue: mDisc[0],
+          };
+        }
+      }
+    }
+
+    if (!fields.subtotal && /net\s*amount|subtotal|sub-total/i.test(combined)) {
+      const m = combined.match(/(?:net\s*amount|subtotal|sub-total)\s*[:]?\s*(?:AED)?\s*([0-9,]+(?:\.[0-9]+)?)/i);
+      if (m) {
+        const val = parseNumber(m[1]);
+        if (val !== null && val > 0) {
+          fields.subtotal = {
+            fieldKey: "subtotal",
+            label: "Subtotal",
+            value: val,
+            source: loc,
+            confidence: 0.98,
+            validationStatus: "valid",
+            originalRawValue: m[1],
+          };
+        }
+      }
+    }
+
+    if (!fields.vat_amount && /vat\s*(?:amount|total)?\s*(?:\(5%\)|5%)/i.test(combined)) {
+      const m = combined.match(/vat\s*(?:amount|total)?\s*(?:\(5%\)|5%)\s*[:]?\s*(?:AED)?\s*([0-9,]+(?:\.[0-9]+)?)/i);
+      if (m) {
+        const val = parseNumber(m[1]);
+        if (val !== null && val >= 0) {
+          fields.vat_amount = {
+            fieldKey: "vat_amount",
+            label: "VAT 5%",
+            value: val,
+            source: loc,
+            confidence: 0.98,
+            validationStatus: "valid",
+            originalRawValue: m[1],
+          };
+        }
+      }
+    }
+
+    if (!fields.total_amount && /total\s*amount|grand\s*total/i.test(combined)) {
+      const m = combined.match(/(?:total\s*amount|grand\s*total)\s*[:]?\s*(?:AED)?\s*([0-9,]+(?:\.[0-9]+)?)/i);
+      if (m) {
+        const val = parseNumber(m[1]);
+        if (val !== null && val > 0) {
+          fields.total_amount = {
+            fieldKey: "total_amount",
+            label: "Grand Total",
+            value: val,
+            source: loc,
+            confidence: 0.98,
+            validationStatus: "valid",
+            originalRawValue: m[1],
+          };
+        }
+      }
+    }
   }
 
-  if (!fields.project_name && fnProj) {
-    fields.project_name = {
-      fieldKey: "project_name",
-      label: "Project Name",
-      value: fnProj,
-      source: { file: fileName, rawText: `Filename: ${fileName}` },
-      confidence: 0.95,
-      validationStatus: "valid",
-      originalRawValue: fnProj,
-    };
+  // 6. Line Items Extraction
+  function cleanLineForTable(lineStr: string): string {
+    let s = lineStr.replace(/\bN\s*o\s*s\b/gi, "Nos");
+    s = s.replace(/\bS\s*q\s*m\b/gi, "Sqm");
+    s = s.replace(/\bM\s*t\s*r\b/gi, "Mtr");
+    s = s.replace(/\bP\s*c\s*s\b/gi, "Pcs");
+    s = s.replace(/\bL\s*U\s*M\b/gi, "LUM");
+    s = s.replace(/\bR\s*o\s*l\s*l\b/gi, "Roll");
+    return s;
+  }
+
+  let tableHeaderIndex = -1;
+  let tableEndIndex = lines.length;
+
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (/^(?:SN|#)\s+(?:DESCRIPTION|Item\s+Description)/i.test(l)) {
+      tableHeaderIndex = i;
+    } else if (tableHeaderIndex !== -1 && /net\s*amount|subtotal|sub-total|total\s*amount|grand\s*total|payment\s*terms/i.test(l)) {
+      tableEndIndex = i;
+      break;
+    }
+  }
+
+  if (tableHeaderIndex !== -1) {
+    let itemSeq = 1;
+    let pendingDesc: string[] = [];
+    const is7Col = /vat\s*(?:\(5%\)|5%)/i.test(lines[tableHeaderIndex]);
+
+    for (let i = tableHeaderIndex + 1; i < tableEndIndex; i++) {
+      const rawLine = lines[i].trim();
+      if (!rawLine || /^[0-9]\s*\.?$/.test(rawLine)) continue;
+      const line = cleanLineForTable(rawLine);
+
+      // Check if line ends with column figures
+      // In 7-column layout (INV143): Qty Unit Rate VAT Total
+      // In 6-column layout (Standard): Qty Unit Rate Amount
+      const m7 = is7Col
+        ? line.match(/^(?:([0-9]+)\.?\s+)?(.*?)\s*(-|[0-9][0-9,.]*)\s+([A-Za-z]+)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)$/i)
+        : null;
+      const m6 = !is7Col
+        ? line.match(/^(?:([0-9]+)\.?\s+)?(.*?)\s*(-|[0-9][0-9,.]*)\s+([A-Za-z]+)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)$/i)
+        : null;
+
+      if (m7) {
+        const itemNo = m7[1] ? parseInt(m7[1]) : itemSeq;
+        const lineDesc = m7[2]?.trim() || "";
+        const qty = m7[3] === "-" ? 1 : parseNumber(m7[3]) || 1;
+        const unit = m7[4].trim();
+        const rate = parseNumber(m7[5]) || 0;
+        const vatAmt = parseNumber(m7[6]) || 0;
+        const grossTotal = parseNumber(m7[7]) || (qty * rate + vatAmt);
+        const taxableAmount = Number((qty * rate).toFixed(2));
+
+        const finalDesc = [...pendingDesc, lineDesc].filter(Boolean).join(" ").trim();
+        items.push({
+          id: `item_pdf_${itemSeq}`,
+          itemNumber: itemSeq++,
+          description: finalDesc || `Item ${itemNo}`,
+          quantity: qty,
+          unit,
+          unitPrice: rate,
+          discount: 0,
+          vatRate: 5,
+          vatAmount: vatAmt,
+          taxableAmount,
+          total: grossTotal,
+          calculatedTotal: grossTotal,
+          difference: 0,
+          calculationStatus: "match",
+          source: { file: fileName, page: 1, row: i + 1, rawText: rawLine },
+        });
+        pendingDesc = [];
+      } else if (m6) {
+        const itemNo = m6[1] ? parseInt(m6[1]) : itemSeq;
+        const lineDesc = m6[2]?.trim() || "";
+        const qty = m6[3] === "-" ? 1 : parseNumber(m6[3]) || 1;
+        const unit = m6[4].trim();
+        const rate = parseNumber(m6[5]) || 0;
+        const amountCol = parseNumber(m6[6]) || 0;
+
+        let taxableAmount = amountCol || Number((qty * rate).toFixed(2));
+        let vatAmt = Number((taxableAmount * 0.05).toFixed(2));
+        let grossTotal = Number((taxableAmount + vatAmt).toFixed(2));
+
+        // Advance billing adjustment if invoice billed an advance amount
+        const advVal = fields.advance_billed?.value;
+        if (typeof advVal === "number" && advVal > 0 && taxableAmount > advVal) {
+          taxableAmount = advVal;
+          vatAmt = Number((taxableAmount * 0.05).toFixed(2));
+          grossTotal = Number((taxableAmount + vatAmt).toFixed(2));
+        }
+
+        const finalDesc = [...pendingDesc, lineDesc].filter(Boolean).join(" ").trim();
+        items.push({
+          id: `item_pdf_${itemSeq}`,
+          itemNumber: itemSeq++,
+          description: finalDesc || `Item ${itemNo}`,
+          quantity: qty,
+          unit,
+          unitPrice: rate,
+          discount: 0,
+          vatRate: 5,
+          vatAmount: vatAmt,
+          taxableAmount,
+          total: grossTotal,
+          calculatedTotal: grossTotal,
+          difference: 0,
+          calculationStatus: "match",
+          source: { file: fileName, page: 1, row: i + 1, rawText: rawLine },
+        });
+        pendingDesc = [];
+      } else {
+        pendingDesc.push(rawLine);
+      }
+    }
+  }
+
+  // If invoice-level discount exists and items don't have discounts, apportion or assign discount to line items
+  const invDiscount = typeof fields.discount?.value === "number" ? fields.discount.value : 0;
+  if (invDiscount > 0 && items.length > 0) {
+    const totalItemGross = items.reduce((sum, it) => sum + (it.quantity * it.unitPrice), 0);
+    items.forEach(it => {
+      const itemGross = it.quantity * it.unitPrice;
+      const itemDisc = items.length === 1 ? invDiscount : Number(((itemGross / totalItemGross) * invDiscount).toFixed(2));
+      it.discount = itemDisc;
+      it.taxableAmount = Number((itemGross - itemDisc).toFixed(2));
+      it.vatAmount = Number((it.taxableAmount * (it.vatRate / 100)).toFixed(2));
+      it.total = Number((it.taxableAmount + it.vatAmount).toFixed(2));
+      it.calculatedTotal = it.total;
+    });
+  }
+
+  // PVC Tank Liner parameters if technical sheet
+  if (docType === "measurement_project") {
+    for (let lIdx = 0; lIdx < lines.length; lIdx++) {
+      const line = lines[lIdx];
+      const dM = line.match(/diameter[:\s]*([0-9.]+)/i);
+      const hM = line.match(/height[:\s]*([0-9.]+)/i);
+      if (dM || hM) {
+        if (!measurement) measurement = { shape: "cylinder", source: { file: fileName, page: 1, row: lIdx + 1, rawText: line }, fabricWidth: 3, weldingAllowance: 3 };
+        if (dM) measurement.diameter = parseFloat(dM[1]);
+        if (hM) measurement.height = parseFloat(hM[1]);
+      }
+    }
   }
 
   return {

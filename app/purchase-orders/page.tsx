@@ -2,7 +2,7 @@
 import { FormEvent, useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, Search, X, Save, Loader2, Pencil, Eye, Printer, Trash2, FileSignature } from "lucide-react";
-import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, calcLineItem } from "@/lib/helpers";
+import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, calcLineItem, formatDisplayDocNumber } from "@/lib/helpers";
 import PurchaseOrderTemplate, { PurchaseOrderData, POLineItem } from "@/components/documents/PurchaseOrderTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
@@ -429,7 +429,8 @@ export default function PurchaseOrdersPage() {
     const sn = po.supplier_name || suppMap[po.supplier_id||""]?.name || "";
     const pn = po.custom_project_name || projMap[po.project_id||""]?.project_number || "";
     const stLabel = formatPurchaseOrderStatus(po.status);
-    return [po.purchase_order_number, sn, pn, po.status, stLabel].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
+    const simplifiedNum = formatDisplayDocNumber(po.purchase_order_number, "purchase_order");
+    return [po.purchase_order_number, simplifiedNum, sn, pn, po.status, stLabel].filter(Boolean).join(" ").toLowerCase().includes(search.toLowerCase());
   });
   const { sub: fSub, vat: fVAT, total: fTotal } = totals();
 
@@ -491,7 +492,16 @@ export default function PurchaseOrdersPage() {
                   const isCancelled = normSt === "cancelled";
                   return (
                     <tr key={po.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{po.purchase_order_number || po.id.slice(0,8).toUpperCase()}</td>
+                      <td className="px-4 py-3 font-mono text-xs">
+                        <span className="font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                          {formatDisplayDocNumber(po.purchase_order_number, "purchase_order") || po.id.slice(0,8).toUpperCase()}
+                        </span>
+                        {po.purchase_order_number && po.purchase_order_number !== formatDisplayDocNumber(po.purchase_order_number, "purchase_order") && (
+                          <span className="text-[10px] text-slate-400 block font-normal mt-0.5" title="Original Database Identifier">
+                            {po.purchase_order_number}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5 flex-wrap font-semibold text-slate-900">
                           <span>{po.supplier_name || suppMap[po.supplier_id||""]?.name||"—"}</span>
