@@ -559,7 +559,12 @@ export default function StatementOfAccountPage() {
         custTrn = cust.trn;
         custAddress = cust.address;
         custPhone = cust.phone;
-        custCode = cust.customer_code || cust.id.slice(0, 4).toUpperCase();
+        // Clean customer account code: preserve database identifier and avoid fabricated codes
+        const rawCode = (cust.customer_code || "").trim();
+        const isDocRef = /^(QUO|QTN|QT|INV|TAX|PI|PRO|DN|DLV|PO|RV|RCV)[-_/]/i.test(rawCode);
+        custCode = (!rawCode || isDocRef)
+          ? (cust.id ? cust.id.slice(0, 8).toUpperCase() : "—")
+          : rawCode;
 
         // 1. Direct invoices linked by customer_id
         let directQuery = supabase
@@ -622,7 +627,7 @@ export default function StatementOfAccountPage() {
         custTrn = customCustomer.trn?.trim() || null;
         custAddress = customCustomer.address?.trim() || null;
         custPhone = customCustomer.phone?.trim() || null;
-        custCode = "CUST-DIRECT";
+        custCode = "—";
 
         // Query tax_invoices for this company safely without selecting non-existent SQL column customer_name
         let custInvQuery = supabase

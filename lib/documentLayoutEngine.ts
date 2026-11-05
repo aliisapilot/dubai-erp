@@ -2230,24 +2230,37 @@ export function computeTextOverflowPlan(
 
   if (!allTermsText.trim()) return noOverflow;
 
-  // Estimate how tall the text would naturally be
-  const fontSizePt = Math.max(7.5, termsEl.fontSize || 8.5);
-  const widthMm = Math.max(40, termsEl.width - (termsEl.padding || 0) * 2 - 4);
-  const naturalHeightMm = estimateTextBlockHeightMm(allTermsText, widthMm, fontSizePt, 1.45, 8);
-  const designedHeightMm = termsEl.height;
-
-  // If natural height fits in the designed box, no overflow
-  if (naturalHeightMm <= designedHeightMm + 2) {
-    return noOverflow;
-  }
-
-  // Calculate available height on a text continuation page
+  // Calculate actual available height before footer on the current page
   const footer = layout.elements.find((el) => el.visible && el.type === 'footer');
   const footerBaselineY = layout.page.heightMm - (layout.page?.margins?.bottom || 8);
   const footerHeight = footer ? footer.height : 14;
   const footerY = footer
     ? Math.max(footer.y, footerBaselineY - footerHeight)
     : footerBaselineY - 14;
+
+  const availableSpaceBeforeFooter = Math.max(termsEl.height, footerY - termsEl.y - 2);
+
+  // Estimate how tall the text would naturally be based on actual text, font size, and element width
+  const fontSizePt = Math.max(7.5, termsEl.fontSize || 8.5);
+  const widthMm = Math.max(40, termsEl.width - (termsEl.padding || 0) * 2 - 4);
+  const paddingMm = layout.documentType === 'customer_statement' ? 4 : 8;
+  const naturalHeightMm = estimateTextBlockHeightMm(allTermsText, widthMm, fontSizePt, 1.45, paddingMm);
+  const designedHeightMm = termsEl.height;
+
+  // Actual printable boundary check:
+  // If natural text height fits within the actual available space above the footer, no overflow
+  const maxFittingHeight = Math.max(designedHeightMm, availableSpaceBeforeFooter);
+  if (naturalHeightMm <= maxFittingHeight + 1) {
+    return noOverflow;
+  }
+
+  // If only payment terms exists (no scope or notes), avoid orphaning 1-2 trailing lines onto an extra page
+  // provided it remains safely within printable boundaries
+  if (!scopeText && !notesText && naturalHeightMm <= maxFittingHeight + 3) {
+    return noOverflow;
+  }
+
+  // Calculate available height on a text continuation page
   const topMargin = layout.page?.margins?.top || 10;
   const continuationPageStartY = topMargin + 12; // doc title continuation header
   const signatureHeight = 38; // approximate signature + stamp area

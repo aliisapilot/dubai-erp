@@ -463,8 +463,28 @@ export function replaceDocumentTokens(
     credits: data.total_credits != null ? fmtAED(data.total_credits) : "AED 0.00",
     new_charges: data.subtotal != null ? fmtAED(data.subtotal) : "AED 0.00",
     charges: data.subtotal != null ? fmtAED(data.subtotal) : "AED 0.00",
-    customer_id: data.customer_code || data.customer_id || "",
-    customer_code: data.customer_code || data.customer_id || "",
+    customer_id: (() => {
+      const rawCode = (data.customer_code || "").trim();
+      const rawId = (data.customer_id || "").trim();
+      if (rawCode && !/^(QUO|QTN|QT|INV|TAX|PI|PRO|DN|DLV|PO|RV|RCV)[-_/]/i.test(rawCode)) {
+        return rawCode;
+      }
+      if (rawId && !/^(QUO|QTN|QT|INV|TAX|PI|PRO|DN|DLV|PO|RV|RCV)[-_/]/i.test(rawId)) {
+        return rawId.length > 8 ? rawId.slice(0, 8).toUpperCase() : rawId;
+      }
+      return "—";
+    })(),
+    customer_code: (() => {
+      const rawCode = (data.customer_code || "").trim();
+      const rawId = (data.customer_id || "").trim();
+      if (rawCode && !/^(QUO|QTN|QT|INV|TAX|PI|PRO|DN|DLV|PO|RV|RCV)[-_/]/i.test(rawCode)) {
+        return rawCode;
+      }
+      if (rawId && !/^(QUO|QTN|QT|INV|TAX|PI|PRO|DN|DLV|PO|RV|RCV)[-_/]/i.test(rawId)) {
+        return rawId.length > 8 ? rawId.slice(0, 8).toUpperCase() : rawId;
+      }
+      return "—";
+    })(),
 
     // HR & Payroll tokens
     employee_name: typeof hr.employee_name === "string" ? hr.employee_name : data.customer_name || "",
@@ -1222,7 +1242,19 @@ export default function DynamicDocumentRenderer({
                   </tr>
                   <tr className="border-b" style={{ borderColor: elem.borderColor || colors.border }}>
                     <td className="px-2.5 py-0.5 font-medium text-slate-700" style={{ borderRight: `1px solid ${elem.borderColor || colors.border}` }}>Customer ID:</td>
-                    <td className="px-2.5 py-0.5 font-mono text-slate-900">{data.customer_code || data.customer_id || ""}</td>
+                    <td className="px-2.5 py-0.5 font-mono text-slate-900">
+                      {(() => {
+                        const rawCode = (data.customer_code || "").trim();
+                        const rawId = (data.customer_id || "").trim();
+                        if (rawCode && !/^(QUO|QTN|QT|INV|TAX|PI|PRO|DN|DLV|PO|RV|RCV)[-_/]/i.test(rawCode)) {
+                          return rawCode;
+                        }
+                        if (rawId && !/^(QUO|QTN|QT|INV|TAX|PI|PRO|DN|DLV|PO|RV|RCV)[-_/]/i.test(rawId)) {
+                          return rawId.length > 8 ? rawId.slice(0, 8).toUpperCase() : rawId;
+                        }
+                        return "—";
+                      })()}
+                    </td>
                   </tr>
                   <tr>
                     <td className="px-2.5 py-0.5 font-medium text-slate-700" style={{ borderRight: `1px solid ${elem.borderColor || colors.border}` }}>Page</td>
@@ -1913,7 +1945,7 @@ export default function DynamicDocumentRenderer({
         if (layout.documentType === "customer_statement") {
           return (
             <div
-              className={`w-full h-full leading-relaxed select-text flex flex-col justify-center items-center text-center ${termsPadding}`}
+              className={`w-full h-full leading-snug select-text flex flex-col justify-center items-center text-center ${termsPadding}`}
               style={{
                 color: elem.color || "#0F172A",
                 ...elementAppearance(elem),
@@ -1921,18 +1953,18 @@ export default function DynamicDocumentRenderer({
               }}
             >
               {elem.customText ? (
-                <div className="whitespace-pre-line leading-relaxed select-text font-medium" style={{ fontSize: `${termsPt}pt` }}>
+                <div className="whitespace-pre-line leading-snug select-text font-medium" style={{ fontSize: `${termsPt}pt` }}>
                   {replaceTokens(elem.customText)}
                 </div>
               ) : (
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <div className="text-slate-800">
                     Your account balance is {fmtAED(data.total_amount)}. Please make your payment to cover the balance by the due date.
                   </div>
                   <div className="font-bold text-slate-900">
                     Make all checks payable to {brand.legal_name || brand.name}
                   </div>
-                  <div className="font-extrabold text-[12pt] text-slate-900 pt-1">
+                  <div className="font-extrabold text-[10pt] text-slate-900 pt-0.5">
                     Thank you for your business!
                   </div>
                 </div>
