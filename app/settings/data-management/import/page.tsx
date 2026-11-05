@@ -687,10 +687,15 @@ export default function SmartImportPage() {
                 )
               );
 
-              // Add to documents incrementally
+              // Add to documents incrementally (preserving persistent storagePath)
               setDocuments(prev => {
+                const docWithStorage: ParsedDocument = {
+                  ...finalDoc,
+                  storagePath: savedStoragePath || finalDoc.storagePath,
+                  storageBucket: "smart-imports",
+                };
                 const idx = prev.findIndex(d => d.filename === finalDoc.filename);
-                const updated = idx !== -1 ? [...prev.slice(0, idx), finalDoc, ...prev.slice(idx + 1)] : [...prev, finalDoc];
+                const updated = idx !== -1 ? [...prev.slice(0, idx), docWithStorage, ...prev.slice(idx + 1)] : [...prev, docWithStorage];
 
                 // Automatically recompute relationship trees
                 const trees = buildRelationshipTrees(updated);
@@ -873,6 +878,18 @@ export default function SmartImportPage() {
       setCommitResult({
         success: false,
         message: "No documents selected for import. Please ensure at least one document is checked.",
+      });
+      return;
+    }
+
+    // Guardrail: Block archival if any Statement of Account is missing persistent storage reference
+    const missingStorageSoa = approvedDocs.find(
+      d => d.documentType === "customer_statement" && !d.storagePath
+    );
+    if (missingStorageSoa) {
+      setCommitResult({
+        success: false,
+        message: `Archival blocked for '${missingStorageSoa.filename}': Original PDF was not uploaded to persistent storage. Archival requires durable file storage.`,
       });
       return;
     }

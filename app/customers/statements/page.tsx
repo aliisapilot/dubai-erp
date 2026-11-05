@@ -25,6 +25,7 @@ import {
   Trash2,
   Paperclip,
   FileText,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import StatementOfAccountTemplate, { StatementData, StatementEntry } from "@/components/documents/StatementOfAccountTemplate";
@@ -175,16 +176,17 @@ export default function StatementOfAccountPage() {
   }>>([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
 
-  async function fetchArchivedStatements() {
-    if (!selectedCustomerId) return;
+  async function fetchArchivedStatements(cid?: string, openModal = false) {
+    const targetCid = cid || selectedCustomerId;
+    if (!targetCid) return;
     setArchivedLoading(true);
-    setShowArchivedModal(true);
+    if (openModal) setShowArchivedModal(true);
     try {
       const { data, error } = await supabase
         .from("document_attachments")
         .select("id, file_name, file_url, file_size, file_type, description, uploaded_by, created_at")
         .eq("entity_type", "customer")
-        .eq("entity_id", selectedCustomerId)
+        .eq("entity_id", targetCid)
         .order("created_at", { ascending: false });
 
       if (!error && data) {
@@ -562,6 +564,7 @@ export default function StatementOfAccountPage() {
         const initId = (qCid && custsList.some(c => c.id === qCid)) ? qCid : custsList[0].id;
         setSelectedCustomerId(initId);
         void loadCustomerOpeningBalance(initId, custsList);
+        void fetchArchivedStatements(initId, false);
       }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Could not load customers.");
@@ -866,93 +869,93 @@ export default function StatementOfAccountPage() {
     <main className="min-h-screen bg-slate-50">
       <div className="app-screen-content no-print">
         <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/customers"
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-              title="Back to Customers"
-            >
-              <ArrowLeft size={20} />
-            </Link>
-            <div className="rounded-xl bg-slate-900 p-2.5 text-white">
-              <FileSpreadsheet size={22} />
+          <div className="mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4 px-4 sm:px-6 py-5 max-w-7xl">
+            <div className="flex items-center gap-3">
+              <Link
+                href="/customers"
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+                title="Back to Customers"
+              >
+                <ArrowLeft size={20} />
+              </Link>
+              <div className="rounded-xl bg-slate-900 p-2.5 text-white">
+                <FileSpreadsheet size={22} />
+              </div>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Statement of Account</h1>
+                <p className="text-xs sm:text-sm text-slate-500">Customer ledger balances, invoices, payments, and running balance</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">Statement of Account</h1>
-              <p className="text-sm text-slate-500">Customer ledger balances, invoices, payments, and running balance</p>
-            </div>
-          </div>
-          {statement && (
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 text-xs">
+            {statement && (
+              <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 scrollbar-none flex-wrap sm:flex-nowrap">
+                <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 text-xs shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTemplate("default")}
+                    className={`px-3 py-1.5 rounded-md font-medium transition ${
+                      activeTemplate === "default"
+                        ? "bg-white text-slate-900 font-semibold shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                    title="Current saved statement layout in production"
+                  >
+                    Current Template
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTemplate("soa_reference")}
+                    className={`px-3 py-1.5 rounded-md font-medium transition flex items-center gap-1.5 ${
+                      activeTemplate === "soa_reference"
+                        ? "bg-slate-900 text-white font-semibold shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                    title="SOA-101 Al Karwan Reference (Classic Ledger) layout"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    SOA-101 Reference
+                  </button>
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setActiveTemplate("default")}
-                  className={`px-3 py-1.5 rounded-md font-medium transition ${
-                    activeTemplate === "default"
-                      ? "bg-white text-slate-900 font-semibold shadow-sm"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                  title="Current saved statement layout in production"
+                  onClick={() => setShowMappingModal(true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm shrink-0"
+                  title="View mapping between original database numbers and simplified display references"
                 >
-                  Current Template
+                  <FileSpreadsheet size={14} className="text-blue-600" />
+                  Numbering Preview
                 </button>
+
                 <button
                   type="button"
-                  onClick={() => setActiveTemplate("soa_reference")}
-                  className={`px-3 py-1.5 rounded-md font-medium transition flex items-center gap-1.5 ${
-                    activeTemplate === "soa_reference"
-                      ? "bg-slate-900 text-white font-semibold shadow-sm"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                  title="SOA-101 Al Karwan Reference (Classic Ledger) layout"
+                  onClick={() => setShowCompareModal(true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm shrink-0"
+                  title="View side-by-side comparison with original reference PDF"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  SOA-101 Reference
+                  <Columns2 size={15} className="text-slate-500" />
+                  Compare SOA
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => fetchArchivedStatements(selectedCustomerId, true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm shrink-0"
+                  title="View original Statement of Account PDF archives for this customer"
+                >
+                  <Paperclip size={14} className="text-amber-600" />
+                  Archived SOAs ({archivedStatements.length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPrintModal(true)}
+                  className="flex items-center gap-2 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 transition shadow-sm shrink-0"
+                >
+                  <Printer size={15} /> Print / Export A4
                 </button>
               </div>
-
-              <button
-                type="button"
-                onClick={() => setShowMappingModal(true)}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm"
-                title="View mapping between original database numbers and simplified display references"
-              >
-                <FileSpreadsheet size={15} className="text-blue-600" />
-                Numbering Preview
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowCompareModal(true)}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm"
-                title="View side-by-side comparison with original reference PDF"
-              >
-                <Columns2 size={16} className="text-slate-500" />
-                Compare with Reference SOA
-              </button>
-
-              <button
-                type="button"
-                onClick={fetchArchivedStatements}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm"
-                title="View original Statement of Account PDF archives for this customer"
-              >
-                <Paperclip size={15} className="text-amber-600" />
-                Archived SOAs
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowPrintModal(true)}
-                className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition shadow-sm"
-              >
-                <Printer size={16} /> Print / Export A4
-              </button>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
@@ -999,6 +1002,7 @@ export default function StatementOfAccountPage() {
                     const newCid = e.target.value;
                     setSelectedCustomerId(newCid);
                     void loadCustomerOpeningBalance(newCid);
+                    void fetchArchivedStatements(newCid, false);
                   }}
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
                 >
@@ -1274,7 +1278,131 @@ export default function StatementOfAccountPage() {
           )}
         </div>
 
-        {/* Live Statement Preview Table */}
+        {/* Dedicated Archived Historical Statements Section */}
+        <section aria-labelledby="archived-soa-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3 mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="rounded-lg bg-amber-500/10 text-amber-600 p-2">
+                <Paperclip size={18} />
+              </div>
+              <div>
+                <h2 id="archived-soa-heading" className="text-sm font-bold text-slate-900">Archived Historical Statements (SOAs)</h2>
+                <p className="text-[11px] text-slate-500">
+                  Durable statement archives for {customers.find(c => c.id === selectedCustomerId)?.name || (partyMode === "custom" ? customCustomer.name : "Selected Customer")}
+                  {customers.find(c => c.id === selectedCustomerId)?.customer_code ? ` (${customers.find(c => c.id === selectedCustomerId)?.customer_code})` : ""}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                {archivedStatements.length} Archive{archivedStatements.length === 1 ? "" : "s"}
+              </span>
+              <button
+                type="button"
+                onClick={() => void fetchArchivedStatements(selectedCustomerId, false)}
+                disabled={archivedLoading || !selectedCustomerId}
+                className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800 transition disabled:opacity-50"
+                title="Refresh archived statements list"
+              >
+                <RefreshCw size={14} className={archivedLoading ? "animate-spin" : ""} />
+              </button>
+            </div>
+          </div>
+
+          {archivedLoading ? (
+            <div className="flex items-center justify-center py-8 text-slate-400 text-xs gap-2">
+              <Loader2 size={16} className="animate-spin text-amber-500" />
+              <span>Loading historical archives...</span>
+            </div>
+          ) : archivedStatements.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-xs text-slate-500">
+              <FileText size={24} className="mx-auto text-slate-300 mb-1.5" />
+              <p className="font-semibold text-slate-700">No Historical SOAs Archived</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 max-w-md mx-auto">
+                No historical Statement of Account PDFs have been archived for this customer yet. Historical statement PDFs imported through Smart Import will appear here for audit, verification, and instant download.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] uppercase font-semibold text-slate-600">
+                    <th className="px-3 py-2.5">File Name</th>
+                    <th className="px-3 py-2.5">Customer</th>
+                    <th className="px-3 py-2.5">Date Uploaded</th>
+                    <th className="px-3 py-2.5">Status &amp; Verification</th>
+                    <th className="px-3 py-2.5">File Size</th>
+                    <th className="px-3 py-2.5 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {archivedStatements.map((att) => {
+                    const hasFileUrl = Boolean(att.file_url && att.file_url.trim().length > 0);
+                    return (
+                      <tr key={att.id} className="hover:bg-slate-50/75 transition-colors">
+                        <td className="px-3 py-2.5 font-medium text-slate-900">
+                          <div className="flex items-center gap-2">
+                            <FileText size={15} className="text-blue-600 shrink-0" />
+                            <div>
+                              <span className="truncate max-w-[240px] block" title={att.file_name}>{att.file_name}</span>
+                              {att.description && (
+                                <span className="text-[10px] text-slate-400 truncate max-w-[280px] block font-mono">
+                                  {att.description.split("|")[0].trim()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                          {customers.find(c => c.id === selectedCustomerId)?.customer_code || "Customer"}
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">
+                          {att.created_at ? new Date(att.created_at).toLocaleDateString("en-AE", { dateStyle: "medium" }) : "N/A"}
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                          {hasFileUrl ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 size={11} /> Reconciled &amp; Stored
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200" title="Metadata recorded; PDF pending re-upload through Smart Import">
+                              <AlertTriangle size={11} /> Metadata Only (Pending Relink)
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap font-mono">
+                          {att.file_size ? `${(att.file_size / 1024).toFixed(1)} KB` : "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          {hasFileUrl ? (
+                            <a
+                              href={att.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold transition shadow-xs"
+                            >
+                              <ExternalLink size={12} />
+                              Open PDF
+                            </a>
+                          ) : (
+                            <Link
+                              href="/settings/data-management/import"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-medium transition"
+                              title="Re-upload original PDF via Smart Import to relink file"
+                            >
+                              <Paperclip size={12} />
+                              Relink PDF
+                            </Link>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
         {loading || calculating ? (
           <div className="flex justify-center py-24">
             <Loader2 size={28} className="animate-spin text-slate-400" />

@@ -2,6 +2,7 @@
  * Dubai ERP: Smart Import - Storage Management API Route
  * Provides authenticated, company-scoped signed upload URLs for private document storage.
  * Completely circumvents Vercel 4.5MB request payload limit by allowing direct browser-to-storage upload.
+ * Enforces strict multi-tenant isolation: cross-company uploads and downloads are forbidden.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -12,22 +13,113 @@ export const maxDuration = 60;
 
 const BUCKET_NAME = "smart-imports";
 
-function getSupabaseAdmin() {
+function getSupabaseClient(token?: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (serviceKey) {
+    return createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false },
+    });
+  }
+  const anonKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-  return createClient(supabaseUrl, supabaseKey, {
+  return createClient(supabaseUrl, anonKey, {
     auth: { persistSession: false },
+    global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
   });
+}
+
+function extractTokenFromRequest(req: NextRequest): string | null {
+  // 1. Authorization Header
+  const authHeader = req.headers.get("authorization");
+  if (authHeader) {
+    const match = authHeader.match(/^Bearer\s+(.+)$/i);
+    if (match) return match[1].trim();
+  }
+
+  // 2. Query param (for direct tab opening / downloads)
+  const { searchParams } = new URL(req.url);
+  const qToken = searchParams.get("token");
+  if (qToken) return qToken.trim();
+
+  // 3. Supabase Auth Cookies
+  const cookies = req.cookies.getAll();
+  for (const c of cookies) {
+    if (c.name.startsWith("sb-") && c.name.endsWith("-auth-token")) {
+      try {
+        const decoded = decodeURIComponent(c.value);
+        const parsed = JSON.parse(decoded);
+        if (typeof parsed === "string") {
+          const inner = JSON.parse(parsed);
+          if (inner?.access_token) return inner.access_token;
+        }
+        if (parsed?.access_token) return parsed.access_token;
+        if (Array.isArray(parsed) && parsed[0]) return parsed[0];
+      } catch {
+        if (c.value.length > 50 && c.value.startsWith("eyJ")) return c.value;
+      }
+    }
+  }
+
+  return null;
+}
+
+async function authenticateAndAuthorize(req: NextRequest, targetCompanyId?: string) {
+  const token = extractTokenFromRequest(req);
+  if (!token) {
+    return {
+      authorized: false as const,
+      status: 401,
+      error: "Unauthorized: Missing authentication credentials. Please sign in to Dubai ERP.",
+    };
+  }
+
+  const client = getSupabaseClient(token);
+  const { data: authData, error: authErr } = await client.auth.getUser(token);
+
+  if (authErr || !authData?.user) {
+    return {
+      authorized: false as const,
+      status: 401,
+      error: "Unauthorized: Invalid or expired session. Please refresh your browser or sign in again.",
+    };
+  }
+
+  const user = authData.user;
+
+  // Tenant Verification
+  if (targetCompanyId && targetCompanyId !== "general") {
+    const { data: userProfile } = await client
+      .from("profiles")
+      .select("company_id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const { data: userCompany } = await client
+      .from("companies")
+      .select("id")
+      .eq("id", targetCompanyId)
+      .or(`owner_id.eq.${user.id},id.eq.${userProfile?.company_id || ""}`)
+      .maybeSingle();
+
+    if (!userCompany) {
+      return {
+        authorized: false as const,
+        status: 403,
+        error: "Forbidden: You do not have permission to access records for this company.",
+      };
+    }
+  }
+
+  return { authorized: true as const, user, token, client };
 }
 
 /**
  * Ensures the private storage bucket exists with 50MB limit and strict non-public access.
  */
-async function ensureStorageBucket(supabase: ReturnType<typeof getSupabaseAdmin>) {
+async function ensureStorageBucket(supabase: ReturnType<typeof getSupabaseClient>) {
   try {
     const { data: buckets } = await supabase.storage.listBuckets();
     const exists = buckets?.some(b => b.name === BUCKET_NAME || b.id === BUCKET_NAME);
@@ -48,7 +140,6 @@ async function ensureStorageBucket(supabase: ReturnType<typeof getSupabaseAdmin>
       });
     }
   } catch (err) {
-    // Non-fatal if bucket is already created or permissions require existing bucket
     console.warn("Storage bucket check:", err instanceof Error ? err.message : String(err));
   }
 }
@@ -60,14 +151,9 @@ async function ensureStorageBucket(supabase: ReturnType<typeof getSupabaseAdmin>
 export async function POST(req: NextRequest) {
   const requestId = `req_store_${crypto.randomUUID().slice(0, 8)}`;
   try {
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader?.replace(/^Bearer\s+/i, "").trim();
-
     const body = await req.json();
     const {
       fileName,
-      fileType,
-      fileSize,
       companyId = "general",
       batchId = `batch_${Date.now()}`,
     } = body as {
@@ -85,7 +171,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabase = getSupabaseAdmin();
+    // Company-level authorization check
+    const authResult = await authenticateAndAuthorize(req, companyId);
+    if (!authResult.authorized) {
+      return NextResponse.json(
+        { success: false, error: authResult.error, requestId },
+        { status: authResult.status, headers: { "x-request-id": requestId } }
+      );
+    }
+
+    const supabase = authResult.client;
     await ensureStorageBucket(supabase);
 
     // Sanitize file name
@@ -104,14 +199,13 @@ export async function POST(req: NextRequest) {
 
     if (error || !data?.signedUrl) {
       console.warn("Signed upload URL generation failed:", error?.message);
-      // Fallback response allowing direct client-to-API upload
       return NextResponse.json(
         {
           success: false,
           fallback: "direct_upload",
           storagePath,
           bucket: BUCKET_NAME,
-          error: error?.message || "Could not generate signed storage URL",
+          error: error?.message || "Could not generate signed storage URL. Private storage bucket may need initialization.",
           requestId,
         },
         { status: 200, headers: { "x-request-id": requestId } }
@@ -141,6 +235,7 @@ export async function POST(req: NextRequest) {
 /**
  * GET /api/smart-import/storage
  * Serves archived documents from private storage with proper PDF Content-Type and Content-Disposition.
+ * Strictly verifies company ownership and denies cross-tenant access.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -152,7 +247,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Storage path is required." }, { status: 400 });
     }
 
-    const supabase = getSupabaseAdmin();
+    // Extract target company from storage path
+    const pathParts = storagePath.split("/");
+    const targetCompanyId = pathParts[0];
+
+    const authResult = await authenticateAndAuthorize(req, targetCompanyId);
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+
+    const supabase = authResult.client;
     const { data: fileBlob, error: dlErr } = await supabase.storage.from(bucket).download(storagePath);
 
     if (dlErr || !fileBlob) {
@@ -196,7 +300,14 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: true, removed: 0 }, { status: 200 });
     }
 
-    const supabase = getSupabaseAdmin();
+    // Company isolation check on first path
+    const sampleCompanyId = paths[0].split("/")[0];
+    const authResult = await authenticateAndAuthorize(req, sampleCompanyId);
+    if (!authResult.authorized) {
+      return NextResponse.json({ success: false, error: authResult.error, requestId }, { status: authResult.status });
+    }
+
+    const supabase = authResult.client;
     const { data, error } = await supabase.storage.from(bucket).remove(paths);
 
     if (error) {

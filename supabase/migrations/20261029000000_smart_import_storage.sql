@@ -26,20 +26,49 @@ ON CONFLICT (id) DO UPDATE SET
   public = false,
   file_size_limit = 52428800;
 
--- 2. Storage RLS Policies: Authenticated users can upload and view within smart-imports
+-- 2. Storage RLS Policies: Strictly company-scoped access
+-- Storage paths follow isolated structure: `<company_id>/<batch_id>/<filename>`
+-- Broad access is strictly prohibited; users can only access files under their own authorized company.
 DROP POLICY IF EXISTS "smart_imports_authenticated_select" ON storage.objects;
-CREATE POLICY "smart_imports_authenticated_select" ON storage.objects
+DROP POLICY IF EXISTS "smart_imports_company_scoped_select" ON storage.objects;
+CREATE POLICY "smart_imports_company_scoped_select" ON storage.objects
   FOR SELECT TO authenticated
-  USING (bucket_id = 'smart-imports');
+  USING (
+    bucket_id = 'smart-imports' AND
+    (storage.foldername(name))[1] ~ '^[0-9a-fA-F-]{36}$' AND
+    (storage.foldername(name))[1]::uuid IN (
+      SELECT id FROM public.companies WHERE owner_id = auth.uid()
+      UNION
+      SELECT company_id FROM public.profiles WHERE id = auth.uid() AND (active IS NULL OR active = true)
+    )
+  );
 
 DROP POLICY IF EXISTS "smart_imports_authenticated_insert" ON storage.objects;
-CREATE POLICY "smart_imports_authenticated_insert" ON storage.objects
+DROP POLICY IF EXISTS "smart_imports_company_scoped_insert" ON storage.objects;
+CREATE POLICY "smart_imports_company_scoped_insert" ON storage.objects
   FOR INSERT TO authenticated
-  WITH CHECK (bucket_id = 'smart-imports');
+  WITH CHECK (
+    bucket_id = 'smart-imports' AND
+    (storage.foldername(name))[1] ~ '^[0-9a-fA-F-]{36}$' AND
+    (storage.foldername(name))[1]::uuid IN (
+      SELECT id FROM public.companies WHERE owner_id = auth.uid()
+      UNION
+      SELECT company_id FROM public.profiles WHERE id = auth.uid() AND (active IS NULL OR active = true)
+    )
+  );
 
 DROP POLICY IF EXISTS "smart_imports_authenticated_delete" ON storage.objects;
-CREATE POLICY "smart_imports_authenticated_delete" ON storage.objects
+DROP POLICY IF EXISTS "smart_imports_company_scoped_delete" ON storage.objects;
+CREATE POLICY "smart_imports_company_scoped_delete" ON storage.objects
   FOR DELETE TO authenticated
-  USING (bucket_id = 'smart-imports');
+  USING (
+    bucket_id = 'smart-imports' AND
+    (storage.foldername(name))[1] ~ '^[0-9a-fA-F-]{36}$' AND
+    (storage.foldername(name))[1]::uuid IN (
+      SELECT id FROM public.companies WHERE owner_id = auth.uid()
+      UNION
+      SELECT company_id FROM public.profiles WHERE id = auth.uid() AND (active IS NULL OR active = true)
+    )
+  );
 
 NOTIFY pgrst, 'reload schema';

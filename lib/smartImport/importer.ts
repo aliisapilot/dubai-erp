@@ -739,18 +739,23 @@ export async function executeTopologicalImport(
             break;
           }
 
+          if (!doc.storagePath) {
+            errors.push(`Customer statement '${doc.filename}' cannot be archived without a valid persistent storage reference. Archival requires original PDF file.`);
+            break;
+          }
+
           const openBal = Number(doc.fields.opening_balance?.value) || 0;
           const charges = Number(doc.fields.subtotal?.value) || 0;
           const credits = Number(doc.fields.total_credits?.value) || 0;
           const closeBal = Number(doc.fields.closing_balance?.value ?? doc.fields.total_amount?.value) || 0;
 
           // Multi-layer duplicate detection (Filename, Document Number, and SHA-256 Hash)
-          let existingAtt: { id: string } | null = null;
+          let existingAtt: { id: string; file_url?: string | null; file_size?: number | null } | null = null;
 
           // 1. Check exact file_name for this customer
           const { data: byName } = await supabase
             .from("document_attachments")
-            .select("id")
+            .select("id, file_url, file_size")
             .eq("company_id", companyId)
             .eq("entity_type", "customer")
             .eq("entity_id", resolvedCustId)
@@ -763,7 +768,7 @@ export async function executeTopologicalImport(
           if (!existingAtt && doc.checksumSha256) {
             const { data: byHash } = await supabase
               .from("document_attachments")
-              .select("id")
+              .select("id, file_url, file_size")
               .eq("company_id", companyId)
               .eq("entity_type", "customer")
               .eq("entity_id", resolvedCustId)
@@ -777,7 +782,7 @@ export async function executeTopologicalImport(
           if (!existingAtt && docNumber) {
             const { data: byDesc } = await supabase
               .from("document_attachments")
-              .select("id")
+              .select("id, file_url, file_size")
               .eq("company_id", companyId)
               .eq("entity_type", "customer")
               .eq("entity_id", resolvedCustId)
@@ -787,14 +792,32 @@ export async function executeTopologicalImport(
             existingAtt = byDesc;
           }
 
+          const persistentFileUrl = `/api/smart-import/storage?path=${encodeURIComponent(doc.storagePath)}`;
+
+          // Relink Workflow (Requirement 10): If record already exists in database
           if (existingAtt) {
-            incMatched("document_attachments");
+            if (!existingAtt.file_url && persistentFileUrl) {
+              // Safe relink: existing metadata record had no file attached; attach the newly uploaded verified PDF without creating duplicates or deleting records
+              const { error: relinkErr } = await supabase
+                .from("document_attachments")
+                .update({
+                  file_url: persistentFileUrl,
+                  file_size: doc.fileSize || existingAtt.file_size || 0,
+                })
+                .eq("id", existingAtt.id)
+                .eq("company_id", companyId)
+                .eq("entity_id", resolvedCustId);
+
+              if (relinkErr) {
+                errors.push(`Failed to relink PDF to existing archive ${doc.filename}: ${relinkErr.message}`);
+              } else {
+                incCreated("document_attachments");
+              }
+            } else {
+              incMatched("document_attachments");
+            }
             break;
           }
-
-          const persistentFileUrl = doc.storagePath
-            ? `/api/smart-import/storage?path=${encodeURIComponent(doc.storagePath)}`
-            : "";
 
           const desc = `Statement of Account ${docNumber} (${docDate}) [SHA256: ${doc.checksumSha256}] | Opening: AED ${openBal.toFixed(2)}, Charges: AED ${charges.toFixed(2)}, Credits: AED ${credits.toFixed(2)}, Closing: AED ${closeBal.toFixed(2)} [Document-only archive; zero ledger mutations]`;
 
