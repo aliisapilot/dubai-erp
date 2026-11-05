@@ -32,6 +32,7 @@ import {
   auditLineItemCalculations,
   auditDocumentTotals,
   auditPvcTankLinerMeasurements,
+  auditStatementOfAccount,
 } from "@/lib/smartImport/calculator";
 import { generateDestinationMappings } from "@/lib/smartImport/destinationMapper";
 import { resolveDocumentStatus } from "@/lib/smartImport/statusResolver";
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Expand files from either Storage References (JSON) or Direct Upload (FormData)
-    const fileQueue: { name: string; buffer: ArrayBuffer; fileType: SupportedFileType; size: number }[] = [];
+    const fileQueue: { name: string; buffer: ArrayBuffer; fileType: SupportedFileType; size: number; storagePath?: string; storageBucket?: string }[] = [];
     const lockFilesDetected: string[] = [];
 
     if (isJson) {
@@ -140,6 +141,8 @@ export async function POST(req: NextRequest) {
             buffer: arrayBuffer,
             fileType: detected,
             size: arrayBuffer.byteLength,
+            storagePath: ref.storagePath,
+            storageBucket: bucket,
           });
         }
       }
@@ -314,19 +317,38 @@ export async function POST(req: NextRequest) {
 
       // 2. Mathematical Audit
       const docNumStr = String(fields.document_number?.value || fileItem.name);
-      const lineAudit = auditLineItemCalculations(docId, docNumStr, items);
-      items = lineAudit.auditedItems;
-      allAuditRows.push(...lineAudit.auditRows);
 
-      const totalsAudit = auditDocumentTotals(
-        docId,
-        docNumStr,
-        fields.subtotal?.value as number | null,
-        fields.vat_amount?.value as number | null,
-        fields.total_amount?.value as number | null,
-        items
-      );
-      allAuditRows.push(...totalsAudit.auditRows);
+      let soaAudit: ReturnType<typeof auditStatementOfAccount> | null = null;
+      let lineAudit: ReturnType<typeof auditLineItemCalculations> | null = null;
+      let totalsAudit: ReturnType<typeof auditDocumentTotals> | null = null;
+
+      if (classification.documentType === "customer_statement") {
+        const openBal = typeof fields.opening_balance?.value === "number" ? fields.opening_balance.value : 0;
+        const charges = typeof fields.subtotal?.value === "number" ? fields.subtotal.value : 0;
+        const credits = typeof fields.total_credits?.value === "number" ? fields.total_credits.value : 0;
+        const closeBal = typeof fields.closing_balance?.value === "number"
+          ? fields.closing_balance.value
+          : typeof fields.total_amount?.value === "number"
+          ? fields.total_amount.value
+          : 0;
+
+        soaAudit = auditStatementOfAccount(docId, docNumStr, openBal, charges, credits, closeBal);
+        allAuditRows.push(...soaAudit.auditRows);
+      } else {
+        lineAudit = auditLineItemCalculations(docId, docNumStr, items);
+        items = lineAudit.auditedItems;
+        allAuditRows.push(...lineAudit.auditRows);
+
+        totalsAudit = auditDocumentTotals(
+          docId,
+          docNumStr,
+          fields.subtotal?.value as number | null,
+          fields.vat_amount?.value as number | null,
+          fields.total_amount?.value as number | null,
+          items
+        );
+        allAuditRows.push(...totalsAudit.auditRows);
+      }
 
       if (measurements) {
         const measAudit = auditPvcTankLinerMeasurements(docId, docNumStr, measurements);
@@ -342,6 +364,10 @@ export async function POST(req: NextRequest) {
 
       const isPurchaseDocument = ["supplier_bill", "purchase_order"].includes(classification.documentType);
 
+      // 5. Validation Warnings & Errors
+      const validationErrors: string[] = [];
+      const validationWarnings: string[] = [];
+
       // Customer matching (sales documents or when customer info is present)
       const customerResolution = isPurchaseDocument && !extractedCustName
         ? {
@@ -356,10 +382,17 @@ export async function POST(req: NextRequest) {
 
       // If customer is proposed for creation, track it for subsequent documents in the batch
       if (customerResolution.action === "create_new" && extractedCustName) {
-        batchProposedCustomers.push({
-          name: extractedCustName,
-          trn: extractedTrn || undefined,
-        });
+        if (classification.documentType === "customer_statement") {
+          // Guardrail: Do not create new customer records automatically from SOA imports without explicit user review
+          customerResolution.action = "needs_review";
+          customerResolution.matchReason = `Customer '${extractedCustName}' not found in ERP. Statement of Account requires explicit approval before creating a new customer record.`;
+          validationWarnings.push(`Customer '${extractedCustName}' not found in ERP. Marked for review before customer creation.`);
+        } else {
+          batchProposedCustomers.push({
+            name: extractedCustName,
+            trn: extractedTrn || undefined,
+          });
+        }
       }
 
       // Supplier matching (only for purchase documents)
@@ -384,9 +417,7 @@ export async function POST(req: NextRequest) {
         existingCache
       );
 
-      // 5. Validation Warnings & Errors
-      const validationErrors: string[] = [];
-      const validationWarnings: string[] = [];
+      // 5. Validation Check Processing
       const docTypeLabel = classification.documentType === "quotation"
         ? "Quotation"
         : classification.documentType === "proforma_invoice"
@@ -397,30 +428,42 @@ export async function POST(req: NextRequest) {
         ? "Purchase Order"
         : classification.documentType === "supplier_bill"
         ? "Supplier Bill"
+        : classification.documentType === "customer_statement"
+        ? "Statement of Account"
         : "Invoice";
 
       if (duplicateCheck.isDuplicate) {
         validationWarnings.push(duplicateCheck.reason || "Duplicate document detected.");
       }
-      if (lineAudit.hasMismatches) {
-        validationWarnings.push("Line item taxable amount differs from Qty × Rate − Discount calculation.");
-        validationErrors.push(`Line item financial calculation mismatch. ${docTypeLabel} marked as Needs Review.`);
-      }
-      if (totalsAudit.hasMismatches) {
-        const diff = fields.total_amount?.value !== null && fields.total_amount?.value !== undefined
-          ? Math.abs(Number(fields.total_amount.value) - totalsAudit.calculatedTotal).toFixed(2)
-          : "0.00";
-        validationWarnings.push("Grand total differs from calculated subtotal + VAT.");
-        validationErrors.push(`Grand total verification failed against line items sum (discrepancy: AED ${diff}). ${docTypeLabel} marked as Needs Review.`);
-      }
-      const docSub = typeof fields.subtotal?.value === "number" ? fields.subtotal.value : null;
-      const docDisc = typeof fields.discount?.value === "number" ? fields.discount.value : 0;
-      const docVat = typeof fields.vat_amount?.value === "number" ? fields.vat_amount.value : null;
-      const docTot = typeof fields.total_amount?.value === "number" ? fields.total_amount.value : null;
-      if (docSub !== null && docVat !== null && docTot !== null) {
-        const arithDiff = Math.abs((docSub - docDisc + docVat) - docTot);
-        if (arithDiff > 0.05) {
-          validationErrors.push(`Document internal arithmetic mismatch: Subtotal (${docSub}) - Discount (${docDisc}) + VAT (${docVat}) != Total (${docTot}) (discrepancy: AED ${arithDiff.toFixed(2)}). ${docTypeLabel} marked as Needs Review.`);
+
+      if (soaAudit) {
+        if (!soaAudit.isReconciled) {
+          validationWarnings.push(`Statement reconciliation difference of AED ${soaAudit.difference.toFixed(2)} detected.`);
+          validationErrors.push(
+            `Statement of Account arithmetic mismatch: Opening + Charges - Credits != Closing (discrepancy: AED ${soaAudit.difference.toFixed(2)}). Review required.`
+          );
+        }
+      } else {
+        if (lineAudit?.hasMismatches) {
+          validationWarnings.push("Line item taxable amount differs from Qty × Rate − Discount calculation.");
+          validationErrors.push(`Line item financial calculation mismatch. ${docTypeLabel} marked as Needs Review.`);
+        }
+        if (totalsAudit?.hasMismatches) {
+          const diff = fields.total_amount?.value !== null && fields.total_amount?.value !== undefined
+            ? Math.abs(Number(fields.total_amount.value) - totalsAudit.calculatedTotal).toFixed(2)
+            : "0.00";
+          validationWarnings.push("Grand total differs from calculated subtotal + VAT.");
+          validationErrors.push(`Grand total verification failed against line items sum (discrepancy: AED ${diff}). ${docTypeLabel} marked as Needs Review.`);
+        }
+        const docSub = typeof fields.subtotal?.value === "number" ? fields.subtotal.value : null;
+        const docDisc = typeof fields.discount?.value === "number" ? fields.discount.value : 0;
+        const docVat = typeof fields.vat_amount?.value === "number" ? fields.vat_amount.value : null;
+        const docTot = typeof fields.total_amount?.value === "number" ? fields.total_amount.value : null;
+        if (docSub !== null && docVat !== null && docTot !== null) {
+          const arithDiff = Math.abs((docSub - docDisc + docVat) - docTot);
+          if (arithDiff > 0.05) {
+            validationErrors.push(`Document internal arithmetic mismatch: Subtotal (${docSub}) - Discount (${docDisc}) + VAT (${docVat}) != Total (${docTot}) (discrepancy: AED ${arithDiff.toFixed(2)}). ${docTypeLabel} marked as Needs Review.`);
+          }
         }
       }
       if (!fields.document_number) {
@@ -534,6 +577,8 @@ export async function POST(req: NextRequest) {
         supplierResolution,
         projectResolution,
         statusResolution,
+        storagePath: fileItem.storagePath,
+        storageBucket: fileItem.storageBucket,
         destinationMappings,
         validationErrors,
         validationWarnings,

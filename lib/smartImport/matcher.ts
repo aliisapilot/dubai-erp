@@ -59,6 +59,7 @@ export async function loadExistingEntities(supabase: SupabaseClient): Promise<Ex
     { data: dns },
     { data: pos },
     { data: bills },
+    { data: docAtts },
   ] = await Promise.all([
     supabase.from("customers").select("id, name, trn, email, phone"),
     supabase.from("suppliers").select("id, name, trn, email, phone"),
@@ -69,6 +70,7 @@ export async function loadExistingEntities(supabase: SupabaseClient): Promise<Ex
     supabase.from("delivery_notes").select("id, delivery_note_number"),
     supabase.from("purchase_orders").select("id, purchase_order_number"),
     supabase.from("supplier_bills").select("id, bill_number"),
+    supabase.from("document_attachments").select("id, file_name, entity_type, description").eq("entity_type", "customer"),
   ]);
 
   const existingDocs: Record<string, { id: string; number: string; type: string }> = {};
@@ -87,6 +89,19 @@ export async function loadExistingEntities(supabase: SupabaseClient): Promise<Ex
   });
   (bills || []).forEach(b => {
     if (b.bill_number) existingDocs[b.bill_number.toLowerCase().trim()] = { id: b.id, number: b.bill_number, type: "supplier_bill" };
+  });
+  (docAtts || []).forEach(a => {
+    if (a.file_name) existingDocs[a.file_name.toLowerCase().trim()] = { id: a.id, number: a.file_name, type: "customer_statement" };
+    if (a.description) {
+      const soaMatch = a.description.match(/(?:Statement of Account|SOA)\s+([A-Za-z0-9_-]+)/i);
+      if (soaMatch) {
+        existingDocs[soaMatch[1].toLowerCase().trim()] = { id: a.id, number: soaMatch[1], type: "customer_statement" };
+      }
+      const hashMatch = a.description.match(/\[SHA256:\s*([a-f0-9_]+)\]/i);
+      if (hashMatch) {
+        existingDocs[hashMatch[1].toLowerCase().trim()] = { id: a.id, number: a.file_name, type: "customer_statement" };
+      }
+    }
   });
 
   return {

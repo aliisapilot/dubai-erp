@@ -49,6 +49,11 @@ export const STATUS_OPTIONS_BY_MODULE: Record<string, StatusOption[]> = {
     { value: "Paid", label: "Paid (Settled)", isNeutralFallback: true },
     { value: "Pending", label: "Pending Verification" },
   ],
+  customer_statement: [
+    { value: "reconciled", label: "Reconciled (Balanced)", isNeutralFallback: true },
+    { value: "unreconciled", label: "Unreconciled (Discrepancy / Review Required)" },
+    { value: "archived", label: "Archived (Document-Only)" },
+  ],
 };
 
 export function normalizeQuotationStatus(status?: string | null): string {
@@ -282,6 +287,27 @@ export function resolveDocumentStatus(
       isAssumed = false;
       rawEvidence = "Measurement Takeoff";
       mappingReason = "Calculated PVC engineering takeoff sheet";
+      break;
+    }
+
+    case "customer_statement": {
+      const openBal = Number(fields.opening_balance?.value) || 0;
+      const charges = Number(fields.subtotal?.value) || 0;
+      const credits = Number(fields.total_credits?.value) || 0;
+      const closeBal = Number(fields.total_amount?.value ?? fields.closing_balance?.value) || 0;
+      const diff = Math.abs((openBal + charges - credits) - closeBal);
+
+      if (diff <= 0.05) {
+        proposedStatus = "reconciled";
+        isAssumed = false;
+        rawEvidence = `Balanced: Opening (AED ${openBal.toFixed(2)}) + Charges (AED ${charges.toFixed(2)}) - Credits (AED ${credits.toFixed(2)}) = Closing (AED ${closeBal.toFixed(2)})`;
+        mappingReason = "Reconciled: Statement ledger arithmetic mathematically verified";
+      } else {
+        proposedStatus = "unreconciled";
+        isAssumed = false;
+        rawEvidence = `Discrepancy: ${diff.toFixed(2)} AED mismatch in statement ledger`;
+        mappingReason = `Unreconciled: Calculation difference of AED ${diff.toFixed(2)} detected`;
+      }
       break;
     }
   }

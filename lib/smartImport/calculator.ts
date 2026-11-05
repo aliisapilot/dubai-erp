@@ -243,3 +243,41 @@ export function auditPvcTankLinerMeasurements(
     auditRows,
   };
 }
+
+export function auditStatementOfAccount(
+  docId: string,
+  docNumber: string,
+  openingBalance: number,
+  charges: number,
+  credits: number,
+  closingBalance: number
+): {
+  auditRows: CalculationAuditRow[];
+  difference: number;
+  isReconciled: boolean;
+} {
+  const calculatedClosing = Number((openingBalance + charges - credits).toFixed(2));
+  const diff = Number(Math.abs(calculatedClosing - closingBalance).toFixed(2));
+  const isReconciled = diff <= 0.05;
+
+  const auditRows: CalculationAuditRow[] = [
+    {
+      documentId: docId,
+      documentNumber: docNumber,
+      description: "Statement Reconciliation (Opening + Charges - Credits = Closing)",
+      quantity: 1,
+      rate: calculatedClosing,
+      originalDocumentValue: closingBalance,
+      calculatedErpValue: calculatedClosing,
+      difference: diff,
+      validationResult: isReconciled ? "MATCH" : "MISMATCH",
+      field: "Statement Closing Balance",
+    },
+  ];
+
+  return {
+    auditRows,
+    difference: diff,
+    isReconciled,
+  };
+}

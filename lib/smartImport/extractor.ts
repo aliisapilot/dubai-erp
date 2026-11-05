@@ -188,7 +188,7 @@ export function extractFromDocx(
 
           // Document Number
           if (!fields.document_number) {
-            if (/^(?:invoice\s*(?:no\.?|number)|quotation\s*(?:no\.?|number)|qtn\s*(?:no\.?|number)|dn\s*(?:no\.?|number)|po\s*(?:no\.?|number)|lpo\s*(?:no\.?|number)|ref\s*(?:no\.?|number))$/i.test(text) && nextText) {
+            if (/^(?:invoice\s*(?:no\.?|number)|quotation\s*(?:no\.?|number)|qtn\s*(?:no\.?|number)|dn\s*(?:no\.?|number)|po\s*(?:no\.?|number)|lpo\s*(?:no\.?|number)|ref\s*(?:no\.?|number)|statement\s*(?:no\.?|number|#|ref)?|soa\s*(?:no\.?|number|#)?)$/i.test(text) && nextText) {
               fields.document_number = {
                 fieldKey: "document_number",
                 label: "Document Number",
@@ -199,7 +199,7 @@ export function extractFromDocx(
                 originalRawValue: nextText,
               };
             } else {
-              const dnMatch = text.match(/(?:invoice\s*(?:no\.?|number)|quotation\s*(?:no\.?|number)|qtn\s*(?:no\.?|number)|dn\s*(?:no\.?|number)|po\s*(?:no\.?|number)|ref\s*(?:no\.?|number))[:\s]+([A-Za-z0-9/_-]+)/i);
+              const dnMatch = text.match(/(?:invoice\s*(?:no\.?|number)|quotation\s*(?:no\.?|number)|qtn\s*(?:no\.?|number)|dn\s*(?:no\.?|number)|po\s*(?:no\.?|number)|ref\s*(?:no\.?|number)|statement\s*(?:no\.?|number|#|ref)|soa\s*(?:no\.?|number|#))[:\s]+([A-Za-z0-9/_-]+)/i);
               if (dnMatch) {
                 fields.document_number = {
                   fieldKey: "document_number",
@@ -438,7 +438,7 @@ export function extractFromDocx(
   }
 
   // 4. Fallbacks from Filename if still missing or generic
-  if (!fields.document_number && fnDocNo) {
+  if (!fields.document_number && fnDocNo && !/statement.*account/i.test(fnDocNo)) {
     fields.document_number = {
       fieldKey: "document_number",
       label: "Document Number",
@@ -534,6 +534,74 @@ export function extractFromDocx(
           }
           return null;
         };
+
+        // Statement of Account (SOA) Totals in Docx
+        if (docType === "customer_statement") {
+          if (!fields.opening_balance && /previous\s*balance|opening\s*balance|balance\s*brought\s*forward/i.test(rowCombined)) {
+            const num = getRowNumber();
+            if (num !== null) {
+              fields.opening_balance = {
+                fieldKey: "opening_balance",
+                label: "Opening Balance",
+                value: num,
+                source: { file: fileName, table: table.tableIndex, row: row.rowIndex, rawText: rowCombined },
+                confidence: 0.98,
+                validationStatus: "valid",
+              };
+            }
+            continue;
+          }
+          if (!fields.subtotal && /new\s*charges|total\s*charges|charges/i.test(rowCombined)) {
+            const num = getRowNumber();
+            if (num !== null) {
+              fields.subtotal = {
+                fieldKey: "subtotal",
+                label: "New Charges",
+                value: num,
+                source: { file: fileName, table: table.tableIndex, row: row.rowIndex, rawText: rowCombined },
+                confidence: 0.98,
+                validationStatus: "valid",
+              };
+            }
+            continue;
+          }
+          if (!fields.total_credits && /total\s*credits|credits|payments\s*received/i.test(rowCombined)) {
+            const num = getRowNumber();
+            if (num !== null) {
+              fields.total_credits = {
+                fieldKey: "total_credits",
+                label: "Total Credits",
+                value: num,
+                source: { file: fileName, table: table.tableIndex, row: row.rowIndex, rawText: rowCombined },
+                confidence: 0.98,
+                validationStatus: "valid",
+              };
+            }
+            continue;
+          }
+          if (!fields.closing_balance && /total\s*balance\s*due|account\s*current\s*balance|closing\s*balance|balance\s*due/i.test(rowCombined)) {
+            const num = getRowNumber();
+            if (num !== null) {
+              fields.closing_balance = {
+                fieldKey: "closing_balance",
+                label: "Closing Balance",
+                value: num,
+                source: { file: fileName, table: table.tableIndex, row: row.rowIndex, rawText: rowCombined },
+                confidence: 0.98,
+                validationStatus: "valid",
+              };
+              fields.total_amount = {
+                fieldKey: "total_amount",
+                label: "Total Balance Due",
+                value: num,
+                source: { file: fileName, table: table.tableIndex, row: row.rowIndex, rawText: rowCombined },
+                confidence: 0.98,
+                validationStatus: "valid",
+              };
+            }
+            continue;
+          }
+        }
 
         if (/net\s*amount|subtotal|sub-total|total\s*exclusive|taxable\s*amount/i.test(rowCombined)) {
           const num = getRowNumber();
@@ -682,7 +750,7 @@ export function extractFromSpreadsheet(
         const nextVal = nextCell?.formattedText || "";
 
         // Document Number
-        if (!fields.document_number && /(?:quotation|quote|invoice|dn|po|ref|bill|exp|voucher)\s*(?:no|number|#)?[:]?$/i.test(text)) {
+        if (!fields.document_number && /(?:quotation|quote|invoice|dn|po|ref|bill|exp|voucher|statement|soa)\s*(?:no|number|#)?[:]?$/i.test(text)) {
           if (nextVal) {
             fields.document_number = {
               fieldKey: "document_number",
@@ -693,6 +761,75 @@ export function extractFromSpreadsheet(
               validationStatus: "valid",
               originalRawValue: nextVal,
             };
+          }
+        }
+
+        // Statement of Account Totals in Spreadsheet
+        if (docType === "customer_statement") {
+          if (!fields.opening_balance && /previous\s*balance|opening\s*balance|balance\s*brought\s*forward/i.test(text)) {
+            const num = parseNumber(nextVal);
+            if (num !== null) {
+              fields.opening_balance = {
+                fieldKey: "opening_balance",
+                label: "Opening Balance",
+                value: num,
+                source: { file: fileName, sheet: sheetName, cell: nextCell.address, rawText: `${text} ${nextVal}` },
+                confidence: 0.98,
+                validationStatus: "valid",
+                originalRawValue: nextVal,
+              };
+            }
+          }
+          if (!fields.subtotal && /new\s*charges|total\s*charges|charges/i.test(text)) {
+            const num = parseNumber(nextVal);
+            if (num !== null) {
+              fields.subtotal = {
+                fieldKey: "subtotal",
+                label: "New Charges",
+                value: num,
+                source: { file: fileName, sheet: sheetName, cell: nextCell.address, rawText: `${text} ${nextVal}` },
+                confidence: 0.98,
+                validationStatus: "valid",
+                originalRawValue: nextVal,
+              };
+            }
+          }
+          if (!fields.total_credits && /total\s*credits|credits|payments\s*received/i.test(text)) {
+            const num = parseNumber(nextVal);
+            if (num !== null) {
+              fields.total_credits = {
+                fieldKey: "total_credits",
+                label: "Total Credits",
+                value: num,
+                source: { file: fileName, sheet: sheetName, cell: nextCell.address, rawText: `${text} ${nextVal}` },
+                confidence: 0.98,
+                validationStatus: "valid",
+                originalRawValue: nextVal,
+              };
+            }
+          }
+          if (!fields.closing_balance && /total\s*balance\s*due|account\s*current\s*balance|closing\s*balance|balance\s*due/i.test(text)) {
+            const num = parseNumber(nextVal);
+            if (num !== null) {
+              fields.closing_balance = {
+                fieldKey: "closing_balance",
+                label: "Closing Balance",
+                value: num,
+                source: { file: fileName, sheet: sheetName, cell: nextCell.address, rawText: `${text} ${nextVal}` },
+                confidence: 0.98,
+                validationStatus: "valid",
+                originalRawValue: nextVal,
+              };
+              fields.total_amount = {
+                fieldKey: "total_amount",
+                label: "Total Balance Due",
+                value: num,
+                source: { file: fileName, sheet: sheetName, cell: nextCell.address, rawText: `${text} ${nextVal}` },
+                confidence: 0.98,
+                validationStatus: "valid",
+                originalRawValue: nextVal,
+              };
+            }
           }
         }
 
@@ -923,12 +1060,13 @@ export function extractFromPdf(
     text: s.text,
   }));
 
-  // 1. Filename heuristic deconstruction (e.g. 'INV132-26 Al Fajar - Pvc Fabrication.pdf')
+  // 1. Filename heuristic deconstruction (e.g. 'INV132-26 Al Fajar - Pvc Fabrication.pdf' or 'SOA101-26 Al Karwan Solution FZC.pdf')
   const baseName = fileName.split(/[/\\]/).pop() || fileName;
   const fnTripleMatch = baseName.match(/^([A-Za-z0-9/_-]+)\s+(.+?)\s+-\s+(.+?)\.(docx|pdf|xlsx|csv)$/i);
   const fnDoubleMatch = !fnTripleMatch ? baseName.match(/^([A-Za-z0-9/_-]+)\s+(.+?)\.(docx|pdf|xlsx|csv)$/i) : null;
+  const fnSingleMatch = !fnTripleMatch && !fnDoubleMatch ? baseName.match(/^([A-Za-z0-9/_-]+)\.(docx|pdf|xlsx|csv)$/i) : null;
 
-  const fnDocNo = fnTripleMatch ? fnTripleMatch[1].trim() : fnDoubleMatch ? fnDoubleMatch[1].trim() : null;
+  const fnDocNo = fnTripleMatch ? fnTripleMatch[1].trim() : fnDoubleMatch ? fnDoubleMatch[1].trim() : fnSingleMatch ? fnSingleMatch[1].trim() : null;
   const fnCust = fnTripleMatch ? fnTripleMatch[2].trim() : fnDoubleMatch ? fnDoubleMatch[2].trim() : null;
   const fnScope = fnTripleMatch ? fnTripleMatch[3].trim() : null;
 
@@ -946,15 +1084,28 @@ export function extractFromPdf(
     };
   }
   if (fnScope) {
-    fields.project_name = {
-      fieldKey: "project_name",
-      label: "Project Name",
-      value: fnScope,
-      source: { file: fileName, rawText: `Filename: ${fileName}` },
-      confidence: 0.95,
-      validationStatus: "valid",
-      originalRawValue: fnScope,
-    };
+    const pd = parseDate(fnScope);
+    if (pd && !fields.document_date) {
+      fields.document_date = {
+        fieldKey: "document_date",
+        label: "Document Date",
+        value: pd,
+        source: { file: fileName, rawText: `Filename: ${fileName}` },
+        confidence: 0.95,
+        validationStatus: "valid",
+        originalRawValue: fnScope,
+      };
+    } else {
+      fields.project_name = {
+        fieldKey: "project_name",
+        label: "Project Name",
+        value: fnScope,
+        source: { file: fileName, rawText: `Filename: ${fileName}` },
+        confidence: 0.95,
+        validationStatus: "valid",
+        originalRawValue: fnScope,
+      };
+    }
   }
 
   const lines = parsed.pages.flatMap(p => p.lines);
@@ -977,14 +1128,34 @@ export function extractFromPdf(
         };
       }
     }
+
+    // Bill To Customer Scan (if not already extracted from filename)
+    if (!fields.customer_name && !fields.supplier_name && /(?:bill\s*to|sold\s*to|customer(?:\s*name)?|client(?:\s*name)?)\s*[:]?/i.test(line)) {
+      let custCand = line.replace(/^(?:bill\s*to|sold\s*to|customer(?:\s*name)?|client(?:\s*name)?)\s*[:]?\s*/i, "").trim();
+      if (!custCand && lines[lIdx + 1]) {
+        custCand = lines[lIdx + 1].trim();
+      }
+      custCand = custCand.replace(/TRN\s*:.*$/i, "").trim();
+      if (custCand && !/al\s*safwah|golden\s*elite|statement|account|ledger|date|type/i.test(custCand)) {
+        fields.customer_name = {
+          fieldKey: "customer_name",
+          label: "Customer Name",
+          value: custCand,
+          source: { file: fileName, page: 1, row: lIdx + 1, rawText: line },
+          confidence: 0.95,
+          validationStatus: "valid",
+          originalRawValue: custCand,
+        };
+      }
+    }
   }
 
   // 3. Scan for Document Date (check line or line + next line)
   for (let lIdx = 0; lIdx < lines.length; lIdx++) {
     const line = lines[lIdx];
     const combined = line + " " + (lines[lIdx + 1] || "");
-    if (!fields.document_date && /\b(?:date|supply|dated)\b/i.test(combined)) {
-      const dm = combined.match(/(?:date|supply|dated)[:\s]+([0-9\s/.-]{8,15})/i);
+    if (!fields.document_date && /\b(?:date|supply|dated|statement\s*date)\b/i.test(combined)) {
+      const dm = combined.match(/(?:date|supply|dated|statement\s*date)[:\s]+([0-9\s/.-]{8,15})/i);
       if (dm) {
         const dStr = dm[1].replace(/\s+/g, "");
         const pd = parseDate(dStr);
@@ -1003,15 +1174,15 @@ export function extractFromPdf(
     }
   }
 
-  // 4. Scan for Document / Invoice / Quotation Number
+  // 4. Scan for Document / Invoice / Quotation / Statement Number
   for (let lIdx = 0; lIdx < lines.length; lIdx++) {
     const line = lines[lIdx];
     const combined = line + " " + (lines[lIdx + 1] || "");
-    if (!fields.document_number && /(?:invoice\s*no\.?|quotation\s*no\.?|quote\s*no\.?|qtn\s*no\.?|ref\s*:|invoice\s*ref)/i.test(combined)) {
-      const im = combined.match(/(?:invoice\s*no\.?|quotation\s*no\.?|quote\s*no\.?|qtn\s*no\.?|ref\s*:|invoice\s*ref\s*:)\s*([A-Za-z0-9\s/_#-]+)/i);
+    if (!fields.document_number && /(?:invoice\s*no\.?|quotation\s*no\.?|quote\s*no\.?|qtn\s*no\.?|statement\s*#|statement\s*no\.?|statement\s*ref|soa\s*#|soa\s*no\.?|ref\s*:|invoice\s*ref)/i.test(combined)) {
+      const im = combined.match(/(?:invoice\s*no\.?|quotation\s*no\.?|quote\s*no\.?|qtn\s*no\.?|statement\s*#|statement\s*no\.?|statement\s*ref\s*:?|soa\s*#|soa\s*no\.?|ref\s*:|invoice\s*ref\s*:)\s*([A-Za-z0-9\s/_#-]+)/i);
       if (im) {
         let rawNum = im[1].trim();
-        rawNum = rawNum.replace(/\s+(Location|Ref|Mobile|Date|Supply|Terms|Company|Buyer|To|From).*$/i, "");
+        rawNum = rawNum.replace(/\s+(Location|Ref|Mobile|Date|Supply|Terms|Company|Buyer|To|From|Customer|Page).*$/i, "");
         const clean = rawNum.replace(/\s+/g, "");
         if (clean.length >= 3 && /^(?:INV|TAX|QTN|QUO|PI|DN|PO|LPO|BILL|SOA)/i.test(clean)) {
           fields.document_number = {
@@ -1027,7 +1198,7 @@ export function extractFromPdf(
       }
     }
   }
-  if (!fields.document_number && fnDocNo) {
+  if (!fields.document_number && fnDocNo && !/statement.*account/i.test(fnDocNo)) {
     fields.document_number = {
       fieldKey: "document_number",
       label: "Document Number",
@@ -1128,6 +1299,86 @@ export function extractFromPdf(
       }
     }
 
+    // Statement of Account (SOA) Financial Totals
+    if (docType === "customer_statement") {
+      // Opening Balance / Previous Balance
+      if (!fields.opening_balance && /(?:previous\s*balance|opening\s*balance|balance\s*brought\s*forward)/i.test(combined)) {
+        const m = combined.match(/(?:previous\s*balance|opening\s*balance|balance\s*brought\s*forward)\s*[:]?\s*(?:AED)?\s*(-?[0-9,]+(?:\.[0-9]+)?)/i);
+        if (m) {
+          const val = parseNumber(m[1]) ?? 0;
+          fields.opening_balance = {
+            fieldKey: "opening_balance",
+            label: "Opening Balance",
+            value: val,
+            source: loc,
+            confidence: 0.98,
+            validationStatus: "valid",
+            originalRawValue: m[1],
+          };
+        }
+      }
+
+      // New Charges
+      if (!fields.subtotal && /(?:new\s*charges|total\s*charges|charges)/i.test(combined)) {
+        const m = combined.match(/(?:new\s*charges|total\s*charges|charges)\s*[:]?\s*(?:AED)?\s*([0-9,]+(?:\.[0-9]+)?)/i);
+        if (m) {
+          const val = parseNumber(m[1]) ?? 0;
+          fields.subtotal = {
+            fieldKey: "subtotal",
+            label: "New Charges",
+            value: val,
+            source: loc,
+            confidence: 0.98,
+            validationStatus: "valid",
+            originalRawValue: m[1],
+          };
+        }
+      }
+
+      // Total Credits
+      if (!fields.total_credits && /(?:total\s*credits|credits|payments\s*received)/i.test(combined)) {
+        const m = combined.match(/(?:total\s*credits|credits|payments\s*received)\s*[:]?\s*(?:AED)?\s*([0-9,]+(?:\.[0-9]+)?)/i);
+        if (m) {
+          const val = parseNumber(m[1]) ?? 0;
+          fields.total_credits = {
+            fieldKey: "total_credits",
+            label: "Total Credits",
+            value: val,
+            source: loc,
+            confidence: 0.98,
+            validationStatus: "valid",
+            originalRawValue: m[1],
+          };
+        }
+      }
+
+      // Closing Balance / Total Balance Due
+      if (!fields.total_amount && /(?:total\s*balance\s*due|account\s*current\s*balance|closing\s*balance|balance\s*due)/i.test(combined)) {
+        const m = combined.match(/(?:total\s*balance\s*due|account\s*current\s*balance|closing\s*balance|balance\s*due)\s*[:]?\s*(?:AED)?\s*(-?[0-9,]+(?:\.[0-9]+)?)/i);
+        if (m) {
+          const val = parseNumber(m[1]) ?? 0;
+          fields.total_amount = {
+            fieldKey: "total_amount",
+            label: "Total Balance Due",
+            value: val,
+            source: loc,
+            confidence: 0.98,
+            validationStatus: "valid",
+            originalRawValue: m[1],
+          };
+          fields.closing_balance = {
+            fieldKey: "closing_balance",
+            label: "Closing Balance",
+            value: val,
+            source: loc,
+            confidence: 0.98,
+            validationStatus: "valid",
+            originalRawValue: m[1],
+          };
+        }
+      }
+    }
+
     if (!fields.total_amount && /total\s*amount|grand\s*total/i.test(combined)) {
       const m = combined.match(/(?:total\s*amount|grand\s*total)\s*[:]?\s*(?:AED)?\s*([0-9,]+(?:\.[0-9]+)?)/i);
       if (m) {
@@ -1166,16 +1417,19 @@ export function extractFromPdf(
 
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
-    if (/offer\s*price|sl\s*\.?\s*no|description.*qty|description.*unit|^(?:SN|#)\s+(?:DESCRIPTION|Item\s+Description)/i.test(l)) {
+    if (
+      /offer\s*price|sl\s*\.?\s*no|description.*qty|description.*unit|^(?:SN|#)\s+(?:DESCRIPTION|Item\s+Description)/i.test(l) ||
+      (docType === "customer_statement" && /date.*(?:type|ref|particular|transaction|charges|credits|balance)/i.test(l))
+    ) {
       if (tableHeaderStart === -1) tableHeaderStart = i;
     }
     if (tableHeaderStart !== -1 && tableHeaderEnd === -1) {
-      if (/amount.*amount|net.*vat.*total|no\.\s+price|qty\s+unit\s+rate/i.test(l)) {
+      if (/amount.*amount|net.*vat.*total|no\.\s+price|qty\s+unit\s+rate|balance\s*\(?aed\)?|charges|credits/i.test(l)) {
         tableHeaderEnd = i;
       }
     }
     if (tableHeaderStart !== -1 && i > (tableHeaderEnd !== -1 ? tableHeaderEnd : tableHeaderStart)) {
-      if (/net\s*amount|subtotal|sub-total|total\s*amount|grand\s*total/i.test(l)) {
+      if (/net\s*amount|subtotal|sub-total|total\s*amount|grand\s*total|total\s*balance\s*due|account\s*current\s*balance|closing\s*balance/i.test(l)) {
         tableEndIndex = i;
         break;
       }
@@ -1183,7 +1437,7 @@ export function extractFromPdf(
   }
 
   if (tableHeaderEnd === -1 && tableHeaderStart !== -1) {
-    tableHeaderEnd = tableHeaderStart + 3;
+    tableHeaderEnd = docType === "customer_statement" ? tableHeaderStart : tableHeaderStart + 3;
   }
 
   if (tableHeaderStart !== -1) {
@@ -1207,6 +1461,63 @@ export function extractFromPdf(
 
       const line = cleanLineForTable(rawLine);
       const combinedLine = pendingDesc.length > 0 ? pendingDesc.join(" ") + " " + line : line;
+
+      // Statement of Account (SOA) Transaction Row Parser
+      if (docType === "customer_statement") {
+        const mDate = line.match(/^([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})\s+(.+)$/);
+        if (mDate) {
+          const transDate = mDate[1];
+          const rest = mDate[2].trim();
+          const numMatches = Array.from(rest.matchAll(/(?:AED\s*)?(-?[0-9,]+\.[0-9]{2})/gi));
+          if (numMatches.length > 0) {
+            const firstNumIdx = rest.indexOf(numMatches[0][0]);
+            const transDesc = rest.slice(0, firstNumIdx).trim();
+            const nums = numMatches.map(m => parseNumber(m[1]) ?? 0);
+
+            let charge = 0;
+            let credit = 0;
+            let balance = 0;
+
+            if (nums.length >= 3) {
+              charge = nums[0];
+              credit = nums[1];
+              balance = nums[2];
+            } else if (nums.length === 2) {
+              if (/rv|receipt|pay|cred/i.test(transDesc)) {
+                credit = nums[0];
+              } else {
+                charge = nums[0];
+              }
+              balance = nums[1];
+            } else if (nums.length === 1) {
+              balance = nums[0];
+              if (/opening|brought\s*forward/i.test(transDesc)) {
+                charge = nums[0];
+              }
+            }
+
+            items.push({
+              id: `item_soa_${itemSeq}`,
+              itemNumber: itemSeq++,
+              description: `${transDate} - ${transDesc || "Statement Entry"}`,
+              quantity: 1,
+              unit: "Doc",
+              unitPrice: charge > 0 ? charge : credit,
+              discount: 0,
+              vatRate: 0,
+              vatAmount: 0,
+              taxableAmount: charge > 0 ? charge : 0,
+              total: charge > 0 ? charge : credit,
+              calculatedTotal: balance,
+              difference: 0,
+              calculationStatus: "match",
+              source: { file: fileName, page: 1, row: i + 1, rawText: rawLine },
+            });
+            pendingDesc = [];
+            continue;
+          }
+        }
+      }
 
       // 1. Check for 8/7-column layout (Quotation / Tax Invoice with separate Net, VAT, Total):
       // [itemNo] [desc] [unit] [qty] [rate] [net] [vat] [total]
@@ -1301,6 +1612,58 @@ export function extractFromPdf(
       it.total = Number((it.taxableAmount + it.vatAmount).toFixed(2));
       it.calculatedTotal = it.total;
     });
+  }
+
+  // Statement of Account (SOA) Totals derivation from items if summary boxes were absent
+  if (docType === "customer_statement") {
+    if (!fields.subtotal && items.length > 0) {
+      const totalCharges = Number(items.reduce((sum, it) => sum + (it.taxableAmount || 0), 0).toFixed(2));
+      fields.subtotal = {
+        fieldKey: "subtotal",
+        label: "New Charges",
+        value: totalCharges,
+        source: { file: fileName, rawText: "Sum of Statement Charges" },
+        confidence: 0.95,
+        validationStatus: "valid",
+        originalRawValue: totalCharges.toFixed(2),
+      };
+    }
+    if (!fields.total_credits && items.length > 0) {
+      const totalCreds = Number(items.reduce((sum, it) => sum + (it.taxableAmount === 0 && it.total > 0 ? it.total : 0), 0).toFixed(2));
+      fields.total_credits = {
+        fieldKey: "total_credits",
+        label: "Total Credits",
+        value: totalCreds,
+        source: { file: fileName, rawText: "Sum of Statement Credits" },
+        confidence: 0.95,
+        validationStatus: "valid",
+        originalRawValue: totalCreds.toFixed(2),
+      };
+    }
+    if (!fields.closing_balance && items.length > 0) {
+      const lastItem = items[items.length - 1];
+      const closingVal = lastItem.calculatedTotal || 0;
+      fields.closing_balance = {
+        fieldKey: "closing_balance",
+        label: "Closing Balance",
+        value: closingVal,
+        source: { file: fileName, rawText: "Statement Running Balance" },
+        confidence: 0.95,
+        validationStatus: "valid",
+        originalRawValue: closingVal.toFixed(2),
+      };
+      if (!fields.total_amount) {
+        fields.total_amount = {
+          fieldKey: "total_amount",
+          label: "Total Balance Due",
+          value: closingVal,
+          source: { file: fileName, rawText: "Statement Running Balance" },
+          confidence: 0.95,
+          validationStatus: "valid",
+          originalRawValue: closingVal.toFixed(2),
+        };
+      }
+    }
   }
 
   // PVC Tank Liner parameters if technical sheet

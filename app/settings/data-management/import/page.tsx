@@ -671,7 +671,11 @@ export default function SmartImportPage() {
                         ...q,
                         status: "ready",
                         progressPercent: 100,
-                        parsedDoc: finalDoc,
+                        parsedDoc: {
+                          ...finalDoc,
+                          storagePath: savedStoragePath || finalDoc.storagePath,
+                          storageBucket: "smart-imports",
+                        },
                         requestId: lastReqId,
                         storagePath: savedStoragePath,
                         selectedForImport:
@@ -921,8 +925,11 @@ export default function SmartImportPage() {
         })
       );
 
-      // Clean up temporary storage objects in background
-      const pathsToClean = queue.map(q => q.storagePath).filter(Boolean) as string[];
+      // Clean up temporary storage objects in background (preserving archived customer_statement documents)
+      const pathsToClean = queue
+        .filter(q => q.parsedDoc?.documentType !== "customer_statement")
+        .map(q => q.storagePath)
+        .filter(Boolean) as string[];
       if (pathsToClean.length > 0) {
         safeFetchJson("/api/smart-import/storage", {
           method: "DELETE",
@@ -2048,6 +2055,11 @@ export default function SmartImportPage() {
                 <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
                   {documents.filter(d => d.documentType === "tax_invoice").length} Tax Invoices
                 </span>
+                {documents.filter(d => d.documentType === "customer_statement").length > 0 && (
+                  <span className="px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20 font-semibold">
+                    {documents.filter(d => d.documentType === "customer_statement").length} Statements of Account (Safe Archive)
+                  </span>
+                )}
                 <span className="px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20 font-semibold">
                   {proposedSummary?.newCustomers || 0} New Customers ({proposedSummary?.reusedCustomers || 0} Reused)
                 </span>
@@ -2215,12 +2227,14 @@ export default function SmartImportPage() {
                                   className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                                     isTaxInvoice
                                       ? "bg-indigo-500/10 text-indigo-300 border border-indigo-500/30"
+                                      : doc.documentType === "customer_statement"
+                                      ? "bg-sky-500/10 text-sky-300 border border-sky-500/30"
                                       : doc.documentType === "unknown"
                                       ? "bg-rose-500/10 text-rose-300 border border-rose-500/30"
                                       : "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
                                   }`}
                                 >
-                                  {doc.documentType.replace("_", " ")}
+                                  {doc.documentType === "customer_statement" ? "Statement of Account" : doc.documentType.replace("_", " ")}
                                 </span>
                                 <span className="block text-[10px] text-slate-500">
                                   Confidence: {Math.round(doc.classificationConfidence * 100)}%
@@ -2278,6 +2292,37 @@ export default function SmartImportPage() {
                                   <span>{doc.items.length} items</span>
                                 </div>
                                 {(() => {
+                                  if (doc.documentType === "customer_statement") {
+                                    const openBal = Number(doc.fields.opening_balance?.value) || 0;
+                                    const charges = Number(doc.fields.subtotal?.value) || 0;
+                                    const credits = Number(doc.fields.total_credits?.value) || 0;
+                                    const closeBal = Number(doc.fields.closing_balance?.value ?? doc.fields.total_amount?.value) || 0;
+                                    const calcClose = Number((openBal + charges - credits).toFixed(2));
+                                    const diffVal = Number(Math.abs(calcClose - closeBal).toFixed(2));
+                                    const isReconciled = diffVal <= 0.05;
+
+                                    return (
+                                      <>
+                                        <div className="text-[11px] text-slate-200 font-semibold pt-0.5">
+                                          Closing: AED {closeBal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </div>
+                                        <div className="flex items-center gap-1.5 text-[10px]">
+                                          <span className="text-slate-400">Reconciliation:</span>
+                                          {isReconciled ? (
+                                            <span className="text-emerald-400 font-mono text-[9px] bg-emerald-500/10 px-1 rounded">✓ Balanced</span>
+                                          ) : (
+                                            <span className="text-rose-400 font-mono text-[9px] bg-rose-500/15 px-1 rounded font-semibold">
+                                              Δ AED {diffVal.toFixed(2)} Mismatch
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="text-[9px] text-slate-500">
+                                          Open: {openBal.toFixed(2)} | +Charges: {charges.toFixed(2)} | -Credits: {credits.toFixed(2)}
+                                        </div>
+                                      </>
+                                    );
+                                  }
+
                                   const calcTotalVal = doc.items.reduce((sum, it) => sum + (Number(it.total) || 0), 0);
                                   const diffVal = Number(Math.abs(totalVal - calcTotalVal).toFixed(2));
                                   const isMatch = diffVal <= 0.05 && doc.items.length > 0;
@@ -2339,20 +2384,37 @@ export default function SmartImportPage() {
 
                             {/* Intended DB Operations */}
                             <td className="py-3 px-3">
-                              <div className="space-y-0.5 text-[10px] font-mono">
-                                <div className="text-slate-300">
-                                  <span className="text-emerald-400">Insert:</span> {doc.documentType === "quotation" ? "quotations" : doc.documentType === "delivery_note" ? "delivery_notes" : doc.documentType === "purchase_order" ? "purchase_orders" : doc.documentType === "supplier_bill" ? "supplier_bills" : "tax_invoices"}
+                              {doc.documentType === "customer_statement" ? (
+                                <div className="space-y-0.5 text-[10px] font-mono">
+                                  <div className="text-sky-300 font-semibold">
+                                    <span className="text-emerald-400">Archive:</span> document_attachments
+                                  </div>
+                                  <div className="text-emerald-400">
+                                    Ledger Mutations: 0 (Preserved)
+                                  </div>
+                                  <div className="text-slate-500">
+                                    Invoices/Vouchers: 0 Created
+                                  </div>
+                                  <div className="text-slate-500">
+                                    Destination: Customer File
+                                  </div>
                                 </div>
-                                <div className="text-slate-400">
-                                  <span className="text-emerald-400">Insert:</span> {doc.documentType === "quotation" ? "quotation_items" : doc.documentType === "delivery_note" ? "delivery_note_items" : doc.documentType === "purchase_order" ? "purchase_order_items" : doc.documentType === "supplier_bill" ? "supplier_bill_items" : "tax_invoice_items"} ({doc.items.length})
+                              ) : (
+                                <div className="space-y-0.5 text-[10px] font-mono">
+                                  <div className="text-slate-300">
+                                    <span className="text-emerald-400">Insert:</span> {doc.documentType === "quotation" ? "quotations" : doc.documentType === "delivery_note" ? "delivery_notes" : doc.documentType === "purchase_order" ? "purchase_orders" : doc.documentType === "supplier_bill" ? "supplier_bills" : "tax_invoices"}
+                                  </div>
+                                  <div className="text-slate-400">
+                                    <span className="text-emerald-400">Insert:</span> {doc.documentType === "quotation" ? "quotation_items" : doc.documentType === "delivery_note" ? "delivery_note_items" : doc.documentType === "purchase_order" ? "purchase_order_items" : doc.documentType === "supplier_bill" ? "supplier_bill_items" : "tax_invoice_items"} ({doc.items.length})
+                                  </div>
+                                  <div className="text-slate-500">
+                                    Supplier: <span className="text-slate-600">Skipped</span>
+                                  </div>
+                                  <div className="text-slate-500">
+                                    Project: <span className="text-slate-600">Skipped</span>
+                                  </div>
                                 </div>
-                                <div className="text-slate-500">
-                                  Supplier: <span className="text-slate-600">Skipped</span>
-                                </div>
-                                <div className="text-slate-500">
-                                  Project: <span className="text-slate-600">Skipped</span>
-                                </div>
-                              </div>
+                              )}
                             </td>
 
                             {/* Action */}
@@ -2965,7 +3027,7 @@ export default function SmartImportPage() {
                   });
                 }
                 if (
-                  (d.documentType === "quotation" || d.documentType === "tax_invoice" || d.documentType === "delivery_note") &&
+                  (d.documentType === "quotation" || d.documentType === "tax_invoice" || d.documentType === "delivery_note" || d.documentType === "customer_statement") &&
                   !d.customerResolution?.extractedName &&
                   d.extractionStatus !== "failed"
                 ) {
@@ -3243,6 +3305,39 @@ export default function SmartImportPage() {
                           </div>
                         );
                       })()}
+
+                      {/* Customer Statements Safe Archive Destination */}
+                      {docTypesPresent.includes("customer_statement") && (() => {
+                        const stmts = approvedDocs.filter(d => d.documentType === "customer_statement");
+                        const stmtNumbers = stmts.map(d => String(d.fields?.document_number?.value || "")).filter(Boolean);
+                        const distinctStatuses = Array.from(new Set(stmts.map(d => `${d.statusResolution?.proposedStatus || 'reconciled'}${d.statusResolution?.isAssumed ? ' [Assumption]' : ' [Verified]'}`)));
+                        return (
+                          <div className="flex items-start justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
+                            <div className="flex items-center gap-2">
+                              <FileText size={14} className="text-sky-400 mt-0.5" />
+                              <div>
+                                <span className="text-slate-300 font-medium">Customer Statement Safe Archive</span>
+                                <span className="text-[10px] text-slate-500 font-mono block">
+                                  Table: document_attachments (Status: {distinctStatuses.join(", ")})
+                                </span>
+                                <span className="text-[10px] text-emerald-400/90 font-mono block mt-0.5">
+                                  ✓ Financial Protection: Document-only archive linked to customer. Zero ledger mutations, 0 invoices created, 0 payments created.
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-xs font-semibold text-white">
+                                {stmts.length} Statement{stmts.length > 1 ? "s" : ""} (Safe Archive)
+                              </span>
+                              {stmtNumbers.length > 0 && (
+                                <span className="text-[10px] font-mono text-sky-400 block truncate max-w-[240px]">
+                                  {stmtNumbers.map(n => `#${n}`).join(", ")}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -3275,6 +3370,12 @@ export default function SmartImportPage() {
                       <div className="flex items-center gap-2 text-emerald-400 text-[11px]">
                         <ShieldCheck size={14} className="shrink-0" />
                         <span>Foreign-Key Hierarchy Order: Supplier → Project → Purchase Order → Order Items</span>
+                      </div>
+                    )}
+                    {docTypesPresent.includes("customer_statement") && (
+                      <div className="flex items-center gap-2 text-emerald-400 text-[11px]">
+                        <ShieldCheck size={14} className="shrink-0" />
+                        <span>Relational Archive Order: Customer → Document Attachment (Safe Document-Only Archive; Balances Preserved)</span>
                       </div>
                     )}
 

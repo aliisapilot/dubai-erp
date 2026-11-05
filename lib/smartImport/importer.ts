@@ -731,6 +731,97 @@ export async function executeTopologicalImport(
           }
           break;
         }
+
+        // --- CUSTOMER STATEMENTS (Safe Document-Only Archive; Zero Ledger Mutations) ---
+        case "customer_statement": {
+          if (!resolvedCustId) {
+            errors.push(`Customer statement ${docNumber} requires a linked customer.`);
+            break;
+          }
+
+          const openBal = Number(doc.fields.opening_balance?.value) || 0;
+          const charges = Number(doc.fields.subtotal?.value) || 0;
+          const credits = Number(doc.fields.total_credits?.value) || 0;
+          const closeBal = Number(doc.fields.closing_balance?.value ?? doc.fields.total_amount?.value) || 0;
+
+          // Multi-layer duplicate detection (Filename, Document Number, and SHA-256 Hash)
+          let existingAtt: { id: string } | null = null;
+
+          // 1. Check exact file_name for this customer
+          const { data: byName } = await supabase
+            .from("document_attachments")
+            .select("id")
+            .eq("company_id", companyId)
+            .eq("entity_type", "customer")
+            .eq("entity_id", resolvedCustId)
+            .eq("file_name", doc.filename)
+            .maybeSingle();
+
+          existingAtt = byName;
+
+          // 2. Check SHA-256 checksum in description if filename differed
+          if (!existingAtt && doc.checksumSha256) {
+            const { data: byHash } = await supabase
+              .from("document_attachments")
+              .select("id")
+              .eq("company_id", companyId)
+              .eq("entity_type", "customer")
+              .eq("entity_id", resolvedCustId)
+              .ilike("description", `%[SHA256: ${doc.checksumSha256}]%`)
+              .maybeSingle();
+
+            existingAtt = byHash;
+          }
+
+          // 3. Check stable document number in description if filename differed
+          if (!existingAtt && docNumber) {
+            const { data: byDesc } = await supabase
+              .from("document_attachments")
+              .select("id")
+              .eq("company_id", companyId)
+              .eq("entity_type", "customer")
+              .eq("entity_id", resolvedCustId)
+              .ilike("description", `%Statement of Account ${docNumber}%`)
+              .maybeSingle();
+
+            existingAtt = byDesc;
+          }
+
+          if (existingAtt) {
+            incMatched("document_attachments");
+            break;
+          }
+
+          const persistentFileUrl = doc.storagePath
+            ? `/api/smart-import/storage?path=${encodeURIComponent(doc.storagePath)}`
+            : "";
+
+          const desc = `Statement of Account ${docNumber} (${docDate}) [SHA256: ${doc.checksumSha256}] | Opening: AED ${openBal.toFixed(2)}, Charges: AED ${charges.toFixed(2)}, Credits: AED ${credits.toFixed(2)}, Closing: AED ${closeBal.toFixed(2)} [Document-only archive; zero ledger mutations]`;
+
+          const { data: newAtt, error: attErr } = await supabase
+            .from("document_attachments")
+            .insert({
+              company_id: companyId,
+              entity_type: "customer",
+              entity_id: resolvedCustId,
+              file_name: doc.filename,
+              file_url: persistentFileUrl,
+              file_size: doc.fileSize || 0,
+              file_type: doc.fileType || "pdf",
+              description: desc,
+              uploaded_by: userEmail || "Smart Import",
+            })
+            .select("id")
+            .single();
+
+          if (attErr) {
+            errors.push(`Failed to archive customer statement ${doc.filename}: ${attErr.message}`);
+          } else if (newAtt) {
+            createdRecordIds.push({ table: "document_attachments", id: newAtt.id });
+            incCreated("document_attachments");
+          }
+          break;
+        }
       }
     }
 
@@ -750,8 +841,10 @@ export async function executeTopologicalImport(
       newPurchaseOrders: recordsCreated.purchase_orders || 0,
       newExpenses: recordsCreated.expenses || 0,
       newMeasurements: recordsCreated.measurement_projects || 0,
+      newStatements: recordsCreated.document_attachments || 0,
+      archivedStatements: (recordsCreated.document_attachments || 0) + (recordsMatched.document_attachments || 0),
       totalLineItems: (recordsCreated.quotation_items || 0) + (recordsCreated.tax_invoice_items || 0) + (recordsCreated.delivery_note_items || 0) + (recordsCreated.purchase_order_items || 0),
-      duplicatesSkipped: 0,
+      duplicatesSkipped: Object.values(recordsMatched).reduce((a, b) => a + b, 0),
       recordsRequiringReview: 0,
       validationErrors: errors.length,
     };
@@ -833,7 +926,7 @@ export async function executeTopologicalImport(
         newExpenses: recordsCreated.expenses || 0,
         newMeasurements: recordsCreated.measurement_projects || 0,
         totalLineItems: 0,
-        duplicatesSkipped: 0,
+        duplicatesSkipped: Object.values(recordsMatched).reduce((a, b) => a + b, 0),
         recordsRequiringReview: 0,
         validationErrors: errors.length,
       },

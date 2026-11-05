@@ -23,6 +23,8 @@ import {
   Clock,
   Plus,
   Trash2,
+  Paperclip,
+  FileText,
 } from "lucide-react";
 import Link from "next/link";
 import StatementOfAccountTemplate, { StatementData, StatementEntry } from "@/components/documents/StatementOfAccountTemplate";
@@ -158,6 +160,45 @@ export default function StatementOfAccountPage() {
   const [savingBalance, setSavingBalance] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [balanceMessage, setBalanceMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Archived Statements State
+  const [showArchivedModal, setShowArchivedModal] = useState(false);
+  const [archivedStatements, setArchivedStatements] = useState<Array<{
+    id: string;
+    file_name: string;
+    file_url: string;
+    file_size?: number | null;
+    file_type?: string | null;
+    description?: string | null;
+    uploaded_by?: string | null;
+    created_at: string;
+  }>>([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
+
+  async function fetchArchivedStatements() {
+    if (!selectedCustomerId) return;
+    setArchivedLoading(true);
+    setShowArchivedModal(true);
+    try {
+      const { data, error } = await supabase
+        .from("document_attachments")
+        .select("id, file_name, file_url, file_size, file_type, description, uploaded_by, created_at")
+        .eq("entity_type", "customer")
+        .eq("entity_id", selectedCustomerId)
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setArchivedStatements(data);
+      } else {
+        setArchivedStatements([]);
+      }
+    } catch (e) {
+      console.warn("Could not load archived statements:", e);
+      setArchivedStatements([]);
+    } finally {
+      setArchivedLoading(false);
+    }
+  }
 
   async function loadCustomerOpeningBalance(customerId: string, currentCusts?: Customer[]) {
     if (!customerId) return;
@@ -890,6 +931,16 @@ export default function StatementOfAccountPage() {
               >
                 <Columns2 size={16} className="text-slate-500" />
                 Compare with Reference SOA
+              </button>
+
+              <button
+                type="button"
+                onClick={fetchArchivedStatements}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm"
+                title="View original Statement of Account PDF archives for this customer"
+              >
+                <Paperclip size={15} className="text-amber-600" />
+                Archived SOAs
               </button>
 
               <button
@@ -2199,6 +2250,101 @@ export default function StatementOfAccountPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Archived Customer Statements Modal */}
+      {showArchivedModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl max-h-[85vh] flex flex-col rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/80">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-amber-500/10 text-amber-600 p-2">
+                  <Paperclip size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Archived Statements of Account</h3>
+                  <p className="text-xs text-slate-500">
+                    Customer: {customers.find(c => c.id === selectedCustomerId)?.name || "Customer"}
+                    {customers.find(c => c.id === selectedCustomerId)?.customer_code ? ` (${customers.find(c => c.id === selectedCustomerId)?.customer_code})` : ""}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowArchivedModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-auto space-y-4">
+              {archivedLoading ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400 text-xs gap-2">
+                  <Loader2 size={24} className="animate-spin text-amber-500" />
+                  <span>Loading archived statements from document repository...</span>
+                </div>
+              ) : archivedStatements.length === 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-8 text-center text-xs text-slate-500">
+                  <FileText size={32} className="mx-auto text-slate-300 mb-2" />
+                  <p className="font-semibold text-slate-700 mb-1">No Archived Statements Found</p>
+                  <p>Statement of Account PDF documents imported via Smart Import or attached to this customer will appear here.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {archivedStatements.map((att) => (
+                    <div
+                      key={att.id}
+                      className="flex items-start justify-between p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 rounded-lg bg-blue-50 text-blue-600 mt-0.5">
+                          <FileText size={18} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{att.file_name}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                            {att.description || "Historical Statement of Account"}
+                          </p>
+                          <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-2">
+                            <span>Uploaded: {att.created_at ? new Date(att.created_at).toLocaleDateString("en-AE", { dateStyle: "medium" }) : "N/A"}</span>
+                            {att.file_size ? <span>Size: {(att.file_size / 1024).toFixed(1)} KB</span> : null}
+                            {att.uploaded_by && <span>By: {att.uploaded_by}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      {att.file_url && (
+                        <a
+                          href={att.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition ml-4"
+                        >
+                          <ExternalLink size={14} />
+                          Open PDF
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between px-6 py-3.5 border-t border-slate-200 bg-slate-50 text-xs">
+              <span className="text-slate-500">
+                {archivedStatements.length} document{archivedStatements.length === 1 ? "" : "s"} archived
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowArchivedModal(false)}
+                className="px-4 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-100 transition"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

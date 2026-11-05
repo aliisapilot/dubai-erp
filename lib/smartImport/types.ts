@@ -23,6 +23,7 @@ export type DocumentType =
   | "customer_list"
   | "supplier_list"
   | "product_list"
+  | "customer_statement"
   | "unknown";
 
 export interface SourceLocation {
@@ -166,6 +167,8 @@ export interface ParsedDocument {
   validationWarnings: string[];
   isDuplicate: boolean;
   duplicateReason?: string;
+  storagePath?: string;
+  storageBucket?: string;
   extractionStatus?: "success" | "failed";
   extractionError?: string;
   rawContentSummary: {
@@ -189,6 +192,8 @@ export interface ImportBatchSummary {
   newPurchaseOrders: number;
   newExpenses: number;
   newMeasurements: number;
+  newStatements?: number;
+  archivedStatements?: number;
   totalLineItems: number;
   duplicatesSkipped: number;
   recordsRequiringReview: number;

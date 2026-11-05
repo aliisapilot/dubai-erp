@@ -103,7 +103,7 @@ const RULES: PatternRule[] = [
       /\b(trn\s*:?\s*\d+|trn\s+number|tax\s+registration|vat\s+5%|vat\s*amount|supply\s+date)\b/i,
       /\b(invoice\s+no|inv[-_#\s]\d+|net\s+amount|total\s+amount)\b/i,
     ],
-    negativeKeywords: [/\bproforma\b/i, /\bpurchase\s+order\b/i, /\bdelivery\s+note\b/i],
+    negativeKeywords: [/\bproforma\b/i, /\bpurchase\s+order\b/i, /\bdelivery\s+note\b/i, /\bstatement\s+of\s+account\b/i, /\baccount\s+statement\b/i],
     fileNameKeywords: [/tax.*invoice/i, /invoice/i, /^inv[-_0-9]/i, /\binv[-_]/i, /\binv\d+/i],
     weight: 1.4,
   },
@@ -167,7 +167,7 @@ const RULES: PatternRule[] = [
       /\b(qtn\s*no|quote\s*no|quotation\s*ref|validity|qtn[-_#/]\d+)\b/i,
       /\b(scope\s+of\s+work|terms\s+and\s+conditions|payment\s+terms)\b/i,
     ],
-    negativeKeywords: [/\btax\s+invoice\b/i, /\bpurchase\s+order\b/i],
+    negativeKeywords: [/\btax\s+invoice\b/i, /\bpurchase\s+order\b/i, /\bstatement\s+of\s+account\b/i, /\baccount\s+statement\b/i],
     fileNameKeywords: [/quotation/i, /\bqtn[-_]/i, /\bqtn\d+/i, /quote/i],
     weight: 1.1,
   },
@@ -237,6 +237,35 @@ const RULES: PatternRule[] = [
     ],
     fileNameKeywords: [/products?/i, /items?/i, /inventory/i, /materials?/i],
     weight: 1.1,
+  },
+
+  // 15. Statement of Account (SOA)
+  {
+    type: "customer_statement",
+    primaryKeywords: [
+      /\bstatement\s+of\s+account\b/i,
+      /\baccount\s+statement\b/i,
+      /\bcustomer\s+statement\b/i,
+      /\baccount\s+summary\b/i,
+      /\baccount\s+current\s+balance\b/i,
+      /\bbalance\s+brought\s+forward\b/i,
+      /\bstatement\s*(?:#|no|number|ref)\b/i,
+    ],
+    secondaryKeywords: [
+      /\b(opening\s+balance|previous\s+balance|new\s+charges|total\s+balance\s+due|closing\s+balance|current\s+balance)\b/i,
+      /\b(soa\s*#|soa\s*no|soa[-_#\s]\d+)\b/i,
+      /\b(charges\s*\(?aed\)?|credits\s*\(?aed\)?|balance\s*\(?aed\)?)\b/i,
+      /\b(statement\s+date|from\s+date|to\s+date)\b/i,
+    ],
+    fileNameKeywords: [
+      /statement.*account/i,
+      /account.*statement/i,
+      /\bsoa[-_0-9]/i,
+      /\bsoa\d+/i,
+      /^soa[-_0-9]/i,
+      /\bsoa\b/i,
+    ],
+    weight: 1.4,
   },
 ];
 

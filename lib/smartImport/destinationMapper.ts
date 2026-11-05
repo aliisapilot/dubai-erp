@@ -144,6 +144,11 @@ export function generateDestinationMappings(
         destField = "expense_number";
         erpMod = "Expenses";
         break;
+      case "customer_statement":
+        destTable = "document_attachments";
+        destField = "file_name (document-only archive)";
+        erpMod = "Customer Statements";
+        break;
     }
 
     mappings.push({
@@ -193,6 +198,11 @@ export function generateDestinationMappings(
         destField = "expense_date";
         erpMod = "Expenses";
         break;
+      case "customer_statement":
+        destTable = "document_attachments";
+        destField = "created_at / metadata";
+        erpMod = "Customer Statements";
+        break;
     }
 
     mappings.push({
@@ -210,30 +220,95 @@ export function generateDestinationMappings(
     });
   }
 
-  // 7. Line Items Mappings
-  let itemDestTable = "quotation_items";
-  if (docType === "tax_invoice") itemDestTable = "tax_invoice_items";
-  else if (docType === "proforma_invoice") itemDestTable = "proforma_invoice_items";
-  else if (docType === "delivery_note") itemDestTable = "delivery_note_items";
-  else if (docType === "purchase_order") itemDestTable = "purchase_order_items";
-  else if (docType === "supplier_bill") itemDestTable = "supplier_bill_items";
+  // 7. Line Items Mappings (Skip for customer_statement: SOA items are historical summary lines, not new ERP line items)
+  if (docType !== "customer_statement") {
+    let itemDestTable = "quotation_items";
+    if (docType === "tax_invoice") itemDestTable = "tax_invoice_items";
+    else if (docType === "proforma_invoice") itemDestTable = "proforma_invoice_items";
+    else if (docType === "delivery_note") itemDestTable = "delivery_note_items";
+    else if (docType === "purchase_order") itemDestTable = "purchase_order_items";
+    else if (docType === "supplier_bill") itemDestTable = "supplier_bill_items";
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const isMismatch = item.calculationStatus === "mismatch";
-    mappings.push({
-      sourceFilename: fileName,
-      sourceLocation: getSourceLocStr(item.source),
-      extractedValue: `${item.description} / Qty: ${item.quantity} ${item.unit} / Rate: AED ${item.unitPrice}`,
-      documentType: docType,
-      erpModule: "Line Items",
-      destinationTable: itemDestTable,
-      destinationField: "description, quantity, unit_price, line_total",
-      proposedAction: isMismatch ? "needs_review" : "create_new",
-      validationStatus: isMismatch ? "warning" : "valid",
-      confidence: isMismatch ? 0.6 : 0.95,
-      editableValue: item.description,
-    });
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const isMismatch = item.calculationStatus === "mismatch";
+      mappings.push({
+        sourceFilename: fileName,
+        sourceLocation: getSourceLocStr(item.source),
+        extractedValue: `${item.description} / Qty: ${item.quantity} ${item.unit} / Rate: AED ${item.unitPrice}`,
+        documentType: docType,
+        erpModule: "Line Items",
+        destinationTable: itemDestTable,
+        destinationField: "description, quantity, unit_price, line_total",
+        proposedAction: isMismatch ? "needs_review" : "create_new",
+        validationStatus: isMismatch ? "warning" : "valid",
+        confidence: isMismatch ? 0.6 : 0.95,
+        editableValue: item.description,
+      });
+    }
+  } else {
+    // 7b. Customer Statement Financial Summary (Informational / Zero Ledger Mutations)
+    if (fields.opening_balance) {
+      mappings.push({
+        sourceFilename: fileName,
+        sourceLocation: getSourceLocStr(fields.opening_balance.source),
+        extractedValue: `Opening: AED ${Number(fields.opening_balance.value || 0).toFixed(2)}`,
+        documentType: docType,
+        erpModule: "Customer Statements",
+        destinationTable: "document_attachments",
+        destinationField: "metadata (opening_balance)",
+        proposedAction: "skip",
+        validationStatus: "valid",
+        confidence: 0.98,
+        editableValue: String(fields.opening_balance.value || ""),
+      });
+    }
+    if (fields.subtotal) {
+      mappings.push({
+        sourceFilename: fileName,
+        sourceLocation: getSourceLocStr(fields.subtotal.source),
+        extractedValue: `Charges: AED ${Number(fields.subtotal.value || 0).toFixed(2)}`,
+        documentType: docType,
+        erpModule: "Customer Statements",
+        destinationTable: "document_attachments",
+        destinationField: "metadata (charges - 0 new invoices)",
+        proposedAction: "skip",
+        validationStatus: "valid",
+        confidence: 0.98,
+        editableValue: String(fields.subtotal.value || ""),
+      });
+    }
+    if (fields.total_credits) {
+      mappings.push({
+        sourceFilename: fileName,
+        sourceLocation: getSourceLocStr(fields.total_credits.source),
+        extractedValue: `Credits: AED ${Number(fields.total_credits.value || 0).toFixed(2)}`,
+        documentType: docType,
+        erpModule: "Customer Statements",
+        destinationTable: "document_attachments",
+        destinationField: "metadata (credits - 0 new vouchers)",
+        proposedAction: "skip",
+        validationStatus: "valid",
+        confidence: 0.98,
+        editableValue: String(fields.total_credits.value || ""),
+      });
+    }
+    if (fields.closing_balance || fields.total_amount) {
+      const closeVal = Number(fields.closing_balance?.value ?? fields.total_amount?.value ?? 0);
+      mappings.push({
+        sourceFilename: fileName,
+        sourceLocation: getSourceLocStr(fields.closing_balance?.source || fields.total_amount?.source),
+        extractedValue: `Closing: AED ${closeVal.toFixed(2)}`,
+        documentType: docType,
+        erpModule: "Customer Statements",
+        destinationTable: "document_attachments",
+        destinationField: "metadata (closing_balance)",
+        proposedAction: "skip",
+        validationStatus: "valid",
+        confidence: 0.98,
+        editableValue: String(closeVal),
+      });
+    }
   }
 
   // 8. PVC Tank Liner Measurements
@@ -305,6 +380,10 @@ export function generateDestinationMappings(
       case "expense":
         destTable = "expenses";
         erpMod = "Expenses";
+        break;
+      case "customer_statement":
+        destTable = "document_attachments";
+        erpMod = "Customer Statements";
         break;
     }
 

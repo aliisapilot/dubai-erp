@@ -139,6 +139,50 @@ export async function POST(req: NextRequest) {
 }
 
 /**
+ * GET /api/smart-import/storage
+ * Serves archived documents from private storage with proper PDF Content-Type and Content-Disposition.
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const storagePath = searchParams.get("path");
+    const bucket = searchParams.get("bucket") || BUCKET_NAME;
+
+    if (!storagePath) {
+      return NextResponse.json({ error: "Storage path is required." }, { status: 400 });
+    }
+
+    const supabase = getSupabaseAdmin();
+    const { data: fileBlob, error: dlErr } = await supabase.storage.from(bucket).download(storagePath);
+
+    if (dlErr || !fileBlob) {
+      return NextResponse.json(
+        { error: `File not found in storage: ${dlErr?.message || "Not found"}` },
+        { status: 404 }
+      );
+    }
+
+    const arrayBuffer = await fileBlob.arrayBuffer();
+    const fileName = storagePath.split("/").pop() || "document.pdf";
+    const cleanFileName = fileName.replace(/^[0-9]+_[a-f0-9]+_/, "");
+
+    const isPdf = cleanFileName.toLowerCase().endsWith(".pdf");
+    const contentType = isPdf ? "application/pdf" : fileBlob.type || "application/octet-stream";
+
+    return new NextResponse(arrayBuffer, {
+      headers: {
+        "Content-Type": contentType,
+        "Content-Disposition": `inline; filename="${encodeURIComponent(cleanFileName)}"`,
+        "Cache-Control": "private, max-age=3600",
+      },
+    });
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : "Download failed";
+    return NextResponse.json({ error: errMsg }, { status: 500 });
+  }
+}
+
+/**
  * DELETE /api/smart-import/storage
  * Cleans up temporary storage references after parsing or batch completion.
  */
