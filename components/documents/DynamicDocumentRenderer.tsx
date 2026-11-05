@@ -354,8 +354,10 @@ interface DynamicDocumentRendererProps {
 import {
   computeEffectiveLayout,
   computePaginationPlan,
+  computeTextOverflowPlan,
   ItemDescriptionLike,
   DocumentFitText,
+  TextContinuationPage,
 } from "@/lib/documentLayoutEngine";
 
 export function getItemsPerPage(layout: DocumentLayout): number {
@@ -372,7 +374,11 @@ export function getDocumentPageCount(
   itemsData?: ItemDescriptionLike[],
   documentText?: DocumentFitText
 ): number {
-  return computePaginationPlan(fitMeasurementSummaryLayout(layout, documentText), itemCount, itemsData, documentText).totalPages;
+  const fittedLayout = fitMeasurementSummaryLayout(layout, documentText);
+  const plan = computePaginationPlan(fittedLayout, itemCount, itemsData, documentText);
+  const basePages = plan.totalPages;
+  const textPlan = computeTextOverflowPlan(fittedLayout, basePages, documentText);
+  return textPlan.totalDocumentPages;
 }
 
 export function replaceDocumentTokens(
@@ -571,6 +577,15 @@ export default function DynamicDocumentRenderer({
   const totalCredits = data.items.reduce((sum, item) => sum + (Number(item.credit) || 0), 0);
   const totalDeductions = Math.max(0, data.subtotal - data.total_amount);
 
+  // Compute text overflow plan (only for real documents, not designer preview)
+  const textOverflowPlan = !isDesignerPreview
+    ? computeTextOverflowPlan(layout, paginationPlan.totalPages, documentFitData)
+    : { hasTextOverflow: false, continuationPages: [], totalDocumentPages: paginationPlan.totalPages, baseItemPages: paginationPlan.totalPages, suppressSignaturesOnItemPage: false };
+  const isTextContinuationPage = textOverflowPlan.hasTextOverflow && pageNumber > paginationPlan.totalPages;
+  const textContinuationPageInfo: TextContinuationPage | null = isTextContinuationPage
+    ? (textOverflowPlan.continuationPages.find((p) => p.pageNumber === pageNumber) || null)
+    : null;
+
   // Calculate dynamic effective layout geometry with flow-aware positioning and intelligent single-page compaction
   const effectiveGeometry = computeEffectiveLayout(
     layout,
@@ -581,6 +596,15 @@ export default function DynamicDocumentRenderer({
     pageItems,
     documentFitData
   );
+
+  // When text overflow moves signatures to the final continuation page, suppress them on the item page
+  if (textOverflowPlan.hasTextOverflow && textOverflowPlan.suppressSignaturesOnItemPage && !isTextContinuationPage) {
+    for (const el of effectiveGeometry.elements) {
+      if (el.type === "company_signature" || el.type === "company_stamp") {
+        el.effectiveVisible = false;
+      }
+    }
+  }
 
   const fontWeight = (weight: LayoutElement["fontWeight"]): CSSProperties["fontWeight"] => {
     if (weight === "extrabold") return 800;
@@ -1839,8 +1863,21 @@ export default function DynamicDocumentRenderer({
         const termsPadding = isDenseTerms ? "p-1" : "p-1.5";
         const termsPt = resolvePt(elem.fontSize, isDenseTerms ? 7.8 : 8.5);
 
+        // When text overflow is active, use the partitioned text for the item page
+        const effectiveTermsText = textOverflowPlan.hasTextOverflow
+          ? (textOverflowPlan.itemPageText?.payment_terms || "")
+          : (data.payment_terms || "");
+        const effectiveNotesText = textOverflowPlan.hasTextOverflow
+          ? (textOverflowPlan.itemPageText?.notes || "")
+          : (data.notes || "");
+
+        // If both are empty and overflow is active, nothing to show on item page
+        if (textOverflowPlan.hasTextOverflow && !effectiveTermsText && !effectiveNotesText) {
+          return null;
+        }
+
         // Parse payment terms into separate lines/bullets
-        const rawTerms = data.payment_terms || "";
+        const rawTerms = effectiveTermsText;
         const termsLines = rawTerms
           ? rawTerms
               .split(/\r?\n/)
@@ -1934,13 +1971,13 @@ export default function DynamicDocumentRenderer({
                 </ul>
 
                 {/* Additional notes/remarks if any */}
-                {data.notes && data.notes !== "No additional remarks." && (
+                {effectiveNotesText && effectiveNotesText !== "No additional remarks." && (
                   <div
                     className="mt-1 pt-1 border-t border-slate-200 text-slate-600"
                     style={{ fontSize: `${Math.max(5.5, termsPt * 0.85)}pt` }}
                   >
                     <span className="font-semibold text-slate-700">Remarks: </span>
-                    {data.notes}
+                    {effectiveNotesText}
                   </div>
                 )}
               </div>
@@ -1963,8 +2000,8 @@ export default function DynamicDocumentRenderer({
                     ? "Measurement Notes & Compliance:"
                     : "Terms & Remarks:"}
                 </div>
-                <div>{data.notes || "No additional remarks."}</div>
-                {data.payment_terms && <div className="mt-0.5 italic">{data.payment_terms}</div>}
+                <div>{effectiveNotesText || "No additional remarks."}</div>
+                {effectiveTermsText && <div className="mt-0.5 italic">{effectiveTermsText}</div>}
               </>
             )}
           </div>
@@ -2281,6 +2318,219 @@ export default function DynamicDocumentRenderer({
           </div>
         );
     }
+  }
+
+  // =========================================================================
+  // TEXT CONTINUATION PAGE RENDERING
+  // If this is a text overflow continuation page, render a simplified layout
+  // with the text chunks and optionally signatures/footer.
+  // =========================================================================
+  if (isTextContinuationPage && textContinuationPageInfo) {
+    const pageW = layout.page.widthMm;
+    const pageH = layout.page.heightMm;
+    const topMrg = layout.page?.margins?.top || 10;
+    const leftMrg = layout.page?.margins?.left || 12;
+    const rightMrg = layout.page?.margins?.right || 12;
+    const bottomMrg = layout.page?.margins?.bottom || 8;
+    const contentW = pageW - leftMrg - rightMrg;
+    // Footer element for position reference
+    const footerEl = layout.elements.find((el) => el.visible && el.type === 'footer');
+    const footerY = footerEl ? footerEl.y : pageH - bottomMrg - 14;
+    const footerH = footerEl ? footerEl.height : 7;
+    // Signature elements for reference
+    const sigEl = layout.elements.find((el) => el.visible && el.type === 'company_signature');
+    const stampEl = layout.elements.find((el) => el.visible && el.type === 'company_stamp');
+    // Signature area: above footer
+    const sigAreaBottom = footerY - 2;
+    const sigH = sigEl ? sigEl.height : 24;
+    const sigAreaTop = sigAreaBottom - sigH;
+    // Content area: below title bar, above signature (or footer)
+    const textAreaTop = topMrg + 10;
+    const textAreaBottom = textContinuationPageInfo.showSignatures ? sigAreaTop - 4 : footerY - 4;
+    const termsPt = 8.5;
+
+    return (
+      <div
+        data-orientation={layout.page.orientation || "portrait"}
+        data-print-mode={printSettings.colorMode}
+        data-print-contrast={printSettings.borderContrast}
+        data-continuation-page={textContinuationPageInfo.pageNumber}
+        className={`dynamic-document-page print-a4-sheet relative box-border select-none overflow-hidden bg-white shadow-2xl transition-all`}
+        style={{
+          width: `${pageW}mm`,
+          minHeight: `${pageH}mm`,
+          height: `${pageH}mm`,
+          transform: scale !== 1 ? `scale(${scale})` : undefined,
+          transformOrigin: "top center",
+          backgroundColor: layout.page.background || "#FFFFFF",
+          color: colors.text || "#334155",
+          ["--doc-primary" as string]: colors.primary,
+          ["--doc-accent" as string]: colors.accent,
+          ["--doc-text" as string]: colors.text,
+          ["--doc-muted" as string]: colors.muted,
+          ["--doc-border" as string]: colors.border,
+        }}
+      >
+        {/* Page Borders */}
+        <PageDecorativeBorders
+          layout={layout}
+          isDesignerPreview={false}
+          elements={effectiveGeometry.elements}
+        />
+
+        {/* Continuation Header Bar */}
+        <div
+          className="absolute flex items-center justify-between px-3"
+          style={{
+            left: `${leftMrg}mm`,
+            top: `${topMrg}mm`,
+            width: `${contentW}mm`,
+            height: "9mm",
+            backgroundColor: colors.titleBg,
+            borderRadius: "2px",
+            color: colors.titleText,
+          }}
+        >
+          <div className="flex items-center gap-2 font-bold uppercase tracking-wider truncate" style={{ fontSize: "8.5pt" }}>
+            <span>{brand.legal_name || brand.name}</span>
+            <span className="opacity-60">&bull;</span>
+            <span>{data.title || (DOCUMENT_TYPE_OPTIONS.find((d) => d.id === layout.documentType)?.defaultTitle || "DOCUMENT")}</span>
+          </div>
+          <div className="text-right font-mono font-bold shrink-0" style={{ fontSize: "7.5pt", color: colors.titleText }}>
+            REF: {data.document_number} &bull; Page {textContinuationPageInfo.pageNumber} of {textOverflowPlan.totalDocumentPages}
+          </div>
+        </div>
+
+        {/* Text Content Area */}
+        <div
+          className="absolute overflow-hidden"
+          style={{
+            left: `${leftMrg}mm`,
+            top: `${textAreaTop}mm`,
+            width: `${contentW}mm`,
+            height: `${Math.max(10, textAreaBottom - textAreaTop)}mm`,
+            fontSize: `${termsPt}pt`,
+            lineHeight: 1.45,
+            color: colors.muted,
+          }}
+        >
+          {textContinuationPageInfo.sections.map((section) => (
+            <div key={section.elementId} className="mb-2">
+              <div
+                className="font-bold mb-1"
+                style={{ color: colors.primary, fontSize: `${termsPt * 0.95}pt` }}
+              >
+                {section.label}
+              </div>
+              {section.textChunks.map((chunk, ci) => (
+                <div key={ci} className="whitespace-pre-line leading-snug text-slate-700" style={{ fontSize: `${termsPt}pt` }}>
+                  {chunk}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        {/* Signatures on last continuation page */}
+        {textContinuationPageInfo.showSignatures && (
+          <>
+            {/* Company Signature */}
+            {sigEl && (
+              <div
+                className="absolute flex flex-col items-center justify-between text-center select-none overflow-hidden"
+                style={{
+                  left: `${sigEl.x}mm`,
+                  top: `${sigAreaTop}mm`,
+                  width: `${sigEl.width}mm`,
+                  height: `${sigH}mm`,
+                  backgroundColor: sigEl.backgroundColor || "#FFFFFF",
+                  border: `1px solid ${sigEl.borderColor || colors.border}`,
+                  borderRadius: `${sigEl.borderRadius ?? 4}px`,
+                  padding: sigEl.padding !== undefined ? `${sigEl.padding}mm` : "2mm 2.5mm",
+                  boxSizing: "border-box",
+                }}
+              >
+                <div className="font-bold uppercase tracking-wider text-slate-800" style={{ color: colors.primary, fontSize: "8pt", lineHeight: 1.2 }}>
+                  {sigEl.customText || "COMPANY AUTHORIZED SIGNATURE"}
+                </div>
+                <div className="relative w-full flex-1 flex items-center justify-center overflow-hidden my-1 min-h-[14mm]">
+                  {brand.assets.signature ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={brand.assets.signature} alt="Authorized Signature" className="max-h-full max-w-full object-contain" style={{ width: "auto", height: "auto" }} />
+                  ) : (
+                    <div className="w-28 border-b-2 border-slate-300" />
+                  )}
+                </div>
+                <div className="w-full border-t border-slate-300 pt-1 text-slate-700 font-semibold truncate" style={{ fontSize: "7pt", lineHeight: 1.2 }}>
+                  For {brand.legal_name || brand.name}
+                </div>
+              </div>
+            )}
+
+            {/* Company Stamp */}
+            {stampEl && (
+              <div
+                className="absolute flex flex-col items-center justify-between text-center select-none overflow-hidden p-1.5"
+                style={{
+                  left: `${stampEl.x}mm`,
+                  top: `${sigAreaTop}mm`,
+                  width: `${stampEl.width}mm`,
+                  height: `${sigH}mm`,
+                  backgroundColor: stampEl.backgroundColor,
+                  border: stampEl.borderWidth ? `${stampEl.borderWidth}px solid ${stampEl.borderColor || colors.border}` : undefined,
+                  borderRadius: stampEl.borderRadius ? `${stampEl.borderRadius}px` : undefined,
+                  opacity: stampEl.opacity ?? 1,
+                }}
+              >
+                {stampEl.customText && (
+                  <div className="font-bold uppercase tracking-wider" style={{ color: colors.primary, fontSize: "8pt" }}>
+                    {stampEl.customText}
+                  </div>
+                )}
+                <div className="relative w-full flex-1 flex items-center justify-center overflow-hidden">
+                  {brand.assets.stamp ? (
+                    <Image
+                      src={brand.assets.stamp}
+                      alt="Official Company Stamp"
+                      width={80}
+                      height={80}
+                      className="max-h-full max-w-full"
+                      style={{ width: "auto", height: "auto", objectFit: stampEl.imageFit || "contain" }}
+                      unoptimized
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-full border border-dashed border-slate-300 flex items-center justify-center text-[8px] text-slate-400 text-center p-1">
+                      Official Stamp
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Footer */}
+        {footerEl && (
+          <div
+            className="absolute flex items-center px-2"
+            style={{
+              left: `${footerEl.x}mm`,
+              top: `${footerY}mm`,
+              width: `${footerEl.width}mm`,
+              height: `${footerH}mm`,
+              backgroundColor: footerEl.backgroundColor,
+              borderTop: `${footerEl.borderWidth || 1}px solid ${footerEl.borderColor || colors.border}`,
+              color: footerEl.color || colors.footerText,
+              fontSize: `${footerEl.fontSize || 7}pt`,
+              opacity: footerEl.opacity ?? 1,
+            }}
+          >
+            <span className="flex-1 text-left truncate">{footerEl.customText ? replaceTokens(footerEl.customText) : (brand.legal_name || brand.name)}</span>
+            <span className="text-right" style={{ fontSize: "6.5pt" }}>Page {textContinuationPageInfo.pageNumber} of {textOverflowPlan.totalDocumentPages}</span>
+          </div>
+        )}
+      </div>
+    );
   }
 
   // A4 dimensions: 210mm x 297mm (or 297mm x 210mm in landscape)

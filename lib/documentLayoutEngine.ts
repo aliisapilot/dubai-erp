@@ -184,6 +184,8 @@ export interface PaginationPlan {
     itemCount: number;
     isLastPage: boolean;
   }>;
+  /** Text overflow continuation pages (if any) */
+  textOverflowPlan?: TextOverflowPlan;
 }
 
 export type ValidationSeverity = "error" | "warning" | "info";
@@ -2112,5 +2114,245 @@ export function autoFixDocumentLayout(layout: DocumentLayout): {
       : "Auto Fix aligned cards, spacing, and verified single-page A4 balance.",
     warning,
     overlapCount,
+  };
+}
+
+// ===========================================================================
+// TEXT OVERFLOW PAGINATION SUPPORT
+// ===========================================================================
+
+/**
+ * Estimates the rendered height in mm of a block of text at a given font size
+ * and container width. Accounts for newlines and character wrapping.
+ */
+export function estimateTextBlockHeightMm(
+  text: string,
+  widthMm: number,
+  fontSizePt: number,
+  lineHeightMultiplier: number = 1.4,
+  paddingMm: number = 5
+): number {
+  if (!text || !text.trim()) return 0;
+  const fontSizePx = fontSizePt * 1.333;
+  const lineHeightMm = (fontSizePx * lineHeightMultiplier) / 3.7795;
+  const charsPerLine = Math.max(16, Math.floor((widthMm * 3.7795) / (fontSizePx * 0.52)));
+  const lines = text.split('\n').reduce(
+    (count, line) => count + Math.max(1, Math.ceil(line.length / charsPerLine)), 0
+  );
+  return lines * lineHeightMm + paddingMm;
+}
+
+export interface TextOverflowSection {
+  /** ID matching the layout element that contains this text */
+  elementId: string;
+  /** Display label (e.g. "Payment Terms & Notes", "Scope of Work") */
+  label: string;
+  /** Raw text chunks to render on this continuation page — may be a slice of the full text */
+  textChunks: string[];
+  /** Whether this is the last section on this page */
+  isLastSectionOnPage: boolean;
+}
+
+export interface TextContinuationPage {
+  /** 1-based page number, starting after the last item page */
+  pageNumber: number;
+  /** sections to render on this page */
+  sections: TextOverflowSection[];
+  /** Whether this is the absolute last page of the document */
+  isDocumentLastPage: boolean;
+  /** Whether signatures/stamps should appear on this page */
+  showSignatures: boolean;
+  /** Whether footer should appear */
+  showFooter: boolean;
+}
+
+export interface TextOverflowPlan {
+  /** True if any continuation pages are needed for text overflow */
+  hasTextOverflow: boolean;
+  /** Text that remains on the last item page */
+  itemPageText?: {
+    payment_terms?: string;
+    notes?: string;
+    scope_of_work?: string;
+  };
+  /** Whether signatures should be suppressed on the item page and moved to continuation */
+  suppressSignaturesOnItemPage: boolean;
+  /** Additional pages after the last item/totals page */
+  continuationPages: TextContinuationPage[];
+  /** Total document pages (item pages + text continuation pages) */
+  totalDocumentPages: number;
+  /** Base item page count (unchanged) */
+  baseItemPages: number;
+}
+
+/**
+ * Determines whether the payment_terms element content (scope, notes, terms)
+ * overflows the available space on the last item page, and computes how many
+ * additional continuation pages are needed.
+ *
+ * Rules enforced:
+ * - Financial totals (totals, amount_in_words, bank_details) are NEVER split
+ * - Text overflow continues on subsequent pages
+ * - Signatures appear on the LAST continuation page
+ * - If everything fits on the last item page, hasTextOverflow = false
+ * - Designer preview (isDesignerPreview=true) is never passed here — callers must guard
+ */
+export function computeTextOverflowPlan(
+  layout: DocumentLayout,
+  baseItemPages: number,
+  documentText?: DocumentFitText
+): TextOverflowPlan {
+  const noOverflow: TextOverflowPlan = {
+    hasTextOverflow: false,
+    suppressSignaturesOnItemPage: false,
+    continuationPages: [],
+    totalDocumentPages: baseItemPages,
+    baseItemPages,
+  };
+
+  if (!documentText) return noOverflow;
+
+  // Find the payment_terms element
+  const termsEl = layout.elements.find(
+    (el) => el.visible && el.type === 'payment_terms'
+  );
+  if (!termsEl) return noOverflow;
+
+  // Gather text sections
+  const paymentTermsText = (documentText.payment_terms || '').trim();
+  const notesText = (documentText.notes || '').trim();
+  const hasProjectInfo = layout.elements.some((el) => el.visible && el.type === 'project_info');
+  const scopeText = !hasProjectInfo ? (documentText.scope_of_work || '').trim() : '';
+
+  const allTermsText = [scopeText ? `Scope of Work:\n${scopeText}` : '', paymentTermsText, notesText]
+    .filter(Boolean)
+    .join('\n\n');
+
+  if (!allTermsText.trim()) return noOverflow;
+
+  // Estimate how tall the text would naturally be
+  const fontSizePt = Math.max(7.5, termsEl.fontSize || 8.5);
+  const widthMm = Math.max(40, termsEl.width - (termsEl.padding || 0) * 2 - 4);
+  const naturalHeightMm = estimateTextBlockHeightMm(allTermsText, widthMm, fontSizePt, 1.45, 8);
+  const designedHeightMm = termsEl.height;
+
+  // If natural height fits in the designed box, no overflow
+  if (naturalHeightMm <= designedHeightMm + 2) {
+    return noOverflow;
+  }
+
+  // Calculate available height on a text continuation page
+  const footer = layout.elements.find((el) => el.visible && el.type === 'footer');
+  const footerBaselineY = layout.page.heightMm - (layout.page?.margins?.bottom || 8);
+  const footerHeight = footer ? footer.height : 14;
+  const footerY = footer
+    ? Math.max(footer.y, footerBaselineY - footerHeight)
+    : footerBaselineY - 14;
+  const topMargin = layout.page?.margins?.top || 10;
+  const continuationPageStartY = topMargin + 12; // doc title continuation header
+  const signatureHeight = 38; // approximate signature + stamp area
+  const signatureGap = 6;
+
+  const usablePageHeight = footerY - continuationPageStartY - 4;
+  const usableLastPageHeight = usablePageHeight - signatureHeight - signatureGap;
+  const lineHeightMm = estimateTextBlockHeightMm('X', widthMm, fontSizePt, 1.45, 0);
+
+  // Determine what fits on the item page vs what overflows to continuation pages
+  const paymentTermsHeight = paymentTermsText ? estimateTextBlockHeightMm(paymentTermsText, widthMm, fontSizePt, 1.45, 6) : 0;
+  let itemPageText: TextOverflowPlan['itemPageText'] = undefined;
+  let overflowTextToContinuation = '';
+
+  if (paymentTermsText && paymentTermsHeight <= designedHeightMm + 1) {
+    // Payment terms fits on item page; notes/scope continue on continuation pages
+    itemPageText = { payment_terms: paymentTermsText, notes: undefined };
+    overflowTextToContinuation = [scopeText ? `Scope of Work:\n${scopeText}` : '', notesText].filter(Boolean).join('\n\n');
+  } else if (paymentTermsText) {
+    // Payment terms itself exceeds available height; split lines
+    const maxLinesOnPage1 = Math.max(0, Math.floor((designedHeightMm - 6) / lineHeightMm));
+    const ptLines = paymentTermsText.split('\n');
+    if (maxLinesOnPage1 >= 2 && maxLinesOnPage1 < ptLines.length) {
+      itemPageText = { payment_terms: ptLines.slice(0, maxLinesOnPage1).join('\n') };
+      overflowTextToContinuation = [
+        ptLines.slice(maxLinesOnPage1).join('\n'),
+        scopeText ? `Scope of Work:\n${scopeText}` : '',
+        notesText,
+      ].filter(Boolean).join('\n\n');
+    } else {
+      // Move all to continuation
+      overflowTextToContinuation = allTermsText;
+    }
+  } else if (notesText) {
+    // Only notes exist and it exceeds designed height
+    const maxLinesOnPage1 = Math.max(0, Math.floor((designedHeightMm - 6) / lineHeightMm));
+    const nLines = notesText.split('\n');
+    if (maxLinesOnPage1 >= 2 && maxLinesOnPage1 < nLines.length) {
+      itemPageText = { notes: nLines.slice(0, maxLinesOnPage1).join('\n') };
+      overflowTextToContinuation = nLines.slice(maxLinesOnPage1).join('\n');
+    } else {
+      overflowTextToContinuation = notesText;
+    }
+  } else {
+    overflowTextToContinuation = allTermsText;
+  }
+
+  if (!overflowTextToContinuation.trim()) {
+    return noOverflow;
+  }
+
+  // Split overflow text into lines and pack across continuation pages
+  const lines = overflowTextToContinuation.split('\n');
+  const continuationPages: TextContinuationPage[] = [];
+  let remainingLines = [...lines];
+
+  // Helper: check if a line is a heading/title that should not be orphaned at the bottom of a page
+  const isHeadingLine = (l: string): boolean => {
+    const t = l.trim();
+    if (!t) return false;
+    if (t.endsWith(':')) return true;
+    if (/^(?:[➢•*]\s*)?(?:Operation Time|Payment Terms|Delivery|Terms\s*&?\s*Conditions|Scope of Work|Special Notes|Client Acknowledgement)/i.test(t)) return true;
+    return false;
+  };
+
+  while (remainingLines.length > 0) {
+    // Check if remaining lines fit on a final page (with signatures)
+    const linesFitOnLastPage = Math.max(3, Math.floor(usableLastPageHeight / lineHeightMm));
+    const isFinalBatch = remainingLines.length <= linesFitOnLastPage;
+
+    const availableHeight = isFinalBatch ? usableLastPageHeight : usablePageHeight;
+    const maxLinesThisPage = Math.max(3, Math.floor(availableHeight / lineHeightMm));
+
+    let pageLinesCount = Math.min(remainingLines.length, maxLinesThisPage);
+
+    // Heading orphan protection (Rule 13): never leave a heading as the last line on a page
+    if (pageLinesCount < remainingLines.length && isHeadingLine(remainingLines[pageLinesCount - 1])) {
+      pageLinesCount = Math.max(1, pageLinesCount - 1);
+    }
+
+    const pageLines = remainingLines.slice(0, pageLinesCount);
+    remainingLines = remainingLines.slice(pageLinesCount);
+
+    const isDocLast = remainingLines.length === 0;
+
+    continuationPages.push({
+      pageNumber: baseItemPages + continuationPages.length + 1,
+      sections: [{
+        elementId: termsEl.id,
+        label: '',
+        textChunks: [pageLines.join('\n')],
+        isLastSectionOnPage: true,
+      }],
+      isDocumentLastPage: isDocLast,
+      showSignatures: isDocLast,
+      showFooter: true,
+    });
+  }
+
+  return {
+    hasTextOverflow: continuationPages.length > 0,
+    itemPageText,
+    suppressSignaturesOnItemPage: continuationPages.length > 0,
+    continuationPages,
+    totalDocumentPages: baseItemPages + continuationPages.length,
+    baseItemPages,
   };
 }
