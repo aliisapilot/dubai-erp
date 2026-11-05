@@ -5,6 +5,7 @@ import { Download, Printer } from "lucide-react";
 import { getBrandConfig, BrandColors, CompanyBrandInput } from "@/lib/brandConfig";
 import { printCurrentDocument } from "@/lib/print";
 import { exportDocumentToPdf } from "@/lib/exportDocumentPdf";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import PageDecorativeBorders from "./PageDecorativeBorders";
 import { DEFAULT_PAGE_BORDERS, PageBorderSettings, DocumentLayout } from "@/lib/documentDesigner";
 
@@ -33,6 +34,11 @@ interface DocumentContainerProps {
   layout?: DocumentLayout;
   /** When true (e.g. inside PrintModal), hides the redundant standalone control bar and outer page padding */
   hideControls?: boolean;
+  /** Optional customer or party name for generating standard PDF filename */
+  partyName?: string | null;
+  customerName?: string | null;
+  /** Optional document date for statement/slip filenames */
+  documentDate?: string | null;
 }
 
 export default function DocumentContainer({
@@ -53,13 +59,27 @@ export default function DocumentContainer({
   borders,
   layout,
   hideControls = false,
+  partyName,
+  customerName,
+  documentDate,
 }: DocumentContainerProps) {
   const [isExporting, setIsExporting] = useState(false);
+
+  const { filename: defaultPdfFilename, title: defaultDocTitle } = generateDocumentPdfFilename({
+    docType: docTypeLabel || layout?.documentType,
+    docNumber,
+    partyName: partyName || customerName,
+    date: documentDate,
+  });
+
   const handlePrint = async () => {
     if (onPrint) {
       onPrint();
     } else {
-      await printCurrentDocument();
+      await printCurrentDocument({
+        documentFilename: defaultPdfFilename,
+        documentTitle: defaultDocTitle,
+      });
     }
   };
 
@@ -67,7 +87,7 @@ export default function DocumentContainer({
     setIsExporting(true);
     try {
       await exportDocumentToPdf({
-        filename: docNumber ? `${docNumber}.pdf` : undefined,
+        filename: defaultPdfFilename,
       });
     } catch (err) {
       console.error("PDF Export error:", err);
@@ -97,6 +117,8 @@ export default function DocumentContainer({
 
   return (
     <div
+      data-document-filename={defaultPdfFilename}
+      data-document-title={defaultDocTitle}
       className={`print-template-wrapper ${
         hideControls || noPadding
           ? "p-0 m-0 bg-transparent min-h-0 w-auto"

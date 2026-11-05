@@ -94,13 +94,15 @@ export default function SalarySlipTemplate({
   return (
     <DocumentContainer
       docTypeLabel="Salary Payslip"
-      docNumber={`SLIP-${slip.year}-${String(slip.month).padStart(2, "0")}-${slip.employee_id}`}
+      docNumber={`SAL-${slip.year}-${String(slip.month).padStart(2, "0")}`}
       status={slip.status || "Finalized"}
       onClose={onClose}
       company={company ?? undefined}
       noPadding={Boolean(customLayout)}
       showWatermark={!customLayout}
       totalPages={totalPages}
+      partyName={slip.employee_name}
+      documentDate={`${slip.year}-${String(slip.month).padStart(2, "0")}-01`}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

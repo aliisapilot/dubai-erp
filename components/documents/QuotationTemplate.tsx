@@ -121,6 +121,8 @@ export default function QuotationTemplate({
       showWatermark={!customLayout}
       totalPages={totalPages}
       hideControls={true}
+      partyName={quotation.customer_name}
+      documentDate={quotation.quotation_date}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

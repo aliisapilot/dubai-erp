@@ -88,6 +88,8 @@ export default function ReceiptVoucherTemplate({
       showWatermark={!customLayout}
       totalPages={totalPages}
       hideControls={true}
+      partyName={voucher.received_from}
+      documentDate={voucher.voucher_date}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

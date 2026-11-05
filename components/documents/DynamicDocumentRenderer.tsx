@@ -359,6 +359,7 @@ import {
   DocumentFitText,
   TextContinuationPage,
 } from "@/lib/documentLayoutEngine";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 export function getItemsPerPage(layout: DocumentLayout): number {
   const lineItems = layout.elements.find((element) => element.type === "line_items" && element.visible);
@@ -605,6 +606,14 @@ export default function DynamicDocumentRenderer({
       }
     }
   }
+
+  const dataRecord = data as Record<string, unknown>;
+  const { filename: autoPdfFilename, title: autoPdfTitle } = generateDocumentPdfFilename({
+    docType: layout.documentType,
+    docNumber: (dataRecord.document_number as string) || (dataRecord.reference_number as string) || data.document_number,
+    partyName: (dataRecord.customer_name as string) || (dataRecord.supplier_name as string) || (dataRecord.employee_name as string) || data.customer_name,
+    date: (dataRecord.document_date as string) || (dataRecord.date as string) || data.document_date,
+  });
 
   const fontWeight = (weight: LayoutElement["fontWeight"]): CSSProperties["fontWeight"] => {
     if (weight === "extrabold") return 800;
@@ -1367,15 +1376,20 @@ export default function DynamicDocumentRenderer({
                     const effectiveAlign = layout.documentType === "customer_statement"
                       ? (col.align || "left")
                       : (isTargetAmountCol && (col.align === "right" || !col.align) ? "center" : (col.align || "left"));
+                    const isStatement = layout.documentType === "customer_statement";
                     return (
                       <th
                         key={col.key}
-                        className={`${cellPadding} font-bold whitespace-nowrap`}
+                        className={`${cellPadding} font-bold ${isStatement ? "whitespace-normal break-words" : "whitespace-nowrap"}`}
                         style={{
                           ...customPaddingStyle,
                           width: `${col.widthPct}%`,
                           fontSize: `${colHeaderPt}pt`,
                           textAlign: effectiveAlign,
+                          wordBreak: isStatement ? "break-word" : undefined,
+                          overflowWrap: isStatement ? "break-word" : undefined,
+                          whiteSpace: isStatement ? "normal" : "nowrap",
+                          padding: isStatement ? "2mm 1.5mm" : undefined,
                           borderRight: cIdx === activeCols.length - 1
                             ? undefined
                             : isPrinterFriendly && layout.documentType !== "customer_statement"
@@ -2355,6 +2369,8 @@ export default function DynamicDocumentRenderer({
         data-print-mode={printSettings.colorMode}
         data-print-contrast={printSettings.borderContrast}
         data-continuation-page={textContinuationPageInfo.pageNumber}
+        data-document-filename={autoPdfFilename}
+        data-document-title={autoPdfTitle}
         className={`dynamic-document-page print-a4-sheet relative box-border select-none overflow-hidden bg-white shadow-2xl transition-all`}
         style={{
           width: `${pageW}mm`,
@@ -2539,6 +2555,8 @@ export default function DynamicDocumentRenderer({
       data-orientation={layout.page.orientation || "portrait"}
       data-print-mode={printSettings.colorMode}
       data-print-contrast={printSettings.borderContrast}
+      data-document-filename={autoPdfFilename}
+      data-document-title={autoPdfTitle}
       className={`dynamic-document-page print-a4-sheet relative box-border select-none overflow-hidden bg-white shadow-2xl transition-all ${
         isDesignerPreview ? "cursor-default" : ""
       }`}

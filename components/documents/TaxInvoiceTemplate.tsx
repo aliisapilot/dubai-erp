@@ -124,6 +124,8 @@ export default function TaxInvoiceTemplate({
       showWatermark={!customLayout}
       totalPages={totalPages}
       hideControls={true}
+      partyName={invoice.customer_name}
+      documentDate={invoice.invoice_date}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

@@ -20,13 +20,16 @@ import {
   History,
   AlertTriangle,
   AlertCircle,
-  Clock
+  Clock,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import StatementOfAccountTemplate, { StatementData, StatementEntry } from "@/components/documents/StatementOfAccountTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { getCurrentCompany, getCompanyId, todayISO, fmtAED } from "@/lib/helpers";
+import { getCurrentCompany, getCompanyId, todayISO, fmtAED, generateDocNumber } from "@/lib/helpers";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import { CustomPartyData } from "@/lib/documentCustomer";
 import { createSOA101ReferenceLayout } from "@/lib/documentDesigner";
 import { formatDisplayDocNumber, detectDocumentCollisions, DocumentMappingItem } from "@/lib/helpers";
@@ -102,6 +105,25 @@ export default function StatementOfAccountPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState(todayISO());
   const [openingBalance, setOpeningBalance] = useState(0);
+  const [openingBalanceInput, setOpeningBalanceInput] = useState<string>("0.00");
+  const [appliedOpeningBalance, setAppliedOpeningBalance] = useState<number>(0);
+
+  // Payment / Credit Modal States
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [customerInvoices, setCustomerInvoices] = useState<{ id: string; invoice_number: string; invoice_date: string; total_amount: number }[]>([]);
+  const [savingPayment, setSavingPayment] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [paymentForm, setPaymentForm] = useState({
+    date: todayISO(),
+    amount: "",
+    payment_method: "Bank Transfer",
+    voucher_number: "",
+    tax_invoice_id: "",
+    cheque_number: "",
+    cheque_date: "",
+    bank_name: "",
+    notes: "",
+  });
   const [partyMode, setPartyMode] = useState<"existing" | "custom">("existing");
   const [customCustomer, setCustomCustomer] = useState<CustomPartyData>({
     name: "",
@@ -168,18 +190,25 @@ export default function StatementOfAccountPage() {
     const finalBal = val !== null ? val : 0;
     setSavedOpeningBalance(val);
     setOpeningBalance(finalBal);
+    setAppliedOpeningBalance(finalBal);
+    setOpeningBalanceInput(finalBal.toFixed(2));
     setIsEditingBalance(false);
     setBalanceMessage(null);
   }
 
   async function handleSaveOpeningBalance(confirmed = false) {
+    const parsed = parseFloat(openingBalanceInput);
+    const cleanAmount = isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
+    setOpeningBalance(cleanAmount);
+    setOpeningBalanceInput(cleanAmount.toFixed(2));
+
     if (partyMode === "custom") {
-      setBalanceMessage({ type: "success", text: `Opening balance applied to statement: ${fmtAED(openingBalance)}` });
+      setAppliedOpeningBalance(cleanAmount);
+      setBalanceMessage({ type: "success", text: `Opening balance applied to statement: ${fmtAED(cleanAmount)}` });
       return;
     }
 
     if (!selectedCustomerId) return;
-    const cleanAmount = Math.round((Number(openingBalance) || 0) * 100) / 100;
 
     // Prevent duplicate entries if the balance hasn't changed
     if (savedOpeningBalance !== null && cleanAmount === savedOpeningBalance) {
@@ -259,6 +288,8 @@ export default function StatementOfAccountPage() {
       // 4. Update memory states
       setSavedOpeningBalance(cleanAmount);
       setOpeningBalance(cleanAmount);
+      setAppliedOpeningBalance(cleanAmount);
+      setOpeningBalanceInput(cleanAmount.toFixed(2));
       setIsEditingBalance(false);
       setShowConfirmModal(false);
       setBalanceReason("");
@@ -276,6 +307,140 @@ export default function StatementOfAccountPage() {
       });
     } finally {
       setSavingBalance(false);
+    }
+  }
+
+
+  async function handleOpenPaymentModal() {
+    setPaymentMessage(null);
+    const cid = company?.id || (await getCompanyId().catch(() => null));
+    let nextVoucherNo = "RV-001";
+    if (cid) {
+      try {
+        nextVoucherNo = await generateDocNumber(cid, "RV");
+      } catch (e) {
+        console.warn("Could not generate RV doc number:", e);
+      }
+    }
+    if (selectedCustomerId) {
+      try {
+        const { data: invs } = await supabase
+          .from("tax_invoices")
+          .select("id, invoice_number, invoice_date, total_amount")
+          .eq("customer_id", selectedCustomerId)
+          .neq("status", "cancelled")
+          .order("invoice_date", { ascending: false });
+        setCustomerInvoices(invs || []);
+      } catch (e) {
+        console.warn("Could not fetch customer invoices:", e);
+      }
+    } else {
+      setCustomerInvoices([]);
+    }
+
+    setPaymentForm({
+      date: todayISO(),
+      amount: "",
+      payment_method: "Bank Transfer",
+      voucher_number: nextVoucherNo,
+      tax_invoice_id: "",
+      cheque_number: "",
+      cheque_date: "",
+      bank_name: "",
+      notes: "",
+    });
+    setShowPaymentModal(true);
+  }
+
+  async function handleSavePayment(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    const cleanAmt = Math.round((parseFloat(paymentForm.amount) || 0) * 100) / 100;
+    if (cleanAmt <= 0) {
+      setPaymentMessage({ type: "error", text: "Please enter a valid payment amount greater than zero." });
+      return;
+    }
+    if (!paymentForm.voucher_number.trim()) {
+      setPaymentMessage({ type: "error", text: "Please enter a Receipt Voucher / Reference number." });
+      return;
+    }
+
+    setSavingPayment(true);
+    setPaymentMessage(null);
+    try {
+      const cid = company?.id || (await getCompanyId().catch(() => null));
+      const targetCustId = partyMode === "existing" ? selectedCustomerId : null;
+
+      const payload: Record<string, unknown> = {
+        voucher_number: paymentForm.voucher_number.trim(),
+        voucher_date: paymentForm.date,
+        amount: cleanAmt,
+        payment_method: paymentForm.payment_method,
+        cheque_number: paymentForm.cheque_number.trim() || null,
+        cheque_date: paymentForm.cheque_date || null,
+        bank_name: paymentForm.bank_name.trim() || null,
+        tax_invoice_id: paymentForm.tax_invoice_id || null,
+        notes: paymentForm.notes.trim() || `Payment received via ${paymentForm.payment_method}`,
+        status: "completed",
+      };
+
+      if (cid) payload.company_id = cid;
+      if (targetCustId) payload.customer_id = targetCustId;
+
+      if (partyMode === "custom") {
+        payload.customer_name = customCustomer.name.trim();
+        payload.customer_address = customCustomer.address?.trim() || null;
+        payload.customer_trn = customCustomer.trn?.trim() || null;
+      }
+
+      const { error: insertErr } = await supabase.from("receipt_vouchers").insert(payload);
+      if (insertErr) {
+        throw new Error(insertErr.message);
+      }
+
+      setBalanceMessage({
+        type: "success",
+        text: `Customer payment of ${fmtAED(cleanAmt)} recorded successfully (${paymentForm.voucher_number.trim()}).`,
+      });
+
+      setShowPaymentModal(false);
+      await generateStatement();
+    } catch (err) {
+      setPaymentMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to save payment record.",
+      });
+    } finally {
+      setSavingPayment(false);
+    }
+  }
+
+  async function handleVoidTransaction(entry: StatementEntry) {
+    if (!entry.voucher_id && !entry.payment_id) return;
+    const confirmVoid = typeof window !== "undefined" && window.confirm(
+      `Are you sure you want to void payment credit ${entry.reference_no} (${fmtAED(entry.credit)})?\n\nThis will mark the record as void and remove the credit from the statement without deleting financial history.`
+    );
+    if (!confirmVoid) return;
+
+    try {
+      if (entry.voucher_id) {
+        await supabase
+          .from("receipt_vouchers")
+          .update({ status: "void" })
+          .eq("id", entry.voucher_id);
+      }
+      if (entry.payment_id) {
+        await supabase
+          .from("payments")
+          .update({ status: "void" })
+          .eq("id", entry.payment_id);
+      }
+      setBalanceMessage({
+        type: "success",
+        text: `Payment ${entry.reference_no} has been voided. Running balance updated.`,
+      });
+      await generateStatement();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to void transaction.");
     }
   }
 
@@ -507,6 +672,8 @@ export default function StatementOfAccountPage() {
         reference_no: string;
         original_reference: string;
         invoice_id?: string;
+        voucher_id?: string;
+        payment_id?: string;
         description: string;
         debit: number;
         credit: number;
@@ -548,6 +715,7 @@ export default function StatementOfAccountPage() {
             date: p.payment_date,
             reference_no: simplifiedPayRef,
             original_reference: p.payment_number || p.reference_number || "PAY",
+            payment_id: p.id,
             description: `Payment Received (${p.payment_method || "Cash"})`,
             debit: 0,
             credit: Number(p.amount) || 0,
@@ -567,6 +735,7 @@ export default function StatementOfAccountPage() {
             date: rcv.voucher_date,
             reference_no: simplifiedVoucherRef,
             original_reference: rcv.voucher_number || "RV",
+            voucher_id: rcv.id,
             description: `Receipt Voucher (${rcv.payment_method || "Cash"}${rcv.cheque_number ? ` - Chq: ${rcv.cheque_number}` : ""})`,
             debit: 0,
             credit: Number(rcv.amount) || 0,
@@ -598,6 +767,8 @@ export default function StatementOfAccountPage() {
           reference_no: tx.reference_no,
           original_reference: tx.original_reference,
           invoice_id: tx.invoice_id,
+          voucher_id: tx.voucher_id,
+          payment_id: tx.payment_id,
           description: tx.description,
           debit: tx.debit,
           credit: tx.credit,
@@ -641,9 +812,9 @@ export default function StatementOfAccountPage() {
       void Promise.resolve().then(generateStatement);
     }
     return () => { requestVersion.current++; };
-  }, [selectedCustomerId, fromDate, toDate, openingBalance, partyMode, customCustomer.name, customCustomer.trn, customCustomer.address, customCustomer.phone]);
+  }, [selectedCustomerId, fromDate, toDate, appliedOpeningBalance, partyMode, customCustomer.name, customCustomer.trn, customCustomer.address, customCustomer.phone]);
 
-  if (loading || calculating || loadError) return <ReportLoadState loading={loading || calculating} error={loadError} onRetry={() => void (customers.length ? generateStatement() : loadInitialData())} />;
+  if (loading || loadError) return <ReportLoadState loading={loading} error={loadError} onRetry={() => void (customers.length ? generateStatement() : loadInitialData())} />;
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -845,11 +1016,32 @@ export default function StatementOfAccountPage() {
                   <div className="relative min-w-[220px] max-w-sm flex-1">
                     <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">AED</span>
                     <input
-                      type="number"
-                      step="0.01"
-                      value={openingBalance}
+                      type="text"
+                      inputMode="decimal"
+                      value={openingBalanceInput}
                       disabled={savedOpeningBalance !== null && !isEditingBalance}
-                      onChange={e => setOpeningBalance(Number(e.target.value))}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (/^[0-9]*\.?[0-9]*$/.test(val)) {
+                          setOpeningBalanceInput(val);
+                        }
+                      }}
+                      onBlur={() => {
+                        const parsed = parseFloat(openingBalanceInput);
+                        const clean = isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
+                        setOpeningBalance(clean);
+                        setOpeningBalanceInput(clean.toFixed(2));
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          const parsed = parseFloat(openingBalanceInput);
+                          const clean = isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
+                          setOpeningBalance(clean);
+                          setOpeningBalanceInput(clean.toFixed(2));
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }}
                       placeholder="0.00"
                       className={`w-full rounded-lg border pl-12 pr-3 py-2 text-xs font-mono font-bold focus:outline-none transition ${
                         savedOpeningBalance !== null && !isEditingBalance
@@ -893,7 +1085,10 @@ export default function StatementOfAccountPage() {
                           type="button"
                           onClick={() => {
                             setIsEditingBalance(false);
-                            setOpeningBalance(savedOpeningBalance ?? 0);
+                            const prev = savedOpeningBalance ?? 0;
+                            setOpeningBalance(prev);
+                            setAppliedOpeningBalance(prev);
+                            setOpeningBalanceInput(prev.toFixed(2));
                             setBalanceMessage(null);
                           }}
                           className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition"
@@ -987,11 +1182,35 @@ export default function StatementOfAccountPage() {
                 <div className="md:col-span-2">
                   <label className="mb-1 block font-semibold text-slate-700">Initial Opening Balance (AED)</label>
                   <input
-                    type="number"
-                    step="0.01"
-                    value={openingBalance}
-                    onChange={e => setOpeningBalance(Number(e.target.value))}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                    type="text"
+                    inputMode="decimal"
+                    value={openingBalanceInput}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (/^[0-9]*\.?[0-9]*$/.test(val)) {
+                        setOpeningBalanceInput(val);
+                      }
+                    }}
+                    onBlur={() => {
+                      const parsed = parseFloat(openingBalanceInput);
+                      const clean = isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
+                      setOpeningBalance(clean);
+                      setAppliedOpeningBalance(clean);
+                      setOpeningBalanceInput(clean.toFixed(2));
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const parsed = parseFloat(openingBalanceInput);
+                        const clean = isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
+                        setOpeningBalance(clean);
+                        setAppliedOpeningBalance(clean);
+                        setOpeningBalanceInput(clean.toFixed(2));
+                        (e.target as HTMLInputElement).blur();
+                      }
+                    }}
+                    placeholder="0.00"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono font-bold focus:border-slate-400 focus:outline-none"
                   />
                 </div>
               </div>
@@ -1039,11 +1258,20 @@ export default function StatementOfAccountPage() {
                   <h2 className="font-bold text-slate-900 text-sm">{statement.customer_name}</h2>
                   <p className="text-xs text-slate-500">Ref: {statement.statement_number}</p>
                 </div>
-                <div className="text-right">
-                  <span className="text-xs text-slate-500 block">Outstanding Closing Balance:</span>
-                  <span className="text-base font-extrabold font-mono text-slate-900">
-                    {statement.closing_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })} AED
-                  </span>
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={handleOpenPaymentModal}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm"
+                  >
+                    <Plus size={14} /> Add Payment / Credit
+                  </button>
+                  <div className="text-right">
+                    <span className="text-xs text-slate-500 block">Outstanding Closing Balance:</span>
+                    <span className="text-base font-extrabold font-mono text-slate-900">
+                      {statement.closing_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })} AED
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1056,6 +1284,7 @@ export default function StatementOfAccountPage() {
                     <th className="px-4 py-3 text-right">Debit (Charges)</th>
                     <th className="px-4 py-3 text-right">Credit (Paid)</th>
                     <th className="px-4 py-3 text-right">Running Balance</th>
+                    <th className="px-3 py-3 text-center w-16">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
@@ -1068,6 +1297,7 @@ export default function StatementOfAccountPage() {
                     <td className="px-4 py-2.5 text-right font-mono text-slate-900 font-bold">
                       {statement.opening_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })} AED
                     </td>
+                    <td className="px-3 py-2.5 text-center text-slate-400">—</td>
                   </tr>
 
                   {statement.entries.map((e, idx) => (
@@ -1099,12 +1329,26 @@ export default function StatementOfAccountPage() {
                       <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-900">
                         {e.balance.toLocaleString("en-US", { minimumFractionDigits: 2 })} AED
                       </td>
+                      <td className="px-3 py-2.5 text-center">
+                        {(e.voucher_id || e.payment_id) ? (
+                          <button
+                            type="button"
+                            onClick={() => handleVoidTransaction(e)}
+                            className="text-slate-400 hover:text-rose-600 transition p-1 rounded"
+                            title="Void this payment credit"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
 
                   {statement.entries.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                      <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
                         No transactions found for the selected period.
                       </td>
                     </tr>
@@ -1118,16 +1362,29 @@ export default function StatementOfAccountPage() {
       </div>
 
       {/* A4 Print Modal */}
-      {statement && (
-        <PrintModal isOpen={showPrintModal} onClose={() => setShowPrintModal(false)}>
-          <StatementOfAccountTemplate
-            company={company}
-            statement={statement}
-            overrideLayout={activeTemplate === "soa_reference" ? createSOA101ReferenceLayout() : undefined}
+      {statement && (() => {
+        const docFile = generateDocumentPdfFilename({
+          docType: "customer_statement",
+          docNumber: statement.statement_number,
+          partyName: statement.customer_name,
+          date: statement.statement_date,
+        });
+        return (
+          <PrintModal
+            isOpen={showPrintModal}
             onClose={() => setShowPrintModal(false)}
-          />
-        </PrintModal>
-      )}
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <StatementOfAccountTemplate
+              company={company}
+              statement={statement}
+              overrideLayout={activeTemplate === "soa_reference" ? createSOA101ReferenceLayout() : undefined}
+              onClose={() => setShowPrintModal(false)}
+            />
+          </PrintModal>
+        );
+      })()}
 
       {/* Side-by-Side Comparison Modal */}
       {showCompareModal && (
@@ -1725,6 +1982,222 @@ export default function StatementOfAccountPage() {
         </div>
       )}
     
+      {/* Payment / Credit Entry Modal */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden my-8">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/80">
+              <div className="flex items-center gap-2.5">
+                <div className="rounded-xl bg-emerald-600 p-2 text-white">
+                  <Plus size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Record Customer Payment / Credit</h3>
+                  <p className="text-xs text-slate-500">
+                    Customer: {statement?.customer_name || "Selected Customer"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPaymentModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePayment} className="p-6 space-y-4">
+              {paymentMessage && (
+                <div
+                  className={`flex items-center gap-2 rounded-lg p-3 text-xs ${
+                    paymentMessage.type === "success"
+                      ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                      : "bg-rose-50 text-rose-800 border border-rose-200"
+                  }`}
+                >
+                  {paymentMessage.type === "success" ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                  <span>{paymentMessage.text}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Payment Date <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={paymentForm.date}
+                    onChange={e => setPaymentForm(prev => ({ ...prev, date: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Amount (AED) <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">AED</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      min="0.01"
+                      placeholder="0.00"
+                      value={paymentForm.amount}
+                      onChange={e => setPaymentForm(prev => ({ ...prev, amount: e.target.value }))}
+                      className="w-full rounded-lg border border-slate-200 bg-white pl-12 pr-3 py-2 text-xs font-mono font-bold focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Voucher / Reference No <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="RV-001"
+                    value={paymentForm.voucher_number}
+                    onChange={e => setPaymentForm(prev => ({ ...prev, voucher_number: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono font-bold focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Payment Method <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={paymentForm.payment_method}
+                    onChange={e => setPaymentForm(prev => ({ ...prev, payment_method: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium focus:border-slate-400 focus:outline-none"
+                  >
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Cheque">Cheque</option>
+                    <option value="Credit Card">Credit Card</option>
+                    <option value="Online">Online / Portal</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Cheque Details (if Cheque selected) */}
+              {paymentForm.payment_method === "Cheque" && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3 space-y-3">
+                  <div className="font-semibold text-xs text-blue-900">Cheque Information</div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-600 mb-0.5">Cheque #</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 100452"
+                        value={paymentForm.cheque_number}
+                        onChange={e => setPaymentForm(prev => ({ ...prev, cheque_number: e.target.value }))}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-mono focus:border-blue-400 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-600 mb-0.5">Cheque Date</label>
+                      <input
+                        type="date"
+                        value={paymentForm.cheque_date}
+                        onChange={e => setPaymentForm(prev => ({ ...prev, cheque_date: e.target.value }))}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:border-blue-400 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-600 mb-0.5">Bank Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Emirates NBD"
+                        value={paymentForm.bank_name}
+                        onChange={e => setPaymentForm(prev => ({ ...prev, bank_name: e.target.value }))}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:border-blue-400 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Link to Tax Invoice (Optional) */}
+              <div className="text-xs">
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Link to Tax Invoice (Optional)
+                </label>
+                <select
+                  value={paymentForm.tax_invoice_id}
+                  onChange={e => {
+                    const selId = e.target.value;
+                    const matchedInv = customerInvoices.find(inv => inv.id === selId);
+                    setPaymentForm(prev => ({
+                      ...prev,
+                      tax_invoice_id: selId,
+                      amount: prev.amount || (matchedInv ? String(matchedInv.total_amount) : prev.amount),
+                      notes: matchedInv ? `Payment against Invoice ${matchedInv.invoice_number}` : prev.notes,
+                    }));
+                  }}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium focus:border-slate-400 focus:outline-none"
+                >
+                  <option value="">General Payment / Unallocated Account Credit</option>
+                  {customerInvoices.map(inv => (
+                    <option key={inv.id} value={inv.id}>
+                      {inv.invoice_number} ({fmtAED(inv.total_amount)}) — {inv.invoice_date}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[11px] text-slate-500 mt-0.5 block">
+                  Select an invoice if this payment settles a specific invoice, or leave as General Payment.
+                </span>
+              </div>
+
+              {/* Description / Notes */}
+              <div className="text-xs">
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Description / Remarks
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Payment received against invoice or advance payment for project..."
+                  value={paymentForm.notes}
+                  onChange={e => setPaymentForm(prev => ({ ...prev, notes: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentModal(false)}
+                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingPayment}
+                  className="rounded-lg bg-emerald-600 px-5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {savingPayment ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" /> Saving Payment...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={14} /> Record Payment
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Document Number Mapping & Collision Preview Modal */}
       <DocumentNumberMappingPreviewModal
         isOpen={showMappingModal}

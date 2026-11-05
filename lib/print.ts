@@ -2,12 +2,21 @@ import { waitForDocumentImages } from "./printAssets";
 
 let printInProgress = false;
 
+export interface PrintDocumentOptions {
+  documentTitle?: string;
+  documentFilename?: string;
+}
+
 /**
  * Wait for document assets and layout to settle before opening the browser's
  * print dialog. This prevents intermittent missing logos, stamps, signatures,
  * footer graphics, and stale page geometry in saved PDFs.
+ *
+ * Temporarily sets document.title during print so browser "Save as PDF"
+ * defaults to the document-specific filename (e.g. "INV-117 - Al Fajar Al Mashreq"),
+ * then cleanly restores the original page title on dialog dismissal.
  */
-export async function printCurrentDocument(): Promise<void> {
+export async function printCurrentDocument(options?: PrintDocumentOptions): Promise<void> {
   if (typeof window === "undefined" || printInProgress) return;
 
   const scope = document.querySelector('.print-modal-container, .mobile-pdf-modal') || document;
@@ -28,6 +37,18 @@ export async function printCurrentDocument(): Promise<void> {
     !document.querySelector(".print-document, .dynamic-document-page") &&
     Boolean(document.querySelector("[data-print-root]"));
   const markedCells: HTMLElement[] = [];
+
+  // Determine suggested title for browser Save as PDF
+  let previousDocumentTitle: string | undefined = undefined;
+  let targetTitle = options?.documentTitle || options?.documentFilename?.replace(/\.pdf$/i, "");
+  if (!targetTitle) {
+    const scopeEl = scope instanceof HTMLElement ? scope : null;
+    const titleAttr = scopeEl?.getAttribute("data-document-title") ||
+      scopeEl?.getAttribute("data-document-filename")?.replace(/\.pdf$/i, "") ||
+      document.querySelector("[data-document-title]")?.getAttribute("data-document-title") ||
+      document.querySelector("[data-document-filename]")?.getAttribute("data-document-filename")?.replace(/\.pdf$/i, "");
+    if (titleAttr) targetTitle = titleAttr;
+  }
 
   if (isModuleReport) {
     document.body.classList.add("module-printing");
@@ -65,6 +86,10 @@ export async function printCurrentDocument(): Promise<void> {
     printMedia.removeEventListener('change', onPrintMediaChange);
     document.body.classList.remove("module-printing");
     markedCells.forEach(cell => cell.classList.remove("print-action-column"));
+    if (previousDocumentTitle !== undefined) {
+      document.title = previousDocumentTitle;
+      previousDocumentTitle = undefined;
+    }
   };
   try {
     await waitForDocumentImages(images);
@@ -85,6 +110,12 @@ export async function printCurrentDocument(): Promise<void> {
       window.alert('The document preview changed. Open it again and wait for it to finish loading.');
       return;
     }
+
+    if (targetTitle && typeof document !== "undefined") {
+      previousDocumentTitle = document.title;
+      document.title = targetTitle;
+    }
+
     window.addEventListener("afterprint", cleanup, { once: true });
     printMedia.addEventListener('change', onPrintMediaChange);
     window.print();

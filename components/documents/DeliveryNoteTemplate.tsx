@@ -104,6 +104,8 @@ export default function DeliveryNoteTemplate({
       showWatermark={!customLayout}
       totalPages={totalPages}
       hideControls={true}
+      partyName={deliveryNote.customer_name}
+      documentDate={deliveryNote.delivery_date}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

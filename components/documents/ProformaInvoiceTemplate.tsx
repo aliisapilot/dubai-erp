@@ -108,6 +108,8 @@ export default function ProformaInvoiceTemplate({
       showWatermark={!customLayout}
       totalPages={totalPages}
       hideControls={true}
+      partyName={proforma.customer_name}
+      documentDate={proforma.proforma_date}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

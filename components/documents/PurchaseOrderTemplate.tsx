@@ -109,6 +109,8 @@ export default function PurchaseOrderTemplate({
       showWatermark={!customLayout}
       totalPages={totalPages}
       hideControls={true}
+      partyName={po.supplier_name}
+      documentDate={po.po_date}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">

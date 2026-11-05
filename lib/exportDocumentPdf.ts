@@ -270,13 +270,36 @@ export async function exportDocumentToPdf(
     // Derive meaningful document filename
     let defaultFilename = options.filename;
     if (!defaultFilename) {
-      const docMeta = document.querySelector(
-        "#print-preview-title, .title-ref, [data-element-id='doc_title'], [data-element-id='doc_meta']"
-      );
-      const text = docMeta?.textContent?.replace(/[\r\n\t]/g, " ").trim() || "";
-      const match = text.match(/(INV|QUO|PRO|DN|PO|RCV|SOA|BILL|SLIP|HO|WMS|EPV|MS)[-\w]+/i);
-      const docNumber = match ? match[0] : "Document";
-      defaultFilename = `${docNumber}.pdf`;
+      const scopeEl = options.scopeElement instanceof HTMLElement ? options.scopeElement : null;
+      const attrFilename = scopeEl?.getAttribute("data-document-filename") ||
+        (scopeEl ? scopeEl.querySelector("[data-document-filename]")?.getAttribute("data-document-filename") : document.querySelector("[data-document-filename]")?.getAttribute("data-document-filename")) ||
+        scopeEl?.getAttribute("data-document-title") ||
+        (scopeEl ? scopeEl.querySelector("[data-document-title]")?.getAttribute("data-document-title") : document.querySelector("[data-document-title]")?.getAttribute("data-document-title"));
+
+      if (attrFilename) {
+        defaultFilename = attrFilename.endsWith(".pdf") ? attrFilename : `${attrFilename}.pdf`;
+      } else {
+        const docMeta = document.querySelector(
+          "#print-preview-title, .title-ref, [data-element-id='doc_title'], [data-element-id='doc_meta']"
+        );
+        const text = docMeta?.textContent?.replace(/[\r\n\t]/g, " ").trim() || "";
+        const match = text.match(/(INV|QUO|PRO|DN|PO|RCV|SOA|BILL|SLIP|HO|WMS|EPV|MS)[-\w]+/i);
+        const docNumber = match ? match[0] : "Document";
+        defaultFilename = `${docNumber}.pdf`;
+      }
+    }
+
+    // Ensure valid characters and .pdf extension
+    if (defaultFilename) {
+      defaultFilename = defaultFilename
+        .replace(/[<>:"/\\|?*\x00-\x1F]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!defaultFilename.toLowerCase().endsWith(".pdf")) {
+        defaultFilename += ".pdf";
+      }
+    } else {
+      defaultFilename = "Document.pdf";
     }
 
     // Trigger client download

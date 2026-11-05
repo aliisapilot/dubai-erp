@@ -16,6 +16,8 @@ export type StatementEntry = {
   reference_no: string;
   original_reference?: string;
   invoice_id?: string;
+  voucher_id?: string;
+  payment_id?: string;
   description: string;
   debit: number;   // Invoice charge
   credit: number;  // Payment receipt
@@ -114,6 +116,8 @@ export default function StatementOfAccountTemplate({
       noPadding={Boolean(customLayout)}
       showWatermark={!customLayout}
       totalPages={totalPages}
+      partyName={statement.customer_name}
+      documentDate={statement.statement_date || statement.to_date}
     >
       {customLayout ? (
         <div className="flex flex-col gap-6 print:gap-0">
@@ -194,28 +198,28 @@ export default function StatementOfAccountTemplate({
 
         {/* Ledger Transactions Table */}
         <div className="mt-4 overflow-hidden rounded border border-slate-300">
-          <table className="w-full text-left text-xs border-collapse">
+          <table className="w-full text-left text-xs border-collapse table-fixed">
             <thead>
               <tr className="bg-slate-800 text-white font-semibold">
-                <th className="py-2.5 px-3 w-24">Date</th>
-                <th className="py-2.5 px-3 w-28">Ref / Inv #</th>
-                <th className="py-2.5 px-3">Transaction Description</th>
-                <th className="py-2.5 px-3 w-28 text-right">Debit / Charges</th>
-                <th className="py-2.5 px-3 w-28 text-right">Credit / Paid</th>
-                <th className="py-2.5 px-3 w-32 text-right">Running Balance</th>
+                <th className="py-2.5 px-2.5 w-[12%] text-center">Date</th>
+                <th className="py-2.5 px-2.5 w-[12%] text-center">Ref / Inv #</th>
+                <th className="py-2.5 px-2.5 w-[28%] text-left">Transaction Description</th>
+                <th className="py-2.5 px-2.5 w-[16%] text-right">Charges (AED)</th>
+                <th className="py-2.5 px-2.5 w-[16%] text-right">Credits (AED)</th>
+                <th className="py-2.5 px-2.5 w-[16%] text-right">Running Balance</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {/* Opening Balance Row */}
               <tr className="bg-slate-100/80 font-medium text-slate-700">
-                <td className="py-2 px-3 text-[11px] font-mono">
+                <td className="py-2 px-2.5 text-[11px] font-mono text-center">
                   {statement.from_date || "—"}
                 </td>
-                <td className="py-2 px-3 font-mono text-[11px]">—</td>
-                <td className="py-2 px-3 font-bold text-slate-800">Opening Balance Brought Forward</td>
-                <td className="py-2 px-3 text-right font-mono">—</td>
-                <td className="py-2 px-3 text-right font-mono">—</td>
-                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                <td className="py-2 px-2.5 font-mono text-[11px] text-center">—</td>
+                <td className="py-2 px-2.5 font-bold text-slate-800 break-words">Opening Balance Brought Forward</td>
+                <td className="py-2 px-2.5 text-right font-mono">—</td>
+                <td className="py-2 px-2.5 text-right font-mono">—</td>
+                <td className="py-2 px-2.5 text-right font-mono font-bold text-slate-900">
                   {statement.opening_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </td>
               </tr>
@@ -223,22 +227,22 @@ export default function StatementOfAccountTemplate({
               {/* Transactions */}
               {statement.entries.map((entry, index) => (
                 <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
-                  <td className="py-2 px-3 text-[11px] text-slate-600 font-mono">
+                  <td className="py-2 px-2.5 text-[11px] text-slate-600 font-mono text-center">
                     {entry.date ? new Date(entry.date).toLocaleDateString("en-GB") : "—"}
                   </td>
-                  <td className="py-2 px-3 font-mono font-bold text-slate-800 text-[11px]">
+                  <td className="py-2 px-2.5 font-mono font-bold text-slate-800 text-[11px] text-center">
                     {entry.reference_no}
                   </td>
-                  <td className="py-2 px-3 text-slate-800">
+                  <td className="py-2 px-2.5 text-slate-800 break-words">
                     {entry.description}
                   </td>
-                  <td className="py-2 px-3 text-right font-mono text-rose-700">
+                  <td className="py-2 px-2.5 text-right font-mono text-rose-700">
                     {entry.debit > 0 ? entry.debit.toLocaleString("en-US", { minimumFractionDigits: 2 }) : "—"}
                   </td>
-                  <td className="py-2 px-3 text-right font-mono text-emerald-700 font-semibold">
+                  <td className="py-2 px-2.5 text-right font-mono text-emerald-700 font-semibold">
                     {entry.credit > 0 ? entry.credit.toLocaleString("en-US", { minimumFractionDigits: 2 }) : "—"}
                   </td>
-                  <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                  <td className="py-2 px-2.5 text-right font-mono font-bold text-slate-900">
                     {entry.balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                   </td>
                 </tr>

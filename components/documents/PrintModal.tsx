@@ -13,11 +13,13 @@ interface PrintModalProps {
   children: ReactNode;
   editorHref?: string;
   extraActions?: ReactNode;
+  documentFilename?: string;
+  documentTitle?: string;
 }
 
 const emptySubscribe = () => () => {};
 
-export default function PrintModal({ isOpen, onClose, children, editorHref, extraActions }: PrintModalProps) {
+export default function PrintModal({ isOpen, onClose, children, editorHref, extraActions, documentFilename, documentTitle }: PrintModalProps) {
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const previewRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -85,15 +87,19 @@ export default function PrintModal({ isOpen, onClose, children, editorHref, extr
 
   if (!isOpen) return null;
 
+  const displayTitle = documentTitle || documentFilename?.replace(/\.pdf$/i, "") || "Document preview";
+
   const modalElement = (
     <div
       className="erp-screen-theme print-modal-container fixed inset-0 z-[60] flex h-[100dvh] flex-col overflow-hidden bg-black/70 backdrop-blur-sm pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] print:static print:block print:h-auto print:w-[210mm] print:max-w-none print:overflow-visible print:bg-transparent print:p-0 print:shadow-none"
       role="dialog"
       aria-modal="true"
       aria-label="Document print preview"
+      data-document-filename={documentFilename}
+      data-document-title={displayTitle}
     >
       <header className="print-preview-toolbar no-print flex shrink-0 items-center justify-between gap-2 border-b border-slate-700 bg-slate-900 px-2 py-2 pt-[calc(0.5rem+env(safe-area-inset-top))] text-white sm:px-4">
-        <div className="min-w-0 flex-1 truncate text-sm font-semibold" id="print-preview-title">Document preview</div>
+        <div className="min-w-0 flex-1 truncate text-sm font-semibold" id="print-preview-title">{displayTitle}</div>
         <div className="flex shrink-0 items-center gap-1">
           {extraActions}
           <button type="button" onClick={() => { setIsFit(false); setScale((value) => Math.max(0.1, value - 0.1)); }} className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-slate-800" aria-label="Zoom out" title="Zoom out">
@@ -120,7 +126,7 @@ export default function PrintModal({ isOpen, onClose, children, editorHref, extr
             type="button"
             onClick={async () => {
               try {
-                await exportDocumentToPdf({ scopeElement: previewRef.current });
+                await exportDocumentToPdf({ filename: documentFilename, scopeElement: previewRef.current });
               } catch (e) {
                 console.error(e);
               }
