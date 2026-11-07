@@ -511,6 +511,16 @@ export async function saveMaterialMaster(
   material: Partial<MaterialItem>,
   initialOpeningStock: number = 0
 ): Promise<MaterialItem> {
+  if (!companyId) throw new Error("Company is required.");
+  if (!material.name?.trim()) throw new Error("Material name is required.");
+  const skuToSave = material.sku?.trim();
+  if (skuToSave) {
+    const { data: duplicates, error: duplicateError } = await supabase
+      .from("products").select("id").eq("company_id", companyId)
+      .ilike("sku", skuToSave).limit(10);
+    if (duplicateError) throw duplicateError;
+    if (duplicates?.some(row => row.id !== material.id)) throw new Error("A material with this SKU already exists.");
+  }
   const isFabric = isFabricMaterial(material.category, material.unit);
   const fabricWidth = Number(material.fabric_width || (isFabric ? 3.0 : 0));
   const rollLength = Number(material.roll_length || (isFabric ? 50.0 : 0));
@@ -575,6 +585,7 @@ export async function saveMaterialMaster(
       .from("products")
       .update(extendedPayload)
       .eq("id", material.id)
+      .eq("company_id", companyId)
       .select()
       .single();
 
@@ -585,6 +596,7 @@ export async function saveMaterialMaster(
           .from("products")
           .update(standardPayload)
           .eq("id", material.id)
+          .eq("company_id", companyId)
           .select()
           .single();
         if (fbErr) throw fbErr;
