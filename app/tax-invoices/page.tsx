@@ -19,7 +19,7 @@ import DocumentSplitScreenEditor, {
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; address: string | null; contact_person: string | null; phone: string | null; mobile: string | null; email: string | null; active: boolean | null };
 type Project = { id: string; project_number: string; name: string };
-type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; vat_category: string | null; unit: string | null };
+type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; vat_category: string | null; unit: string | null; description?: string | null };
 type Company = { name: string | null; legal_name: string | null; trn: string | null; address: string | null; city: string | null; phone: string | null; email: string | null };
 type LineItem = { id?: string; product_id: string; description: string; quantity: number; unit: string; unit_price: number; discount_pct: number; vat_rate: number; taxable_amount: number; vat_amount: number; line_total: number; sort_order: number };
 // DB verified: tax_invoices has project_id, payment_terms, supply_date — NO due_date
@@ -150,7 +150,7 @@ function TIContent() {
         tiQuery.order("created_at", { ascending: false }),
         supabase.from("customers").select("id, name, customer_code, trn, address, contact_person, phone, mobile, email, active").order("name"),
         supabase.from("projects").select("id, project_number, name").order("project_number"),
-        supabase.from("products").select("id, name, sku, selling_price, vat_rate, unit").eq("active", true).order("name"),
+        supabase.from("products").select("id, name, sku, selling_price, vat_rate, unit, description").eq("active", true).order("name"),
       ]);
       if (tiErr) throw new Error(tiErr.message);
 
@@ -196,7 +196,10 @@ function TIContent() {
 
   function onProductSelect(idx: number, pid: string) {
     const prod = products.find(p => p.id === pid);
-    setLines(ls => ls.map((l,i) => i!==idx?l:recalc({ ...l, product_id: pid, description: prod?.name||l.description, unit: prod?.unit||l.unit, unit_price: prod?.selling_price??l.unit_price, vat_rate: prod?.vat_rate??5 })));
+    const lineDesc = prod?.description
+      ? `${prod.name || ""} - ${prod.description}`.trim()
+      : prod?.name || "";
+    setLines(ls => ls.map((l,i) => i!==idx?l:recalc({ ...l, product_id: pid, description: lineDesc || l.description, unit: prod?.unit||l.unit, unit_price: prod?.selling_price??l.unit_price, vat_rate: prod?.vat_rate??5 })));
   }
   function updateLine(idx: number, u: Partial<LineItem>) { setLines(ls => ls.map((l,i) => i!==idx?l:recalc({...l,...u}))); }
   function addLine() { setLines(ls => [...ls, emptyLine()]); }

@@ -88,6 +88,43 @@ export const USAGE_PURPOSES = [
 // TYPES
 // ============================================================
 
+export type ProductType = "material" | "finished_product" | "service";
+
+export interface CustomCategory {
+  id: string;
+  name: string;
+  color?: string;
+  active: boolean;
+  is_default?: boolean;
+}
+
+export interface CustomUnit {
+  code: string;
+  name: string;
+  active: boolean;
+  is_default?: boolean;
+  is_fabric?: boolean;
+}
+
+export type CustomFieldType = "text" | "number" | "decimal" | "date" | "dropdown" | "boolean";
+
+export interface CustomFieldDefinition {
+  id: string;
+  name: string;
+  key: string;
+  type: CustomFieldType;
+  required: boolean;
+  default_value?: string;
+  options?: string[];
+  active: boolean;
+}
+
+export interface CompanyInventorySettings {
+  categories: CustomCategory[];
+  units: CustomUnit[];
+  custom_fields: CustomFieldDefinition[];
+}
+
 export interface MaterialItem {
   id: string;
   company_id: string;
@@ -95,6 +132,7 @@ export interface MaterialItem {
   name: string;
   description: string | null;
   category: string;
+  product_type: ProductType;
   brand: string;
   manufacturer: string | null;
   colour: string | null;
@@ -113,9 +151,11 @@ export interface MaterialItem {
   notes: string | null;
   created_at?: string;
   updated_at?: string;
+  custom_field_values?: Record<string, string | number | boolean>;
 
   // Derived convenience fields
   is_fabric: boolean;
+  is_service: boolean;
   running_metres_available: number;
   square_metres_available: number;
 }
@@ -385,7 +425,23 @@ export function normalizeProductToMaterial(raw: Record<string, unknown>): Materi
   const supplierName = (raw.supplier_name as string) || (meta.supplier_name as string) || "";
   const supplierId = (raw.supplier_id as string) || (meta.supplier_id as string) || null;
 
-  const currentStock = Number(raw.current_stock || 0);
+  // Determine Product Type
+  const rawType = (raw.product_type as string) || (meta.product_type as string) || "";
+  let productType: ProductType = "material";
+  if (rawType === "service" || rawType === "finished_product" || rawType === "material") {
+    productType = rawType as ProductType;
+  } else if (
+    String(raw.category || "").toLowerCase().includes("service") ||
+    String(raw.name || "").toLowerCase().includes("service") ||
+    String(raw.name || "").toLowerCase().includes("charge")
+  ) {
+    productType = "service";
+  } else if (String(raw.category || "").toLowerCase().includes("finished")) {
+    productType = "finished_product";
+  }
+
+  const isService = productType === "service";
+  const currentStock = isService ? 0 : Number(raw.current_stock || 0);
 
   // For fabric items, current_stock represents Square Metres (m²).
   // Running metres = current_stock / fabric_width.
@@ -395,6 +451,8 @@ export function normalizeProductToMaterial(raw: Record<string, unknown>): Materi
       ? roundDecimal(currentStock / fabricWidth, 3)
       : currentStock;
 
+  const customFieldValues = (meta.custom_fields as Record<string, string | number | boolean>) || {};
+
   return {
     id: String(raw.id || ""),
     company_id: String(raw.company_id || ""),
@@ -402,6 +460,7 @@ export function normalizeProductToMaterial(raw: Record<string, unknown>): Materi
     name: String(raw.name || ""),
     description: stripMaterialMetadata(raw.description as string | null),
     category: (raw.category as string) || "Other / Custom",
+    product_type: productType,
     brand,
     manufacturer: manufacturer || null,
     colour: colour || null,
@@ -413,14 +472,16 @@ export function normalizeProductToMaterial(raw: Record<string, unknown>): Materi
     selling_price: Number(raw.selling_price || 0),
     vat_rate: Number(raw.vat_rate ?? 5),
     current_stock: currentStock,
-    minimum_stock: Number(raw.minimum_stock || 0),
+    minimum_stock: isService ? 0 : Number(raw.minimum_stock || 0),
     supplier_name: supplierName || null,
     supplier_id: supplierId,
     active: raw.active !== false,
     notes: stripMaterialMetadata(raw.description as string | null),
     created_at: raw.created_at as string | undefined,
     updated_at: raw.updated_at as string | undefined,
+    custom_field_values: customFieldValues,
     is_fabric: isFabric,
+    is_service: isService,
     running_metres_available: runningMetres,
     square_metres_available: squareMetres,
   };
@@ -524,15 +585,20 @@ export async function saveMaterialMaster(
   initialOpeningStock: number = 0
 ): Promise<MaterialItem> {
   if (!companyId) throw new Error("Company is required.");
-  if (!material.name?.trim()) throw new Error("Material name is required.");
+  if (!material.name?.trim()) throw new Error("Material / Product name is required.");
   const skuToSave = material.sku?.trim();
   if (skuToSave) {
     const { data: duplicates, error: duplicateError } = await supabase
       .from("products").select("id").eq("company_id", companyId)
       .ilike("sku", skuToSave).limit(10);
     if (duplicateError) throw duplicateError;
-    if (duplicates?.some(row => row.id !== material.id)) throw new Error("A material with this SKU already exists.");
+    if (duplicates?.some(row => row.id !== material.id)) throw new Error("A product with this SKU already exists in this company.");
   }
+
+  const productType: ProductType = material.product_type || "material";
+  const isService = productType === "service";
+  const effectiveOpeningStock = isService ? 0 : Number(initialOpeningStock || 0);
+
   const isFabric = isFabricMaterial(material.category, material.unit);
   const fabricWidth = Number(material.fabric_width || (isFabric ? 3.0 : 0));
   const rollLength = Number(material.roll_length || (isFabric ? 50.0 : 0));
@@ -542,7 +608,7 @@ export async function saveMaterialMaster(
   const manufacturer = (material.manufacturer || "").trim();
   const supplierName = (material.supplier_name || "").trim();
 
-  // Prepare metadata block for non-migrated column compatibility
+  // Prepare metadata block for non-migrated column compatibility and custom fields
   const metaObj = {
     brand,
     manufacturer,
@@ -553,31 +619,34 @@ export async function saveMaterialMaster(
     supplier_name: supplierName,
     supplier_id: material.supplier_id || null,
     is_fabric: isFabric,
+    product_type: productType,
+    custom_fields: material.custom_field_values || {},
   };
   const embeddedDesc = `${material.description || ""}\n${encodeMaterialMetadata(metaObj)}`.trim();
 
   const standardPayload: Record<string, unknown> = {
     company_id: companyId,
     sku: material.sku?.trim() || null,
-    name: material.name?.trim() || "Untitled Material",
+    name: material.name?.trim() || "Untitled Product",
     description: embeddedDesc,
-    category: material.category || "Other / Custom",
-    unit: material.unit || (isFabric ? "Sqm" : "Pcs"),
+    category: material.category || "Other",
+    unit: material.unit || (isFabric ? "SQM" : "PCS"),
     cost_price: Number(material.cost_price || 0),
     selling_price: Number(material.selling_price || 0),
     vat_rate: Number(material.vat_rate ?? 5),
-    minimum_stock: Number(material.minimum_stock || 0),
+    minimum_stock: isService ? 0 : Number(material.minimum_stock || 0),
     active: material.active !== false,
   };
 
-  // If new record and opening stock specified
-  if (!material.id && initialOpeningStock > 0) {
-    standardPayload.current_stock = initialOpeningStock;
+  // If new record and opening stock specified (for physical goods)
+  if (!material.id) {
+    standardPayload.current_stock = effectiveOpeningStock;
   }
 
   // Attempt insert/update with extended columns
   const extendedPayload: Record<string, unknown> = {
     ...standardPayload,
+    product_type: productType,
     brand,
     manufacturer: manufacturer || null,
     colour: colour || null,
@@ -644,27 +713,36 @@ export async function saveMaterialMaster(
       savedRecord = data;
     }
 
-    // If opening stock was entered, log an audited opening stock movement
-    if (initialOpeningStock > 0 && savedRecord?.id) {
-      const openRef = await generateDocNumber(companyId, "OPN");
-      const moveMeta = {
-        opening_stock: true,
-        fabric_width: fabricWidth,
-        running_metres: isFabric && fabricWidth > 0 ? initialOpeningStock / fabricWidth : initialOpeningStock,
-        square_metres: initialOpeningStock,
-      };
-      await supabase.from("stock_movements").insert({
-        company_id: companyId,
-        product_id: savedRecord.id,
-        movement_type: "IN",
-        quantity: initialOpeningStock,
-        previous_stock: 0,
-        new_stock: initialOpeningStock,
-        unit_cost: Number(material.cost_price || 0),
-        reference_type: "Opening Stock Setup",
-        reference_number: openRef,
-        notes: `Initial opening stock entry.\n${encodeMaterialMetadata(moveMeta)}`,
-      });
+    // If opening stock was entered for physical goods, log an audited opening stock movement
+    if (!isService && effectiveOpeningStock > 0 && savedRecord?.id) {
+      // Prevent accidental duplicate opening stock movements
+      const { data: existingMoves } = await supabase
+        .from("stock_movements")
+        .select("id")
+        .eq("product_id", savedRecord.id)
+        .limit(1);
+
+      if (!existingMoves || existingMoves.length === 0) {
+        const openRef = await generateDocNumber(companyId, "OPN");
+        const moveMeta = {
+          opening_stock: true,
+          fabric_width: fabricWidth,
+          running_metres: isFabric && fabricWidth > 0 ? effectiveOpeningStock / fabricWidth : effectiveOpeningStock,
+          square_metres: effectiveOpeningStock,
+        };
+        await supabase.from("stock_movements").insert({
+          company_id: companyId,
+          product_id: savedRecord.id,
+          movement_type: "IN",
+          quantity: effectiveOpeningStock,
+          previous_stock: 0,
+          new_stock: effectiveOpeningStock,
+          unit_cost: Number(material.cost_price || 0),
+          reference_type: "Opening Stock Setup",
+          reference_number: openRef,
+          notes: `Initial opening stock entry.\n${encodeMaterialMetadata(moveMeta)}`,
+        });
+      }
     }
   }
 
@@ -1219,4 +1297,251 @@ export async function getProjectMaterialConsumption(
     totalWastageSqm: roundDecimal(totalWastageSqm, 3),
     materialsBreakdown: Array.from(breakdownMap.values()),
   };
+}
+
+// ============================================================
+// COMPANY INVENTORY CUSTOMIZATION SETTINGS & HELPERS
+// ============================================================
+
+export const DEFAULT_CUSTOM_CATEGORIES: CustomCategory[] = [
+  { id: "cat-pvc-fabric", name: "PVC Fabric", color: "#3B82F6", active: true, is_default: true },
+  { id: "cat-welding", name: "Welding Materials", color: "#F97316", active: true, is_default: true },
+  { id: "cat-eyelets", name: "Eyelets", color: "#10B981", active: true, is_default: true },
+  { id: "cat-accessories", name: "Accessories", color: "#8B5CF6", active: true, is_default: true },
+  { id: "cat-packing", name: "Packing Materials", color: "#EC4899", active: true, is_default: true },
+  { id: "cat-raw-materials", name: "Raw Materials", color: "#64748B", active: true, is_default: true },
+  { id: "cat-finished-products", name: "Finished Products", color: "#059669", active: true, is_default: true },
+  { id: "cat-tarpaulin", name: "Tarpaulin", color: "#0284C7", active: true, is_default: true },
+  { id: "cat-other", name: "Other", color: "#94A3B8", active: true, is_default: true },
+];
+
+export const DEFAULT_CUSTOM_UNITS: CustomUnit[] = [
+  { code: "PCS", name: "Pieces (PCS)", active: true, is_default: true },
+  { code: "RM", name: "Running Metres (RM)", active: true, is_default: true, is_fabric: true },
+  { code: "SQM", name: "Square Metres (SQM)", active: true, is_default: true, is_fabric: true },
+  { code: "M", name: "Metres (M)", active: true, is_default: true, is_fabric: true },
+  { code: "KG", name: "Kilograms (KG)", active: true, is_default: true },
+  { code: "LTR", name: "Litres (LTR)", active: true, is_default: true },
+  { code: "ROLL", name: "Rolls (ROLL)", active: true, is_default: true, is_fabric: true },
+  { code: "SET", name: "Sets (SET)", active: true, is_default: true },
+  { code: "BOX", name: "Boxes (BOX)", active: true, is_default: true },
+  { code: "BAG", name: "Bags (BAG)", active: true, is_default: true },
+  { code: "PAIR", name: "Pairs (PAIR)", active: true, is_default: true },
+  { code: "SHEET", name: "Sheets (SHEET)", active: true, is_default: true },
+  { code: "BUNDLE", name: "Bundles (BUNDLE)", active: true, is_default: true },
+  { code: "DRUM", name: "Drums (DRUM)", active: true, is_default: true },
+  { code: "CUSTOM", name: "Custom Unit", active: true, is_default: true },
+];
+
+/**
+ * Fetch company inventory customization settings (categories, units, custom fields)
+ * with multi-tier fallback (Supabase -> LocalStorage -> Defaults + Existing Products)
+ */
+export async function getCompanyInventorySettings(
+  companyId: string,
+  existingProducts?: MaterialItem[]
+): Promise<CompanyInventorySettings> {
+  const localKey = `dubai-erp.inventory-settings.${companyId}`;
+  const settings: CompanyInventorySettings = {
+    categories: [...DEFAULT_CUSTOM_CATEGORIES],
+    units: [...DEFAULT_CUSTOM_UNITS],
+    custom_fields: [],
+  };
+
+  // 1. Try fetching from Supabase table
+  try {
+    const { data, error } = await supabase
+      .from("company_inventory_settings")
+      .select("categories, units, custom_fields")
+      .eq("company_id", companyId)
+      .maybeSingle();
+
+    if (!error && data) {
+      if (Array.isArray(data.categories) && data.categories.length > 0) {
+        settings.categories = data.categories as CustomCategory[];
+      }
+      if (Array.isArray(data.units) && data.units.length > 0) {
+        settings.units = data.units as CustomUnit[];
+      }
+      if (Array.isArray(data.custom_fields)) {
+        settings.custom_fields = data.custom_fields as CustomFieldDefinition[];
+      }
+    }
+  } catch {
+    // Gracefully proceed to localStorage check
+  }
+
+  // 2. Check localStorage if Supabase was empty or offline
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem(localKey);
+      if (stored) {
+        const parsed = JSON.parse(stored) as Partial<CompanyInventorySettings>;
+        if (parsed.categories && parsed.categories.length > 0 && settings.categories.length === DEFAULT_CUSTOM_CATEGORIES.length) {
+          settings.categories = parsed.categories;
+        }
+        if (parsed.units && parsed.units.length > 0 && settings.units.length === DEFAULT_CUSTOM_UNITS.length) {
+          settings.units = parsed.units;
+        }
+        if (parsed.custom_fields && settings.custom_fields.length === 0) {
+          settings.custom_fields = parsed.custom_fields;
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Ensure all categories and units currently used by existing products are preserved
+  if (existingProducts && existingProducts.length > 0) {
+    const knownCatNames = new Set(settings.categories.map(c => c.name.toLowerCase().trim()));
+    for (const prod of existingProducts) {
+      const cat = (prod.category || "").trim();
+      if (cat && !knownCatNames.has(cat.toLowerCase())) {
+        settings.categories.push({
+          id: `cat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: cat,
+          color: "#64748B",
+          active: true,
+          is_default: false,
+        });
+        knownCatNames.add(cat.toLowerCase());
+      }
+    }
+
+    const knownUnitCodes = new Set(settings.units.map(u => u.code.toUpperCase().trim()));
+    for (const prod of existingProducts) {
+      const u = (prod.unit || "").trim();
+      if (u && !knownUnitCodes.has(u.toUpperCase())) {
+        settings.units.push({
+          code: u.toUpperCase(),
+          name: u,
+          active: true,
+          is_default: false,
+        });
+        knownUnitCodes.add(u.toUpperCase());
+      }
+    }
+  }
+
+  return settings;
+}
+
+/**
+ * Persist company inventory customization settings to Supabase and cache locally
+ */
+export async function saveCompanyInventorySettings(
+  companyId: string,
+  settings: CompanyInventorySettings
+): Promise<CompanyInventorySettings> {
+  const localKey = `dubai-erp.inventory-settings.${companyId}`;
+
+  // 1. Cache locally immediately for zero-latency cross-session persistence
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(localKey, JSON.stringify(settings));
+    } catch {}
+  }
+
+  // 2. Persist to Supabase
+  try {
+    await supabase.from("company_inventory_settings").upsert(
+      {
+        company_id: companyId,
+        categories: settings.categories,
+        units: settings.units,
+        custom_fields: settings.custom_fields,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "company_id" }
+    );
+  } catch (err) {
+    console.warn("Could not save to company_inventory_settings table:", err);
+  }
+
+  return settings;
+}
+
+/**
+ * Fetch chronological stock movements history for a specific product
+ */
+export async function getProductMovementHistory(
+  companyId: string,
+  productId: string
+): Promise<MaterialMovementRecord[]> {
+  if (!companyId || !productId) return [];
+  const { data, error } = await supabase
+    .from("stock_movements")
+    .select("*, products(*)")
+    .eq("company_id", companyId)
+    .eq("product_id", productId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Error fetching product movement history:", error);
+    return [];
+  }
+
+  return (data || []).map(normalizeStockMovement);
+}
+
+/**
+ * Quick Stock In or Stock Out adjustment from the catalog interface
+ */
+export async function executeQuickStockAdjustment(
+  companyId: string,
+  productId: string,
+  type: "IN" | "OUT",
+  quantity: number,
+  reason: string,
+  performedBy?: string
+): Promise<{ success: boolean; newStock: number; docNumber: string }> {
+  if (!companyId || !productId) throw new Error("Company and product are required.");
+  if (quantity <= 0) throw new Error("Adjustment quantity must be greater than zero.");
+
+  const { data: prodData, error: pErr } = await supabase
+    .from("products")
+    .select("*")
+    .eq("id", productId)
+    .eq("company_id", companyId)
+    .single();
+
+  if (pErr || !prodData) throw new Error("Product record could not be found.");
+  const material = normalizeProductToMaterial(prodData);
+  if (material.is_service) throw new Error("Services do not track inventory stock.");
+
+  const previousStock = Number(prodData.current_stock || 0);
+  const delta = type === "IN" ? quantity : -quantity;
+  const newStock = roundDecimal(previousStock + delta, 3);
+  if (newStock < 0 && type === "OUT") {
+    throw new Error(`Insufficient stock: current balance is ${previousStock} ${material.unit}.`);
+  }
+
+  const prefix = type === "IN" ? "STKIN" : "STKOUT";
+  const docNumber = await generateDocNumber(companyId, prefix);
+
+  // 1. Update product balance
+  const { error: updErr } = await supabase
+    .from("products")
+    .update({ current_stock: newStock, updated_at: new Date().toISOString() })
+    .eq("id", productId)
+    .eq("company_id", companyId);
+  if (updErr) throw updErr;
+
+  // 2. Insert audited movement record
+  const { error: moveErr } = await supabase.from("stock_movements").insert({
+    company_id: companyId,
+    product_id: productId,
+    movement_type: type,
+    quantity: quantity,
+    previous_stock: previousStock,
+    new_stock: newStock,
+    unit_cost: material.cost_price || null,
+    reference_type: type === "IN" ? "Manual Stock In" : "Manual Stock Out",
+    reference_number: docNumber,
+    issued_by: performedBy || null,
+    notes: reason.trim() || `Manual ${type === "IN" ? "Stock In" : "Stock Out"}`,
+  });
+
+  if (moveErr) console.warn("Could not insert stock movement audit:", moveErr);
+
+  return { success: true, newStock, docNumber };
 }

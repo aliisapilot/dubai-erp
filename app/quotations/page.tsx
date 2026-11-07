@@ -16,7 +16,7 @@ import DocumentSplitScreenEditor, {
 } from "@/components/documents/DocumentSplitScreenEditor";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; address: string | null; contact_person: string | null; phone: string | null; mobile: string | null; email: string | null; active: boolean | null };
-type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; unit: string | null };
+type Product = { id: string; name: string | null; sku: string | null; description?: string | null; selling_price: number | null; vat_rate: number | null; unit: string | null };
 type Project = { id: string; name: string | null; project_number: string | null };
 type LineItem = { id?: string; product_id: string; description: string; quantity: number; unit?: string | null; unit_price: number; discount_percent: number; discount_pct?: number; vat_rate: number; vat_category?: string; line_total: number; vat_amount: number; sort_order: number };
 type RawItemRecord = {
@@ -143,7 +143,7 @@ export default function QuotationsPage() {
     const [{ data: q }, { data: c }, { data: p }, { data: prjs }, co] = await Promise.all([
       supabase.from("quotations").select("*").order("created_at", { ascending: false }),
       supabase.from("customers").select("id, name, customer_code, trn, address, contact_person, phone, mobile, email, active").order("name"),
-      supabase.from("products").select("id, name, sku, selling_price, vat_rate, unit").eq("active", true).order("name"),
+      supabase.from("products").select("id, name, sku, description, selling_price, vat_rate, unit").eq("active", true).order("name"),
       supabase.from("projects").select("id, name, project_number").order("created_at", { ascending: false }),
       getCurrentCompany(),
     ]);
@@ -178,10 +178,13 @@ export default function QuotationsPage() {
 
   function onProductSelect(idx: number, productId: string) {
     const prod = products.find(p => p.id === productId);
+    const resolvedDesc = prod?.description && prod.description.trim() !== prod.name?.trim()
+      ? `${prod.name} - ${prod.description}`
+      : prod?.name || "";
     setLines(ls => ls.map((l, i) => i !== idx ? l : recalc({
       ...l, product_id: productId,
-      description: prod?.name || l.description,
-      unit: prod?.unit || l.unit || "Nos",
+      description: resolvedDesc || l.description,
+      unit: prod?.unit || l.unit || "PCS",
       unit_price: prod?.selling_price ?? l.unit_price,
       vat_rate: prod?.vat_rate ?? 5,
       vat_category: "Standard Rated",

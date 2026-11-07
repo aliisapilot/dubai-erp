@@ -19,7 +19,7 @@ import { usePersistedDocumentDesign } from "@/components/documents/usePersistedD
 import { NumericCellInput } from "@/components/ui/NumericCellInput";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; address: string | null; contact_person: string | null; phone: string | null; mobile: string | null; email: string | null; active: boolean | null };
-type Product = { id: string; name: string | null; sku: string | null; unit: string | null; current_stock: number | null };
+type Product = { id: string; name: string | null; sku: string | null; unit: string | null; current_stock: number | null; description?: string | null };
 type Project = { id: string; name: string | null; project_number: string | null };
 type DNLine = { id?: string; product_id: string; description: string; quantity: number; unit: string; remarks?: string; sort_order: number };
 
@@ -197,7 +197,7 @@ export default function DeliveryNotesPage() {
     const [{ data: dn }, { data: c }, { data: p }, co, { data: prjs }] = await Promise.all([
       supabase.from("delivery_notes").select("*").order("created_at", { ascending: false }),
       supabase.from("customers").select("id, name, customer_code, trn, address, contact_person, phone, mobile, email, active").order("name"),
-      supabase.from("products").select("id, name, sku, unit, current_stock").eq("active", true).order("name"),
+      supabase.from("products").select("id, name, sku, unit, current_stock, description").eq("active", true).order("name"),
       getCurrentCompany(),
       supabase.from("projects").select("id, name, project_number").order("created_at", { ascending: false }),
     ]);
@@ -221,10 +221,13 @@ export default function DeliveryNotesPage() {
 
   function onProductSelect(idx: number, pid: string) {
     const prod = products.find(p => p.id === pid);
+    const lineDesc = prod?.description
+      ? `${prod.name || ""} - ${prod.description}`.trim()
+      : prod?.name || "";
     setLines(ls => ls.map((l, i) => i !== idx ? l : {
       ...l,
       product_id: pid,
-      description: prod?.name || l.description,
+      description: lineDesc || l.description,
       unit: prod?.unit || l.unit || "Nos"
     }));
   }
