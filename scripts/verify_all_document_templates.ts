@@ -133,6 +133,7 @@ async function main() {
   console.log("==================================================================");
 
   const docTypes: DocumentTypeId[] = [
+    "measurement_sheet",
     "quotation",
     "proforma_invoice",
     "tax_invoice",
