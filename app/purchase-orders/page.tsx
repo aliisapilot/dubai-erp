@@ -24,7 +24,7 @@ import {
 // purchase_order_items: purchase_order_id (FK), discount_percent (not discount_pct), NO vat_category
 type Supplier = { id: string; name: string | null; supplier_code: string | null; trn?: string | null; address?: string | null; phone?: string | null; email?: string | null };
 type Project = { id: string; project_number: string; name: string };
-type Product = { id: string; name: string | null; sku: string | null; cost_price: number | null; vat_rate: number | null; unit: string | null };
+type Product = { id: string; name: string | null; sku: string | null; cost_price: number | null; vat_rate: number | null; unit: string | null; description?: string | null };
 type POLine = { id?: string; product_id: string; description: string; quantity: number; unit_price: number; discount_pct: number; vat_rate: number; line_total: number; vat_amount: number; sort_order: number };
 type PO = {
   id: string;
@@ -102,7 +102,7 @@ export default function PurchaseOrdersPage() {
       supabase.from("purchase_orders").select("*").order("created_at", { ascending: false }),
       supabase.from("suppliers").select("id, name, supplier_code, trn, address, phone, email").eq("active", true).order("name"),
       supabase.from("projects").select("id, project_number, name").order("project_number"),
-      supabase.from("products").select("id, name, sku, cost_price, vat_rate, unit").eq("active", true).order("name"),
+      supabase.from("products").select("id, name, sku, cost_price, vat_rate, unit, description").eq("active", true).order("name"),
       getCurrentCompany(),
     ]);
     setOrders(((po||[]) as PO[]).map(item => withSupplierDocumentDetails(item) as PO)); setSuppliers((s||[]) as Supplier[]); setProjects((pr||[]) as Project[]); setProducts((p||[]) as Product[]);

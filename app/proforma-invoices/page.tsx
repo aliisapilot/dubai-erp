@@ -17,7 +17,7 @@ import DocumentSplitScreenEditor, {
 } from "@/components/documents/DocumentSplitScreenEditor";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn?: string | null; address?: string | null; contact_person?: string | null; phone?: string | null; mobile?: string | null; email?: string | null; active?: boolean | null };
-type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; unit?: string | null };
+type Product = { id: string; name: string | null; sku: string | null; selling_price: number | null; vat_rate: number | null; unit?: string | null; description?: string | null };
 type LineItem = { id?: string; product_id: string; description: string; quantity: number; unit?: string; unit_price: number; discount_pct: number; vat_rate: number; line_total: number; vat_amount: number; sort_order: number };
 // DB: proforma_invoices has: valid_until (not due_date), no project_id, no payment_terms
 type PI = {
@@ -101,7 +101,7 @@ function PIContent() {
     const [{ data: pi }, { data: c }, { data: p }, co] = await Promise.all([
       supabase.from("proforma_invoices").select("*").order("created_at", { ascending: false }),
       supabase.from("customers").select("id, name, customer_code, trn, address, contact_person, phone, mobile, email, active").order("name"),
-      supabase.from("products").select("id, name, sku, selling_price, vat_rate, unit").eq("active", true).order("name"),
+      supabase.from("products").select("id, name, sku, selling_price, vat_rate, unit, description").eq("active", true).order("name"),
       getCurrentCompany(),
     ]);
     setInvoices(((pi || []) as PI[]).map(item => withCustomerDocumentDetails(item) as PI));

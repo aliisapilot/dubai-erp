@@ -190,6 +190,7 @@ export interface DocumentSplitScreenEditorProps {
     cost_price?: number | null;
     vat_rate?: number | null;
     unit?: string | null;
+    description?: string | null;
   }>;
   onSave: (payload: {
     form: DocumentEditorFormState;
@@ -416,6 +417,9 @@ function DocumentSplitScreenEditorWorkspace({
   const handleProductSelect = useCallback(
     (idx: number, pid: string) => {
       const prod = products.find((p) => p.id === pid);
+      const lineDesc = prod?.description
+        ? `${prod.name || ""} - ${prod.description}`.trim()
+        : prod?.name || "";
       setLines((prev) =>
         prev.map((l, i) =>
           i !== idx
@@ -423,7 +427,7 @@ function DocumentSplitScreenEditorWorkspace({
             : recalc({
                 ...l,
                 product_id: pid,
-                description: prod?.name || l.description,
+                description: lineDesc || l.description,
                 unit: prod?.unit || l.unit || "Nos",
                 unit_price:
                   partyType === "supplier"
