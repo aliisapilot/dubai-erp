@@ -156,7 +156,9 @@ export default function InventoryStockPage() {
         </div>
 
         {/* Quick Actions Navigation Bar */}
+        {/* Product catalog is maintained separately from stock movement entries. */}
         <div className="flex items-center gap-2 flex-wrap">
+          <Link href="/inventory/products" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-xs font-semibold">+ Add Product / Material</Link>
           <Link
             href="/inventory/stock-in"
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-semibold shadow-sm transition-colors"
