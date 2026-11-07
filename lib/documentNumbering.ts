@@ -1,5 +1,10 @@
 import { supabase } from "./supabase";
 import type { DocumentTypeId } from "./documentDesigner";
+import {
+  extractHistoricalSequence,
+  nextSequenceFromReferences,
+  getCommonDocPrefixes,
+} from "./documentSequenceParsing";
 
 export type DocSeparator = "-" | "/" | " " | "";
 export type YearFormat = "YYYY" | "YY";
@@ -455,6 +460,31 @@ export async function generateNextDocumentNumber(
 
   let seqNumber = 1;
 
+  // Retrieve candidate prefixes for this document type
+  const candidatePrefixes = getCommonDocPrefixes(docType, counterPrefix);
+
+  // Check highest historical sequence in existing company documents
+  let highestHistoricalSeq = config.nextSequence || 1;
+  if (dbInfo && dbInfo.table && dbInfo.column) {
+    try {
+      const { data: existingRows } = await supabase
+        .from(dbInfo.table)
+        .select(dbInfo.column)
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      if (existingRows && existingRows.length > 0) {
+        const rawRefs = existingRows
+          .map((row: unknown) => String((row as Record<string, unknown>)[dbInfo.column] || ""))
+          .filter(Boolean);
+        highestHistoricalSeq = nextSequenceFromReferences(rawRefs, candidatePrefixes, config.nextSequence || 1);
+      }
+    } catch (fetchErr) {
+      console.warn("Could not inspect historical document numbers:", fetchErr);
+    }
+  }
+
   // Attempt atomic database RPC function first
   try {
     const { data: rawRpcVal, error: rpcErr } = await supabase.rpc("next_doc_number", {
@@ -463,39 +493,20 @@ export async function generateNextDocumentNumber(
     });
 
     if (!rpcErr && rawRpcVal) {
-      const match = String(rawRpcVal).match(/-(\d+)$/);
-      if (match) {
-        seqNumber = parseInt(match[1], 10);
-      }
-    } else {
-      // Graceful fallback if RPC is unavailable, locked, or permissions-restricted
-      if (dbInfo && dbInfo.table && dbInfo.column) {
-        const { data: recentDocs } = await supabase
-          .from(dbInfo.table)
-          .select(dbInfo.column)
-          .eq("company_id", companyId)
-          .order("created_at", { ascending: false })
-          .limit(20);
-
-        if (recentDocs && recentDocs.length > 0) {
-          let highest = 0;
-          for (const doc of recentDocs) {
-            const val = String((doc as unknown as Record<string, unknown>)[dbInfo.column] || "");
-            const m = val.match(/(\d+)$/);
-            if (m) {
-              const num = parseInt(m[1], 10);
-              if (num > highest) highest = num;
-            }
-          }
-          if (highest > 0) {
-            seqNumber = highest + 1;
-          }
-        }
+      const parsedSeq = extractHistoricalSequence(String(rawRpcVal), candidatePrefixes);
+      if (parsedSeq !== null) {
+        seqNumber = parsedSeq;
+      } else {
+        const match = String(rawRpcVal).match(/-(\d+)$/);
+        if (match) seqNumber = parseInt(match[1], 10);
       }
     }
   } catch {
-    // If RPC call threw an exception, sequence starts at minimum
+    // If RPC call threw an exception, sequence starts from historical analysis
   }
+
+  // Guarantee sequence continues from the highest existing valid sequence
+  seqNumber = Math.max(seqNumber, highestHistoricalSeq);
 
   // Honor minimum sequence if configured
   if (config.nextSequence && config.nextSequence > seqNumber) {

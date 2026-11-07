@@ -27,6 +27,12 @@ export const INITIAL_FABRIC_BRANDS = [
 
 export const MATERIAL_CATEGORIES = [
   "PVC Fabric",
+  "Welding Materials",
+  "Eyelets",
+  "Accessories",
+  "Packing Materials",
+  "Raw Materials",
+  "Finished Products",
   "Tarpaulin",
   "Korean Fabric",
   "German Fabric",
@@ -34,21 +40,27 @@ export const MATERIAL_CATEGORIES = [
   "Mesh Fabric",
   "Steel",
   "Aluminium",
-  "Eyelets",
-  "Welding Materials",
-  "Accessories",
   "Other / Custom",
 ] as const;
 
 export const SUPPORTED_UNITS = [
-  { value: "Sqm", label: "Square Metres (m²)", isFabric: true },
-  { value: "Meter", label: "Running Metres (m)", isFabric: true },
-  { value: "Roll", label: "Rolls", isFabric: true },
+  { value: "PCS", label: "Pieces (PCS)", isFabric: false },
+  { value: "RM", label: "Running Metres (RM)", isFabric: true },
+  { value: "SQM", label: "Square Metres (SQM)", isFabric: true },
+  { value: "M", label: "Metres (M)", isFabric: true },
+  { value: "KG", label: "Kilograms (KG)", isFabric: false },
+  { value: "LTR", label: "Litres (LTR)", isFabric: false },
+  { value: "ROLL", label: "Rolls (ROLL)", isFabric: true },
+  { value: "SET", label: "Set (SET)", isFabric: false },
+  // Backward compatibility with existing records:
   { value: "Pcs", label: "Pieces (Pcs)", isFabric: false },
+  { value: "Sqm", label: "Square Metres (Sqm)", isFabric: true },
+  { value: "Meter", label: "Running Metres (Meter)", isFabric: true },
+  { value: "Roll", label: "Rolls (Roll)", isFabric: true },
   { value: "Nos", label: "Numbers (Nos)", isFabric: false },
   { value: "Kg", label: "Kilograms (Kg)", isFabric: false },
   { value: "Box", label: "Box / Pack", isFabric: false },
-  { value: "Set", label: "Set", isFabric: false },
+  { value: "Set", label: "Set (Set)", isFabric: false },
 ] as const;
 
 export const WAREHOUSE_LOCATIONS = [
@@ -292,7 +304,7 @@ export function isFabricMaterial(category?: string | null, unit?: string | null)
     "hdpe fabric",
     "mesh fabric",
   ];
-  const fabricUnits = ["sqm", "meter", "roll", "m²", "m2"];
+  const fabricUnits = ["sqm", "meter", "roll", "m²", "m2", "rm", "m"];
   return (
     fabricCategories.some((fc) => cat.includes(fc)) ||
     fabricUnits.includes(u) ||

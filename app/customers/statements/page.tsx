@@ -149,6 +149,7 @@ export default function StatementOfAccountPage() {
   const [compareDataMode, setCompareDataMode] = useState<"sample" | "live">("live");
 
   const [loadError, setLoadError] = useState("");
+  const [dateRangeError, setDateRangeError] = useState("");
   const requestVersion = useRef(0);
 
   // Opening Balance Persistence & Audit States
@@ -572,10 +573,12 @@ export default function StatementOfAccountPage() {
 
     const version = ++requestVersion.current;
     if (fromDate && toDate && fromDate > toDate) {
-      setLoadError("From Date cannot be later than To Date.");
+      setDateRangeError("From Date cannot be later than To Date.");
+      setCalculating(false);
       setStatement(null);
       return;
     }
+    setDateRangeError("");
     setCalculating(true);
     setLoadError("");
     setStatement(null);
@@ -747,47 +750,87 @@ export default function StatementOfAccountPage() {
         }
       });
 
-      const seenPaymentIds = new Set<string>();
-      (pays || []).forEach((p: Payment) => {
-        if (seenPaymentIds.has(p.id)) return;
-        seenPaymentIds.add(p.id);
-        if ((p.status || "completed").toLowerCase() !== "completed") return;
-        if (p.payment_date) {
-          const simplifiedPayRef = formatDisplayDocNumber(p.payment_number || p.reference_number || "PAY", "employee_payment_voucher");
-          rawTxs.push({
-            date: p.payment_date,
-            reference_no: simplifiedPayRef,
-            original_reference: p.payment_number || p.reference_number || "PAY",
-            payment_id: p.id,
-            description: `Payment Received (${p.payment_method || "Cash"})`,
-            debit: 0,
-            credit: Number(p.amount) || 0,
-          });
-        }
-      });
+      // Track recorded credits to prevent double-counting between receipt vouchers and payments
+      const seenCreditRefs = new Set<string>();
 
+      // 1. Process receipt vouchers first
       const seenVoucherIds = new Set<string>();
       (rcvs || []).forEach((rcv: ReceiptVoucher) => {
         if (seenVoucherIds.has(rcv.id)) return;
         seenVoucherIds.add(rcv.id);
+
         const rst = (rcv.status || "").toLowerCase().trim();
         if (rst === "cancelled" || rst === "void") return;
-        if (rcv.voucher_date) {
-          const simplifiedVoucherRef = formatDisplayDocNumber(rcv.voucher_number || "RV", "receipt_voucher");
-          rawTxs.push({
-            date: rcv.voucher_date,
-            reference_no: simplifiedVoucherRef,
-            original_reference: rcv.voucher_number || "RV",
-            voucher_id: rcv.id,
-            description: `Receipt Voucher (${rcv.payment_method || "Cash"}${rcv.cheque_number ? ` - Chq: ${rcv.cheque_number}` : ""})`,
-            debit: 0,
-            credit: Number(rcv.amount) || 0,
-          });
-        }
+        if (!rcv.voucher_date) return;
+
+        const amt = Number(rcv.amount) || 0;
+        if (amt <= 0) return;
+
+        const vNum = (rcv.voucher_number || "").trim();
+        const simplifiedVoucherRef = formatDisplayDocNumber(vNum || "RV", "receipt_voucher");
+
+        if (vNum) seenCreditRefs.add(vNum.toUpperCase());
+        if (rcv.cheque_number) seenCreditRefs.add(rcv.cheque_number.trim().toUpperCase());
+        seenCreditRefs.add(`${rcv.voucher_date.slice(0, 10)}_${amt.toFixed(2)}`);
+
+        rawTxs.push({
+          date: rcv.voucher_date,
+          reference_no: simplifiedVoucherRef,
+          original_reference: vNum || "RV",
+          voucher_id: rcv.id,
+          description: `Receipt Voucher (${rcv.payment_method || "Cash"}${rcv.cheque_number ? ` - Chq: ${rcv.cheque_number}` : ""})`,
+          debit: 0,
+          credit: amt,
+        });
       });
 
-      // Sort chronologically
-      rawTxs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      // 2. Process payments, deduplicating against receipt vouchers
+      const seenPaymentIds = new Set<string>();
+      (pays || []).forEach((p: Payment) => {
+        if (seenPaymentIds.has(p.id)) return;
+        seenPaymentIds.add(p.id);
+
+        const pst = (p.status || "").toLowerCase().trim();
+        if (pst === "cancelled" || pst === "void") return;
+        if (!p.payment_date) return;
+
+        const amt = Number(p.amount) || 0;
+        if (amt <= 0) return;
+
+        const pNum = (p.payment_number || "").trim();
+        const pRef = (p.reference_number || "").trim();
+
+        // Check if already accounted for in receipt vouchers
+        if (pNum && seenCreditRefs.has(pNum.toUpperCase())) return;
+        if (pRef && seenCreditRefs.has(pRef.toUpperCase())) return;
+        if (seenCreditRefs.has(`${p.payment_date.slice(0, 10)}_${amt.toFixed(2)}`)) {
+          if (pRef.toLowerCase().includes("rv") || pNum.toLowerCase().includes("rv")) return;
+        }
+
+        if (pNum) seenCreditRefs.add(pNum.toUpperCase());
+        if (pRef) seenCreditRefs.add(pRef.toUpperCase());
+
+        const simplifiedPayRef = formatDisplayDocNumber(pNum || pRef || "PAY", "employee_payment_voucher");
+        rawTxs.push({
+          date: p.payment_date,
+          reference_no: simplifiedPayRef,
+          original_reference: pNum || pRef || "PAY",
+          payment_id: p.id,
+          description: `Payment Received (${p.payment_method || "Cash"})`,
+          debit: 0,
+          credit: amt,
+        });
+      });
+
+      // Sort chronologically: invoices (debits) before payments (credits) on the same date
+      rawTxs.sort((a, b) => {
+        const dayA = a.date.slice(0, 10);
+        const dayB = b.date.slice(0, 10);
+        if (dayA !== dayB) return dayA.localeCompare(dayB);
+        if (a.debit > 0 && b.credit > 0) return -1;
+        if (a.credit > 0 && b.debit > 0) return 1;
+        return (a.reference_no || "").localeCompare(b.reference_no || "");
+      });
 
       // Calculate opening balance before `fromDate`
       let computedOpening = Number(appliedOpeningBalance) || 0;
@@ -797,7 +840,7 @@ export default function StatementOfAccountPage() {
         const transactionDay = tx.date.slice(0, 10);
         if (fromDate && transactionDay < fromDate) {
           computedOpening += (tx.debit - tx.credit);
-        } else if (!toDate || transactionDay <= toDate) {
+        } else if ((!fromDate || transactionDay >= fromDate) && (!toDate || transactionDay <= toDate)) {
           filteredTxs.push(tx);
         }
       });
@@ -988,190 +1031,102 @@ export default function StatementOfAccountPage() {
           </div>
 
           {partyMode === "existing" ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-              <div>
-                <label className="mb-1 block font-semibold text-slate-700">Select Customer</label>
-                <select
-                  value={selectedCustomerId}
-                  onChange={e => {
-                    const newCid = e.target.value;
-                    setSelectedCustomerId(newCid);
-                    void loadCustomerOpeningBalance(newCid);
-                    void fetchArchivedStatements(newCid, false);
-                  }}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
-                >
-                  {customers.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} {c.customer_code ? `(${c.customer_code})` : ""}
-                    </option>
-                  ))}
-                </select>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">Select Customer</label>
+                  <select
+                    value={selectedCustomerId}
+                    onChange={e => {
+                      const newCid = e.target.value;
+                      setSelectedCustomerId(newCid);
+                      void loadCustomerOpeningBalance(newCid);
+                      void fetchArchivedStatements(newCid, false);
+                    }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                  >
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.customer_code ? `(${c.customer_code})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">From Date</label>
+                  <input
+                    type="date"
+                    value={fromDate}
+                    onChange={e => {
+                      const next = e.target.value;
+                      setFromDate(next);
+                      if (next && toDate && next > toDate) setToDate(next);
+                    }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">To Date</label>
+                  <input
+                    type="date"
+                    value={toDate}
+                    min={fromDate || undefined}
+                    onChange={e => setToDate(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="mb-1 block font-semibold text-slate-700">From Date</label>
-                <input
-                  type="date"
-                  value={fromDate}
-                  onChange={e => {
-                    const next = e.target.value;
-                    setFromDate(next);
-                    if (next && toDate && next > toDate) setToDate(next);
-                  }}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block font-semibold text-slate-700">To Date</label>
-                <input
-                  type="date"
-                  value={toDate}
-                  min={fromDate || undefined}
-                  onChange={e => setToDate(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
-                />
-              </div>
-
-              {/* Dedicated Initial Opening Balance Section */}
-              <div className="md:col-span-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4 mt-1">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <label className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
-                      Initial Opening Balance (AED)
-                      <span className="text-[11px] text-slate-500 font-normal">
-                        — Saved starting balance (not the calculated balance at From Date)
-                      </span>
-                    </label>
-                    {savedOpeningBalance !== null ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
-                        <CheckCircle2 size={12} /> Stored in DB: {fmtAED(savedOpeningBalance)}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 border border-slate-200">
-                        Not yet stored in DB
-                      </span>
-                    )}
-                    {isEditingBalance && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 border border-amber-200 animate-pulse">
-                        <AlertCircle size={12} /> Editing Mode
-                      </span>
-                    )}
-                  </div>
+              {/* Action Buttons Row */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFromDate("");
+                      setToDate(todayISO());
+                      setDateRangeError("");
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 transition"
+                    title="Clear date filters to include all historical transactions"
+                  >
+                    <RefreshCw size={13} />
+                    Clear Filters / All Dates
+                  </button>
 
                   <button
                     type="button"
-                    onClick={fetchBalanceHistory}
-                    disabled={historyLoading}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-sm transition"
-                    title="View opening balance audit log"
+                    onClick={() => fetchArchivedStatements(selectedCustomerId, true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                    title="View original Statement of Account PDF archives for this customer"
                   >
-                    <History size={14} className="text-slate-500" />
-                    {historyLoading ? "Loading..." : "View Balance History"}
+                    <Paperclip size={13} className="text-amber-600" />
+                    Archived SOAs ({archivedStatements.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowMappingModal(true)}
+                    className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                  >
+                    <FileSpreadsheet size={13} className="text-blue-600" />
+                    Numbering Preview
                   </button>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="relative min-w-[220px] max-w-sm flex-1">
-                    <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">AED</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={openingBalanceInput}
-                      disabled={savedOpeningBalance !== null && !isEditingBalance}
-                      onChange={e => {
-                        const val = e.target.value;
-                        if (/^[0-9]*\.?[0-9]*$/.test(val)) {
-                          setOpeningBalanceInput(val);
-                        }
-                      }}
-                      onBlur={() => {
-                        const parsed = parseFloat(openingBalanceInput);
-                        const clean = isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
-                        setOpeningBalance(clean);
-                        setOpeningBalanceInput(clean.toFixed(2));
-                      }}
-                      onKeyDown={e => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          const parsed = parseFloat(openingBalanceInput);
-                          const clean = isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
-                          setOpeningBalance(clean);
-                          setOpeningBalanceInput(clean.toFixed(2));
-                          (e.target as HTMLInputElement).blur();
-                        }
-                      }}
-                      placeholder="0.00"
-                      className={`w-full rounded-lg border pl-12 pr-3 py-2 text-xs font-mono font-bold focus:outline-none transition ${
-                        savedOpeningBalance !== null && !isEditingBalance
-                          ? "bg-slate-100/90 border-slate-200 text-slate-700 cursor-not-allowed"
-                          : "bg-white border-blue-500 text-slate-900 shadow-sm focus:ring-1 focus:ring-blue-500"
-                      }`}
-                    />
-                  </div>
-
-                  {savedOpeningBalance !== null && !isEditingBalance ? (
+                <div className="flex items-center gap-2">
+                  {statement && (
                     <button
                       type="button"
-                      onClick={() => setIsEditingBalance(true)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm"
-                      title="Edit customer opening balance"
+                      onClick={() => setShowPrintModal(true)}
+                      className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition shadow-sm"
                     >
-                      <Pencil size={13} className="text-slate-500" />
-                      Edit Opening Balance
+                      <Printer size={14} /> Download PDF / Print
                     </button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleSaveOpeningBalance(false)}
-                        disabled={savingBalance}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm disabled:opacity-50"
-                      >
-                        {savingBalance ? (
-                          <>
-                            <Loader2 size={14} className="animate-spin" /> Saving...
-                          </>
-                        ) : (
-                          <>
-                            <Save size={14} /> Save Opening Balance
-                          </>
-                        )}
-                      </button>
-
-                      {isEditingBalance && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsEditingBalance(false);
-                            const prev = savedOpeningBalance ?? 0;
-                            setOpeningBalance(prev);
-                            setAppliedOpeningBalance(prev);
-                            setOpeningBalanceInput(prev.toFixed(2));
-                            setBalanceMessage(null);
-                          }}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                    </div>
                   )}
                 </div>
-
-                {balanceMessage && (
-                  <div
-                    className={`mt-2.5 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ${
-                      balanceMessage.type === "success"
-                        ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                        : "bg-rose-50 text-rose-800 border border-rose-200"
-                    }`}
-                  >
-                    {balanceMessage.type === "success" ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
-                    <span>{balanceMessage.text}</span>
-                  </div>
-                )}
               </div>
             </div>
           ) : (
@@ -1239,41 +1194,37 @@ export default function StatementOfAccountPage() {
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
                   />
                 </div>
-                <div className="md:col-span-2">
-                  <label className="mb-1 block font-semibold text-slate-700">Initial Opening Balance (AED)</label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={openingBalanceInput}
-                    onChange={e => {
-                      const val = e.target.value;
-                      if (/^[0-9]*\.?[0-9]*$/.test(val)) {
-                        setOpeningBalanceInput(val);
-                      }
-                    }}
-                    onBlur={() => {
-                      const parsed = parseFloat(openingBalanceInput);
-                      const clean = isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
-                      setOpeningBalance(clean);
-                      setAppliedOpeningBalance(clean);
-                      setOpeningBalanceInput(clean.toFixed(2));
-                    }}
-                    onKeyDown={e => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        const parsed = parseFloat(openingBalanceInput);
-                        const clean = isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
-                        setOpeningBalance(clean);
-                        setAppliedOpeningBalance(clean);
-                        setOpeningBalanceInput(clean.toFixed(2));
-                        (e.target as HTMLInputElement).blur();
-                      }
-                    }}
-                    placeholder="0.00"
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono font-bold focus:border-slate-400 focus:outline-none"
-                  />
-                </div>
               </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFromDate("");
+                    setToDate(todayISO());
+                    setDateRangeError("");
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition"
+                >
+                  <RefreshCw size={13} />
+                  Clear Filters / All Dates
+                </button>
+                {statement && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPrintModal(true)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition shadow-sm"
+                  >
+                    <Printer size={14} /> Download PDF / Print
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          {dateRangeError && (
+            <div className="flex items-center gap-2 rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 mt-2">
+              <AlertTriangle size={15} className="text-rose-500 shrink-0" />
+              <span>{dateRangeError}</span>
             </div>
           )}
         </div>
@@ -1413,27 +1364,54 @@ export default function StatementOfAccountPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* KPI Banner */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <span className="text-xs text-slate-500 block font-medium">Opening Balance</span>
-                <span className="text-lg font-bold font-mono text-slate-800">
-                  {statement.opening_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })} AED
-                </span>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <span className="text-xs text-slate-500 block font-medium">Total Charges (Invoiced)</span>
-                <span className="text-lg font-bold font-mono text-rose-700">
-                  {statement.entries.reduce((s, e) => s + e.debit, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} AED
-                </span>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <span className="text-xs text-slate-500 block font-medium">Total Received (Credits)</span>
-                <span className="text-lg font-bold font-mono text-emerald-700">
-                  {statement.entries.reduce((s, e) => s + e.credit, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} AED
-                </span>
-              </div>
-            </div>
+            {/* 4 Summary Cards */}
+            {(() => {
+              const totalDebits = statement.entries.reduce((s, e) => s + e.debit, 0);
+              const totalCredits = statement.entries.reduce((s, e) => s + e.credit, 0);
+              return (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <span className="text-xs font-semibold text-slate-500 block uppercase tracking-wider">Opening Balance</span>
+                    <span className="text-lg sm:text-xl font-bold font-mono text-slate-900 block mt-1">
+                      {fmtAED(statement.opening_balance)}
+                    </span>
+                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                      {fromDate ? `At start of ${new Date(fromDate).toLocaleDateString("en-AE", { dateStyle: "medium" })}` : "Initial cutover balance"}
+                    </span>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <span className="text-xs font-semibold text-rose-600 block uppercase tracking-wider">Total Invoices</span>
+                    <span className="text-lg sm:text-xl font-bold font-mono text-rose-700 block mt-1">
+                      {fmtAED(totalDebits)}
+                    </span>
+                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                      {statement.entries.filter(e => e.debit > 0).length} invoice debit{statement.entries.filter(e => e.debit > 0).length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <span className="text-xs font-semibold text-emerald-600 block uppercase tracking-wider">Total Payments / Credits</span>
+                    <span className="text-lg sm:text-xl font-bold font-mono text-emerald-700 block mt-1">
+                      {fmtAED(totalCredits)}
+                    </span>
+                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                      {statement.entries.filter(e => e.credit > 0).length} payment credit{statement.entries.filter(e => e.credit > 0).length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <span className="text-xs font-semibold text-slate-900 block uppercase tracking-wider">Closing Balance</span>
+                    <span className={`text-lg sm:text-xl font-bold font-mono block mt-1 ${statement.closing_balance > 0 ? "text-slate-900" : statement.closing_balance < 0 ? "text-emerald-700" : "text-slate-600"}`}>
+                      {fmtAED(statement.closing_balance)}
+                    </span>
+                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                      {toDate ? `As of ${new Date(toDate).toLocaleDateString("en-AE", { dateStyle: "medium" })}` : "Net outstanding balance"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Table */}
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -1453,7 +1431,7 @@ export default function StatementOfAccountPage() {
                   <div className="text-right">
                     <span className="text-xs text-slate-500 block">Outstanding Closing Balance:</span>
                     <span className="text-base font-extrabold font-mono text-slate-900">
-                      {statement.closing_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })} AED
+                      {fmtAED(statement.closing_balance)}
                     </span>
                   </div>
                 </div>
@@ -1479,7 +1457,7 @@ export default function StatementOfAccountPage() {
                     <td className="px-4 py-2.5 text-right font-mono">—</td>
                     <td className="px-4 py-2.5 text-right font-mono">—</td>
                     <td className="px-4 py-2.5 text-right font-mono text-slate-900 font-bold">
-                      {statement.opening_balance.toLocaleString("en-US", { minimumFractionDigits: 2 })} AED
+                      {fmtAED(statement.opening_balance)}
                     </td>
                     <td className="px-3 py-2.5 text-center text-slate-400">—</td>
                   </tr>
@@ -1505,13 +1483,13 @@ export default function StatementOfAccountPage() {
                       </td>
                       <td className="px-4 py-2.5 text-slate-800">{e.description}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-rose-700">
-                        {e.debit > 0 ? e.debit.toLocaleString("en-US", { minimumFractionDigits: 2 }) : "—"}
+                        {e.debit > 0 ? fmtAED(e.debit) : "—"}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono text-emerald-700 font-semibold">
-                        {e.credit > 0 ? e.credit.toLocaleString("en-US", { minimumFractionDigits: 2 }) : "—"}
+                        {e.credit > 0 ? fmtAED(e.credit) : "—"}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-900">
-                        {e.balance.toLocaleString("en-US", { minimumFractionDigits: 2 })} AED
+                        {fmtAED(e.balance)}
                       </td>
                       <td className="px-3 py-2.5 text-center">
                         {(e.voucher_id || e.payment_id) ? (
@@ -1539,6 +1517,174 @@ export default function StatementOfAccountPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Dedicated Secondary Section: Customer Opening Balance Setting */}
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="rounded-lg bg-slate-100 p-2 text-slate-700">
+                    <ShieldCheck size={18} className="text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Customer Initial Opening Balance Setting</h3>
+                    <p className="text-[11px] text-slate-500">
+                      Authoritative historical ledger balance before system cutover, saved directly in database (<code className="text-slate-700 font-mono">customers.opening_balance</code>).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {partyMode === "existing" && (
+                    <button
+                      type="button"
+                      onClick={fetchBalanceHistory}
+                      disabled={historyLoading}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition"
+                      title="View historical changes to this customer's initial ledger opening balance"
+                    >
+                      {historyLoading ? <Loader2 size={13} className="animate-spin" /> : <History size={13} className="text-slate-500" />}
+                      Audit History
+                    </button>
+                  )}
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
+                    <CheckCircle2 size={12} /> Database Authoritative
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50/70 rounded-lg p-3 text-xs text-slate-600 space-y-1 border border-slate-100">
+                <p>
+                  <strong>Note:</strong> This represents the customer&apos;s <em>pre-system cutover balance</em>. The <strong>Statement Opening Balance</strong> shown at the top of the statement is calculated dynamically as:
+                </p>
+                <p className="font-mono text-[11px] text-slate-800 bg-white p-2 rounded border border-slate-200">
+                  Statement Opening Balance = Saved Initial Balance + All Debits Before From Date - All Credits Before From Date
+                </p>
+              </div>
+
+              {partyMode === "existing" ? (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div>
+                      <span className="text-xs font-semibold text-slate-600 block mb-1">
+                        Saved Pre-Cutover Balance
+                      </span>
+                      {isEditingBalance ? (
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">AED</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={openingBalanceInput}
+                              onChange={e => {
+                                const val = e.target.value;
+                                if (/^[0-9]*\.?[0-9]*$/.test(val)) {
+                                  setOpeningBalanceInput(val);
+                                }
+                              }}
+                              placeholder="0.00"
+                              className="w-48 rounded-lg border border-blue-400 bg-white pl-12 pr-3 py-1.5 text-xs font-mono font-bold text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleSaveOpeningBalance(false)}
+                            disabled={savingBalance}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm disabled:opacity-50"
+                          >
+                            {savingBalance ? (
+                              <>
+                                <Loader2 size={13} className="animate-spin" /> Saving...
+                              </>
+                            ) : (
+                              <>
+                                <Save size={13} /> Save to Database
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsEditingBalance(false);
+                              const prev = savedOpeningBalance ?? 0;
+                              setOpeningBalance(prev);
+                              setAppliedOpeningBalance(prev);
+                              setOpeningBalanceInput(prev.toFixed(2));
+                              setBalanceMessage(null);
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <span className="text-base font-extrabold font-mono text-slate-900">
+                            {fmtAED(savedOpeningBalance ?? 0)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingBalance(true)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-xs"
+                          >
+                            <Pencil size={12} className="text-slate-500" />
+                            Edit Cutover Balance
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {balanceMessage && (
+                    <div
+                      className={`flex items-center gap-2 rounded-lg p-2.5 text-xs ${
+                        balanceMessage.type === "success"
+                          ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                          : "bg-rose-50 text-rose-800 border border-rose-200"
+                      }`}
+                    >
+                      {balanceMessage.type === "success" ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                      <span>{balanceMessage.text}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 text-xs">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Ad-Hoc Opening Balance (AED)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={openingBalanceInput}
+                        onChange={e => {
+                          const val = e.target.value;
+                          if (/^[0-9]*\.?[0-9]*$/.test(val)) {
+                            setOpeningBalanceInput(val);
+                          }
+                        }}
+                        placeholder="0.00"
+                        className="w-48 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-mono font-bold focus:border-slate-400 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveOpeningBalance(false)}
+                        className="rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 transition"
+                      >
+                        Apply to Statement
+                      </button>
+                    </div>
+                  </div>
+                  <span className="text-[11px] text-slate-400 mt-5">
+                    (Custom customer balances are report-only and not stored in customer master records)
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )}
