@@ -35,12 +35,18 @@ import {
   Hash,
   Maximize2,
   ShieldCheck,
+  WandSparkles,
+  ChevronDown,
+  ChevronRight,
+  Check,
 } from "lucide-react";
 import {
   DocumentLayout,
   LayoutElement,
   ElementType,
   DesignerLayoutMode,
+  getAutoFitColumnsForDocType,
+  getDefaultColumnsForDocType,
 } from "@/lib/documentDesigner";
 import { applyFitBoxWithCollisionClearance } from "@/lib/documentLayoutEngine";
 import { type DocNumberingConfig } from "@/lib/documentNumbering";
@@ -366,6 +372,7 @@ export default function RightInspector({
   const [activeTabOverride, setActiveTabOverride] = useState<InspectorTab | null>(null);
   const currentElementId = selectedElement ? selectedElement.id : null;
   const [prevElementId, setPrevElementId] = useState<string | null>(currentElementId);
+  const [showAdvancedTableOptions, setShowAdvancedTableOptions] = useState(false);
 
   if (currentElementId !== prevElementId) {
     setPrevElementId(currentElementId);
@@ -2093,149 +2100,177 @@ export default function RightInspector({
               </span>
             </div>
 
-            {/* Table Heights & Padding (mm) */}
+            {/* Quick Actions Bar */}
+            <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 space-y-2">
+              <div className="text-[10px] font-semibold text-slate-300">Quick Layout Actions</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const autoCols = getAutoFitColumnsForDocType(layout.documentType, elem.tableSettings!.columns);
+                    onUpdateElement(elem.id, {
+                      tableSettings: { ...elem.tableSettings!, columns: autoCols },
+                    });
+                  }}
+                  className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 text-[10px] font-bold transition cursor-pointer"
+                  title="Automatically optimize column widths and alignments for this document type"
+                >
+                  <WandSparkles size={11} />
+                  <span>Auto Fit Columns</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUpdateElement(elem.id, {
+                      tableSettings: {
+                        ...elem.tableSettings!,
+                        rowHeight: 8.0,
+                        cellPadding: 1.8,
+                        fontSize: 8.5,
+                        headerFontSize: 9.0,
+                      },
+                    });
+                  }}
+                  className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700 text-[10px] font-semibold transition cursor-pointer"
+                  title="Reset row height and cell padding to balanced compact proportions"
+                >
+                  <Sparkles size={11} className="text-amber-400" />
+                  <span>Auto Fit Rows</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const cols = [...elem.tableSettings!.columns];
+                    const visibleCount = cols.filter((c) => c.visible).length;
+                    if (visibleCount > 0) {
+                      const share = Math.floor((100 / visibleCount) * 10) / 10;
+                      let rem = Math.round((100 - share * visibleCount) * 10) / 10;
+                      const updated = cols.map((c) => {
+                        if (!c.visible) return c;
+                        const width = rem > 0 ? share + rem : share;
+                        rem = 0;
+                        return { ...c, widthPct: width };
+                      });
+                      onUpdateElement(elem.id, {
+                        tableSettings: { ...elem.tableSettings!, columns: updated },
+                      });
+                    }
+                  }}
+                  className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700 text-[10px] font-semibold transition cursor-pointer"
+                  title="Distribute column widths evenly across all visible columns"
+                >
+                  <AlignJustify size={11} />
+                  <span>Distribute Evenly</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUpdateElement(elem.id, { width: 186, x: 12 });
+                  }}
+                  className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700 text-[10px] font-semibold transition cursor-pointer"
+                  title="Expand table width to standard printable A4 width (186mm centered)"
+                >
+                  <Maximize2 size={11} />
+                  <span>Fit Page Width</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm("Reset this table's columns, row height, and font sizes to defaults?")) {
+                      const defaultCols = getDefaultColumnsForDocType(layout.documentType);
+                      onUpdateElement(elem.id, {
+                        width: 186,
+                        x: 12,
+                        tableSettings: {
+                          ...elem.tableSettings!,
+                          columns: defaultCols,
+                          rowHeight: 8.5,
+                          headerHeight: 7.5,
+                          cellPadding: 1.8,
+                          fontSize: 8.5,
+                          headerFontSize: 8.5,
+                        },
+                      });
+                    }
+                  }}
+                  className="col-span-2 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 border border-rose-500/30 text-[10px] font-semibold transition cursor-pointer"
+                  title="Reset table columns, widths, and styling to system factory defaults"
+                >
+                  <RotateCcw size={11} />
+                  <span>Reset Table Layout</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Basic Controls: Dimensions & Position (mm) */}
             <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 space-y-2.5">
               <div className="text-[10px] font-semibold text-slate-300">
-                Dimensions &amp; Cell Padding (mm)
+                Table Width &amp; Position (mm)
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[9px] text-slate-400 block mb-1">Header H (mm)</label>
+                  <label className="text-[9px] text-slate-400 block mb-1">Width (mm)</label>
                   <div className="flex items-center gap-0.5">
                     <button
                       type="button"
-                      onClick={() => {
-                        const cur = elem.tableSettings!.headerHeight || elem.tableSettings!.rowHeight || 8.5;
-                        onUpdateElement(elem.id, {
-                          tableSettings: { ...elem.tableSettings!, headerHeight: Math.max(4, Math.round((cur - 0.5) * 10) / 10) },
-                        });
-                      }}
+                      onClick={() => onUpdateElement(elem.id, { width: Math.max(50, Math.round((elem.width - 2) * 10) / 10) })}
                       className="px-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
                     >
                       <Minus size={10} />
                     </button>
                     <input
                       type="number"
-                      min={4}
-                      max={25}
-                      step={0.5}
-                      value={elem.tableSettings.headerHeight || elem.tableSettings.rowHeight || 8.5}
-                      onChange={(e) =>
-                        onUpdateElement(elem.id, {
-                          tableSettings: { ...elem.tableSettings!, headerHeight: Number(e.target.value) || 8.5 },
-                        })
-                      }
+                      min={50}
+                      max={200}
+                      step={1}
+                      value={elem.width}
+                      onWheel={(e) => e.currentTarget.blur()}
+                      onChange={(e) => onUpdateElement(elem.id, { width: Number(e.target.value) || 186 })}
                       className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-xs text-white text-center font-mono"
                     />
                     <button
                       type="button"
-                      onClick={() => {
-                        const cur = elem.tableSettings!.headerHeight || elem.tableSettings!.rowHeight || 8.5;
-                        onUpdateElement(elem.id, {
-                          tableSettings: { ...elem.tableSettings!, headerHeight: Math.min(25, Math.round((cur + 0.5) * 10) / 10) },
-                        });
-                      }}
+                      onClick={() => onUpdateElement(elem.id, { width: Math.min(200, Math.round((elem.width + 2) * 10) / 10) })}
                       className="px-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
                     >
                       <Plus size={10} />
                     </button>
                   </div>
                 </div>
-
                 <div>
-                  <label className="text-[9px] text-slate-400 block mb-1">Row H (mm)</label>
-                  <div className="flex items-center gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const cur = elem.tableSettings!.rowHeight || 8.5;
-                        onUpdateElement(elem.id, {
-                          tableSettings: { ...elem.tableSettings!, rowHeight: Math.max(4, Math.round((cur - 0.5) * 10) / 10) },
-                        });
-                      }}
-                      className="px-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
-                    >
-                      <Minus size={10} />
-                    </button>
-                    <input
-                      type="number"
-                      min={4}
-                      max={25}
-                      step={0.5}
-                      value={elem.tableSettings.rowHeight || 8.5}
-                      onChange={(e) =>
-                        onUpdateElement(elem.id, {
-                          tableSettings: { ...elem.tableSettings!, rowHeight: Number(e.target.value) || 8.5 },
-                        })
-                      }
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-xs text-white text-center font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const cur = elem.tableSettings!.rowHeight || 8.5;
-                        onUpdateElement(elem.id, {
-                          tableSettings: { ...elem.tableSettings!, rowHeight: Math.min(25, Math.round((cur + 0.5) * 10) / 10) },
-                        });
-                      }}
-                      className="px-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
-                    >
-                      <Plus size={10} />
-                    </button>
-                  </div>
+                  <label className="text-[9px] text-slate-400 block mb-1">X (mm)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={150}
+                    step={1}
+                    value={elem.x}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    onChange={(e) => onUpdateElement(elem.id, { x: Number(e.target.value) || 0 })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-xs text-white text-center font-mono"
+                  />
                 </div>
-
                 <div>
-                  <label className="text-[9px] text-slate-400 block mb-1">Padding (mm)</label>
-                  <div className="flex items-center gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const cur = elem.tableSettings!.cellPadding ?? 1.2;
-                        onUpdateElement(elem.id, {
-                          tableSettings: { ...elem.tableSettings!, cellPadding: Math.max(0.2, Math.round((cur - 0.2) * 10) / 10) },
-                        });
-                      }}
-                      className="px-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
-                    >
-                      <Minus size={10} />
-                    </button>
-                    <input
-                      type="number"
-                      min={0.2}
-                      max={10}
-                      step={0.2}
-                      value={elem.tableSettings.cellPadding ?? ""}
-                      placeholder="Auto"
-                      onChange={(e) =>
-                        onUpdateElement(elem.id, {
-                          tableSettings: { ...elem.tableSettings!, cellPadding: e.target.value === "" ? undefined : Number(e.target.value) || 1 },
-                        })
-                      }
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-xs text-white text-center font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const cur = elem.tableSettings!.cellPadding ?? 1.2;
-                        onUpdateElement(elem.id, {
-                          tableSettings: { ...elem.tableSettings!, cellPadding: Math.min(10, Math.round((cur + 0.2) * 10) / 10) },
-                        });
-                      }}
-                      className="px-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
-                    >
-                      <Plus size={10} />
-                    </button>
-                  </div>
+                  <label className="text-[9px] text-slate-400 block mb-1">Y (mm)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={250}
+                    step={1}
+                    value={elem.y}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    onChange={(e) => onUpdateElement(elem.id, { y: Number(e.target.value) || 0 })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-xs text-white text-center font-mono"
+                  />
                 </div>
               </div>
             </div>
 
-            {/* Table Font Sizes (PT) */}
+            {/* Basic Controls: Table Font Size & Row Spacing */}
             <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 space-y-2.5">
               <div className="text-[10px] font-semibold text-slate-300 flex items-center gap-1">
                 <Type size={12} className="text-emerald-400" />
-                <span>Table Typography (PT)</span>
+                <span>Font Size &amp; Row Height</span>
               </div>
 
               {/* Table Base Body Font Size (PT) */}
@@ -2263,6 +2298,7 @@ export default function RightInspector({
                     max={20}
                     step={0.5}
                     value={elem.tableSettings.fontSize || 8.5}
+                    onWheel={(e) => e.currentTarget.blur()}
                     onChange={(e) =>
                       onUpdateElement(elem.id, {
                         tableSettings: { ...elem.tableSettings!, fontSize: Number(e.target.value) || 8.5 },
@@ -2326,6 +2362,7 @@ export default function RightInspector({
                     step={0.5}
                     value={elem.tableSettings.headerFontSize !== undefined ? elem.tableSettings.headerFontSize : ""}
                     placeholder="Same as Body"
+                    onWheel={(e) => e.currentTarget.blur()}
                     onChange={(e) =>
                       onUpdateElement(elem.id, {
                         tableSettings: {
@@ -2351,399 +2388,632 @@ export default function RightInspector({
                 </div>
               </div>
 
-              {/* Per-Column Content Font Sizes (Description, Qty, Unit, Rate, Amount) */}
-              <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-semibold block">Specific Column Typography (PT)</label>
-                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">Description (PT)</label>
-                    <input
-                      type="number"
-                      min={5}
-                      max={18}
-                      step={0.5}
-                      value={elem.tableSettings.descriptionFontSize ?? ""}
-                      placeholder="Inherit"
-                      onChange={(e) =>
-                        onUpdateElement(elem.id, {
-                          tableSettings: {
-                            ...elem.tableSettings!,
-                            descriptionFontSize: e.target.value === "" ? undefined : Number(e.target.value) || 8.5,
-                          },
-                        })
-                      }
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">Quantity (PT)</label>
-                    <input
-                      type="number"
-                      min={5}
-                      max={18}
-                      step={0.5}
-                      value={elem.tableSettings.qtyFontSize ?? ""}
-                      placeholder="Inherit"
-                      onChange={(e) =>
-                        onUpdateElement(elem.id, {
-                          tableSettings: {
-                            ...elem.tableSettings!,
-                            qtyFontSize: e.target.value === "" ? undefined : Number(e.target.value) || 8.5,
-                          },
-                        })
-                      }
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">Unit (PT)</label>
-                    <input
-                      type="number"
-                      min={5}
-                      max={18}
-                      step={0.5}
-                      value={elem.tableSettings.unitFontSize ?? ""}
-                      placeholder="Inherit"
-                      onChange={(e) =>
-                        onUpdateElement(elem.id, {
-                          tableSettings: {
-                            ...elem.tableSettings!,
-                            unitFontSize: e.target.value === "" ? undefined : Number(e.target.value) || 8.5,
-                          },
-                        })
-                      }
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[9px] text-slate-400 block mb-0.5">Rate (PT)</label>
-                    <input
-                      type="number"
-                      min={5}
-                      max={18}
-                      step={0.5}
-                      value={elem.tableSettings.rateFontSize ?? ""}
-                      placeholder="Inherit"
-                      onChange={(e) =>
-                        onUpdateElement(elem.id, {
-                          tableSettings: {
-                            ...elem.tableSettings!,
-                            rateFontSize: e.target.value === "" ? undefined : Number(e.target.value) || 8.5,
-                          },
-                        })
-                      }
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-[9px] text-slate-400 block mb-0.5">Total Amount (PT)</label>
-                    <input
-                      type="number"
-                      min={5}
-                      max={18}
-                      step={0.5}
-                      value={elem.tableSettings.amountFontSize ?? ""}
-                      placeholder="Inherit"
-                      onChange={(e) =>
-                        onUpdateElement(elem.id, {
-                          tableSettings: {
-                            ...elem.tableSettings!,
-                            amountFontSize: e.target.value === "" ? undefined : Number(e.target.value) || 8.5,
-                          },
-                        })
-                      }
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono"
-                    />
-                  </div>
+              {/* Row Height (mm) */}
+              <div className="pt-1.5 border-t border-slate-800/80">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] text-slate-400">Row Height (mm)</label>
+                  <span className="font-mono text-[10px] text-emerald-400 font-bold">{elem.tableSettings.rowHeight || 8.5} mm</span>
                 </div>
-              </div>
-            </div>
-
-            {/* Header & Border Colors */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Header Background</label>
                 <div className="flex items-center gap-1.5">
-                  <input
-                    type="color"
-                    value={elem.tableSettings.headerBg}
-                    onChange={(e) =>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = elem.tableSettings!.rowHeight || 8.5;
                       onUpdateElement(elem.id, {
-                        tableSettings: { ...elem.tableSettings!, headerBg: e.target.value },
-                      })
-                    }
-                    className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
-                  />
-                  <span className="font-mono text-[9px] text-slate-400">
-                    {elem.tableSettings.headerBg}
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Header Text</label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="color"
-                    value={elem.tableSettings.headerTextColor}
-                    onChange={(e) =>
-                      onUpdateElement(elem.id, {
-                        tableSettings: { ...elem.tableSettings!, headerTextColor: e.target.value },
-                      })
-                    }
-                    className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
-                  />
-                  <span className="font-mono text-[9px] text-slate-400">
-                    {elem.tableSettings.headerTextColor}
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Border Thickness (px)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={6}
-                  value={elem.tableSettings.borderThickness ?? 1}
-                  onChange={(e) =>
-                    onUpdateElement(elem.id, {
-                      tableSettings: { ...elem.tableSettings!, borderThickness: Number(e.target.value) || 0 },
-                    })
-                  }
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Border Color</label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="color"
-                    value={elem.tableSettings.borderColor || "#CBD5E1"}
-                    onChange={(e) =>
-                      onUpdateElement(elem.id, {
-                        tableSettings: { ...elem.tableSettings!, borderColor: e.target.value },
-                      })
-                    }
-                    className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
-                  />
-                  <span className="font-mono text-[9px] text-slate-400 truncate">
-                    {elem.tableSettings.borderColor || "#CBD5E1"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Table Columns Config */}
-            <div className="pt-2 space-y-2">
-              {/* Quick Toggle for Calculation Type (Measurement Takeoff) */}
-              {elem.tableSettings.columns.some((c) => c.key === "calc_type") && (
-                <div className="p-2.5 rounded-lg border border-amber-500/30 bg-amber-950/20 text-xs space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-amber-300 text-[11px]">
-                      Calculation Type &amp; Formula
-                    </span>
-                    {(() => {
-                      const calcColIdx = elem.tableSettings.columns.findIndex((c) => c.key === "calc_type");
-                      const isVisible = calcColIdx >= 0 && elem.tableSettings.columns[calcColIdx].visible;
-                      return (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = [...elem.tableSettings!.columns];
-                            if (calcColIdx >= 0) {
-                              updated[calcColIdx] = {
-                                ...updated[calcColIdx],
-                                visible: !isVisible,
-                              };
-                              onUpdateElement(elem.id, {
-                                tableSettings: { ...elem.tableSettings!, columns: updated },
-                              });
-                            }
-                          }}
-                          className={`px-2.5 py-1 rounded text-[10px] font-bold transition-colors ${
-                            isVisible
-                              ? "bg-amber-500 text-slate-950 hover:bg-amber-400"
-                              : "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-white"
-                          }`}
-                          title="Toggle Calculation Type & Formula column in Measurement Sheet"
-                        >
-                          {isVisible ? "Visible" : "Hidden (Removed)"}
-                        </button>
-                      );
-                    })()}
-                  </div>
-                  <p className="text-[10px] text-slate-400 leading-tight">
-                    Formulas are hidden by default for clean presentation. Click to toggle this column in the PDF.
-                  </p>
-                </div>
-              )}
-
-              {/* Quick Toggle for UAE VAT in Takeoff Summary (Measurement Sheet) */}
-              {layout.documentType === "measurement_sheet" && (
-                <div className="p-2.5 rounded-lg border border-emerald-500/30 bg-emerald-950/20 text-xs space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-emerald-300 text-[11px]">
-                      UAE VAT (5%) in Takeoff Summary
-                    </span>
-                    {(() => {
-                      const totalsElem = layout.elements.find((e) => e.type === "totals");
-                      const isVatDisabled = totalsElem?.customText === "vat_disabled";
-                      return (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (totalsElem) {
-                              onUpdateElement(totalsElem.id, {
-                                customText: isVatDisabled ? undefined : "vat_disabled",
-                              });
-                            }
-                          }}
-                          className={`px-2.5 py-1 rounded text-[10px] font-bold transition-colors ${
-                            !isVatDisabled
-                              ? "bg-emerald-500 text-slate-950 hover:bg-emerald-400"
-                              : "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-white"
-                          }`}
-                          title="Toggle 5% UAE VAT in Takeoff Summary"
-                        >
-                          {!isVatDisabled ? "5% VAT: Active" : "VAT: Disabled"}
-                        </button>
-                      );
-                    })()}
-                  </div>
-                  <p className="text-[10px] text-slate-400 leading-tight">
-                    Shows Net Subtotal, 5% UAE VAT, and Grand Total in the Takeoff Summary card.
-                  </p>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-bold text-slate-400 block">
-                  Columns Configuration (Width % &amp; Font PT)
-                </label>
-                <span className="text-[9px] text-slate-500">Total: {elem.tableSettings.columns.filter((c) => c.visible).reduce((s, c) => s + c.widthPct, 0)}%</span>
-              </div>
-              <div className="space-y-1.5 pr-1">
-                {elem.tableSettings.columns.map((col, idx) => (
-                  <div
-                    key={col.key}
-                    className="flex items-center justify-between p-1.5 rounded bg-slate-800/80 border border-slate-700/80 text-[11px]"
+                        tableSettings: { ...elem.tableSettings!, rowHeight: Math.max(5, Math.round((cur - 0.5) * 10) / 10) },
+                      });
+                    }}
+                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
                   >
-                    <div className="flex items-center gap-1.5 truncate max-w-[130px]">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const updated = [...elem.tableSettings!.columns];
-                          updated[idx] = { ...col, visible: !col.visible };
-                          onUpdateElement(elem.id, {
-                            tableSettings: { ...elem.tableSettings!, columns: updated },
-                          });
-                        }}
-                        className={`p-0.5 rounded ${
-                          col.visible ? "text-amber-400" : "text-slate-600"
-                        }`}
-                        title={col.visible ? "Hide Column" : "Show Column"}
-                      >
-                        {col.visible ? <Eye size={12} /> : <EyeOff size={12} />}
-                      </button>
-                      <span className={`truncate ${col.visible ? "text-slate-200" : "text-slate-500 line-through"}`}>
-                        {col.label}
-                      </span>
-                    </div>
+                    <Minus size={11} />
+                  </button>
+                  <input
+                    type="number"
+                    min={5}
+                    max={25}
+                    step={0.5}
+                    value={elem.tableSettings.rowHeight || 8.5}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    onChange={(e) =>
+                      onUpdateElement(elem.id, {
+                        tableSettings: { ...elem.tableSettings!, rowHeight: Number(e.target.value) || 8.5 },
+                      })
+                    }
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono font-bold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = elem.tableSettings!.rowHeight || 8.5;
+                      onUpdateElement(elem.id, {
+                        tableSettings: { ...elem.tableSettings!, rowHeight: Math.min(30, Math.round((cur + 0.5) * 10) / 10) },
+                      });
+                    }}
+                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                  >
+                    <Plus size={11} />
+                  </button>
+                </div>
+              </div>
+            </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <div className="flex items-center gap-0.5" title="Column Font Size in PT (leave blank to inherit table size)">
+            {/* Basic Controls: Columns Configuration, Widths & Alignments */}
+            {(() => {
+              const visibleCols = elem.tableSettings.columns.filter((c) => c.visible);
+              const totalWidth = visibleCols.reduce((s, c) => s + c.widthPct, 0);
+              const isWidthOverloaded = Math.abs(totalWidth - 100) > 0.5;
+
+              return (
+                <div className="pt-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-300">
+                      Columns, Widths &amp; Alignments
+                    </label>
+                    <span className={`text-[10px] font-mono font-bold ${isWidthOverloaded ? "text-amber-400" : "text-emerald-400"}`}>
+                      Total: {Math.round(totalWidth * 10) / 10}%
+                    </span>
+                  </div>
+
+                  {/* Overflow / Underflow Warning Banner */}
+                  {isWidthOverloaded && (
+                    <div className="p-2.5 rounded-lg border border-amber-500/40 bg-amber-950/30 text-xs space-y-1.5">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-semibold text-amber-300 flex items-center gap-1.5 text-[11px]">
+                          <AlertTriangle size={13} className="text-amber-400 flex-shrink-0" />
+                          <span>Visible Sum: {Math.round(totalWidth * 10) / 10}%</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (visibleCols.length === 0) return;
+                            const factor = 100 / totalWidth;
+                            let assigned = 0;
+                            const updated = elem.tableSettings!.columns.map((c, i) => {
+                              if (!c.visible) return c;
+                              if (i === elem.tableSettings!.columns.length - 1 || visibleCols[visibleCols.length - 1]?.key === c.key) {
+                                return { ...c, widthPct: Math.max(4, 100 - assigned) };
+                              }
+                              const newW = Math.max(4, Math.round(c.widthPct * factor));
+                              assigned += newW;
+                              return { ...c, widthPct: newW };
+                            });
+                            onUpdateElement(elem.id, {
+                              tableSettings: { ...elem.tableSettings!, columns: updated },
+                            });
+                          }}
+                          className="px-2 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] transition cursor-pointer flex-shrink-0"
+                        >
+                          Auto-Balance to 100%
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-amber-300/80 leading-tight">
+                        Columns should equal 100% so tables fit standard printable margins without horizontal overflow.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Column Rows */}
+                  <div className="space-y-1.5 pr-0.5">
+                    {elem.tableSettings.columns.map((col, idx) => (
+                      <div
+                        key={col.key}
+                        className="flex flex-col gap-1 p-1.5 rounded bg-slate-900/90 border border-slate-800 text-[11px]"
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1.5 truncate max-w-[140px]">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...elem.tableSettings!.columns];
+                                updated[idx] = { ...col, visible: !col.visible };
+                                onUpdateElement(elem.id, {
+                                  tableSettings: { ...elem.tableSettings!, columns: updated },
+                                });
+                              }}
+                              className={`p-0.5 rounded ${
+                                col.visible ? "text-amber-400" : "text-slate-600"
+                              }`}
+                              title={col.visible ? "Hide Column" : "Show Column"}
+                            >
+                              {col.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+                            </button>
+                            <span className={`truncate text-xs font-medium ${col.visible ? "text-slate-200" : "text-slate-500 line-through"}`}>
+                              {col.label || col.key}
+                            </span>
+                          </div>
+
+                          {/* Alignments (Left / Center / Right) */}
+                          <div className="flex items-center bg-slate-950 border border-slate-800 rounded p-0.5 gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...elem.tableSettings!.columns];
+                                updated[idx] = { ...col, align: "left" };
+                                onUpdateElement(elem.id, {
+                                  tableSettings: { ...elem.tableSettings!, columns: updated },
+                                });
+                              }}
+                              className={`p-1 rounded text-[9px] transition ${
+                                col.align === "left" ? "bg-emerald-600 text-white font-bold" : "text-slate-400 hover:text-white"
+                              }`}
+                              title="Align Left"
+                            >
+                              <AlignLeft size={10} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...elem.tableSettings!.columns];
+                                updated[idx] = { ...col, align: "center" };
+                                onUpdateElement(elem.id, {
+                                  tableSettings: { ...elem.tableSettings!, columns: updated },
+                                });
+                              }}
+                              className={`p-1 rounded text-[9px] transition ${
+                                col.align === "center" ? "bg-emerald-600 text-white font-bold" : "text-slate-400 hover:text-white"
+                              }`}
+                              title="Align Center"
+                            >
+                              <AlignCenter size={10} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...elem.tableSettings!.columns];
+                                updated[idx] = { ...col, align: "right" };
+                                onUpdateElement(elem.id, {
+                                  tableSettings: { ...elem.tableSettings!, columns: updated },
+                                });
+                              }}
+                              className={`p-1 rounded text-[9px] transition ${
+                                col.align === "right" ? "bg-emerald-600 text-white font-bold" : "text-slate-400 hover:text-white"
+                              }`}
+                              title="Align Right"
+                            >
+                              <AlignRight size={10} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Width % & PT Font Size Inputs */}
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-800/60 text-[10px]">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[9px] text-slate-400">Width:</span>
+                            <input
+                              type="number"
+                              min={3}
+                              max={80}
+                              value={col.widthPct}
+                              onWheel={(e) => e.currentTarget.blur()}
+                              onChange={(e) => {
+                                const updated = [...elem.tableSettings!.columns];
+                                updated[idx] = { ...col, widthPct: Number(e.target.value) || 5 };
+                                onUpdateElement(elem.id, {
+                                  tableSettings: { ...elem.tableSettings!, columns: updated },
+                                });
+                              }}
+                              className="w-12 bg-slate-950 border border-slate-700 rounded px-1 py-0.5 text-right font-mono text-[10px] text-white"
+                            />
+                            <span className="text-[8px] text-slate-400">%</span>
+                          </div>
+
+                          <div className="flex items-center gap-1" title="Per-column font size override in PT">
+                            <span className="text-[9px] text-slate-400">Font:</span>
+                            <input
+                              type="number"
+                              min={5}
+                              max={18}
+                              step={0.5}
+                              value={col.fontSize ?? ""}
+                              placeholder="Auto"
+                              onWheel={(e) => e.currentTarget.blur()}
+                              onChange={(e) => {
+                                const updated = [...elem.tableSettings!.columns];
+                                updated[idx] = { ...col, fontSize: e.target.value === "" ? undefined : Number(e.target.value) || 8.5 };
+                                onUpdateElement(elem.id, {
+                                  tableSettings: { ...elem.tableSettings!, columns: updated },
+                                });
+                              }}
+                              className="w-12 bg-slate-950 border border-slate-700 rounded px-1 py-0.5 text-right font-mono text-[10px] text-emerald-300"
+                            />
+                            <span className="text-[8px] text-slate-400">pt</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Expandable Advanced Table Options */}
+            <div className="pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowAdvancedTableOptions((prev) => !prev)}
+                className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-900 hover:bg-slate-800/80 border border-slate-800 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <Sliders size={13} className="text-emerald-400" />
+                  <span>Advanced Table Styling &amp; Labels</span>
+                </span>
+                {showAdvancedTableOptions ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+
+              {showAdvancedTableOptions && (
+                <div className="mt-3 space-y-3 pl-0.5">
+                  {/* Header & Border Colors */}
+                  <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 space-y-2.5">
+                    <div className="text-[10px] font-semibold text-slate-300">Colors &amp; Borders</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-1">Header Background</label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="color"
+                            value={elem.tableSettings.headerBg}
+                            onChange={(e) =>
+                              onUpdateElement(elem.id, {
+                                tableSettings: { ...elem.tableSettings!, headerBg: e.target.value },
+                              })
+                            }
+                            className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
+                          />
+                          <span className="font-mono text-[9px] text-slate-400">
+                            {elem.tableSettings.headerBg}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-1">Header Text</label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="color"
+                            value={elem.tableSettings.headerTextColor}
+                            onChange={(e) =>
+                              onUpdateElement(elem.id, {
+                                tableSettings: { ...elem.tableSettings!, headerTextColor: e.target.value },
+                              })
+                            }
+                            className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
+                          />
+                          <span className="font-mono text-[9px] text-slate-400">
+                            {elem.tableSettings.headerTextColor}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-1">Border Thickness (px)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={6}
+                          value={elem.tableSettings.borderThickness ?? 1}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              tableSettings: { ...elem.tableSettings!, borderThickness: Number(e.target.value) || 0 },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-1">Border Color</label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="color"
+                            value={elem.tableSettings.borderColor || "#CBD5E1"}
+                            onChange={(e) =>
+                              onUpdateElement(elem.id, {
+                                tableSettings: { ...elem.tableSettings!, borderColor: e.target.value },
+                              })
+                            }
+                            className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer"
+                          />
+                          <span className="font-mono text-[9px] text-slate-400 truncate">
+                            {elem.tableSettings.borderColor || "#CBD5E1"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Cell Padding & Header Height */}
+                  <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 space-y-2">
+                    <div className="text-[10px] font-semibold text-slate-300">Padding &amp; Header Metrics</div>
+                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">Cell Padding (mm)</label>
+                        <input
+                          type="number"
+                          min={0.5}
+                          max={8}
+                          step={0.2}
+                          value={elem.tableSettings.cellPadding ?? 1.8}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              tableSettings: {
+                                ...elem.tableSettings!,
+                                cellPadding: Number(e.target.value) || 1.8,
+                              },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">Header Height (mm)</label>
+                        <input
+                          type="number"
+                          min={4}
+                          max={20}
+                          step={0.5}
+                          value={elem.tableSettings.headerHeight ?? 7.5}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              tableSettings: {
+                                ...elem.tableSettings!,
+                                headerHeight: Number(e.target.value) || 7.5,
+                              },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Specific Column Typography (PT) */}
+                  <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 space-y-2">
+                    <label className="text-[10px] text-slate-300 font-semibold block">Specific Column Typography Overrides (PT)</label>
+                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">Description (PT)</label>
                         <input
                           type="number"
                           min={5}
                           max={18}
                           step={0.5}
-                          value={col.fontSize ?? ""}
-                          placeholder="pt"
-                          onChange={(e) => {
-                            const updated = [...elem.tableSettings!.columns];
-                            updated[idx] = { ...col, fontSize: e.target.value === "" ? undefined : Number(e.target.value) || 8.5 };
+                          value={elem.tableSettings.descriptionFontSize ?? ""}
+                          placeholder="Inherit"
+                          onWheel={(e) => e.currentTarget.blur()}
+                          onChange={(e) =>
                             onUpdateElement(elem.id, {
-                              tableSettings: { ...elem.tableSettings!, columns: updated },
-                            });
-                          }}
-                          className="w-11 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-right font-mono text-[10px] text-emerald-300"
+                              tableSettings: {
+                                ...elem.tableSettings!,
+                                descriptionFontSize: e.target.value === "" ? undefined : Number(e.target.value) || 8.5,
+                              },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono"
                         />
-                        <span className="text-[8px] text-slate-500">pt</span>
                       </div>
-                      <div className="flex items-center gap-0.5" title="Column Width Percentage">
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">Quantity (PT)</label>
                         <input
                           type="number"
                           min={5}
-                          max={80}
-                          value={col.widthPct}
-                          onChange={(e) => {
-                            const updated = [...elem.tableSettings!.columns];
-                            updated[idx] = { ...col, widthPct: Number(e.target.value) || 10 };
+                          max={18}
+                          step={0.5}
+                          value={elem.tableSettings.qtyFontSize ?? ""}
+                          placeholder="Inherit"
+                          onWheel={(e) => e.currentTarget.blur()}
+                          onChange={(e) =>
                             onUpdateElement(elem.id, {
-                              tableSettings: { ...elem.tableSettings!, columns: updated },
-                            });
-                          }}
-                          className="w-11 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-right font-mono text-[10px] text-white"
+                              tableSettings: {
+                                ...elem.tableSettings!,
+                                qtyFontSize: e.target.value === "" ? undefined : Number(e.target.value) || 8.5,
+                              },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono"
                         />
-                        <span className="text-[8px] text-slate-500">%</span>
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">Unit (PT)</label>
+                        <input
+                          type="number"
+                          min={5}
+                          max={18}
+                          step={0.5}
+                          value={elem.tableSettings.unitFontSize ?? ""}
+                          placeholder="Inherit"
+                          onWheel={(e) => e.currentTarget.blur()}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              tableSettings: {
+                                ...elem.tableSettings!,
+                                unitFontSize: e.target.value === "" ? undefined : Number(e.target.value) || 8.5,
+                              },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-slate-400 block mb-0.5">Rate (PT)</label>
+                        <input
+                          type="number"
+                          min={5}
+                          max={18}
+                          step={0.5}
+                          value={elem.tableSettings.rateFontSize ?? ""}
+                          placeholder="Inherit"
+                          onWheel={(e) => e.currentTarget.blur()}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              tableSettings: {
+                                ...elem.tableSettings!,
+                                rateFontSize: e.target.value === "" ? undefined : Number(e.target.value) || 8.5,
+                              },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="text-[9px] text-slate-400 block mb-0.5">Total Amount (PT)</label>
+                        <input
+                          type="number"
+                          min={5}
+                          max={18}
+                          step={0.5}
+                          value={elem.tableSettings.amountFontSize ?? ""}
+                          placeholder="Inherit"
+                          onWheel={(e) => e.currentTarget.blur()}
+                          onChange={(e) =>
+                            onUpdateElement(elem.id, {
+                              tableSettings: {
+                                ...elem.tableSettings!,
+                                amountFontSize: e.target.value === "" ? undefined : Number(e.target.value) || 8.5,
+                              },
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono"
+                        />
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
 
-              {/* Column Header Labels Editor */}
-              <div className="pt-2 border-t border-slate-700">
-                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2 flex items-center gap-1.5">
-                  <Type size={12} className="text-emerald-400" />
-                  <span>Column Header Labels</span>
-                </div>
-                <p className="text-[10px] text-slate-500 mb-2">Customize English and Arabic labels for each visible column.</p>
-                <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {elem.tableSettings.columns
-                    .filter((col) => col.visible)
-                    .map((col) => (
-                      <div key={col.key} className="p-2 bg-slate-800/50 rounded border border-slate-700">
-                        <div className="text-[9px] font-mono text-slate-500 mb-1">{col.key}</div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-[9px] text-slate-400 block mb-0.5">English Label</label>
-                            <input
-                              type="text"
-                              value={col.label}
-                              onChange={(e) => {
-                                const newColumns = elem.tableSettings!.columns.map((c) =>
-                                  c.key === col.key ? { ...c, label: e.target.value } : c
-                                );
-                                onUpdateElement(elem.id, { tableSettings: { ...elem.tableSettings!, columns: newColumns } });
+                  {/* Quick Toggle for Calculation Type (Measurement Takeoff) */}
+                  {elem.tableSettings.columns.some((c) => c.key === "calc_type") && (
+                    <div className="p-2.5 rounded-lg border border-amber-500/30 bg-amber-950/20 text-xs space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-amber-300 text-[11px]">
+                          Calculation Type &amp; Formula
+                        </span>
+                        {(() => {
+                          const calcColIdx = elem.tableSettings.columns.findIndex((c) => c.key === "calc_type");
+                          const isVisible = calcColIdx >= 0 && elem.tableSettings.columns[calcColIdx].visible;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...elem.tableSettings!.columns];
+                                if (calcColIdx >= 0) {
+                                  updated[calcColIdx] = {
+                                    ...updated[calcColIdx],
+                                    visible: !isVisible,
+                                  };
+                                  onUpdateElement(elem.id, {
+                                    tableSettings: { ...elem.tableSettings!, columns: updated },
+                                  });
+                                }
                               }}
-                              className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-emerald-400"
-                              placeholder="English label"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[9px] text-slate-400 block mb-0.5">Arabic Label (optional)</label>
-                            <input
-                              type="text"
-                              value={col.labelAr || ""}
-                              onChange={(e) => {
-                                const newColumns = elem.tableSettings!.columns.map((c) =>
-                                  c.key === col.key ? { ...c, labelAr: e.target.value || undefined } : c
-                                );
-                                onUpdateElement(elem.id, { tableSettings: { ...elem.tableSettings!, columns: newColumns } });
-                              }}
-                              className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-emerald-400"
-                              placeholder="Arabic label"
-                              dir="rtl"
-                            />
-                          </div>
-                        </div>
+                              className={`px-2.5 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                                isVisible
+                                  ? "bg-amber-500 text-slate-950 hover:bg-amber-400"
+                                  : "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-white"
+                              }`}
+                              title="Toggle Calculation Type & Formula column in Measurement Sheet"
+                            >
+                              {isVisible ? "Visible" : "Hidden"}
+                            </button>
+                          );
+                        })()}
                       </div>
-                    ))}
-              </div>
+                      <p className="text-[10px] text-slate-400 leading-tight">
+                        Formulas are hidden by default for clean presentation. Click to toggle this column in the PDF.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Quick Toggle for UAE VAT in Takeoff Summary (Measurement Sheet) */}
+                  {layout.documentType === "measurement_sheet" && (
+                    <div className="p-2.5 rounded-lg border border-emerald-500/30 bg-emerald-950/20 text-xs space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-emerald-300 text-[11px]">
+                          UAE VAT (5%) in Takeoff Summary
+                        </span>
+                        {(() => {
+                          const totalsElem = layout.elements.find((e) => e.type === "totals");
+                          const isVatDisabled = totalsElem?.customText === "vat_disabled";
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (totalsElem) {
+                                  onUpdateElement(totalsElem.id, {
+                                    customText: isVatDisabled ? undefined : "vat_disabled",
+                                  });
+                                }
+                              }}
+                              className={`px-2.5 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                                !isVatDisabled
+                                  ? "bg-emerald-500 text-slate-950 hover:bg-emerald-400"
+                                  : "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-white"
+                              }`}
+                              title="Toggle 5% UAE VAT in Takeoff Summary"
+                            >
+                              {!isVatDisabled ? "5% VAT: Active" : "VAT: Disabled"}
+                            </button>
+                          );
+                        })()}
+                      </div>
+                      <p className="text-[10px] text-slate-400 leading-tight">
+                        Shows Net Subtotal, 5% UAE VAT, and Grand Total in the Takeoff Summary card.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Column Header Labels Editor */}
+                  <div className="pt-2 border-t border-slate-800">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2 flex items-center gap-1.5">
+                      <Type size={12} className="text-emerald-400" />
+                      <span>Custom Column Header Labels</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mb-2">Customize English and Arabic labels for each visible column.</p>
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {elem.tableSettings.columns
+                        .filter((col) => col.visible)
+                        .map((col) => (
+                          <div key={col.key} className="p-2 bg-slate-900 rounded border border-slate-800">
+                            <div className="text-[9px] font-mono text-slate-500 mb-1">{col.key}</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[9px] text-slate-400 block mb-0.5">English Label</label>
+                                <input
+                                  type="text"
+                                  value={col.label}
+                                  onChange={(e) => {
+                                    const newColumns = elem.tableSettings!.columns.map((c) =>
+                                      c.key === col.key ? { ...c, label: e.target.value } : c
+                                    );
+                                    onUpdateElement(elem.id, { tableSettings: { ...elem.tableSettings!, columns: newColumns } });
+                                  }}
+                                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-emerald-400"
+                                  placeholder="English label"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[9px] text-slate-400 block mb-0.5">Arabic Label</label>
+                                <input
+                                  type="text"
+                                  value={col.labelAr || ""}
+                                  onChange={(e) => {
+                                    const newColumns = elem.tableSettings!.columns.map((c) =>
+                                      c.key === col.key ? { ...c, labelAr: e.target.value || undefined } : c
+                                    );
+                                    onUpdateElement(elem.id, { tableSettings: { ...elem.tableSettings!, columns: newColumns } });
+                                  }}
+                                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-emerald-400"
+                                  placeholder="Arabic label"
+                                  dir="rtl"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -1387,7 +1387,6 @@ export default function DynamicDocumentRenderer({
               border: `${tSettings.borderThickness}px solid ${tableBorderColor}`,
               fontSize: `${tableBaseFontSizePt}pt`,
               boxSizing: "border-box",
-              minHeight: isDesignerPreview ? `${elem.height}mm` : undefined,
             }}
           >
             <table className="w-full text-left border-collapse" style={{ width: "100%", tableLayout: "fixed" }}>
@@ -1404,10 +1403,8 @@ export default function DynamicDocumentRenderer({
                   {activeCols.map((col, cIdx) => {
                     const colHeaderPt = col.fontSize !== undefined ? col.fontSize : tableHeaderFontSizePt;
                     const labelContent = col.labelAr ? `${col.label}<br/><span dir="rtl" className="font-arabic text-[9px] text-slate-300">${col.labelAr}</span>` : col.label;
-                    const isTargetAmountCol = ["unit_price", "vat_amount", "line_total", "rate", "discount"].includes(col.key);
-                    const effectiveAlign = layout.documentType === "customer_statement"
-                      ? (col.align || "left")
-                      : (isTargetAmountCol && (col.align === "right" || !col.align) ? "center" : (col.align || "left"));
+                    const isTargetAmountCol = ["unit_price", "vat_amount", "line_total", "rate", "discount", "debit", "credit", "balance"].includes(col.key);
+                    const effectiveAlign = col.align ? col.align : isTargetAmountCol ? "right" : "left";
                     const isStatement = layout.documentType === "customer_statement";
                     return (
                       <th
@@ -1489,7 +1486,7 @@ export default function DynamicDocumentRenderer({
                         else if (col.key === "dimensions") val = item.dimensions || "—";
                         else if (col.key === "calc_type") val = item.calc_type_formula || item.calc_type || "—";
                         else if (col.key === "result") val = item.result_display || (item.calculated_total ? `${item.calculated_total} ${item.result_unit || "m"}` : `${Number(item.quantity).toFixed(3)} ${item.unit || "m"}`);
-                        else if (col.key === "rate") val = item.unit_price ? `AED ${Number(item.unit_price).toFixed(2)}${item.result_unit ? ` / ${item.result_unit}` : ""}` : "—";
+                        else if (col.key === "rate") val = item.unit_price != null ? Number(item.unit_price).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
 
                         const isMonetary = ["unit_price", "discount", "vat_amount", "line_total", "debit", "credit", "balance", "rate", "result"].includes(col.key);
 
@@ -1510,10 +1507,8 @@ export default function DynamicDocumentRenderer({
                           }
                         }
 
-                        const isTargetAmountCol = ["unit_price", "vat_amount", "line_total", "rate", "discount"].includes(col.key);
-                        const effectiveAlign = layout.documentType === "customer_statement" && ["debit", "credit", "balance", "line_total"].includes(col.key)
-                          ? (col.align || "right")
-                          : isTargetAmountCol && (col.align === "right" || !col.align) ? "center" : (col.align || "left");
+                        const isTargetAmountCol = ["unit_price", "vat_amount", "line_total", "rate", "discount", "debit", "credit", "balance"].includes(col.key);
+                        const effectiveAlign = col.align ? col.align : isTargetAmountCol ? "right" : "left";
 
                         const isNoWrap = isMonetary || ["type", "date", "reference"].includes(col.key);
 
@@ -2640,8 +2635,8 @@ export default function DynamicDocumentRenderer({
                 left: `${posX}mm`,
                 top: `${posY}mm`,
                 width: `${width}mm`,
-                minHeight: elem.type === "line_items" && !isDesignerPreview ? `${height}mm` : undefined,
-                height: elem.type === "line_items" && !isDesignerPreview ? "auto" : `${height}mm`,
+                minHeight: undefined,
+                height: elem.type === "line_items" ? "auto" : `${height}mm`,
                 zIndex: elem.zIndex,
               }}
             >

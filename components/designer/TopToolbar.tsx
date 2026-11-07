@@ -32,6 +32,8 @@ import {
   Layers,
   Check,
   Search,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { DocumentTypeId, DOCUMENT_TYPE_OPTIONS, DesignerLayoutMode } from "@/lib/documentDesigner";
 import type { DocumentStylePreset } from "@/lib/documentStylePresetModel";
@@ -329,6 +331,52 @@ export default function TopToolbar({
               aria-label="Redo"
             >
               <Redo2 size={14} />
+            </button>
+          </div>
+
+          {/* Zoom & View Scale Cluster */}
+          <div className="flex items-center gap-1 border-l border-slate-800 pl-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => onZoomChange(Math.max(0.3, Math.round((zoom - 0.1) * 10) / 10))}
+              className="p-1.5 rounded-lg border border-transparent hover:border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white transition cursor-pointer"
+              title="Zoom Out"
+              aria-label="Zoom Out"
+            >
+              <ZoomOut size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onZoomChange(1.0)}
+              className="px-1.5 py-0.5 rounded text-[11px] font-mono font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition cursor-pointer border border-transparent hover:border-slate-700"
+              title="Click to reset to 100% Zoom"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              type="button"
+              onClick={() => onZoomChange(Math.min(2.0, Math.round((zoom + 0.1) * 10) / 10))}
+              className="p-1.5 rounded-lg border border-transparent hover:border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white transition cursor-pointer"
+              title="Zoom In"
+              aria-label="Zoom In"
+            >
+              <ZoomIn size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={onFitWidth}
+              className="hidden lg:inline-flex px-2 py-1 rounded text-[11px] font-semibold text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/80 transition cursor-pointer"
+              title="Fit Document Width to Viewport"
+            >
+              Fit Width
+            </button>
+            <button
+              type="button"
+              onClick={onFitPage}
+              className="hidden lg:inline-flex px-2 py-1 rounded text-[11px] font-semibold text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/80 transition cursor-pointer"
+              title="Fit Entire Page in Viewport"
+            >
+              Fit Page
             </button>
           </div>
         </div>

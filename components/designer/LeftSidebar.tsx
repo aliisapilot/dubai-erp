@@ -223,6 +223,29 @@ export default function LeftSidebar({
             Layers
           </button>
         </div>
+        {/* Search Input for Sections & Layers */}
+        {sidebarMode !== "colors" && (
+          <div className="relative flex items-center">
+            <Search size={13} className="absolute left-2.5 text-slate-500 pointer-events-none" />
+            <input
+              type="text"
+              placeholder={sidebarMode === "sections" ? "Search sections & elements…" : "Search layers…"}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-950 text-xs pl-8 pr-7 py-1.5 rounded-lg border border-slate-800 text-slate-200 placeholder-slate-500 outline-none focus:border-amber-400 transition"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 text-slate-500 hover:text-slate-300 text-xs cursor-pointer"
+                title="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Mode 2: Colors Customization */}
@@ -264,10 +287,12 @@ export default function LeftSidebar({
 
           {/* Render the 6 Content Sections */}
           {SECTION_CATEGORIES.map((cat) => {
-            const sectionElements = elements.filter((el) => cat.types.includes(el.type));
+            const sectionElements = elements.filter(
+              (el) => cat.types.includes(el.type) && (searchQuery ? el.label.toLowerCase().includes(searchQuery.toLowerCase()) : true)
+            );
             if (sectionElements.length === 0) return null;
 
-            const isCollapsed = Boolean(collapsedSections[cat.id]);
+            const isCollapsed = Boolean(collapsedSections[cat.id]) && !searchQuery;
             const hasSelected = sectionElements.some((el) => el.id === selectedElementId);
 
             return (
@@ -354,19 +379,6 @@ export default function LeftSidebar({
       {/* Mode 2: Advanced Layer Reordering (Z-Index) */}
       {sidebarMode === "layers" && (
         <div className="flex flex-col flex-1 min-h-0">
-          <div className="px-3 py-2 border-b border-slate-800">
-            <div className="relative flex items-center">
-              <Search size={13} className="absolute left-2.5 text-slate-500" />
-              <input
-                type="text"
-                placeholder="Search layers..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-800/80 text-xs pl-8 pr-3 py-1.5 rounded-lg border border-slate-700 text-slate-200 placeholder-slate-500 outline-none focus:border-amber-400"
-              />
-            </div>
-          </div>
-
           <div className="designer-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 space-y-1">
             {sortedElements.map((elem) => {
               const isSelected = selectedElementId === elem.id;

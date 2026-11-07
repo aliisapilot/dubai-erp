@@ -651,7 +651,7 @@ export default function DocumentCanvas({
           onAddImage(file);
         }
       }}
-      className="designer-scrollbar designer-canvas-scroll relative flex min-h-0 min-w-0 flex-1 select-none items-start justify-start overflow-auto overscroll-contain bg-slate-100 p-6 sm:p-8 md:p-10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-500/60"
+      className="designer-scrollbar designer-canvas-scroll relative flex min-h-0 min-w-0 flex-1 select-none items-start justify-start overflow-auto overscroll-contain bg-slate-100 p-6 sm:p-8 md:p-10 pb-40 sm:pb-48 md:pb-60 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-500/60"
       style={{
         backgroundImage: "radial-gradient(circle at center, rgba(148,163,184,0.3) 1px, transparent 1px)",
         backgroundSize: "20px 20px",
@@ -753,6 +753,8 @@ export default function DocumentCanvas({
                   : elem.width;
                 const boxHeight = isBorder
                   ? (elem.id === "border_top" || elem.id === "border_bottom" ? Math.max(elem.height, 4) : elem.height)
+                  : elem.type === "line_items" && dim?.heightMm
+                  ? Math.max(dim.heightMm, 12)
                   : elem.height;
 
                 // Overflow boundary calculation

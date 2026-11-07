@@ -1286,10 +1286,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 }
 
-/* Keep print surfaces and PDF documents completely white — never dark */
+/* Keep print surfaces and PDF documents clean with proper high-contrast shading */
 @media print {
-  .bg-white, .bg-slate-50, .bg-slate-100 {
+  .bg-white {
     background-color: #ffffff !important;
+  }
+  .bg-slate-50 {
+    background-color: #f8fafc !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .bg-slate-100 {
+    background-color: #f1f5f9 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   .text-slate-900, .text-slate-800, .text-slate-700, .text-slate-600 {
     color: #0f172a !important;

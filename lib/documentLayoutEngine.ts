@@ -752,7 +752,9 @@ export function computeIntelligentFitProfile(
     tiers = allTiers.slice(2);
   } else {
     // Balanced mode tries all tiers in progressive order
-    tiers = allTiers;
+    // Balanced mode: for 15 or fewer simple rows, attempt single-page fitting.
+    // For 18+ rows, do not force onto one page with ultra-dense unreadable text; paginate cleanly.
+    tiers = totalItems >= 18 ? allTiers.slice(0, 2) : allTiers;
   }
 
   for (const candidate of tiers) {
@@ -891,18 +893,7 @@ export function computePaginationPlan(
   const rowHeight = fit.rowHeight;
   const headerHeight = fit.headerHeight;
 
-  // Space on final page (with followers)
   const followerSpan = fit.followerSpan;
-  const spaceForTableWithFollowers = Math.max(
-    rowHeight * 2,
-    maxContentY - fit.tableY - followerSpan - fit.gap - 2
-  );
-  const finalPageCapacity = Math.max(rowHeight * 2, spaceForTableWithFollowers - headerHeight);
-  const spaceForTableWithoutFollowers = Math.max(
-    rowHeight * 3,
-    maxContentY - 22
-  );
-  const regularPageCapacity = Math.max(rowHeight * 3, spaceForTableWithoutFollowers - headerHeight);
   const rowHeights = Array.from({ length: totalItems }, (_, index) =>
     calculateItemRowHeight(rowHeight, itemsData?.[index]?.description, fit.fontSize)
   );
@@ -911,6 +902,16 @@ export function computePaginationPlan(
   let currentIndex = 0;
 
   while (currentIndex < totalItems) {
+    const isFirstPage = pageItemRanges.length === 0;
+    const pageTableY = isFirstPage ? fit.tableY : 22;
+
+    // Capacity on this page if it includes follower cards (totals, signatures)
+    const spaceForTableWithFollowers = Math.max(
+      rowHeight * 2,
+      maxContentY - pageTableY - followerSpan - fit.gap - 2
+    );
+    const finalPageCapacity = Math.max(rowHeight * 2, spaceForTableWithFollowers - headerHeight);
+
     const remainingHeight = rowHeights.slice(currentIndex).reduce((sum, height) => sum + height, 0);
     if (remainingHeight <= finalPageCapacity) {
       pageItemRanges.push({
@@ -923,9 +924,20 @@ export function computePaginationPlan(
       break;
     }
 
+    // Capacity on this page without followers
+    const spaceForTableWithoutFollowers = Math.max(
+      rowHeight * 3,
+      maxContentY - pageTableY - fit.gap - 2
+    );
+    const regularPageCapacity = Math.max(rowHeight * 3, spaceForTableWithoutFollowers - headerHeight);
+
     let endIndex = currentIndex;
     let usedHeight = 0;
     while (endIndex < totalItems && usedHeight + rowHeights[endIndex] <= regularPageCapacity) {
+      // Ensure at least 1 row is reserved for the continuation/final page so totals aren't orphaned without items
+      if (endIndex === totalItems - 1 && usedHeight > 0) {
+        break;
+      }
       usedHeight += rowHeights[endIndex];
       endIndex += 1;
     }
@@ -940,6 +952,11 @@ export function computePaginationPlan(
     });
 
     currentIndex = endIndex;
+  }
+
+  // Safety guard: ensure the last page is always marked isLastPage: true
+  if (pageItemRanges.length > 0 && !pageItemRanges[pageItemRanges.length - 1].isLastPage) {
+    pageItemRanges[pageItemRanges.length - 1].isLastPage = true;
   }
 
   return {
@@ -1178,7 +1195,7 @@ export function computeEffectiveLayout(
 
   if (followers.length > 0 && isLastPage) {
     if (isManualMode) {
-      if (isCompactEmptySpace && table) {
+      if ((isCompactEmptySpace || layout.documentType === "measurement_sheet") && table) {
         // "Compact Empty Space" enabled in manual mode:
         // Move Amount in Words, Totals, Bank Details, Terms, Signature upward based on actual line-item rows,
         // maintaining consistent relative spacing and alignment, preventing collisions, and keeping baseline manual coordinates untouched.

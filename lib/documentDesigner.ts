@@ -1149,10 +1149,10 @@ export const DEFAULT_INVOICE_COLUMNS: TableColumnConfig[] = [
   { key: "description", label: "Item Description / البيان", visible: true, widthPct: 40, align: "left" },
   { key: "quantity", label: "Qty", visible: true, widthPct: 8, align: "center" },
   { key: "unit", label: "Unit", visible: true, widthPct: 8, align: "center" },
-  { key: "unit_price", label: "Rate (AED)", visible: true, widthPct: 12, align: "center" },
-  { key: "discount", label: "Disc.", visible: false, widthPct: 8, align: "center" },
-  { key: "vat_amount", label: "VAT (5%)", visible: true, widthPct: 11, align: "center" },
-  { key: "line_total", label: "Total (AED)", visible: true, widthPct: 16, align: "center" },
+  { key: "unit_price", label: "Rate (AED)", visible: true, widthPct: 12, align: "right" },
+  { key: "discount", label: "Disc.", visible: false, widthPct: 8, align: "right" },
+  { key: "vat_amount", label: "VAT (5%)", visible: true, widthPct: 11, align: "right" },
+  { key: "line_total", label: "Total (AED)", visible: true, widthPct: 16, align: "right" },
 ];
 
 export const DEFAULT_DELIVERY_COLUMNS: TableColumnConfig[] = [
@@ -1185,20 +1185,78 @@ export const SOA_REFERENCE_STATEMENT_COLUMNS: TableColumnConfig[] = [
 export const DEFAULT_SALARY_COLUMNS: TableColumnConfig[] = [
   { key: "index", label: "#", visible: true, widthPct: 8, align: "center" },
   { key: "description", label: "Earnings / Deductions", visible: true, widthPct: 62, align: "left" },
-  { key: "line_total", label: "Amount (AED)", visible: true, widthPct: 30, align: "center" },
+  { key: "line_total", label: "Amount (AED)", visible: true, widthPct: 30, align: "right" },
 ];
 
 export const DEFAULT_MEASUREMENT_COLUMNS: TableColumnConfig[] = [
   { key: "index", label: "#", visible: true, widthPct: 4, align: "center" },
-  { key: "area_name", label: "Area / Ref", visible: true, widthPct: 13, align: "left" },
-  { key: "description", label: "Description & Notes", visible: true, widthPct: 33, align: "left" },
-  { key: "dimensions", label: "Dimensions", visible: true, widthPct: 16, align: "center" },
-  { key: "quantity", label: "Qty", visible: true, widthPct: 8, align: "center" },
-  { key: "calc_type", label: "Calculation Type & Formula", visible: false, widthPct: 18, align: "left" },
+  { key: "area_name", label: "Area / Reference", visible: true, widthPct: 12, align: "left" },
+  { key: "description", label: "Description & Notes", visible: true, widthPct: 28, align: "left" },
+  { key: "dimensions", label: "Dimensions", visible: true, widthPct: 15, align: "center" },
+  { key: "quantity", label: "Qty", visible: true, widthPct: 6, align: "center" },
+  { key: "calc_type", label: "Calculation Type & Formula", visible: false, widthPct: 14, align: "left" },
   { key: "result", label: "Result & Unit", visible: true, widthPct: 12, align: "center" },
-  { key: "rate", label: "Rate (AED)", visible: true, widthPct: 6, align: "center" },
-  { key: "line_total", label: "Amount (AED)", visible: true, widthPct: 8, align: "center" },
+  { key: "rate", label: "Rate (AED)", visible: true, widthPct: 11, align: "right" },
+  { key: "line_total", label: "Amount (AED)", visible: true, widthPct: 12, align: "right" },
 ];
+
+export function getDefaultColumnsForDocType(docType: DocumentTypeId): TableColumnConfig[] {
+  switch (docType) {
+    case "delivery_note":
+    case "project_handover":
+    case "work_method_statement":
+      return JSON.parse(JSON.stringify(DEFAULT_DELIVERY_COLUMNS));
+    case "customer_statement":
+      return JSON.parse(JSON.stringify(DEFAULT_STATEMENT_COLUMNS));
+    case "salary_statement":
+    case "employee_payment_voucher":
+      return JSON.parse(JSON.stringify(DEFAULT_SALARY_COLUMNS));
+    case "measurement_sheet":
+      return JSON.parse(JSON.stringify(DEFAULT_MEASUREMENT_COLUMNS));
+    case "tax_invoice":
+    case "quotation":
+    case "proforma_invoice":
+    case "purchase_order":
+    case "supplier_bill":
+    case "receipt_voucher":
+    default:
+      return JSON.parse(JSON.stringify(DEFAULT_INVOICE_COLUMNS));
+  }
+}
+
+export function getAutoFitColumnsForDocType(
+  docType: DocumentTypeId,
+  currentCols?: TableColumnConfig[]
+): TableColumnConfig[] {
+  const baseDefaults = getDefaultColumnsForDocType(docType);
+  if (!currentCols || currentCols.length === 0) return baseDefaults;
+
+  const updated = currentCols.map((col) => {
+    const match = baseDefaults.find((d) => d.key === col.key);
+    return {
+      ...col,
+      align: match?.align || col.align || (["rate", "unit_price", "line_total", "vat_amount", "discount", "debit", "credit", "balance"].includes(col.key) ? "right" : "left"),
+      widthPct: match ? match.widthPct : col.widthPct,
+    };
+  });
+
+  const visible = updated.filter((c) => c.visible);
+  const total = visible.reduce((sum, c) => sum + (c.widthPct || 10), 0);
+  if (total > 0 && Math.abs(total - 100) > 0.01) {
+    let distributed = 0;
+    visible.forEach((c, idx) => {
+      if (idx === visible.length - 1) {
+        c.widthPct = Math.round((100 - distributed) * 10) / 10;
+      } else {
+        const share = Math.round((c.widthPct / total) * 100 * 10) / 10;
+        c.widthPct = share;
+        distributed += share;
+      }
+    });
+  }
+
+  return updated;
+}
 
 type ElementOverrides = Record<string, Partial<LayoutElement>>;
 
@@ -2340,6 +2398,32 @@ export function normalizeLayout(layout: DocumentLayout): DocumentLayout {
         if (el.id === "customer_info" && el.height < 38) {
           el.height = 38;
         }
+      }
+    }
+
+    if (layout.documentType === "measurement_sheet" && el.type === "line_items" && el.tableSettings?.columns) {
+      const cols = el.tableSettings.columns;
+      const rateCol = cols.find((c) => c.key === "rate");
+      const totalCol = cols.find((c) => c.key === "line_total");
+      const isLegacyMeasurementCols =
+        (rateCol && (rateCol.widthPct <= 7 || rateCol.align !== "right")) ||
+        (totalCol && (totalCol.widthPct <= 9 || totalCol.align !== "right"));
+
+      if (isLegacyMeasurementCols) {
+        const calcCol = cols.find((c) => c.key === "calc_type");
+        const isCalcVisible = Boolean(calcCol?.visible);
+        el.tableSettings.columns = cols.map((col) => {
+          if (col.key === "index") return { ...col, widthPct: isCalcVisible ? 3 : 4, align: "center" as const };
+          if (col.key === "area_name") return { ...col, widthPct: isCalcVisible ? 10 : 12, align: "left" as const, label: col.label || "Area / Reference" };
+          if (col.key === "description") return { ...col, widthPct: isCalcVisible ? 22 : 28, align: "left" as const, label: col.label || "Description & Notes" };
+          if (col.key === "dimensions") return { ...col, widthPct: isCalcVisible ? 13 : 15, align: "center" as const };
+          if (col.key === "quantity") return { ...col, widthPct: isCalcVisible ? 5 : 6, align: "center" as const };
+          if (col.key === "calc_type") return { ...col, widthPct: isCalcVisible ? 14 : 14, align: "left" as const };
+          if (col.key === "result") return { ...col, widthPct: isCalcVisible ? 11 : 12, align: "center" as const, label: col.label || "Result & Unit" };
+          if (col.key === "rate") return { ...col, widthPct: isCalcVisible ? 11 : 11, align: "right" as const, label: col.label || "Rate (AED)" };
+          if (col.key === "line_total") return { ...col, widthPct: isCalcVisible ? 11 : 12, align: "right" as const, label: col.label || "Amount (AED)" };
+          return col;
+        });
       }
     }
 
