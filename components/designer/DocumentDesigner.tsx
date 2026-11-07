@@ -77,7 +77,27 @@ export default function DocumentDesigner({ initialType }: { initialType?: string
   const [stylePresets, setStylePresets] = useState<DocumentStylePreset[]>([]);
   const [selectedStylePresetId, setSelectedStylePresetId] = useState<string | null>(null);
   const [autoFixMode, setAutoFixMode] = useState<"standard" | "saved">("standard");
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
+  const [rightInspectorOpen, setRightInspectorOpen] = useState(true);
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(250);
+  const [rightInspectorWidth, setRightInspectorWidth] = useState(360);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Track focus mode to expand canvas and hide side panels
+  const prevSidebarState = useRef<{ left: boolean; right: boolean }>({ left: true, right: true });
+  const toggleFocusMode = useCallback(() => {
+    if (!isFullscreen) {
+      // entering fullscreen: store current states and collapse
+      prevSidebarState.current = { left: leftSidebarOpen, right: rightInspectorOpen };
+      setLeftSidebarOpen(false);
+      setRightInspectorOpen(false);
+      setIsFullscreen(true);
+    } else {
+      // exiting fullscreen: restore previous states
+      setLeftSidebarOpen(prevSidebarState.current.left);
+      setRightInspectorOpen(prevSidebarState.current.right);
+      setIsFullscreen(false);
+    }
+  }, [isFullscreen, leftSidebarOpen, rightInspectorOpen]);
 
   const [cloudRevision, setCloudRevision] = useState<CloudRevision>();
   const [editingRevision, setEditingRevision] = useState<CloudRevision>();
@@ -119,10 +139,7 @@ export default function DocumentDesigner({ initialType }: { initialType?: string
   const [showResetModal, setShowResetModal] = useState(false);
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [applyTargetElement, setApplyTargetElement] = useState<LayoutElement | null>(null);
-  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
-  const [rightInspectorOpen, setRightInspectorOpen] = useState(true);
-  const [leftSidebarWidth, setLeftSidebarWidth] = useState(250);
-  const [rightInspectorWidth, setRightInspectorWidth] = useState(360);
+
 
   const handleOpenApplyModal = useCallback((targetElem?: LayoutElement | null) => {
     setApplyTargetElement(targetElem || null);
@@ -892,6 +909,7 @@ export default function DocumentDesigner({ initialType }: { initialType?: string
       await refreshStylePresets(selectedDocType,companyId,result.revision?.templateId);
       setStyleModalMode(null); setStyleSaveAsNew(false);
       setNotification({message:'Design and selected style saved to Supabase for all devices.',type:'success'});
+      setTimeout(() => setNotification(null), 2500);
     } catch(error) { setCloudErrorMessage(cloudError(error).message); }
     finally { mutationRef.current=false; setSaving(false); }
   }, [cloudRevision,editingRevision,cloudConflict,company,companyId,layout,loadingCloud,refreshStylePresets,selectedDocType]);
@@ -1299,71 +1317,71 @@ export default function DocumentDesigner({ initialType }: { initialType?: string
     <div className={`pdf-designer-shell flex w-full min-w-0 flex-col overflow-hidden bg-slate-950 font-sans ${isFullscreen ? "fixed inset-0 z-50 h-screen" : "h-[100dvh]"}`}>
       {/* Editor Chrome — hidden entirely during print */}
       <div className="designer-editor-chrome print-hide no-print flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-        {/* Top Toolbar */}
-        {!isFullscreen && (
-          <TopToolbar
-            selectedDocType={selectedDocType}
-            onSelectDocType={handleSelectDocType}
-            canUndo={historyIndex > 0}
-            canRedo={historyIndex < history.length - 1}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            zoom={zoom}
-            onZoomChange={setZoom}
-            onFitWidth={handleFitWidth}
-            onFitPage={handleFitPage}
-            snapGrid={snapGrid}
-            onToggleSnapGrid={() => setSnapGrid(!snapGrid)}
-            snapMargins={snapMargins}
-            onToggleSnapMargins={() => setSnapMargins(!snapMargins)}
-            onAlign={handleAlign}
-            hasSelectedElement={Boolean(selectedElement && !selectedElement.locked)}
-            selectedElementLabel={selectedElement?.label}
-            onDeleteSelected={handleDeleteSelected}
-            pageNumber={displayedPageNumber}
-            totalPages={totalPages}
-            onPageChange={setPageNumber}
-            saving={saving || loadingCloud || styleModalBusy}
-            cloudStatus={
-              saving || loadingCloud
-                ? "saving"
-                : cloudConflict
-                ? "conflict"
-                : cloudErrorMessage
-                ? "failed"
-                : dirty || !persistedLayout
-                ? "unsaved"
-                : "saved"
-            }
-            cloudVersion={cloudRevision?.version}
-            onSave={handleSave}
-            onAutoFix={handleAutoFix}
-            autoFixMode={autoFixMode}
-            onAutoFixAction={handleAutoFixAction}
-            stylePresets={stylePresets}
-            selectedStylePresetId={selectedStylePresetId}
-            onSelectStylePreset={handleSelectStylePreset}
-            onSaveMyStyle={() => {
-              setStyleSaveAsNew(false);
-              setStyleModalMode("save");
-            }}
-            onReset={() => setShowResetModal(true)}
-            onPreview={handleOpenPreview}
-            onCheckLayout={() => setShowValidatorModal(true)}
-            onPrint={handleOpenPreview}
-            onAddImage={handleAddImage}
-            onAddText={() => handleAddCustomElement("custom_text")}
-            onOpenApplyModal={() => handleOpenApplyModal(null)}
-            onImportDesign={() => setShowImportModal(true)}
-            onToggleLeftSidebar={() => setLeftSidebarOpen(!leftSidebarOpen)}
-            onToggleRightInspector={() => setRightInspectorOpen(!rightInspectorOpen)}
-            leftSidebarOpen={leftSidebarOpen}
-            rightInspectorOpen={rightInspectorOpen}
-            templateName={layout.templateName}
-            layoutMode={layout.layoutMode || "manual"}
-            onChangeLayoutMode={handleChangeLayoutMode}
-          />
-        )}
+        {/* Top Toolbar — always visible so Focus Mode button is always accessible */}
+        <TopToolbar
+          selectedDocType={selectedDocType}
+          onSelectDocType={handleSelectDocType}
+          canUndo={historyIndex > 0}
+          canRedo={historyIndex < history.length - 1}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          zoom={zoom}
+          onZoomChange={setZoom}
+          onFitWidth={handleFitWidth}
+          onFitPage={handleFitPage}
+          snapGrid={snapGrid}
+          onToggleSnapGrid={() => setSnapGrid(!snapGrid)}
+          snapMargins={snapMargins}
+          onToggleSnapMargins={() => setSnapMargins(!snapMargins)}
+          onAlign={handleAlign}
+          hasSelectedElement={Boolean(selectedElement && !selectedElement.locked)}
+          selectedElementLabel={selectedElement?.label}
+          onDeleteSelected={handleDeleteSelected}
+          pageNumber={displayedPageNumber}
+          totalPages={totalPages}
+          onPageChange={setPageNumber}
+          saving={saving || loadingCloud || styleModalBusy}
+          cloudStatus={
+            saving || loadingCloud
+              ? "saving"
+              : cloudConflict
+              ? "conflict"
+              : cloudErrorMessage
+              ? "failed"
+              : dirty || !persistedLayout
+              ? "unsaved"
+              : "saved"
+          }
+          cloudVersion={cloudRevision?.version}
+          onSave={handleSave}
+          onAutoFix={handleAutoFix}
+          autoFixMode={autoFixMode}
+          onAutoFixAction={handleAutoFixAction}
+          stylePresets={stylePresets}
+          selectedStylePresetId={selectedStylePresetId}
+          onSelectStylePreset={handleSelectStylePreset}
+          onSaveMyStyle={() => {
+            setStyleSaveAsNew(false);
+            setStyleModalMode("save");
+          }}
+          onReset={() => setShowResetModal(true)}
+          onPreview={handleOpenPreview}
+          onCheckLayout={() => setShowValidatorModal(true)}
+          onPrint={handleOpenPreview}
+          onAddImage={handleAddImage}
+          onAddText={() => handleAddCustomElement("custom_text")}
+          onOpenApplyModal={() => handleOpenApplyModal(null)}
+          onImportDesign={() => setShowImportModal(true)}
+          onToggleLeftSidebar={() => setLeftSidebarOpen(!leftSidebarOpen)}
+          onToggleRightInspector={() => setRightInspectorOpen(!rightInspectorOpen)}
+          onToggleFocusMode={toggleFocusMode}
+          isFullscreen={isFullscreen}
+          leftSidebarOpen={leftSidebarOpen}
+          rightInspectorOpen={rightInspectorOpen}
+          templateName={layout.templateName}
+          layoutMode={layout.layoutMode || "manual"}
+          onChangeLayoutMode={handleChangeLayoutMode}
+        />
 
         {/* Main Workspace: Left Layers | Centered Canvas | Right Inspector */}
         <div inert={saving || loadingCloud || styleModalBusy} className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -1431,9 +1449,36 @@ export default function DocumentDesigner({ initialType }: { initialType?: string
             onFitWidth={handleFitWidth}
             onFitPage={handleFitPage}
             onPageChange={setPageNumber}
-            isFullscreen={isFullscreen}
-            onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+            onToggleFullscreen={toggleFocusMode}
           />
+
+          {/* Floating panel edge-toggle buttons — independent collapse/restore */}
+          {!isFullscreen && (
+            <>
+              {/* Left panel toggle — attached to left panel edge */}
+              <button
+                type="button"
+                onClick={() => setLeftSidebarOpen((v) => !v)}
+                style={{ left: leftSidebarOpen ? `${leftSidebarWidth}px` : "0px" }}
+                className="absolute top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-4 h-16 rounded-r-lg bg-slate-800/90 hover:bg-amber-500 border-y border-r border-slate-700 hover:border-amber-500 text-slate-400 hover:text-white transition-all shadow-lg cursor-pointer select-none"
+                title={leftSidebarOpen ? "Collapse Layers panel" : "Expand Layers panel"}
+                aria-label={leftSidebarOpen ? "Collapse Layers panel" : "Expand Layers panel"}
+              >
+                <span className="text-[10px] font-bold leading-none select-none">{leftSidebarOpen ? "‹" : "›"}</span>
+              </button>
+              {/* Right panel toggle — attached to right panel edge */}
+              <button
+                type="button"
+                onClick={() => setRightInspectorOpen((v) => !v)}
+                style={{ right: rightInspectorOpen ? `${rightInspectorWidth}px` : "0px" }}
+                className="absolute top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-4 h-16 rounded-l-lg bg-slate-800/90 hover:bg-amber-500 border-y border-l border-slate-700 hover:border-amber-500 text-slate-400 hover:text-white transition-all shadow-lg cursor-pointer select-none"
+                title={rightInspectorOpen ? "Collapse Properties panel" : "Expand Properties panel"}
+                aria-label={rightInspectorOpen ? "Collapse Properties panel" : "Expand Properties panel"}
+              >
+                <span className="text-[10px] font-bold leading-none select-none">{rightInspectorOpen ? "›" : "‹"}</span>
+              </button>
+            </>
+          )}
 
           {/* Right Sidebar: Selected Element Inspector / Page Settings */}
           {!isFullscreen && rightInspectorOpen && (
@@ -1489,24 +1534,26 @@ export default function DocumentDesigner({ initialType }: { initialType?: string
         </div>
       </div>
 
-      {/* Floating Status Toast Notification */}
+      {/* Compact Status Toast Notification — positioned at top-right below toolbar to avoid canvas footer overlap */}
       {notification && (
         <DesignerPortal>
           <div
-            className={`fixed bottom-6 right-6 z-[110] flex items-center gap-2 px-4 py-3 rounded-xl shadow-2xl text-xs font-semibold animate-in fade-in slide-in-from-bottom-3 duration-200 border ${
+            role="status"
+            aria-live="polite"
+            className={`fixed top-15 right-4 z-[110] pointer-events-none flex items-center gap-2 px-3 py-1.5 rounded-lg shadow-xl text-xs font-semibold animate-in fade-in slide-in-from-top-2 duration-150 border backdrop-blur-md max-w-sm ${
               notification.type === "success"
-                ? "bg-slate-900 border-emerald-500 text-emerald-300"
+                ? "bg-slate-900/95 border-emerald-500/70 text-emerald-300"
                 : notification.type === "warning"
-                ? "bg-slate-900 border-amber-500 text-amber-300"
-                : "bg-slate-900 border-red-500 text-red-300"
+                ? "bg-slate-900/95 border-amber-500/70 text-amber-300"
+                : "bg-slate-900/95 border-red-500/70 text-red-300"
             }`}
           >
             {notification.type === "success" ? (
-              <CheckCircle2 size={16} className="text-emerald-400" />
+              <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
             ) : (
-              <AlertCircle size={16} className={notification.type === "warning" ? "text-amber-400" : "text-red-400"} />
+              <AlertCircle size={13} className={`shrink-0 ${notification.type === "warning" ? "text-amber-400" : "text-red-400"}`} />
             )}
-            <span>{notification.message}</span>
+            <span className="truncate">{notification.message}</span>
           </div>
         </DesignerPortal>
       )}

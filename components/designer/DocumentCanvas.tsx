@@ -2,15 +2,7 @@
 /* eslint-disable react-hooks/refs */
 
 import React, { useRef, useCallback, useEffect, useLayoutEffect, useState } from "react";
-import {
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-  Minimize2,
-  ChevronLeft,
-  ChevronRight,
-  Edit3,
-} from "lucide-react";
+import { Edit3, Maximize2 } from "lucide-react";
 import {
   DocumentLayout,
   LayoutElement,
@@ -651,13 +643,13 @@ export default function DocumentCanvas({
           onAddImage(file);
         }
       }}
-      className="designer-scrollbar designer-canvas-scroll relative flex min-h-0 min-w-0 flex-1 select-none items-start justify-start overflow-auto overscroll-contain bg-slate-100 p-6 sm:p-8 md:p-10 pb-40 sm:pb-48 md:pb-60 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-500/60"
+      className="designer-scrollbar designer-canvas-scroll relative flex min-h-0 min-w-0 flex-1 select-none items-start overflow-auto overscroll-contain bg-slate-100 p-6 sm:p-8 pb-32 sm:pb-40 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-500/60"
       style={{
         backgroundImage: "radial-gradient(circle at center, rgba(148,163,184,0.3) 1px, transparent 1px)",
         backgroundSize: "20px 20px",
       }}
     >
-      {/* Zoom container matching visual dimensions for reliable flex centering */}
+      {/* Zoom container matching visual dimensions for reliable flex centering without scroll clipping */}
       <div
         style={{
           width: `${layout.page.widthMm * zoom * 3.7795296}px`,
@@ -975,121 +967,6 @@ export default function DocumentCanvas({
         </div>
       </div>
 
-      {/* Floating Bottom Canvas Controls */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 px-3.5 py-1.5 rounded-full shadow-2xl text-white select-none">
-        {/* Zoom Out */}
-        {onZoomChange && (
-          <button
-            type="button"
-            onClick={() => onZoomChange(Math.max(0.1, Number((zoom - 0.1).toFixed(2))))}
-            className="p-1 hover:bg-slate-800 rounded-full transition cursor-pointer text-slate-300 hover:text-white"
-            title="Zoom Out"
-            aria-label="Zoom Out"
-          >
-            <ZoomOut size={14} />
-          </button>
-        )}
-
-        {/* Zoom % */}
-        <span
-          onClick={() => onZoomChange && onZoomChange(1.0)}
-          className="px-2 py-0.5 text-xs font-mono font-bold text-slate-200 hover:text-amber-400 cursor-pointer transition"
-          title="Click to reset zoom to 100%"
-        >
-          {Math.round(zoom * 100)}%
-        </span>
-
-        {/* Zoom In */}
-        {onZoomChange && (
-          <button
-            type="button"
-            onClick={() => onZoomChange(Math.min(1.8, Number((zoom + 0.1).toFixed(2))))}
-            className="p-1 hover:bg-slate-800 rounded-full transition cursor-pointer text-slate-300 hover:text-white"
-            title="Zoom In"
-            aria-label="Zoom In"
-          >
-            <ZoomIn size={14} />
-          </button>
-        )}
-
-        <span className="w-px h-3.5 bg-slate-700 mx-1" />
-
-        {/* Fit Width */}
-        {onFitWidth && (
-          <button
-            type="button"
-            onClick={onFitWidth}
-            className="px-2.5 py-0.5 text-[11px] font-semibold text-slate-300 hover:bg-slate-800 hover:text-white rounded-full transition cursor-pointer"
-            title="Fit Canvas to Available Width"
-          >
-            Fit Width
-          </button>
-        )}
-
-        {/* Fit Page */}
-        {onFitPage && (
-          <button
-            type="button"
-            onClick={onFitPage}
-            className="px-2.5 py-0.5 text-[11px] font-semibold text-slate-300 hover:bg-slate-800 hover:text-white rounded-full transition cursor-pointer"
-            title="Fit Full A4 Page in Window"
-          >
-            Fit Page
-          </button>
-        )}
-
-        {/* Distraction-Free Fullscreen */}
-        {onToggleFullscreen && (
-          <>
-            <span className="w-px h-3.5 bg-slate-700 mx-1" />
-            <button
-              type="button"
-              onClick={onToggleFullscreen}
-              className={`p-1 rounded-full transition cursor-pointer ${
-                isFullscreen
-                  ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
-              }`}
-              title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Preview"}
-              aria-label={isFullscreen ? "Exit Fullscreen" : "Fullscreen Preview"}
-            >
-              {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-            </button>
-          </>
-        )}
-
-        {/* Multi-page controls */}
-        {totalPages && totalPages > 1 && onPageChange && (
-          <>
-            <span className="w-px h-3.5 bg-slate-700 mx-1" />
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => onPageChange(Math.max(1, pageNumber - 1))}
-                disabled={pageNumber <= 1}
-                className="p-1 hover:bg-slate-800 rounded transition disabled:opacity-30 cursor-pointer"
-                title="Previous Page"
-                aria-label="Previous Page"
-              >
-                <ChevronLeft size={13} />
-              </button>
-              <span className="text-[11px] font-mono text-slate-300 px-1">
-                {pageNumber} / {totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => onPageChange(Math.min(totalPages, pageNumber + 1))}
-                disabled={pageNumber >= totalPages}
-                className="p-1 hover:bg-slate-800 rounded transition disabled:opacity-30 cursor-pointer"
-                title="Next Page"
-                aria-label="Next Page"
-              >
-                <ChevronRight size={13} />
-              </button>
-            </div>
-          </>
-        )}
-      </div>
     </div>
   );
 }

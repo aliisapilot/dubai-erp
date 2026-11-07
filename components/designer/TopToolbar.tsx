@@ -34,6 +34,8 @@ import {
   Search,
   ZoomIn,
   ZoomOut,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { DocumentTypeId, DOCUMENT_TYPE_OPTIONS, DesignerLayoutMode } from "@/lib/documentDesigner";
 import type { DocumentStylePreset } from "@/lib/documentStylePresetModel";
@@ -88,6 +90,8 @@ interface TopToolbarProps {
   rightInspectorOpen?: boolean;
   layoutMode?: DesignerLayoutMode;
   onChangeLayoutMode?: (mode: DesignerLayoutMode) => void;
+  onToggleFocusMode?: () => void;
+  isFullscreen?: boolean;
 }
 
 export default function TopToolbar({
@@ -109,8 +113,8 @@ export default function TopToolbar({
   onToggleSnapMargins,
   onAlign,
   hasSelectedElement,
-  pageNumber,
-  totalPages,
+  pageNumber = 1,
+  totalPages = 1,
   onPageChange,
   saving,
   cloudStatus = "saved",
@@ -118,7 +122,7 @@ export default function TopToolbar({
   onSave,
   onReset,
   onAutoFix,
-  autoFixMode,
+  autoFixMode: _autoFixMode,
   onAutoFixAction,
   stylePresets,
   selectedStylePresetId,
@@ -130,28 +134,37 @@ export default function TopToolbar({
   onOpenApplyModal,
   onImportDesign,
   onPrint,
-  onAddImage,
-  onAddText,
+  onAddImage: _onAddImage,
+  onAddText: _onAddText,
   onToggleLeftSidebar,
   onToggleRightInspector,
+  onToggleFocusMode,
+  isFullscreen,
   leftSidebarOpen = true,
   rightInspectorOpen = true,
   layoutMode = "manual",
   onChangeLayoutMode,
 }: TopToolbarProps) {
   const [showAdvancedModal, setShowAdvancedModal] = useState(false);
+  // Global keyboard shortcuts: Escape to close modal, 'f' to toggle Focus Mode
   useEffect(() => {
-    if (!showAdvancedModal) return;
     function handleKeyDown(e: KeyboardEvent) {
+      // Ignore when typing in inputs, textareas, or contenteditable elements
+      const target = e.target as HTMLElement;
+      const tag = target.tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || target.isContentEditable) return;
+
       if (e.key === "Escape") {
         setShowAdvancedModal(false);
+      } else if (e.key.toLowerCase() === "f") {
+        onToggleFocusMode?.();
       }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [showAdvancedModal]);
+  }, [onToggleFocusMode]);
   const [advancedTab, setAdvancedTab] = useState<"grid" | "styles" | "tools">("grid");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -213,7 +226,7 @@ export default function TopToolbar({
               type="button"
               onClick={() => setShowTemplateDropdown((v) => !v)}
               className="w-[165px] sm:w-[195px] lg:w-[225px] flex items-center justify-between gap-1.5 rounded-lg border border-slate-700 bg-slate-800/95 hover:bg-slate-750 px-2.5 py-1.5 text-xs font-semibold text-white outline-none focus:border-amber-400 cursor-pointer shadow-inner transition truncate"
-              title="Select document template to edit"
+              title={templateName ? `Template: ${templateName}` : "Select document template to edit"}
               aria-haspopup="listbox"
               aria-expanded={showTemplateDropdown}
             >
@@ -378,6 +391,33 @@ export default function TopToolbar({
             >
               Fit Page
             </button>
+            {totalPages > 1 && onPageChange && (
+              <div className="flex items-center gap-1 border-l border-slate-700/80 pl-1.5 text-xs text-slate-300">
+                <button
+                  type="button"
+                  onClick={() => onPageChange(Math.max(1, pageNumber - 1))}
+                  disabled={pageNumber <= 1}
+                  className="px-1 py-0.5 rounded hover:bg-slate-800 disabled:opacity-30 cursor-pointer text-slate-300 hover:text-white transition"
+                  title="Previous Page"
+                  aria-label="Previous Page"
+                >
+                  ‹
+                </button>
+                <span className="text-[11px] font-mono text-slate-300 px-0.5">
+                  {pageNumber}/{totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onPageChange(Math.min(totalPages, pageNumber + 1))}
+                  disabled={pageNumber >= totalPages}
+                  className="px-1 py-0.5 rounded hover:bg-slate-800 disabled:opacity-30 cursor-pointer text-slate-300 hover:text-white transition"
+                  title="Next Page"
+                  aria-label="Next Page"
+                >
+                  ›
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -490,7 +530,7 @@ export default function TopToolbar({
                   ? "bg-amber-500 hover:bg-amber-400 text-slate-950"
                   : "bg-emerald-600 hover:bg-emerald-500 text-white"
               }`}
-              title="Save layout to cloud for all devices (Ctrl+S)"
+              title={cloudVersion ? `Save layout to cloud for all devices (Ctrl+S) - v${cloudVersion}` : "Save layout to cloud for all devices (Ctrl+S)"}
               aria-label="Save layout"
             >
               {saving ? (
@@ -610,6 +650,18 @@ export default function TopToolbar({
               <PanelRight size={15} />
             </button>
           )}
+
+      {/* Focus Mode toggle button */}
+      {onToggleFocusMode && (
+        <button
+          type="button"
+          onClick={onToggleFocusMode}
+          className={`p-1.5 rounded-lg transition cursor-pointer ${isFullscreen ? "text-amber-400 bg-slate-800" : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"}`}
+          title={isFullscreen ? "Exit Focus Mode" : "Enter Focus Mode"}
+        >
+          {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+        </button>
+      )}
         </div>
       </div>
 
