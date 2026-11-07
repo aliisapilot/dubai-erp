@@ -656,11 +656,7 @@ export default function StatementOfAccountPage() {
 
             if (trnMatch || nameMatch) {
               allInvs.push(uInv as Invoice);
-              // Asynchronously heal relationship in Supabase
-              void supabase
-                .from("tax_invoices")
-                .update({ customer_id: selectedCustomerId })
-                .eq("id", uInv.id);
+              // Statement generation is read-only: never rewrite invoice ownership here.
             }
           }
         }
