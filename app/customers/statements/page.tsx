@@ -221,14 +221,7 @@ export default function StatementOfAccountPage() {
       } catch {}
     }
 
-    if (val === null && typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem(`dubai-erp.customer-opening-balance.${customerId}`);
-        if (stored !== null && !isNaN(Number(stored))) {
-          val = Number(stored);
-        }
-      } catch {}
-    }
+    // Only persisted balances are authoritative; browser-local values are not.
 
     const finalBal = val !== null ? val : 0;
     setSavedOpeningBalance(val);
@@ -578,6 +571,11 @@ export default function StatementOfAccountPage() {
     if (partyMode === "custom" && !customCustomer.name.trim()) return;
 
     const version = ++requestVersion.current;
+    if (fromDate && toDate && fromDate > toDate) {
+      setLoadError("From Date cannot be later than To Date.");
+      setStatement(null);
+      return;
+    }
     setCalculating(true);
     setLoadError("");
     setStatement(null);
@@ -626,13 +624,13 @@ export default function StatementOfAccountPage() {
 
         const paysPromise = supabase
           .from("payments")
-          .select("id, customer_id, payment_number, payment_date, amount, payment_method, reference_number")
+          .select("id, customer_id, payment_number, payment_date, amount, payment_method, reference_number, status")
           .eq("customer_id", selectedCustomerId)
           .order("payment_date", { ascending: true });
 
         const rcvsPromise = supabase
           .from("receipt_vouchers")
-          .select("id, customer_id, voucher_number, voucher_date, amount, payment_method, cheque_number")
+          .select("id, customer_id, voucher_number, voucher_date, amount, payment_method, cheque_number, status")
           .eq("customer_id", selectedCustomerId)
           .order("voucher_date", { ascending: true });
 
@@ -683,7 +681,7 @@ export default function StatementOfAccountPage() {
           custInvQuery.order("invoice_date", { ascending: true }),
           supabase
             .from("receipt_vouchers")
-            .select("id, customer_id, voucher_number, voucher_date, amount, payment_method, cheque_number, notes")
+            .select("id, customer_id, voucher_number, voucher_date, amount, payment_method, cheque_number, notes, status")
             .order("voucher_date", { ascending: true }),
         ]);
 
@@ -796,13 +794,14 @@ export default function StatementOfAccountPage() {
       rawTxs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
       // Calculate opening balance before `fromDate`
-      let computedOpening = Number(openingBalance) || 0;
+      let computedOpening = Number(appliedOpeningBalance) || 0;
       const filteredTxs: RawTx[] = [];
 
       rawTxs.forEach(tx => {
-        if (fromDate && tx.date < fromDate) {
+        const transactionDay = tx.date.slice(0, 10);
+        if (fromDate && transactionDay < fromDate) {
           computedOpening += (tx.debit - tx.credit);
-        } else if (!toDate || tx.date <= toDate) {
+        } else if (!toDate || transactionDay <= toDate) {
           filteredTxs.push(tx);
         }
       });
@@ -1019,7 +1018,11 @@ export default function StatementOfAccountPage() {
                 <input
                   type="date"
                   value={fromDate}
-                  onChange={e => setFromDate(e.target.value)}
+                  onChange={e => {
+                    const next = e.target.value;
+                    setFromDate(next);
+                    if (next && toDate && next > toDate) setToDate(next);
+                  }}
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
                 />
               </div>
@@ -1029,6 +1032,7 @@ export default function StatementOfAccountPage() {
                 <input
                   type="date"
                   value={toDate}
+                  min={fromDate || undefined}
                   onChange={e => setToDate(e.target.value)}
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
                 />
@@ -1041,7 +1045,7 @@ export default function StatementOfAccountPage() {
                     <label className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
                       Initial Opening Balance (AED)
                       <span className="text-[11px] text-slate-500 font-normal">
-                        — Ledger balance brought forward prior to transaction entries
+                        — Saved starting balance (not the calculated balance at From Date)
                       </span>
                     </label>
                     {savedOpeningBalance !== null ? (
