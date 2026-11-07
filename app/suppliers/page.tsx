@@ -13,6 +13,8 @@ import {
   Pencil,
   Power,
   Trash2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { getCompanyId, generateDocNumber } from "@/lib/helpers";
 
@@ -79,6 +81,7 @@ export default function SuppliersPage() {
 
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [editingSupplier, setEditingSupplier] =
     useState<Supplier | null>(null);
 
@@ -127,6 +130,7 @@ export default function SuppliersPage() {
     setSuccess("");
     setEditingSupplier(null);
     setForm(emptyForm);
+    setShowMoreOptions(false);
     setShowForm(true);
   }
 
@@ -154,6 +158,17 @@ export default function SuppliersPage() {
       notes: supplier.notes || "",
     });
 
+    const hasAdvanced = Boolean(
+      supplier.address ||
+      supplier.contact_person ||
+      supplier.website ||
+      supplier.po_box ||
+      supplier.city ||
+      supplier.emirate ||
+      supplier.payment_terms ||
+      supplier.notes
+    );
+    setShowMoreOptions(hasAdvanced);
     setShowForm(true);
   }
 
@@ -163,6 +178,7 @@ export default function SuppliersPage() {
     setShowForm(false);
     setEditingSupplier(null);
     setForm(emptyForm);
+    setShowMoreOptions(false);
     setError("");
   }
 
@@ -691,28 +707,6 @@ export default function SuppliersPage() {
               <div className="grid grid-cols-1 gap-5 px-6 py-6 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Supplier Code
-                  </label>
-
-                  <input
-                    value={form.supplier_code}
-                    disabled={!!editingSupplier}
-                    onChange={(event) =>
-                      updateField(
-                        "supplier_code",
-                        event.target.value
-                      )
-                    }
-                    placeholder="Auto-generated on save"
-                    className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-slate-900 disabled:bg-slate-100 disabled:text-slate-500"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    {editingSupplier ? "Existing supplier code cannot be changed." : "Leave blank to auto-generate sequentially on save."}
-                  </p>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
                     Supplier Name *
                   </label>
 
@@ -726,13 +720,13 @@ export default function SuppliersPage() {
                       )
                     }
                     placeholder="Supplier company name"
-                    className="w-full rounded-lg border border-slate-300 px-4 py-3"
+                    className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-slate-900"
                   />
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">
-                    TRN
+                    TRN (Tax Registration Number)
                   </label>
 
                   <input
@@ -750,18 +744,18 @@ export default function SuppliersPage() {
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Contact Person
+                    Phone
                   </label>
 
                   <input
-                    value={form.contact_person}
+                    value={form.phone}
                     onChange={(event) =>
                       updateField(
-                        "contact_person",
+                        "phone",
                         event.target.value
                       )
                     }
-                    placeholder="Contact person"
+                    placeholder="+971 4 XXX XXXX"
                     className="w-full rounded-lg border border-slate-300 px-4 py-3"
                   />
                 </div>
@@ -784,24 +778,64 @@ export default function SuppliersPage() {
                     className="w-full rounded-lg border border-slate-300 px-4 py-3"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Phone
-                  </label>
+              {/* More Options Section */}
+              <div className="border-t border-slate-200 bg-slate-50/70 px-6 py-3 flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">
+                  Additional Details (Supplier Code, Contact, Address, Payment Terms, Notes)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowMoreOptions(!showMoreOptions)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition"
+                >
+                  {showMoreOptions ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <span>{showMoreOptions ? "Hide More Options" : "More Options"}</span>
+                </button>
+              </div>
 
-                  <input
-                    value={form.phone}
-                    onChange={(event) =>
-                      updateField(
-                        "phone",
-                        event.target.value
-                      )
-                    }
-                    placeholder="+971 4 XXX XXXX"
-                    className="w-full rounded-lg border border-slate-300 px-4 py-3"
-                  />
-                </div>
+              {showMoreOptions && (
+                <div className="grid grid-cols-1 gap-5 border-t border-slate-200 bg-slate-50/30 px-6 py-5 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      Supplier Code
+                    </label>
+
+                    <input
+                      value={form.supplier_code}
+                      disabled={!!editingSupplier}
+                      onChange={(event) =>
+                        updateField(
+                          "supplier_code",
+                          event.target.value
+                        )
+                      }
+                      placeholder="Auto-generated on save"
+                      className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-slate-900 disabled:bg-slate-100 disabled:text-slate-500"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      {editingSupplier ? "Existing supplier code cannot be changed." : "Leave blank to auto-generate sequentially on save."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      Contact Person
+                    </label>
+
+                    <input
+                      value={form.contact_person}
+                      onChange={(event) =>
+                        updateField(
+                          "contact_person",
+                          event.target.value
+                        )
+                      }
+                      placeholder="Contact person"
+                      className="w-full rounded-lg border border-slate-300 px-4 py-3"
+                    />
+                  </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">
@@ -1010,6 +1044,7 @@ export default function SuppliersPage() {
                   />
                 </div>
               </div>
+            )}
 
               {error && (
                 <div className="mx-6 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

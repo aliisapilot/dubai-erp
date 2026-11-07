@@ -15,6 +15,8 @@ import {
   Power,
   FileSpreadsheet,
   Trash2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { getCompanyId, generateDocNumber } from "@/lib/helpers";
 
@@ -84,6 +86,7 @@ export default function CustomersPage() {
 
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
 
   const [editingCustomer, setEditingCustomer] =
     useState<Customer | null>(null);
@@ -133,6 +136,7 @@ export default function CustomersPage() {
     setSuccess("");
     setEditingCustomer(null);
     setForm(emptyForm);
+    setShowMoreOptions(false);
     setShowForm(true);
   }
 
@@ -163,6 +167,18 @@ export default function CustomersPage() {
       notes: customer.notes || "",
     });
 
+    const hasAdvanced = Boolean(
+      customer.address ||
+      customer.contact_person ||
+      customer.website ||
+      customer.po_box ||
+      customer.city ||
+      customer.emirate ||
+      customer.payment_terms ||
+      (customer.credit_limit && customer.credit_limit > 0) ||
+      customer.notes
+    );
+    setShowMoreOptions(hasAdvanced);
     setShowForm(true);
   }
 
@@ -172,6 +188,7 @@ export default function CustomersPage() {
     setShowForm(false);
     setEditingCustomer(null);
     setForm(emptyForm);
+    setShowMoreOptions(false);
     setError("");
   }
 
@@ -725,28 +742,6 @@ export default function CustomersPage() {
               <div className="grid grid-cols-1 gap-5 px-6 py-6 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Customer Code
-                  </label>
-
-                  <input
-                    value={form.customer_code}
-                    disabled={!!editingCustomer}
-                    onChange={(event) =>
-                      updateField(
-                        "customer_code",
-                        event.target.value
-                      )
-                    }
-                    placeholder="Auto-generated on save"
-                    className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-slate-900 disabled:bg-slate-100 disabled:text-slate-500"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    {editingCustomer ? "Existing customer code cannot be changed." : "Leave blank to auto-generate sequentially on save."}
-                  </p>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
                     Customer Name *
                   </label>
 
@@ -766,7 +761,7 @@ export default function CustomersPage() {
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">
-                    TRN
+                    TRN (Tax Registration Number)
                   </label>
 
                   <input
@@ -784,18 +779,18 @@ export default function CustomersPage() {
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Contact Person
+                    Phone
                   </label>
 
                   <input
-                    value={form.contact_person}
+                    value={form.phone}
                     onChange={(event) =>
                       updateField(
-                        "contact_person",
+                        "phone",
                         event.target.value
                       )
                     }
-                    placeholder="Contact person"
+                    placeholder="+971 4 XXX XXXX"
                     className="w-full rounded-lg border border-slate-300 px-4 py-3"
                   />
                 </div>
@@ -818,24 +813,64 @@ export default function CustomersPage() {
                     className="w-full rounded-lg border border-slate-300 px-4 py-3"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Phone
-                  </label>
+              {/* More Options Section */}
+              <div className="border-t border-slate-200 bg-slate-50/70 px-6 py-3 flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">
+                  Additional Details (Customer Code, Contact, Address, Payment Terms, Credit Limit, Notes)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowMoreOptions(!showMoreOptions)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition"
+                >
+                  {showMoreOptions ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <span>{showMoreOptions ? "Hide More Options" : "More Options"}</span>
+                </button>
+              </div>
 
-                  <input
-                    value={form.phone}
-                    onChange={(event) =>
-                      updateField(
-                        "phone",
-                        event.target.value
-                      )
-                    }
-                    placeholder="+971 4 XXX XXXX"
-                    className="w-full rounded-lg border border-slate-300 px-4 py-3"
-                  />
-                </div>
+              {showMoreOptions && (
+                <div className="grid grid-cols-1 gap-5 border-t border-slate-200 bg-slate-50/30 px-6 py-5 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      Customer Code
+                    </label>
+
+                    <input
+                      value={form.customer_code}
+                      disabled={!!editingCustomer}
+                      onChange={(event) =>
+                        updateField(
+                          "customer_code",
+                          event.target.value
+                        )
+                      }
+                      placeholder="Auto-generated on save"
+                      className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-slate-900 disabled:bg-slate-100 disabled:text-slate-500"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      {editingCustomer ? "Existing customer code cannot be changed." : "Leave blank to auto-generate sequentially on save."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      Contact Person
+                    </label>
+
+                    <input
+                      value={form.contact_person}
+                      onChange={(event) =>
+                        updateField(
+                          "contact_person",
+                          event.target.value
+                        )
+                      }
+                      placeholder="Contact person"
+                      className="w-full rounded-lg border border-slate-300 px-4 py-3"
+                    />
+                  </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">
@@ -1066,6 +1101,7 @@ export default function CustomersPage() {
                   />
                 </div>
               </div>
+            )}
 
               {error && (
                 <div className="mx-6 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

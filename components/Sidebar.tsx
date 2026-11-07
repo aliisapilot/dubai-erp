@@ -37,10 +37,10 @@ function NavLink({ href, icon, label, exact }: NavLinkProps) {
   return (
     <Link
       href={href}
-      className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-colors text-sm ${
+      className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-colors text-sm font-medium ${
         active
-          ? "bg-slate-800 text-white font-medium shadow-sm"
-          : "text-slate-300 hover:bg-slate-800/50 hover:text-white"
+          ? "bg-emerald-500/15 text-emerald-400 font-semibold border border-emerald-500/30 shadow-xs"
+          : "text-slate-300 hover:bg-slate-800/60 hover:text-white"
       }`}
     >
       <span className={active ? "text-emerald-400" : "text-slate-400"}>{icon}</span>
@@ -56,8 +56,10 @@ function SubLink({ href, icon, label, exact }: SubLinkProps) {
   return (
     <Link
       href={href}
-      className={`flex items-center gap-2 py-1.5 text-xs transition-colors rounded px-2 ${
-        active ? "text-emerald-400 font-semibold bg-slate-800/60" : "text-slate-400 hover:text-white hover:bg-slate-800/30"
+      className={`flex items-center gap-2 py-1.5 text-xs transition-colors rounded-lg px-2.5 ${
+        active
+          ? "text-emerald-400 font-semibold bg-emerald-500/15 border border-emerald-500/30 shadow-xs"
+          : "text-slate-400 hover:text-white hover:bg-slate-800/40"
       }`}
     >
       <span className={active ? "text-emerald-400" : "text-slate-500"}>{icon}</span>
@@ -75,54 +77,77 @@ export default function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  // Group expansion states
-  const [salesOpen, setSalesOpen] = useState(
+  // User toggle overrides: key is group name, value is boolean
+  const [userToggles, setUserToggles] = useState<Record<string, boolean>>({});
+
+  const isSalesPath =
     pathname.startsWith("/customers") ||
     pathname.startsWith("/quotations") ||
     pathname.startsWith("/proforma") ||
     pathname.startsWith("/tax-invoices") ||
     pathname.startsWith("/delivery-notes") ||
-    pathname.startsWith("/receipt-vouchers") ||
-    pathname.startsWith("/measurements")
-  );
+    pathname.startsWith("/receipt-vouchers");
 
-  const [purchasingOpen, setPurchasingOpen] = useState(
+  const isPurchasingPath =
     pathname.startsWith("/suppliers") ||
     pathname.startsWith("/purchase-orders") ||
     pathname.startsWith("/supplier-bills") ||
-    pathname.startsWith("/supplier-payments")
-  );
+    pathname.startsWith("/supplier-payments");
 
-  const [inventoryOpen, setInventoryOpen] = useState(
+  const isInventoryPath =
     pathname.startsWith("/products") ||
-    pathname.startsWith("/inventory")
-  );
+    pathname.startsWith("/inventory");
 
-  const [projectsOpen, setProjectsOpen] = useState(
+  const isProjectsPath =
     pathname.startsWith("/projects") ||
-    pathname.startsWith("/measurements")
-  );
+    pathname.startsWith("/measurements");
 
-  const [hrOpen, setHrOpen] = useState(
+  const isHrPath =
     pathname.startsWith("/employees") ||
     pathname.startsWith("/attendance") ||
     pathname.startsWith("/overtime") ||
     pathname.startsWith("/salary") ||
     pathname.startsWith("/payslips") ||
     pathname.startsWith("/employee-payment-vouchers") ||
-    pathname.startsWith("/payroll-summary")
-  );
+    pathname.startsWith("/payroll-summary");
 
-  const [financeOpen, setFinanceOpen] = useState(
+  const isFinancePath =
     pathname.startsWith("/payments") ||
     pathname.startsWith("/cheques") ||
     pathname.startsWith("/expenses") ||
-    pathname.startsWith("/petty-cash")
-  );
+    pathname.startsWith("/petty-cash");
 
-  const [reportsOpen, setReportsOpen] = useState(
-    pathname.startsWith("/reports")
-  );
+  const isReportsPath = pathname.startsWith("/reports");
+
+  const salesOpen = userToggles.sales !== undefined ? userToggles.sales : isSalesPath;
+  const purchasingOpen = userToggles.purchasing !== undefined ? userToggles.purchasing : isPurchasingPath;
+  const inventoryOpen = userToggles.inventory !== undefined ? userToggles.inventory : isInventoryPath;
+  const projectsOpen = userToggles.projects !== undefined ? userToggles.projects : isProjectsPath;
+  const hrOpen = userToggles.hr !== undefined ? userToggles.hr : isHrPath;
+  const financeOpen = userToggles.finance !== undefined ? userToggles.finance : isFinancePath;
+  const reportsOpen = userToggles.reports !== undefined ? userToggles.reports : isReportsPath;
+
+  const setSalesOpen = (val: boolean | ((p: boolean) => boolean)) => {
+    setUserToggles((prev) => ({ ...prev, sales: typeof val === "function" ? val(salesOpen) : val }));
+  };
+  const setPurchasingOpen = (val: boolean | ((p: boolean) => boolean)) => {
+    setUserToggles((prev) => ({ ...prev, purchasing: typeof val === "function" ? val(purchasingOpen) : val }));
+  };
+  const setInventoryOpen = (val: boolean | ((p: boolean) => boolean)) => {
+    setUserToggles((prev) => ({ ...prev, inventory: typeof val === "function" ? val(inventoryOpen) : val }));
+  };
+  const setProjectsOpen = (val: boolean | ((p: boolean) => boolean)) => {
+    setUserToggles((prev) => ({ ...prev, projects: typeof val === "function" ? val(projectsOpen) : val }));
+  };
+  const setHrOpen = (val: boolean | ((p: boolean) => boolean)) => {
+    setUserToggles((prev) => ({ ...prev, hr: typeof val === "function" ? val(hrOpen) : val }));
+  };
+  const setFinanceOpen = (val: boolean | ((p: boolean) => boolean)) => {
+    setUserToggles((prev) => ({ ...prev, finance: typeof val === "function" ? val(financeOpen) : val }));
+  };
+  const setReportsOpen = (val: boolean | ((p: boolean) => boolean)) => {
+    setUserToggles((prev) => ({ ...prev, reports: typeof val === "function" ? val(reportsOpen) : val }));
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -149,11 +174,6 @@ export default function Sidebar() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMobileOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
     const handleToggle = () => setMobileOpen((p) => !p);
     window.addEventListener("toggle-erp-sidebar", handleToggle);
     return () => window.removeEventListener("toggle-erp-sidebar", handleToggle);
@@ -172,7 +192,14 @@ export default function Sidebar() {
   }
 
   const navContent = (
-    <div className="flex h-full flex-col bg-slate-900 text-slate-300">
+    <div
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("a")) {
+          setMobileOpen(false);
+        }
+      }}
+      className="flex h-full flex-col bg-slate-900 text-slate-300"
+    >
       {/* Brand Header with enlarged logo (48-56px desktop, 44-48px tablet, 40-44px mobile) */}
       <div className="min-h-[4.75rem] border-b border-slate-800 px-4 py-3 flex items-center justify-between bg-slate-900 shrink-0">
         <Link href="/" className="flex items-center gap-3 group min-w-0 flex-1">
@@ -239,7 +266,6 @@ export default function Sidebar() {
             <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
               <SubLink href="/customers" icon={<Users size={14} />} label="Customers" />
               <SubLink href="/quotations" icon={<FileText size={14} />} label="Quotations" />
-              <SubLink href="/measurements" icon={<Ruler size={14} />} label="Measurement Takeoff" />
               <SubLink href="/proforma-invoices" icon={<FileSpreadsheet size={14} />} label="Proforma Invoices" />
               <SubLink href="/tax-invoices" icon={<FileCheck2 size={14} />} label="Tax Invoices" />
               <SubLink href="/delivery-notes" icon={<ClipboardList size={14} />} label="Delivery Notes" />
@@ -287,7 +313,7 @@ export default function Sidebar() {
           </button>
           {inventoryOpen && (
             <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800 pl-3">
-              <SubLink href="/products" icon={<Package size={14} />} label="Materials &amp; Products" />
+              <SubLink href="/inventory/products" icon={<Package size={14} />} label="Products &amp; Materials" />
               <SubLink href="/inventory" icon={<ClipboardList size={14} />} label="Stock Overview" exact />
               <SubLink href="/inventory/stock-in" icon={<ArrowDownRight size={14} />} label="Stock In" />
               <SubLink href="/inventory/stock-out" icon={<ArrowUpRight size={14} />} label="Material Used / Stock Out" />

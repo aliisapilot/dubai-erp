@@ -187,15 +187,15 @@ export default function DashboardPage() {
   const card = (icon: React.ReactNode, label: string, value: string | number, sub: string, href: string, alert = false) => (
     <Link
       href={href}
-      className={`group flex flex-col rounded-xl border p-4 sm:p-5 shadow-lg transition-all duration-200 hover:-translate-y-0.5 ${
+      className={`group flex flex-col rounded-xl border p-3.5 sm:p-4 shadow-md transition-all duration-150 hover:-translate-y-0.5 ${
         alert
           ? "border-amber-500/40 bg-amber-950/20 hover:border-amber-500/60"
           : "border-slate-800 bg-slate-900/90 hover:border-slate-700 hover:bg-slate-800/80"
       }`}
     >
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2.5">
         <div
-          className={`rounded-lg p-2.5 transition-colors ${
+          className={`rounded-lg p-2 transition-colors ${
             alert
               ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
               : "bg-slate-800 text-slate-300 border border-slate-700/60 group-hover:bg-emerald-500/20 group-hover:text-emerald-400 group-hover:border-emerald-500/30"
@@ -205,12 +205,12 @@ export default function DashboardPage() {
         </div>
         {alert && (
           <span className="flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-full">
-            <AlertTriangle size={12} /> Reorder
+            <AlertTriangle size={11} /> Reorder
           </span>
         )}
       </div>
-      <p className="text-2xl font-black text-white tabular-nums tracking-tight font-mono">{value}</p>
-      <p className="mt-1 text-xs font-bold uppercase tracking-wider text-slate-300">{label}</p>
+      <p className="text-xl sm:text-2xl font-black text-white tabular-nums tracking-tight font-mono">{value}</p>
+      <p className="mt-0.5 text-xs font-bold uppercase tracking-wider text-slate-300">{label}</p>
       <p className="text-[11px] text-slate-400 mt-0.5">{sub}</p>
     </Link>
   );
@@ -235,55 +235,43 @@ export default function DashboardPage() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_20%_-10%,rgba(16,185,129,0.18),rgba(15,23,42,0))]" />
         <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] bg-[size:32px_32px]" />
 
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-5 sm:py-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
-            <div className="flex items-start sm:items-center gap-4 sm:gap-5 min-w-0">
-              {/* Immersive Company Logo - prominent, zero borders */}
-              <ImmersiveLogo
-                src={company?.logo_url}
-                alt={company?.name || "Company Logo"}
-                fallbackText={companyName ? companyName.substring(0, 2).toUpperCase() : "DXB"}
-                className="h-16 w-16 sm:h-20 sm:w-20 md:h-22 md:w-22 shrink-0 drop-shadow-xl"
-              />
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
+          <div className="flex items-center gap-3.5 sm:gap-4 md:gap-5 min-w-0">
+            {/* Proportional vertically-aligned Company Logo */}
+            <ImmersiveLogo
+              src={company?.logo_url}
+              alt={company?.name || "Company Logo"}
+              fallbackText={companyName ? companyName.substring(0, 2).toUpperCase() : "DXB"}
+              className="h-14 w-14 sm:h-16 sm:w-16 md:h-18 md:w-18 shrink-0 drop-shadow-md"
+            />
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/25 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    Live ERP Feed
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/25 px-2.5 py-0.5 text-[10px] sm:text-[11px] font-semibold text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Live ERP Feed
+                </span>
+                {company?.trn && (
+                  <span className="rounded-md bg-slate-800/90 border border-slate-700 px-2 py-0.5 text-[10px] sm:text-[11px] font-mono text-slate-300">
+                    TRN: {company.trn}
                   </span>
-                  {company?.trn && (
-                    <span className="rounded-md bg-slate-800/90 border border-slate-700 px-2 py-0.5 text-[11px] font-mono text-slate-300">
-                      TRN: {company.trn}
-                    </span>
-                  )}
-                  {company?.city && (
-                    <span className="rounded-md bg-slate-800/90 border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300">
-                      {company.city}, UAE
-                    </span>
-                  )}
-                </div>
+                )}
+                {company?.city && (
+                  <span className="rounded-md bg-slate-800/90 border border-slate-700 px-2 py-0.5 text-[10px] sm:text-[11px] text-slate-300">
+                    {company.city}, UAE
+                  </span>
+                )}
+              </div>
 
-                <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black text-white tracking-tight break-words max-w-4xl leading-tight drop-shadow-sm">
-                  {companyName}
-                </h1>
-                <p className="mt-1 text-xs sm:text-sm font-semibold text-emerald-400/90 flex items-center gap-2">
-                  <span>Executive Management Dashboard</span>
-                  <span className="text-slate-500 hidden sm:inline">•</span>
-                  <span className="text-slate-300 font-normal hidden sm:inline">Commercial Takeoffs & Enterprise Control</span>
-                </p>
-              </div>
-            </div>
-
-            {/* Currency & System Status Badge */}
-            <div className="flex items-center gap-3 self-start md:self-auto shrink-0 bg-slate-900/80 backdrop-blur-xs border border-slate-800 rounded-2xl p-3 sm:px-4 sm:py-2.5 shadow-sm">
-              <div className="text-right hidden sm:block">
-                <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Operating Currency</p>
-                <p className="text-xs font-semibold text-white">United Arab Emirates Dirham</p>
-              </div>
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold font-mono text-xs">
-                AED
-              </div>
+              {/* Single horizontal line on desktop with balanced wrapping on mobile */}
+              <h1 className="text-base sm:text-lg md:text-xl lg:text-2xl xl:text-[26px] font-black text-white tracking-tight leading-snug drop-shadow-sm whitespace-normal sm:whitespace-nowrap overflow-hidden text-ellipsis [text-wrap:balance]">
+                {companyName}
+              </h1>
+              <p className="mt-0.5 text-xs font-semibold text-emerald-400/90 flex items-center gap-2">
+                <span>Executive Management Dashboard</span>
+                <span className="text-slate-500 hidden sm:inline">•</span>
+                <span className="text-slate-400 font-normal hidden sm:inline">Commercial Operations & Financial Controls</span>
+              </p>
             </div>
           </div>
         </div>
@@ -306,49 +294,49 @@ export default function DashboardPage() {
                 </h2>
                 <span className="text-[11px] text-slate-500 font-mono">Live UAE Dirham (AED)</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/40 p-5 shadow-lg relative overflow-hidden">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/40 p-4 sm:p-4.5 shadow-md relative overflow-hidden">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Customer Receipts</p>
-                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      <TrendingUp size={16} />
+                    <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">Customer Receipts</p>
+                    <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <TrendingUp size={15} />
                     </div>
                   </div>
-                  <p className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">{fmtAED(stats.customerPaymentsTotal)}</p>
-                  <p className="text-xs text-emerald-400/80 mt-1">Total collected from clients</p>
+                  <p className="text-xl sm:text-2xl font-black text-white font-mono tracking-tight">{fmtAED(stats.customerPaymentsTotal)}</p>
+                  <p className="text-[11px] text-emerald-400/80 mt-1">Total collected from clients</p>
                 </div>
 
-                <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/40 p-5 shadow-lg relative overflow-hidden">
+                <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/40 p-4 sm:p-4.5 shadow-md relative overflow-hidden">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-bold text-amber-400 uppercase tracking-wider">Outstanding Client Dues</p>
-                    <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                      <Clock size={16} />
+                    <p className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">Outstanding Client Dues</p>
+                    <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      <Clock size={15} />
                     </div>
                   </div>
-                  <p className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">{fmtAED(stats.outstandingCustomerBalance)}</p>
-                  <p className="text-xs text-amber-400/80 mt-1">Pending customer collections</p>
+                  <p className="text-xl sm:text-2xl font-black text-white font-mono tracking-tight">{fmtAED(stats.outstandingCustomerBalance)}</p>
+                  <p className="text-[11px] text-amber-400/80 mt-1">Pending customer collections</p>
                 </div>
 
-                <div className="rounded-xl border border-rose-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-rose-950/40 p-5 shadow-lg relative overflow-hidden">
+                <div className="rounded-xl border border-rose-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-rose-950/40 p-4 sm:p-4.5 shadow-md relative overflow-hidden">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-bold text-rose-400 uppercase tracking-wider">Vendor Dues (AP)</p>
-                    <div className="p-2 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                      <Wallet size={16} />
+                    <p className="text-[11px] font-bold text-rose-400 uppercase tracking-wider">Vendor Dues (AP)</p>
+                    <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                      <Wallet size={15} />
                     </div>
                   </div>
-                  <p className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">{fmtAED(stats.outstandingSupplierBalance)}</p>
-                  <p className="text-xs text-rose-400/80 mt-1">Unpaid supplier bills</p>
+                  <p className="text-xl sm:text-2xl font-black text-white font-mono tracking-tight">{fmtAED(stats.outstandingSupplierBalance)}</p>
+                  <p className="text-[11px] text-rose-400/80 mt-1">Unpaid supplier bills</p>
                 </div>
 
-                <div className="rounded-xl border border-slate-700/60 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800/40 p-5 shadow-lg relative overflow-hidden">
+                <div className="rounded-xl border border-slate-700/60 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800/40 p-4 sm:p-4.5 shadow-md relative overflow-hidden">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Finalized Payroll</p>
-                    <div className="p-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
-                      <BarChart3 size={16} />
+                    <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Finalized Payroll</p>
+                    <div className="p-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
+                      <BarChart3 size={15} />
                     </div>
                   </div>
-                  <p className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">{fmtAED(stats.currentPayroll)}</p>
-                  <p className="text-xs text-slate-400 mt-1">Active monthly salary commitments</p>
+                  <p className="text-xl sm:text-2xl font-black text-white font-mono tracking-tight">{fmtAED(stats.currentPayroll)}</p>
+                  <p className="text-[11px] text-slate-400 mt-1">Active monthly salary commitments</p>
                 </div>
               </div>
             </div>
@@ -359,13 +347,13 @@ export default function DashboardPage() {
                 <Briefcase size={14} className="text-emerald-400" />
                 <span>Enterprise Operations</span>
               </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-                {card(<Users size={18} />, "Customers", stats.activeCustomers, `${stats.customers} total`, "/customers")}
-                {card(<Truck size={18} />, "Suppliers", stats.activeSuppliers, `${stats.suppliers} total`, "/suppliers")}
-                {card(<Package size={18} />, "Products", stats.products, `${stats.lowStock} low stock`, "/inventory", stats.lowStock > 0)}
-                {card(<Briefcase size={18} />, "Projects", stats.activeProjects, `${stats.projects} total`, "/projects")}
-                {card(<Users2 size={18} />, "Employees", stats.employees, "Active workforce", "/employees")}
-                {card(<FileCheck2 size={18} />, "Tax Invoices", stats.taxInvoices, `${stats.pendingInvoices} pending`, "/tax-invoices")}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3.5">
+                {card(<Users size={17} />, "Customers", stats.activeCustomers, `${stats.customers} total`, "/customers")}
+                {card(<Truck size={17} />, "Suppliers", stats.activeSuppliers, `${stats.suppliers} total`, "/suppliers")}
+                {card(<Package size={17} />, "Products", stats.products, `${stats.lowStock} low stock`, "/inventory/products", stats.lowStock > 0)}
+                {card(<Briefcase size={17} />, "Projects", stats.activeProjects, `${stats.projects} total`, "/projects")}
+                {card(<Users2 size={17} />, "Employees", stats.employees, "Active workforce", "/employees")}
+                {card(<FileCheck2 size={17} />, "Tax Invoices", stats.taxInvoices, `${stats.pendingInvoices} pending`, "/tax-invoices")}
               </div>
             </div>
 
@@ -373,9 +361,9 @@ export default function DashboardPage() {
             <div>
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Quick Navigation & Actions</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
-                {quickAction("Add Customer", <Users size={15} />, "/customers")}
-                {quickAction("Add Supplier", <Truck size={15} />, "/suppliers")}
-                {quickAction("Add Product", <Package size={15} />, "/products")}
+                {quickAction("Add Customer", <Users size={14} />, "/customers")}
+                {quickAction("Add Supplier", <Truck size={14} />, "/suppliers")}
+                {quickAction("Add Product", <Package size={14} />, "/inventory/products")}
                 {quickAction("New Quotation", <FileText size={15} />, "/quotations")}
                 {quickAction("New Proforma", <FileSpreadsheet size={15} />, "/proforma-invoices")}
                 {quickAction("New Tax Invoice", <FileCheck2 size={15} />, "/tax-invoices")}
