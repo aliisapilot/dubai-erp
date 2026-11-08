@@ -25,6 +25,9 @@ import {
   Paperclip,
   FileText,
   RefreshCw,
+  Eye,
+  Download,
+  Scale,
 } from "lucide-react";
 import Link from "next/link";
 import StatementOfAccountTemplate, { StatementData, StatementEntry } from "@/components/documents/StatementOfAccountTemplate";
@@ -38,6 +41,11 @@ import { createSOA101ReferenceLayout } from "@/lib/documentDesigner";
 import { formatDisplayDocNumber, detectDocumentCollisions, DocumentMappingItem } from "@/lib/helpers";
 import DocumentNumberMappingPreviewModal from "@/components/documents/DocumentNumberMappingPreviewModal";
 import DynamicDocumentRenderer, { getSampleDocumentData, MockDocumentData } from "@/components/documents/DynamicDocumentRenderer";
+import {
+  calculateCustomerStatement,
+  reconcileCustomerStatement,
+  ReconciliationReport,
+} from "@/lib/customerStatementEngine";
 
 type Customer = {
   id: string;
@@ -157,6 +165,8 @@ export default function StatementOfAccountPage() {
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
   const [statement, setStatement] = useState<StatementData | null>(null);
+  const [reconciliation, setReconciliation] = useState<ReconciliationReport | null>(null);
+  const [showReconciliationDetails, setShowReconciliationDetails] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState<"default" | "soa_reference">("default");
   const [showCompareModal, setShowCompareModal] = useState(false);
@@ -684,50 +694,86 @@ export default function StatementOfAccountPage() {
       };
 
       let insertedRecord: { id: string } | null = null;
-      const insertRes = await supabase
-        .from("receipt_vouchers")
-        .insert(fullPayload)
-        .select("id")
-        .single();
+      let rpcSucceeded = false;
 
-      if (insertRes.error) {
-        console.warn("[CustomerStatement] Full receipt insert failed, falling back to base columns:", insertRes.error.message);
-        const fallbackRes = await supabase
+      // 1. Attempt genuine database transactional allocation via Supabase RPC (Requirement 7)
+      try {
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc("record_customer_payment_v1", {
+          p_company_id: cid,
+          p_customer_id: targetCustId,
+          p_received_from: verifiedCustomerName,
+          p_amount: cleanAmt,
+          p_voucher_number: voucherNumber,
+          p_voucher_date: paymentForm.date || todayISO(),
+          p_payment_method: cleanPaymentMethod,
+          p_tax_invoice_id: paymentForm.tax_invoice_id || null,
+          p_cheque_number: cleanPaymentMethod === "Cheque" ? (paymentForm.cheque_number.trim() || null) : null,
+          p_cheque_date: cleanPaymentMethod === "Cheque" ? (paymentForm.cheque_date || null) : null,
+          p_bank_name: paymentForm.bank_name.trim() || null,
+          p_notes: serializedNotes,
+          p_amount_words: numberToWordsEnglish(cleanAmt),
+        });
+
+        if (!rpcErr && rpcRes && (rpcRes as { success?: boolean }).success) {
+          rpcSucceeded = true;
+          insertedRecord = { id: (rpcRes as { receipt_id: string }).receipt_id };
+        } else if (rpcErr && rpcErr.code !== "PGRST202" && !rpcErr.message?.includes("function") && !rpcErr.message?.includes("does not exist")) {
+          throw new Error(rpcErr.message);
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!msg.includes("function") && !msg.includes("does not exist") && !msg.includes("404")) {
+          throw e;
+        }
+      }
+
+      // 2. Coordinated write fallback if RPC is not installed in database environment
+      if (!rpcSucceeded) {
+        const insertRes = await supabase
           .from("receipt_vouchers")
-          .insert(basePayload)
+          .insert(fullPayload)
           .select("id")
           .single();
 
-        if (fallbackRes.error) {
-          throw new Error(fallbackRes.error.message);
-        }
-        insertedRecord = fallbackRes.data;
-      } else {
-        insertedRecord = insertRes.data;
-      }
+        if (insertRes.error) {
+          console.warn("[CustomerStatement] Full receipt insert failed, falling back to base columns:", insertRes.error.message);
+          const fallbackRes = await supabase
+            .from("receipt_vouchers")
+            .insert(basePayload)
+            .select("id")
+            .single();
 
-      // If linked to an invoice, atomically update invoice payment status
-      if (paymentForm.tax_invoice_id && nextInvoiceStatus) {
-        const { error: invUpdateErr } = await supabase
-          .from("tax_invoices")
-          .update({
-            status: nextInvoiceStatus,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", paymentForm.tax_invoice_id);
-
-        if (invUpdateErr) {
-          // Compensating rollback: delete inserted receipt voucher so no inconsistent state is left
-          if (insertedRecord?.id) {
-            await supabase.from("receipt_vouchers").delete().eq("id", insertedRecord.id);
+          if (fallbackRes.error) {
+            throw new Error(fallbackRes.error.message);
           }
-          throw new Error(`Failed to update linked invoice allocation: ${invUpdateErr.message}`);
+          insertedRecord = fallbackRes.data;
+        } else {
+          insertedRecord = insertRes.data;
+        }
+
+        // If linked to an invoice, update invoice payment status with compensating rollback
+        if (paymentForm.tax_invoice_id && nextInvoiceStatus) {
+          const { error: invUpdateErr } = await supabase
+            .from("tax_invoices")
+            .update({
+              status: nextInvoiceStatus,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", paymentForm.tax_invoice_id);
+
+          if (invUpdateErr) {
+            // Compensating rollback: delete inserted receipt voucher so no inconsistent state is left
+            if (insertedRecord?.id) {
+              await supabase.from("receipt_vouchers").delete().eq("id", insertedRecord.id);
+            }
+            throw new Error(`Failed to update linked invoice allocation: ${invUpdateErr.message}`);
+          }
         }
       }
 
       setBalanceMessage({
         type: "success",
-        text: `Customer payment of ${fmtAED(cleanAmt)} recorded successfully (${voucherNumber}) for ${verifiedCustomerName}.`,
+        text: `Customer payment of ${fmtAED(cleanAmt)} recorded successfully (${voucherNumber}) for ${verifiedCustomerName}${rpcSucceeded ? " (Atomic DB Transaction)" : " (Coordinated allocation with rollback)"}.`,
       });
 
       setShowPaymentModal(false);
@@ -1047,177 +1093,34 @@ export default function StatementOfAccountPage() {
       const collisionAudit = detectDocumentCollisions(rawDocMappings, "tax_invoice");
       setAuditMappings(collisionAudit.mappings);
 
-      // Build unified transactions list
-      type RawTx = {
-        date: string;
-        reference_no: string;
-        original_reference: string;
-        invoice_id?: string;
-        voucher_id?: string;
-        payment_id?: string;
-        description: string;
-        debit: number;
-        credit: number;
-      };
-
-      const rawTxs: RawTx[] = [];
-      const seenInvoiceIds = new Set<string>();
-
-      allInvs.forEach((inv: Invoice) => {
-        if (seenInvoiceIds.has(inv.id)) return;
-        seenInvoiceIds.add(inv.id);
-
-        const st = (inv.status || "").toLowerCase().trim();
-        // Only exclude cancelled and void invoices from customer statement balances
-        if (st === "cancelled" || st === "void") return;
-
-        if (inv.invoice_date) {
-          const simplifiedRef = formatDisplayDocNumber(inv.invoice_number, "tax_invoice");
-          rawTxs.push({
-            date: inv.invoice_date,
-            reference_no: simplifiedRef,
-            original_reference: inv.invoice_number || "INV",
-            invoice_id: inv.id,
-            description: `Tax Invoice ${simplifiedRef}`,
-            debit: Number(inv.total_amount) || 0,
-            credit: 0,
-          });
-        }
-      });
-
-      // Track recorded credits to prevent double-counting between receipt vouchers and payments
-      const seenCreditRefs = new Set<string>();
-
-      // 1. Process receipt vouchers first
-      const seenVoucherIds = new Set<string>();
-      (rcvs || []).forEach((rcv: ReceiptVoucher) => {
-        if (seenVoucherIds.has(rcv.id)) return;
-        seenVoucherIds.add(rcv.id);
-
-        const rst = (rcv.status || "").toLowerCase().trim();
-        if (rst === "cancelled" || rst === "void") return;
-        if (!rcv.voucher_date) return;
-
-        const amt = Number(rcv.amount) || 0;
-        if (amt <= 0) return;
-
-        const vNum = (rcv.voucher_number || "").trim();
-        const simplifiedVoucherRef = formatDisplayDocNumber(vNum || "RV", "receipt_voucher");
-
-        if (vNum) seenCreditRefs.add(vNum.toUpperCase());
-        if (rcv.cheque_number) seenCreditRefs.add(rcv.cheque_number.trim().toUpperCase());
-        seenCreditRefs.add(`${rcv.voucher_date.slice(0, 10)}_${amt.toFixed(2)}`);
-
-        rawTxs.push({
-          date: rcv.voucher_date,
-          reference_no: simplifiedVoucherRef,
-          original_reference: vNum || "RV",
-          voucher_id: rcv.id,
-          description: `Receipt Voucher (${rcv.payment_method || "Cash"}${rcv.cheque_number ? ` - Chq: ${rcv.cheque_number}` : ""})`,
-          debit: 0,
-          credit: amt,
-        });
-      });
-
-      // 2. Process payments, deduplicating against receipt vouchers
-      const seenPaymentIds = new Set<string>();
-      (pays || []).forEach((p: Payment) => {
-        if (seenPaymentIds.has(p.id)) return;
-        seenPaymentIds.add(p.id);
-
-        const pst = (p.status || "").toLowerCase().trim();
-        if (pst === "cancelled" || pst === "void") return;
-        if (!p.payment_date) return;
-
-        const amt = Number(p.amount) || 0;
-        if (amt <= 0) return;
-
-        const pNum = (p.payment_number || "").trim();
-        const pRef = (p.reference_number || "").trim();
-
-        // Check if already accounted for in receipt vouchers
-        if (pNum && seenCreditRefs.has(pNum.toUpperCase())) return;
-        if (pRef && seenCreditRefs.has(pRef.toUpperCase())) return;
-        if (seenCreditRefs.has(`${p.payment_date.slice(0, 10)}_${amt.toFixed(2)}`)) {
-          if (pRef.toLowerCase().includes("rv") || pNum.toLowerCase().includes("rv")) return;
-        }
-
-        if (pNum) seenCreditRefs.add(pNum.toUpperCase());
-        if (pRef) seenCreditRefs.add(pRef.toUpperCase());
-
-        const simplifiedPayRef = formatDisplayDocNumber(pNum || pRef || "PAY", "employee_payment_voucher");
-        rawTxs.push({
-          date: p.payment_date,
-          reference_no: simplifiedPayRef,
-          original_reference: pNum || pRef || "PAY",
-          payment_id: p.id,
-          description: `Payment Received (${p.payment_method || "Cash"})`,
-          debit: 0,
-          credit: amt,
-        });
-      });
-
-      // Sort chronologically: invoices (debits) before payments (credits) on the same date
-      rawTxs.sort((a, b) => {
-        const dayA = a.date.slice(0, 10);
-        const dayB = b.date.slice(0, 10);
-        if (dayA !== dayB) return dayA.localeCompare(dayB);
-        if (a.debit > 0 && b.credit > 0) return -1;
-        if (a.credit > 0 && b.debit > 0) return 1;
-        return (a.reference_no || "").localeCompare(b.reference_no || "");
-      });
-
-      // Calculate opening balance before `fromDate`
-      let computedOpening = Number(appliedOpeningBalance) || 0;
-      const filteredTxs: RawTx[] = [];
-
-      rawTxs.forEach(tx => {
-        const transactionDay = tx.date.slice(0, 10);
-        if (fromDate && transactionDay < fromDate) {
-          computedOpening += (tx.debit - tx.credit);
-        } else if ((!fromDate || transactionDay >= fromDate) && (!toDate || transactionDay <= toDate)) {
-          filteredTxs.push(tx);
-        }
-      });
-
-      // Compute running balance line-by-line
-      let currentBalance = computedOpening;
-      const entries: StatementEntry[] = filteredTxs.map(tx => {
-        currentBalance += (tx.debit - tx.credit);
-        return {
-          date: tx.date,
-          reference_no: tx.reference_no,
-          original_reference: tx.original_reference,
-          invoice_id: tx.invoice_id,
-          voucher_id: tx.voucher_id,
-          payment_id: tx.payment_id,
-          description: tx.description,
-          debit: tx.debit,
-          credit: tx.credit,
-          balance: currentBalance,
-        };
-      });
-
       // Universal document numbering: Clean simplified SOA sequence
       const custIdx = customers.findIndex(c => c.id === selectedCustomerId);
       const stNumber = formatDisplayDocNumber(`SOA-${custIdx >= 0 ? custIdx + 1 : 1}`, "customer_statement");
 
-      const statementData: StatementData = {
-        statement_number: stNumber,
-        statement_date: todayISO(),
-        from_date: fromDate || null,
-        to_date: toDate || null,
-        customer_name: custName,
-        customer_trn: custTrn,
-        customer_address: custAddress,
-        customer_phone: custPhone,
-        customer_code: custCode,
-        opening_balance: computedOpening,
-        entries,
-        closing_balance: currentBalance,
-      };
+      // SINGLE SOURCE OF TRUTH: Unify calculation for statement, preview, print, and PDF
+      const statementData = calculateCustomerStatement({
+        initialCutoverBalance: Number(appliedOpeningBalance) || 0,
+        fromDate: fromDate || null,
+        toDate: toDate || null,
+        invoices: allInvs,
+        receipts: rcvs,
+        payments: pays,
+        customerName: custName,
+        customerTrn: custTrn,
+        customerAddress: custAddress,
+        customerPhone: custPhone,
+        customerCode: custCode,
+        statementNumber: stNumber,
+        statementDate: todayISO(),
+      });
 
-      if (version === requestVersion.current) setStatement(statementData);
+      // Financial Consistency & Reconciliation Check (Requirement 8)
+      const recon = reconcileCustomerStatement(statementData);
+
+      if (version === requestVersion.current) {
+        setStatement(statementData);
+        setReconciliation(recon);
+      }
     } catch (err) {
       if (version === requestVersion.current) setLoadError(err instanceof Error ? err.message : "Could not load statement transactions.");
     } finally {
@@ -1322,9 +1225,30 @@ export default function StatementOfAccountPage() {
                 <button
                   type="button"
                   onClick={() => setShowPrintModal(true)}
-                  className="flex items-center gap-2 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 transition shadow-sm shrink-0"
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm shrink-0"
+                  title="View Statement of Account document preview"
                 >
-                  <Printer size={15} /> Print / Export A4
+                  <Eye size={14} className="text-blue-600" />
+                  View SOA
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPrintModal(true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm shrink-0"
+                  title="Download Statement of Account PDF"
+                >
+                  <Download size={14} className="text-emerald-600" />
+                  Download SOA PDF
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPrintModal(true)}
+                  className="flex items-center gap-2 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 transition shadow-sm shrink-0"
+                  title="Print Statement of Account (A4)"
+                >
+                  <Printer size={14} /> Print SOA
                 </button>
               </div>
             )}
@@ -1451,23 +1375,42 @@ export default function StatementOfAccountPage() {
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={handleOpenPaymentModal}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm"
                     title="Record a payment or credit note received from this customer"
                   >
-                    <Plus size={14} /> Record Customer Payment / Credit
+                    <Plus size={14} /> Record Customer Payment
                   </button>
                   {statement && (
-                    <button
-                      type="button"
-                      onClick={() => setShowPrintModal(true)}
-                      className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition shadow-sm"
-                    >
-                      <Printer size={14} /> Download PDF / Print
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowPrintModal(true)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm"
+                        title="View Statement of Account document preview"
+                      >
+                        <Eye size={13} className="text-blue-600" /> View SOA
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowPrintModal(true)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm"
+                        title="Download Statement of Account PDF"
+                      >
+                        <Download size={13} className="text-emerald-600" /> Download PDF
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowPrintModal(true)}
+                        className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition shadow-sm"
+                        title="Print Statement of Account"
+                      >
+                        <Printer size={13} /> Print SOA
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -1553,13 +1496,32 @@ export default function StatementOfAccountPage() {
                   Clear Filters / All Dates
                 </button>
                 {statement && (
-                  <button
-                    type="button"
-                    onClick={() => setShowPrintModal(true)}
-                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition shadow-sm"
-                  >
-                    <Printer size={14} /> Download PDF / Print
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPrintModal(true)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm"
+                      title="View Statement of Account document preview"
+                    >
+                      <Eye size={13} className="text-blue-600" /> View SOA
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPrintModal(true)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm"
+                      title="Download Statement of Account PDF"
+                    >
+                      <Download size={13} className="text-emerald-600" /> Download PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPrintModal(true)}
+                      className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 transition shadow-sm"
+                      title="Print Statement of Account"
+                    >
+                      <Printer size={13} /> Print SOA
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1584,8 +1546,8 @@ export default function StatementOfAccountPage() {
           <div className="space-y-4">
             {/* 4 Summary Cards */}
             {(() => {
-              const totalDebits = statement.entries.reduce((s, e) => s + e.debit, 0);
-              const totalCredits = statement.entries.reduce((s, e) => s + e.credit, 0);
+              const totalDebits = statement.total_debits !== undefined ? statement.total_debits : statement.entries.reduce((s, e) => s + e.debit, 0);
+              const totalCredits = statement.total_credits !== undefined ? statement.total_credits : statement.entries.reduce((s, e) => s + e.credit, 0);
               return (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -1631,6 +1593,101 @@ export default function StatementOfAccountPage() {
               );
             })()}
 
+            {/* Requirement 8: Financial Consistency & Reconciliation Status */}
+            {reconciliation && (
+              <div className={`rounded-xl border p-4 shadow-sm transition ${
+                reconciliation.isReconciled 
+                  ? "border-emerald-200 bg-emerald-50/50" 
+                  : "border-amber-300 bg-amber-50/70"
+              }`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`rounded-lg p-2 ${
+                      reconciliation.isReconciled ? "bg-emerald-600 text-white" : "bg-amber-600 text-white"
+                    }`}>
+                      <Scale size={18} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                          Financial Reconciliation Check
+                        </span>
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${
+                          reconciliation.isReconciled
+                            ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                            : "bg-amber-100 text-amber-900 border-amber-300"
+                        }`}>
+                          {reconciliation.isReconciled ? (
+                            <>
+                              <CheckCircle2 size={12} className="text-emerald-700" />
+                              Reconciled (0.00 Discrepancy)
+                            </>
+                          ) : (
+                            <>
+                              <AlertTriangle size={12} className="text-amber-700" />
+                              Discrepancy: {fmtAED(reconciliation.discrepancy)}
+                            </>
+                          )}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        {reconciliation.isReconciled
+                          ? "Customer Statement Closing Balance, SOA Closing Balance, and Ledger Activity Equation are in 100% mathematical agreement."
+                          : "A discrepancy was detected between transaction running balance and closing balance equation. Review details below."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowReconciliationDetails(!showReconciliationDetails)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 transition"
+                    >
+                      {showReconciliationDetails ? "Hide Details" : "View Reconciliation Details"}
+                    </button>
+                  </div>
+                </div>
+
+                {showReconciliationDetails && (
+                  <div className="mt-3 pt-3 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                      <span className="text-[10px] text-slate-500 block uppercase font-semibold">1. Statement Closing Balance</span>
+                      <span className="text-sm font-mono font-bold text-slate-900 block mt-0.5">
+                        {fmtAED(reconciliation.statementClosingBalance)}
+                      </span>
+                      <span className="text-[10px] text-slate-400">From running balance table</span>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                      <span className="text-[10px] text-slate-500 block uppercase font-semibold">2. SOA Document Closing Balance</span>
+                      <span className="text-sm font-mono font-bold text-slate-900 block mt-0.5">
+                        {fmtAED(reconciliation.soaClosingBalance)}
+                      </span>
+                      <span className="text-[10px] text-slate-400">From unified SOA template</span>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                      <span className="text-[10px] text-slate-500 block uppercase font-semibold">3. Net Equation Balance</span>
+                      <span className="text-sm font-mono font-bold text-slate-900 block mt-0.5">
+                        {fmtAED(reconciliation.computedClosingBalance)}
+                      </span>
+                      <span className="text-[10px] text-slate-400">Opening ({fmtAED(reconciliation.openingBalance)}) + Debits ({fmtAED(reconciliation.totalDebits)}) − Credits ({fmtAED(reconciliation.totalCredits)})</span>
+                    </div>
+
+                    {reconciliation.discrepancyDetails.length > 0 && (
+                      <div className="sm:col-span-3 bg-rose-50 p-3 rounded-lg border border-rose-200 text-rose-800 space-y-1">
+                        <span className="font-bold block">Discrepancy Log:</span>
+                        {reconciliation.discrepancyDetails.map((det, dIdx) => (
+                          <div key={dIdx} className="font-mono text-[11px]">• {det}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Table */}
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -1638,16 +1695,32 @@ export default function StatementOfAccountPage() {
                   <h2 className="font-bold text-slate-900 text-sm">{statement.customer_name}</h2>
                   <p className="text-xs text-slate-500">Ref: {statement.statement_number}</p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     onClick={handleOpenPaymentModal}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm"
                   >
-                    <Plus size={14} /> Add Payment / Credit
+                    <Plus size={14} /> Record Customer Payment
                   </button>
-                  <div className="text-right">
-                    <span className="text-xs text-slate-500 block">Outstanding Closing Balance:</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowPrintModal(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-xs"
+                    title="View Statement of Account document preview"
+                  >
+                    <Eye size={13} className="text-blue-600" /> View SOA
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPrintModal(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-xs"
+                    title="Print Statement of Account (A4)"
+                  >
+                    <Printer size={13} /> Print SOA
+                  </button>
+                  <div className="text-right pl-2 border-l border-slate-200">
+                    <span className="text-[11px] text-slate-500 block">Closing Balance:</span>
                     <span className="text-base font-extrabold font-mono text-slate-900">
                       {fmtAED(statement.closing_balance)}
                     </span>

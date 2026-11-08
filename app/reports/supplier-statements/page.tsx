@@ -190,6 +190,8 @@ export default function SupplierStatementOfAccountPage() {
         to_date: toDate,
         opening_balance: openingBalance,
         closing_balance: currentBal,
+        total_debits: entries.reduce((s, e) => s + e.debit, 0),
+        total_credits: entries.reduce((s, e) => s + e.credit, 0),
         entries,
       });
     } catch (err) {

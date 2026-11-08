@@ -10,34 +10,8 @@ import { numberToWordsEnglish, numberToWordsArabic } from "@/lib/amountInWords";
 import DocumentContainer from "./DocumentContainer";
 
 import type { DocumentLayout } from "@/lib/documentDesigner";
-
-export type StatementEntry = {
-  date: string;
-  reference_no: string;
-  original_reference?: string;
-  invoice_id?: string;
-  voucher_id?: string;
-  payment_id?: string;
-  description: string;
-  debit: number;   // Invoice charge
-  credit: number;  // Payment receipt
-  balance: number; // Running balance
-};
-
-export type StatementData = {
-  statement_number: string;
-  statement_date: string;
-  from_date?: string | null;
-  to_date?: string | null;
-  customer_name: string;
-  customer_trn?: string | null;
-  customer_address?: string | null;
-  customer_phone?: string | null;
-  customer_code?: string | null;
-  opening_balance: number;
-  entries: StatementEntry[];
-  closing_balance: number;
-};
+import type { StatementData, StatementEntry } from "@/lib/customerStatementEngine";
+export type { StatementData, StatementEntry };
 
 type StatementProps = {
   company: CompanyDocInfo | null;
@@ -56,8 +30,8 @@ export default function StatementOfAccountTemplate({
   const customLayout = overrideLayout || design.layout;
   if (!overrideLayout && !design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
 
-  const totalCharges = statement.entries.reduce((acc, curr) => acc + (Number(curr.debit) || 0), 0);
-  const totalCredits = statement.entries.reduce((acc, curr) => acc + (Number(curr.credit) || 0), 0);
+  const totalCharges = statement.total_debits !== undefined ? statement.total_debits : statement.entries.reduce((acc, curr) => acc + (Number(curr.debit) || 0), 0);
+  const totalCredits = statement.total_credits !== undefined ? statement.total_credits : statement.entries.reduce((acc, curr) => acc + (Number(curr.credit) || 0), 0);
 
   const rendererData: MockDocumentData = {
     document_number: statement.statement_number,
