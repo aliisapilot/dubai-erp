@@ -19,7 +19,6 @@ import {
   Pencil,
   History,
   AlertTriangle,
-  AlertCircle,
   Clock,
   Plus,
   Trash2,
@@ -33,11 +32,11 @@ import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { getCurrentCompany, getCompanyId, todayISO, fmtAED, generateDocNumber } from "@/lib/helpers";
 import { generateDocumentPdfFilename } from "@/lib/documentFilename";
-import { CustomPartyData } from "@/lib/documentCustomer";
+import { CustomPartyData, parseCustomPartyFromNotes, serializeCustomPartyNotes } from "@/lib/documentCustomer";
+import { numberToWordsEnglish } from "@/lib/amountInWords";
 import { createSOA101ReferenceLayout } from "@/lib/documentDesigner";
 import { formatDisplayDocNumber, detectDocumentCollisions, DocumentMappingItem } from "@/lib/helpers";
 import DocumentNumberMappingPreviewModal from "@/components/documents/DocumentNumberMappingPreviewModal";
-import { parseCustomPartyFromNotes } from "@/lib/documentCustomer";
 import DynamicDocumentRenderer, { getSampleDocumentData, MockDocumentData } from "@/components/documents/DynamicDocumentRenderer";
 
 type Customer = {
@@ -101,6 +100,14 @@ function normalizeCustomerName(name?: string | null): string {
     .trim();
 }
 
+function isRecentPaymentSubmission(createdAtIso: string, thresholdSeconds = 15): boolean {
+  if (!createdAtIso) return false;
+  const createdMs = new Date(createdAtIso).getTime();
+  if (isNaN(createdMs)) return false;
+  const diffSec = (new Date().getTime() - createdMs) / 1000;
+  return diffSec >= 0 && diffSec < thresholdSeconds;
+}
+
 export default function StatementOfAccountPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
@@ -112,8 +119,17 @@ export default function StatementOfAccountPage() {
   const [appliedOpeningBalance, setAppliedOpeningBalance] = useState<number>(0);
 
   // Payment / Credit Modal States
+  type CustomerInvoiceOption = {
+    id: string;
+    invoice_number: string;
+    invoice_date: string;
+    total_amount: number;
+    paid_amount: number;
+    outstanding_amount: number;
+    status?: string;
+  };
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [customerInvoices, setCustomerInvoices] = useState<{ id: string; invoice_number: string; invoice_date: string; total_amount: number }[]>([]);
+  const [customerInvoices, setCustomerInvoices] = useState<CustomerInvoiceOption[]>([]);
   const [savingPayment, setSavingPayment] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [paymentForm, setPaymentForm] = useState({
@@ -359,21 +375,112 @@ export default function StatementOfAccountPage() {
         console.warn("Could not generate RV doc number:", e);
       }
     }
-    if (selectedCustomerId) {
+
+    let fetchedInvoices: CustomerInvoiceOption[] = [];
+    if (partyMode === "existing" && selectedCustomerId) {
       try {
-        const { data: invs } = await supabase
+        let invQuery = supabase
           .from("tax_invoices")
-          .select("id, invoice_number, invoice_date, total_amount")
+          .select("id, invoice_number, invoice_date, total_amount, status")
           .eq("customer_id", selectedCustomerId)
           .neq("status", "cancelled")
-          .order("invoice_date", { ascending: false });
-        setCustomerInvoices(invs || []);
+          .neq("status", "void");
+        if (cid) invQuery = invQuery.eq("company_id", cid);
+        const { data: invs } = await invQuery.order("invoice_date", { ascending: false });
+
+        if (invs && invs.length > 0) {
+          const invIds = invs.map(i => i.id);
+          let rQuery = supabase
+            .from("receipt_vouchers")
+            .select("tax_invoice_id, amount, status")
+            .in("tax_invoice_id", invIds)
+            .neq("status", "cancelled")
+            .neq("status", "void");
+          if (cid) rQuery = rQuery.eq("company_id", cid);
+          const { data: rcvData } = await rQuery;
+
+          const paidMap: Record<string, number> = {};
+          (rcvData || []).forEach(r => {
+            if (r.tax_invoice_id) {
+              paidMap[r.tax_invoice_id] = (paidMap[r.tax_invoice_id] || 0) + (Number(r.amount) || 0);
+            }
+          });
+
+          fetchedInvoices = invs.map(inv => {
+            const tot = Number(inv.total_amount) || 0;
+            const paid = paidMap[inv.id] || 0;
+            const outstanding = Math.max(0, Math.round((tot - paid) * 100) / 100);
+            return {
+              id: inv.id,
+              invoice_number: inv.invoice_number,
+              invoice_date: inv.invoice_date,
+              total_amount: tot,
+              paid_amount: paid,
+              outstanding_amount: outstanding,
+              status: inv.status,
+            };
+          });
+        }
       } catch (e) {
-        console.warn("Could not fetch customer invoices:", e);
+        console.warn("Could not fetch customer invoices with balance:", e);
       }
-    } else {
-      setCustomerInvoices([]);
+    } else if (partyMode === "custom" && customCustomer.name.trim()) {
+      try {
+        let unlinkedQuery = supabase
+          .from("tax_invoices")
+          .select("id, invoice_number, invoice_date, total_amount, status, notes")
+          .is("customer_id", null)
+          .neq("status", "cancelled")
+          .neq("status", "void");
+        if (cid) unlinkedQuery = unlinkedQuery.eq("company_id", cid);
+        const { data: rawInvs } = await unlinkedQuery.order("invoice_date", { ascending: false });
+
+        const normTarget = normalizeCustomerName(customCustomer.name);
+        const matched = (rawInvs || []).filter(r => {
+          const parsed = parseCustomPartyFromNotes(r.notes, "CUSTOM_CUSTOMER");
+          const trnMatch = Boolean(parsed?.trn && customCustomer.trn && parsed.trn.trim() === customCustomer.trn.trim());
+          const nameMatch = Boolean(parsed?.name && normalizeCustomerName(parsed.name) === normTarget);
+          return trnMatch || nameMatch;
+        });
+
+        if (matched.length > 0) {
+          const invIds = matched.map(i => i.id);
+          let rQuery = supabase
+            .from("receipt_vouchers")
+            .select("tax_invoice_id, amount, status")
+            .in("tax_invoice_id", invIds)
+            .neq("status", "cancelled")
+            .neq("status", "void");
+          if (cid) rQuery = rQuery.eq("company_id", cid);
+          const { data: rcvData } = await rQuery;
+
+          const paidMap: Record<string, number> = {};
+          (rcvData || []).forEach(r => {
+            if (r.tax_invoice_id) {
+              paidMap[r.tax_invoice_id] = (paidMap[r.tax_invoice_id] || 0) + (Number(r.amount) || 0);
+            }
+          });
+
+          fetchedInvoices = matched.map(inv => {
+            const tot = Number(inv.total_amount) || 0;
+            const paid = paidMap[inv.id] || 0;
+            const outstanding = Math.max(0, Math.round((tot - paid) * 100) / 100);
+            return {
+              id: inv.id,
+              invoice_number: inv.invoice_number,
+              invoice_date: inv.invoice_date,
+              total_amount: tot,
+              paid_amount: paid,
+              outstanding_amount: outstanding,
+              status: inv.status,
+            };
+          });
+        }
+      } catch (e) {
+        console.warn("Could not fetch custom customer invoices with balance:", e);
+      }
     }
+    setCustomerInvoices(fetchedInvoices);
 
     setPaymentForm({
       date: todayISO(),
@@ -391,12 +498,15 @@ export default function StatementOfAccountPage() {
 
   async function handleSavePayment(e?: React.FormEvent) {
     if (e) e.preventDefault();
+    if (savingPayment) return;
+
     const cleanAmt = Math.round((parseFloat(paymentForm.amount) || 0) * 100) / 100;
     if (cleanAmt <= 0) {
       setPaymentMessage({ type: "error", text: "Please enter a valid payment amount greater than zero." });
       return;
     }
-    if (!paymentForm.voucher_number.trim()) {
+    const voucherNumber = paymentForm.voucher_number.trim();
+    if (!voucherNumber) {
       setPaymentMessage({ type: "error", text: "Please enter a Receipt Voucher / Reference number." });
       return;
     }
@@ -405,38 +515,219 @@ export default function StatementOfAccountPage() {
     setPaymentMessage(null);
     try {
       const cid = company?.id || (await getCompanyId().catch(() => null));
-      const targetCustId = partyMode === "existing" ? selectedCustomerId : null;
-
-      const payload: Record<string, unknown> = {
-        voucher_number: paymentForm.voucher_number.trim(),
-        voucher_date: paymentForm.date,
-        amount: cleanAmt,
-        payment_method: paymentForm.payment_method,
-        cheque_number: paymentForm.cheque_number.trim() || null,
-        cheque_date: paymentForm.cheque_date || null,
-        bank_name: paymentForm.bank_name.trim() || null,
-        tax_invoice_id: paymentForm.tax_invoice_id || null,
-        notes: paymentForm.notes.trim() || `Payment received via ${paymentForm.payment_method}`,
-        status: "completed",
-      };
-
-      if (cid) payload.company_id = cid;
-      if (targetCustId) payload.customer_id = targetCustId;
-
-      if (partyMode === "custom") {
-        payload.customer_name = customCustomer.name.trim();
-        payload.customer_address = customCustomer.address?.trim() || null;
-        payload.customer_trn = customCustomer.trn?.trim() || null;
+      if (!cid) {
+        throw new Error("Unable to identify active company. Please check your company settings.");
       }
 
-      const { error: insertErr } = await supabase.from("receipt_vouchers").insert(payload);
-      if (insertErr) {
-        throw new Error(insertErr.message);
+      const isCustom = partyMode === "custom";
+      let targetCustId: string | null = null;
+      let verifiedCustomerName = "";
+      let verifiedAddress: string | null = null;
+      let verifiedTrn: string | null = null;
+
+      if (!isCustom) {
+        targetCustId = selectedCustomerId;
+        if (!targetCustId) {
+          throw new Error("Please select a customer before recording a payment.");
+        }
+
+        const memoryCust = customers.find(c => c.id === targetCustId);
+        if (memoryCust?.name?.trim()) {
+          verifiedCustomerName = memoryCust.name.trim();
+          verifiedAddress = memoryCust.address?.trim() || null;
+          verifiedTrn = memoryCust.trn?.trim() || null;
+        }
+
+        if (!verifiedCustomerName) {
+          const { data: dbCust, error: dbErr } = await supabase
+            .from("customers")
+            .select("id, name, address, trn")
+            .eq("id", targetCustId)
+            .maybeSingle();
+
+          if (dbErr) throw new Error(`Database error verifying customer: ${dbErr.message}`);
+          if (dbCust?.name?.trim()) {
+            verifiedCustomerName = dbCust.name.trim();
+            verifiedAddress = dbCust.address?.trim() || null;
+            verifiedTrn = dbCust.trn?.trim() || null;
+          }
+        }
+
+        if (!verifiedCustomerName) {
+          throw new Error("Could not verify customer details from database. Please select a valid customer.");
+        }
+      } else {
+        const customName = customCustomer.name.trim();
+        if (!customName) {
+          throw new Error("Please enter a valid customer name before recording a payment.");
+        }
+        verifiedCustomerName = customName;
+        verifiedAddress = customCustomer.address?.trim() || null;
+        verifiedTrn = customCustomer.trn?.trim() || null;
+        targetCustId = null;
+      }
+
+      // Check for duplicate voucher number in this company
+      const { data: existingVoucher } = await supabase
+        .from("receipt_vouchers")
+        .select("id, voucher_number")
+        .eq("company_id", cid)
+        .ilike("voucher_number", voucherNumber)
+        .maybeSingle();
+
+      if (existingVoucher) {
+        throw new Error(`Receipt voucher number "${voucherNumber}" already exists. Please provide a unique voucher number.`);
+      }
+
+      // Check for rapid duplicate submission (within 15 seconds)
+      const { data: recentDupes } = await supabase
+        .from("receipt_vouchers")
+        .select("id, voucher_number, created_at")
+        .eq("company_id", cid)
+        .eq("amount", cleanAmt)
+        .eq("voucher_date", paymentForm.date)
+        .eq("received_from", verifiedCustomerName)
+        .neq("status", "cancelled")
+        .neq("status", "void")
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (recentDupes && recentDupes.length > 0 && isRecentPaymentSubmission(recentDupes[0].created_at, 15)) {
+        throw new Error(`A payment of ${fmtAED(cleanAmt)} for ${verifiedCustomerName} was just recorded (${recentDupes[0].voucher_number}). Please wait before submitting again.`);
+      }
+
+      // Validate payment method against database enum
+      let cleanPaymentMethod: "Cash" | "Cheque" | "Bank Transfer" | "Credit Card" = "Bank Transfer";
+      if (paymentForm.payment_method === "Cash") cleanPaymentMethod = "Cash";
+      else if (paymentForm.payment_method === "Cheque") cleanPaymentMethod = "Cheque";
+      else if (paymentForm.payment_method === "Credit Card") cleanPaymentMethod = "Credit Card";
+      else cleanPaymentMethod = "Bank Transfer";
+
+      // If linked to an invoice, compute allocation amounts and target status
+      let invoiceTotalDue = 0;
+      let invoiceAdvanceAmount = 0;
+      let invoiceBalanceAmount = 0;
+      let nextInvoiceStatus: "paid" | "partially_paid" | null = null;
+
+      if (paymentForm.tax_invoice_id) {
+        const { data: invRecord, error: invFetchErr } = await supabase
+          .from("tax_invoices")
+          .select("id, invoice_number, total_amount, status")
+          .eq("id", paymentForm.tax_invoice_id)
+          .maybeSingle();
+
+        if (invFetchErr || !invRecord) {
+          throw new Error("Linked tax invoice not found or inaccessible.");
+        }
+
+        invoiceTotalDue = Number(invRecord.total_amount) || 0;
+
+        // Fetch previous receipts for this invoice
+        let prevRcvQuery = supabase
+          .from("receipt_vouchers")
+          .select("amount")
+          .eq("tax_invoice_id", paymentForm.tax_invoice_id)
+          .neq("status", "cancelled")
+          .neq("status", "void");
+        if (cid) prevRcvQuery = prevRcvQuery.eq("company_id", cid);
+
+        const { data: prevReceipts } = await prevRcvQuery;
+        const previousPaid = (prevReceipts || []).reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+        const newPaidTotal = previousPaid + cleanAmt;
+        const remainingBalance = Math.max(0, Math.round((invoiceTotalDue - newPaidTotal) * 100) / 100);
+
+        invoiceAdvanceAmount = Math.round(previousPaid * 100) / 100;
+        invoiceBalanceAmount = remainingBalance;
+        nextInvoiceStatus = remainingBalance <= 0.005 ? "paid" : "partially_paid";
+      }
+
+      const { data: authData } = await supabase.auth.getUser();
+      const accountantName = authData?.user?.email ? authData.user.email.split("@")[0] : "Accounts Dept.";
+
+      const rawNotes = paymentForm.notes.trim() || `Payment received via ${cleanPaymentMethod}`;
+      const serializedNotes = isCustom
+        ? serializeCustomPartyNotes(rawNotes, customCustomer)
+        : rawNotes;
+
+      const basePayload: Record<string, unknown> = {
+        company_id: cid,
+        voucher_number: voucherNumber,
+        voucher_date: paymentForm.date || todayISO(),
+        customer_id: targetCustId,
+        received_from: verifiedCustomerName,
+        amount: cleanAmt,
+        amount_words: numberToWordsEnglish(cleanAmt),
+        payment_method: cleanPaymentMethod,
+        cheque_number: cleanPaymentMethod === "Cheque" ? (paymentForm.cheque_number.trim() || null) : null,
+        cheque_date: cleanPaymentMethod === "Cheque" ? (paymentForm.cheque_date || null) : null,
+        bank_name: paymentForm.bank_name.trim() || null,
+        tax_invoice_id: paymentForm.tax_invoice_id || null,
+        total_due: invoiceTotalDue,
+        advance_amount: invoiceAdvanceAmount,
+        balance_amount: invoiceBalanceAmount,
+        accountant_name: accountantName,
+        notes: serializedNotes,
+        status: "posted",
+      };
+
+      const fullPayload: Record<string, unknown> = {
+        ...basePayload,
+        customer_name: verifiedCustomerName,
+        customer_address: verifiedAddress,
+        customer_trn: verifiedTrn,
+        contact_person: isCustom ? (customCustomer.contact_person?.trim() || null) : null,
+        contact_number: isCustom ? (customCustomer.phone?.trim() || null) : null,
+        contact_email: isCustom ? (customCustomer.email?.trim() || null) : null,
+        custom_project_name: isCustom ? (customCustomer.project_name?.trim() || null) : null,
+        is_custom_customer: isCustom,
+        custom_customer: isCustom ? customCustomer : null,
+      };
+
+      let insertedRecord: { id: string } | null = null;
+      const insertRes = await supabase
+        .from("receipt_vouchers")
+        .insert(fullPayload)
+        .select("id")
+        .single();
+
+      if (insertRes.error) {
+        console.warn("[CustomerStatement] Full receipt insert failed, falling back to base columns:", insertRes.error.message);
+        const fallbackRes = await supabase
+          .from("receipt_vouchers")
+          .insert(basePayload)
+          .select("id")
+          .single();
+
+        if (fallbackRes.error) {
+          throw new Error(fallbackRes.error.message);
+        }
+        insertedRecord = fallbackRes.data;
+      } else {
+        insertedRecord = insertRes.data;
+      }
+
+      // If linked to an invoice, atomically update invoice payment status
+      if (paymentForm.tax_invoice_id && nextInvoiceStatus) {
+        const { error: invUpdateErr } = await supabase
+          .from("tax_invoices")
+          .update({
+            status: nextInvoiceStatus,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", paymentForm.tax_invoice_id);
+
+        if (invUpdateErr) {
+          // Compensating rollback: delete inserted receipt voucher so no inconsistent state is left
+          if (insertedRecord?.id) {
+            await supabase.from("receipt_vouchers").delete().eq("id", insertedRecord.id);
+          }
+          throw new Error(`Failed to update linked invoice allocation: ${invUpdateErr.message}`);
+        }
       }
 
       setBalanceMessage({
         type: "success",
-        text: `Customer payment of ${fmtAED(cleanAmt)} recorded successfully (${paymentForm.voucher_number.trim()}).`,
+        text: `Customer payment of ${fmtAED(cleanAmt)} recorded successfully (${voucherNumber}) for ${verifiedCustomerName}.`,
       });
 
       setShowPaymentModal(false);
@@ -454,21 +745,51 @@ export default function StatementOfAccountPage() {
   async function handleVoidTransaction(entry: StatementEntry) {
     if (!entry.voucher_id && !entry.payment_id) return;
     const confirmVoid = typeof window !== "undefined" && window.confirm(
-      `Are you sure you want to void payment credit ${entry.reference_no} (${fmtAED(entry.credit)})?\n\nThis will mark the record as void and remove the credit from the statement without deleting financial history.`
+      `Are you sure you want to void payment credit ${entry.reference_no} (${fmtAED(entry.credit)})?\n\nThis will mark the record as void/cancelled and remove the credit from the statement without deleting financial history.`
     );
     if (!confirmVoid) return;
 
     try {
       if (entry.voucher_id) {
+        const { data: vRecord } = await supabase
+          .from("receipt_vouchers")
+          .select("tax_invoice_id")
+          .eq("id", entry.voucher_id)
+          .maybeSingle();
+
         await supabase
           .from("receipt_vouchers")
-          .update({ status: "void" })
+          .update({ status: "cancelled" })
           .eq("id", entry.voucher_id);
+
+        if (vRecord?.tax_invoice_id) {
+          // Recompute invoice status
+          const { data: remainingReceipts } = await supabase
+            .from("receipt_vouchers")
+            .select("amount")
+            .eq("tax_invoice_id", vRecord.tax_invoice_id)
+            .neq("status", "cancelled")
+            .neq("status", "void");
+
+          const totalPaid = (remainingReceipts || []).reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+          const { data: invData } = await supabase
+            .from("tax_invoices")
+            .select("total_amount")
+            .eq("id", vRecord.tax_invoice_id)
+            .maybeSingle();
+
+          const invTotal = Number(invData?.total_amount) || 0;
+          const restoredStatus = totalPaid <= 0 ? "issued" : (totalPaid >= invTotal ? "paid" : "partially_paid");
+          await supabase
+            .from("tax_invoices")
+            .update({ status: restoredStatus, updated_at: new Date().toISOString() })
+            .eq("id", vRecord.tax_invoice_id);
+        }
       }
       if (entry.payment_id) {
         await supabase
           .from("payments")
-          .update({ status: "void" })
+          .update({ status: "cancelled" })
           .eq("id", entry.payment_id);
       }
       setBalanceMessage({
@@ -625,23 +946,23 @@ export default function StatementOfAccountPage() {
           .is("customer_id", null);
         if (companyId) unlinkedQuery = unlinkedQuery.eq("company_id", companyId);
 
-        const paysPromise = supabase
+        let paysQuery = supabase
           .from("payments")
           .select("id, customer_id, payment_number, payment_date, amount, payment_method, reference_number, status")
-          .eq("customer_id", selectedCustomerId)
-          .order("payment_date", { ascending: true });
+          .eq("customer_id", selectedCustomerId);
+        if (companyId) paysQuery = paysQuery.eq("company_id", companyId);
 
-        const rcvsPromise = supabase
+        let rcvsQuery = supabase
           .from("receipt_vouchers")
           .select("id, customer_id, voucher_number, voucher_date, amount, payment_method, cheque_number, status")
-          .eq("customer_id", selectedCustomerId)
-          .order("voucher_date", { ascending: true });
+          .eq("customer_id", selectedCustomerId);
+        if (companyId) rcvsQuery = rcvsQuery.eq("company_id", companyId);
 
         const [directRes, unlinkedRes, paysRes, rcvsRes] = await Promise.all([
           directQuery.order("invoice_date", { ascending: true }),
           unlinkedQuery.limit(100),
-          paysPromise,
-          rcvsPromise,
+          paysQuery.order("payment_date", { ascending: true }),
+          rcvsQuery.order("voucher_date", { ascending: true }),
         ]);
 
         if (directRes.error) throw new Error(directRes.error.message);
@@ -676,12 +997,14 @@ export default function StatementOfAccountPage() {
           .select("id, customer_id, company_id, invoice_number, invoice_date, total_amount, status, notes");
         if (companyId) custInvQuery = custInvQuery.eq("company_id", companyId);
 
-        const [rawInvsRes, rcvsRes] = await Promise.all([
+        let rcvsQuery = supabase
+          .from("receipt_vouchers")
+          .select("id, customer_id, received_from, customer_name, voucher_number, voucher_date, amount, payment_method, cheque_number, notes, status");
+        if (companyId) rcvsQuery = rcvsQuery.eq("company_id", companyId);
+
+        const [rawInvsRes, rawRcvsRes] = await Promise.all([
           custInvQuery.order("invoice_date", { ascending: true }),
-          supabase
-            .from("receipt_vouchers")
-            .select("id, customer_id, voucher_number, voucher_date, amount, payment_method, cheque_number, notes, status")
-            .order("voucher_date", { ascending: true }),
+          rcvsQuery.order("voucher_date", { ascending: true }),
         ]);
 
         if (rawInvsRes.error) throw new Error(rawInvsRes.error.message);
@@ -695,7 +1018,19 @@ export default function StatementOfAccountPage() {
             allInvs.push(r as Invoice);
           }
         });
-        rcvs = (rcvsRes.data || []) as ReceiptVoucher[];
+
+        (rawRcvsRes.data || []).forEach((r) => {
+          const parsed = parseCustomPartyFromNotes(r.notes, "CUSTOM_CUSTOMER");
+          const trnMatch = Boolean(parsed?.trn && custTrn && parsed.trn.trim() === custTrn.trim());
+          const nameMatch = Boolean(
+            (r.received_from && normalizeCustomerName(r.received_from) === normTarget) ||
+            (r.customer_name && normalizeCustomerName(r.customer_name) === normTarget) ||
+            (parsed?.name && normalizeCustomerName(parsed.name) === normTarget)
+          );
+          if (trnMatch || nameMatch) {
+            rcvs.push(r as ReceiptVoucher);
+          }
+        });
       }
 
       if (version !== requestVersion.current) return;
@@ -1117,6 +1452,14 @@ export default function StatementOfAccountPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleOpenPaymentModal}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm"
+                    title="Record a payment or credit note received from this customer"
+                  >
+                    <Plus size={14} /> Record Customer Payment / Credit
+                  </button>
                   {statement && (
                     <button
                       type="button"
@@ -2199,7 +2542,7 @@ export default function StatementOfAccountPage() {
                 <div>
                   <h3 className="text-base font-bold text-slate-900">Record Customer Payment / Credit</h3>
                   <p className="text-xs text-slate-500">
-                    Customer: {statement?.customer_name || "Selected Customer"}
+                    Customer: {partyMode === "custom" ? (customCustomer.name.trim() || "Custom Customer") : (customers.find(c => c.id === selectedCustomerId)?.name || statement?.customer_name || "Selected Customer")}
                   </p>
                 </div>
               </div>
@@ -2286,7 +2629,6 @@ export default function StatementOfAccountPage() {
                     <option value="Cash">Cash</option>
                     <option value="Cheque">Cheque</option>
                     <option value="Credit Card">Credit Card</option>
-                    <option value="Online">Online / Portal</option>
                   </select>
                 </div>
               </div>
@@ -2342,7 +2684,7 @@ export default function StatementOfAccountPage() {
                     setPaymentForm(prev => ({
                       ...prev,
                       tax_invoice_id: selId,
-                      amount: prev.amount || (matchedInv ? String(matchedInv.total_amount) : prev.amount),
+                      amount: matchedInv ? String(matchedInv.outstanding_amount > 0 ? matchedInv.outstanding_amount : matchedInv.total_amount) : prev.amount,
                       notes: matchedInv ? `Payment against Invoice ${matchedInv.invoice_number}` : prev.notes,
                     }));
                   }}
@@ -2351,7 +2693,7 @@ export default function StatementOfAccountPage() {
                   <option value="">General Payment / Unallocated Account Credit</option>
                   {customerInvoices.map(inv => (
                     <option key={inv.id} value={inv.id}>
-                      {inv.invoice_number} ({fmtAED(inv.total_amount)}) — {inv.invoice_date}
+                      {inv.invoice_number} (Total: {fmtAED(inv.total_amount)} | Due: {fmtAED(inv.outstanding_amount)}) — {inv.invoice_date}
                     </option>
                   ))}
                 </select>
