@@ -41,8 +41,6 @@ type Employee = {
   employee_number: string | null;
   designation?: string | null;
   basic_salary?: number | null;
-  overtime_rate?: number | null;
-  overtime_costing_method?: string | null;
 };
 
 const MONTHS = [
@@ -93,7 +91,7 @@ export default function PayrollSummaryPage() {
           .lte("payroll_month", endDate),
         supabase
           .from("employees")
-          .select("id, first_name, employee_number, designation, basic_salary, overtime_rate, overtime_costing_method")
+          .select("id, first_name, employee_number, designation, basic_salary")
           .order("first_name"),
         supabase
           .from("attendance")
@@ -154,8 +152,8 @@ export default function PayrollSummaryPage() {
           rawHours: rawOtHours,
           basicSalary: Number(e.basic_salary) || 0,
           adjustment: adj,
-          employeeOvertimeRate: e.overtime_rate != null ? Number(e.overtime_rate) : null,
-          employeeCostingMethod: (e.overtime_costing_method as "auto" | "hourly_rate" | "manual_fixed") || null,
+          employeeOvertimeRate: adj?.overtime_rate != null ? Number(adj.overtime_rate) : null,
+          employeeCostingMethod: (adj?.overtime_costing_method as "auto" | "hourly_rate" | "manual_fixed") || null,
         });
         otHoursMap[e.id] = otAuthoritative.effectiveHours;
       });

@@ -140,12 +140,14 @@ export function normalizeCustomerName(name?: string | null): string {
 
 /**
  * Determines whether a transaction status is financially active/effective.
- * Excludes drafts, cancelled, and void records.
+ * Excludes cancelled and void records.
+ * Historical records in Dubai ERP are frequently imported or recorded in draft/active status
+ * that form the active statement ledger.
  */
 export function isStatusEffective(status?: string | null): boolean {
   if (!status) return true; // Default to active if status is unpopulated
   const st = status.toLowerCase().trim();
-  if (st === "cancelled" || st === "void" || st === "draft") {
+  if (st === "cancelled" || st === "void") {
     return false;
   }
   return true;

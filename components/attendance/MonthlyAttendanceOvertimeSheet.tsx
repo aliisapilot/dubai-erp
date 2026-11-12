@@ -108,6 +108,7 @@ export default function MonthlyAttendanceOvertimeSheet({
 
   // UI States
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -303,13 +304,14 @@ export default function MonthlyAttendanceOvertimeSheet({
     let ignore = false;
     async function fetchData() {
       try {
+        setLoadError("");
         const startDate = `${periodStr}-01`;
         const endDate = `${periodStr}-${String(daysInMonth).padStart(2, "0")}`;
 
         const [empsRes, attRes, otRes, comp] = await Promise.all([
           supabase
             .from("employees")
-            .select("id, employee_number, first_name, designation, department, bank_name, account_number, iban, basic_salary, overtime_rate, overtime_costing_method, overtime_multiplier, status")
+            .select("id, employee_number, first_name, designation, department, bank_name, account_number, iban, basic_salary, status")
             .in("status", ["active", "Active"])
             .order("employee_number"),
           supabase.from("attendance").select("*").gte("attendance_date", startDate).lte("attendance_date", endDate),
@@ -319,6 +321,14 @@ export default function MonthlyAttendanceOvertimeSheet({
 
         if (ignore) return;
         if (comp) setCompany(comp as CompanyDocInfo);
+
+        if (empsRes.error) {
+          console.error("[MonthlyAttendanceOvertimeSheet] Error loading employees:", empsRes.error);
+          setLoadError(`Database query failed: ${empsRes.error.message}`);
+          setEmployees([]);
+          setLoading(false);
+          return;
+        }
 
         // Natural numerical sort for employee codes (EMP-01, EMP-02 ... EMP-10 ...)
         const sortedEmps = ((empsRes.data || []) as ExtendedEmployeeInfo[]).sort(compareEmployees);
@@ -391,9 +401,11 @@ export default function MonthlyAttendanceOvertimeSheet({
         setPendingOt({});
       } catch (err: unknown) {
         if (!ignore) {
+          const msg = err instanceof Error ? err.message : "Failed to load monthly attendance";
+          setLoadError(msg);
           setNotification({
             type: "error",
-            message: err instanceof Error ? err.message : "Failed to load monthly attendance",
+            message: msg,
           });
         }
       } finally {
@@ -1606,27 +1618,27 @@ export default function MonthlyAttendanceOvertimeSheet({
             <div className="flex items-center gap-2 text-xs flex-wrap">
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/60 border border-slate-700/60 whitespace-nowrap">
                 <span className="text-slate-400 font-medium">Labourers:</span>
-                <span className="font-bold text-white font-mono">{totalEmployees}</span>
+                <span className="font-bold text-white font-mono">{loadError ? "—" : totalEmployees}</span>
               </div>
 
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-950/40 border border-emerald-800/50 whitespace-nowrap">
                 <span className="text-emerald-400/80 font-medium">Present:</span>
-                <span className="font-bold text-emerald-300 font-mono">{totalPresentDays} d</span>
+                <span className="font-bold text-emerald-300 font-mono">{loadError ? "—" : `${totalPresentDays} d`}</span>
               </div>
 
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-950/40 border border-rose-800/50 whitespace-nowrap">
                 <span className="text-rose-400/80 font-medium">Absent:</span>
-                <span className="font-bold text-rose-300 font-mono">{totalAbsentDays} d</span>
+                <span className="font-bold text-rose-300 font-mono">{loadError ? "—" : `${totalAbsentDays} d`}</span>
               </div>
 
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-950/40 border border-purple-800/50 whitespace-nowrap">
                 <span className="text-purple-300/80 font-medium">Total OT:</span>
-                <span className="font-bold text-purple-200 font-mono">{totalOtHoursMonth.toFixed(1)} hrs</span>
+                <span className="font-bold text-purple-200 font-mono">{loadError ? "—" : `${totalOtHoursMonth.toFixed(1)} hrs`}</span>
               </div>
 
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-950/40 border border-emerald-800/50 whitespace-nowrap">
                 <span className="text-emerald-400/80 font-medium">OT Charges:</span>
-                <span className="font-bold text-emerald-300 font-mono">{fmtAED(totalOtChargesMonth)}</span>
+                <span className="font-bold text-emerald-300 font-mono">{loadError ? "—" : fmtAED(totalOtChargesMonth)}</span>
               </div>
             </div>
 
@@ -1715,6 +1727,19 @@ export default function MonthlyAttendanceOvertimeSheet({
           <div className="flex-1 flex flex-col items-center justify-center py-32 bg-slate-800/60 rounded-2xl border border-slate-700 shadow-xs">
             <Loader2 size={32} className="animate-spin text-emerald-400 mb-3" />
             <p className="text-sm font-semibold text-slate-300">Loading monthly attendance & payroll workbook...</p>
+          </div>
+        ) : loadError ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-32 bg-slate-800/60 rounded-2xl border border-rose-700/60 shadow-xs text-center p-6">
+            <AlertCircle size={36} className="text-rose-400 mb-2" />
+            <h3 className="text-base font-bold text-white">Database Query Error</h3>
+            <p className="text-xs text-rose-300 mt-1 max-w-md font-mono">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => { setLoading(true); setRefreshKey(k => k + 1); }}
+              className="mt-4 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition shadow-sm cursor-pointer"
+            >
+              <RotateCcw size={14} /> Retry Query
+            </button>
           </div>
         ) : filteredEmployees.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center py-32 bg-slate-800/60 rounded-2xl border border-slate-700 shadow-xs text-center p-6">
