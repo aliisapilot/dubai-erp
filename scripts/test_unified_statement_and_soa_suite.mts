@@ -245,7 +245,7 @@ function pass(testName: string) {
 }
 
 // -----------------------------------------------------------------------------
-// SCENARIO 8: Cancelled, voided, and draft invoices and receipts
+// SCENARIO 8: Cancelled and void records are excluded; draft records are effective
 // -----------------------------------------------------------------------------
 {
   const invoices: RawInvoice[] = [
@@ -273,13 +273,13 @@ function pass(testName: string) {
 
   const recon = reconcileCustomerStatement(statement);
 
-  assert.equal(statement.entries.length, 2, "Only 1 active invoice and 1 active receipt should be present");
-  assert.equal(statement.total_debits, 5000, "Cancelled/draft debits must be strictly excluded");
-  assert.equal(statement.total_credits, 2000, "Cancelled/draft credits must be strictly excluded");
-  assert.equal(statement.closing_balance, 3000);
+  assert.equal(statement.entries.length, 4, "Cancelled and void records must be excluded; drafts remain active ledger");
+  assert.equal(statement.total_debits, 12777, "Cancelled/void debits must be strictly excluded");
+  assert.equal(statement.total_credits, 5333, "Cancelled/void credits must be strictly excluded");
+  assert.equal(statement.closing_balance, 7444);
   assert.equal(recon.isReconciled, true);
 
-  pass("Scenario 8: Cancelled, voided, and draft records are completely excluded from balances");
+  pass("Scenario 8: Cancelled and void records are completely excluded from balances; draft historical records preserved");
 }
 
 // -----------------------------------------------------------------------------

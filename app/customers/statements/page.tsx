@@ -1,7 +1,7 @@
 "use client";
 import ReportLoadState from "@/components/ReportLoadState";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   FileSpreadsheet,
@@ -28,6 +28,9 @@ import {
   Eye,
   Download,
   Scale,
+  MoreHorizontal,
+  ChevronDown,
+  Search,
 } from "lucide-react";
 import Link from "next/link";
 import StatementOfAccountTemplate, { StatementData, StatementEntry } from "@/components/documents/StatementOfAccountTemplate";
@@ -121,7 +124,7 @@ export default function StatementOfAccountPage() {
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState(todayISO());
+  const [toDate, setToDate] = useState("");
   const [openingBalance, setOpeningBalance] = useState(0);
   const [openingBalanceInput, setOpeningBalanceInput] = useState<string>("0.00");
   const [appliedOpeningBalance, setAppliedOpeningBalance] = useState<number>(0);
@@ -202,6 +205,39 @@ export default function StatementOfAccountPage() {
     created_at: string;
   }>>([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
+
+  // Simplified UI States
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    }
+    if (showMoreMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showMoreMenu]);
+
+  const filteredEntries = useMemo(() => {
+    if (!statement) return [];
+    if (!searchQuery.trim()) return statement.entries;
+    const q = searchQuery.toLowerCase().trim();
+    return statement.entries.filter((e) => {
+      const refMatch = e.reference_no?.toLowerCase().includes(q);
+      const origMatch = e.original_reference?.toLowerCase().includes(q);
+      const descMatch = e.description?.toLowerCase().includes(q);
+      const debitMatch = e.debit > 0 && String(e.debit).includes(q);
+      const creditMatch = e.credit > 0 && String(e.credit).includes(q);
+      const balMatch = e.balance !== 0 && String(e.balance).includes(q);
+      const dateMatch = e.date?.includes(q);
+      return refMatch || origMatch || descMatch || debitMatch || creditMatch || balMatch || dateMatch;
+    });
+  }, [statement, searchQuery]);
 
   async function fetchArchivedStatements(cid?: string, openModal = false) {
     const targetCid = cid || selectedCustomerId;
@@ -1142,158 +1178,86 @@ export default function StatementOfAccountPage() {
   if (loading || loadError) return <ReportLoadState loading={loading} error={loadError} onRetry={() => void (customers.length ? generateStatement() : loadInitialData())} />;
 
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main className="min-h-screen bg-slate-900 text-slate-100">
       <div className="app-screen-content no-print">
-        <header className="border-b border-slate-200 bg-white">
-          <div className="mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4 px-4 sm:px-6 py-5 max-w-7xl">
+        {/* Simplified Header */}
+        <header className="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-30 backdrop-blur-md">
+          <div className="mx-auto flex items-center justify-between gap-4 px-4 sm:px-6 py-3.5 max-w-7xl">
             <div className="flex items-center gap-3">
               <Link
                 href="/customers"
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white transition"
                 title="Back to Customers"
               >
-                <ArrowLeft size={20} />
+                <ArrowLeft size={18} />
               </Link>
-              <div className="rounded-xl bg-slate-900 p-2.5 text-white">
-                <FileSpreadsheet size={22} />
+              <div className="rounded-xl bg-slate-800 p-2 text-cyan-400 border border-slate-700/60">
+                <FileSpreadsheet size={20} />
               </div>
               <div>
-                <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Statement of Account</h1>
-                <p className="text-xs sm:text-sm text-slate-500">Customer ledger balances, invoices, payments, and running balance</p>
+                <h1 className="text-base sm:text-lg font-bold text-white tracking-tight">Customer Statements</h1>
+                <p className="text-[11px] text-slate-400 hidden sm:block">Ledger balances, invoices, payments, and running balance</p>
               </div>
             </div>
-            {statement && (
-              <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 scrollbar-none flex-wrap sm:flex-nowrap">
-                <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 text-xs shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTemplate("default")}
-                    className={`px-3 py-1.5 rounded-md font-medium transition ${
-                      activeTemplate === "default"
-                        ? "bg-white text-slate-900 font-semibold shadow-sm"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
-                    title="Current saved statement layout in production"
-                  >
-                    Current Template
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTemplate("soa_reference")}
-                    className={`px-3 py-1.5 rounded-md font-medium transition flex items-center gap-1.5 ${
-                      activeTemplate === "soa_reference"
-                        ? "bg-slate-900 text-white font-semibold shadow-sm"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
-                    title="SOA-101 Al Karwan Reference (Classic Ledger) layout"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                    SOA-101 Reference
-                  </button>
+
+            {/* Template Selector */}
+            <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-xs shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveTemplate("default")}
+                className={`px-2.5 py-1 rounded-md font-medium transition ${
+                  activeTemplate === "default"
+                    ? "bg-slate-700 text-white font-semibold shadow-xs"
+                    : "text-slate-400 hover:text-white"
+                }`}
+                title="Current production template layout"
+              >
+                Current
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTemplate("soa_reference")}
+                className={`px-2.5 py-1 rounded-md font-medium transition flex items-center gap-1.5 ${
+                  activeTemplate === "soa_reference"
+                    ? "bg-cyan-950 text-cyan-300 border border-cyan-800/80 font-semibold shadow-xs"
+                    : "text-slate-400 hover:text-white"
+                }`}
+                title="SOA-101 Al Karwan Reference (Classic Ledger) layout"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                SOA-101 Ref
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-4 space-y-4">
+          {/* 1. Customer Selector & Compact Filters Row */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/90 p-3 shadow-xs">
+            <div className="flex flex-wrap items-end gap-3">
+              {/* Customer Selector */}
+              <div className="flex-1 min-w-[240px]">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Customer</label>
+                  <div className="flex items-center gap-1 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setPartyMode("existing")}
+                      className={`px-1.5 py-0.5 rounded transition ${partyMode === "existing" ? "bg-slate-700 text-white font-bold" : "text-slate-400 hover:text-slate-200"}`}
+                    >
+                      Saved
+                    </button>
+                    <span className="text-slate-600">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setPartyMode("custom")}
+                      className={`px-1.5 py-0.5 rounded transition ${partyMode === "custom" ? "bg-amber-950 text-amber-300 font-bold border border-amber-800" : "text-slate-400 hover:text-slate-200"}`}
+                    >
+                      Custom
+                    </button>
+                  </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowMappingModal(true)}
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm shrink-0"
-                  title="View mapping between original database numbers and simplified display references"
-                >
-                  <FileSpreadsheet size={14} className="text-blue-600" />
-                  Numbering Preview
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowCompareModal(true)}
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm shrink-0"
-                  title="View side-by-side comparison with original reference PDF"
-                >
-                  <Columns2 size={15} className="text-slate-500" />
-                  Compare SOA
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => fetchArchivedStatements(selectedCustomerId, true)}
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm shrink-0"
-                  title="View original Statement of Account PDF archives for this customer"
-                >
-                  <Paperclip size={14} className="text-amber-600" />
-                  Archived SOAs ({archivedStatements.length})
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowPrintModal(true)}
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm shrink-0"
-                  title="View Statement of Account document preview"
-                >
-                  <Eye size={14} className="text-blue-600" />
-                  View SOA
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowPrintModal(true)}
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm shrink-0"
-                  title="Download Statement of Account PDF"
-                >
-                  <Download size={14} className="text-emerald-600" />
-                  Download SOA PDF
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowPrintModal(true)}
-                  className="flex items-center gap-2 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 transition shadow-sm shrink-0"
-                  title="Print Statement of Account (A4)"
-                >
-                  <Printer size={14} /> Print SOA
-                </button>
-              </div>
-            )}
-          </div>
-      </header>
-
-      <div className="mx-auto max-w-7xl px-6 py-8">
-        {/* Filter Controls Card */}
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm mb-6 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer Mode</span>
-              <p className="text-[11px] text-slate-400">Select an existing account or enter custom customer details directly</p>
-            </div>
-            <div className="flex items-center rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-xs">
-              <button
-                type="button"
-                onClick={() => setPartyMode("existing")}
-                className={`px-3 py-1 rounded-md font-medium transition ${
-                  partyMode === "existing"
-                    ? "bg-white text-slate-900 font-semibold shadow-sm"
-                    : "text-slate-500 hover:text-slate-900"
-                }`}
-              >
-                Existing Customer
-              </button>
-              <button
-                type="button"
-                onClick={() => setPartyMode("custom")}
-                className={`px-3 py-1 rounded-md font-medium transition ${
-                  partyMode === "custom"
-                    ? "bg-white text-slate-900 font-semibold shadow-sm"
-                    : "text-slate-500 hover:text-slate-900"
-                }`}
-              >
-                Custom Customer
-              </button>
-            </div>
-          </div>
-
-          {partyMode === "existing" ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
-                <div>
-                  <label className="mb-1 block font-semibold text-slate-700">Select Customer</label>
+                {partyMode === "existing" ? (
                   <select
                     value={selectedCustomerId}
                     onChange={e => {
@@ -1302,18 +1266,29 @@ export default function StatementOfAccountPage() {
                       void loadCustomerOpeningBalance(newCid);
                       void fetchArchivedStatements(newCid, false);
                     }}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100 font-medium focus:border-cyan-500 focus:outline-none transition cursor-pointer"
                   >
                     {customers.map(c => (
-                      <option key={c.id} value={c.id}>
+                      <option key={c.id} value={c.id} className="bg-slate-900 text-white">
                         {c.name} {c.customer_code ? `(${c.customer_code})` : ""}
                       </option>
                     ))}
                   </select>
-                </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={customCustomer.name}
+                    onChange={e => setCustomCustomer(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Enter custom customer name..."
+                    className="w-full rounded-lg border border-amber-700/60 bg-slate-800 px-3 py-1.5 text-xs text-amber-200 font-semibold focus:border-amber-500 focus:outline-none"
+                  />
+                )}
+              </div>
 
+              {/* Date Range: From & To */}
+              <div className="flex items-center gap-2">
                 <div>
-                  <label className="mb-1 block font-semibold text-slate-700">From Date</label>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">From</label>
                   <input
                     type="date"
                     value={fromDate}
@@ -1322,663 +1297,498 @@ export default function StatementOfAccountPage() {
                       setFromDate(next);
                       if (next && toDate && next > toDate) setToDate(next);
                     }}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                    className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none"
+                    title="From date (leave blank for all historical records)"
                   />
                 </div>
-
                 <div>
-                  <label className="mb-1 block font-semibold text-slate-700">To Date</label>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">To</label>
                   <input
                     type="date"
                     value={toDate}
                     min={fromDate || undefined}
                     onChange={e => setToDate(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                    className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none"
+                    title="To date (leave blank for all records up to latest)"
                   />
                 </div>
               </div>
 
-              {/* Action Buttons Row */}
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFromDate("");
-                      setToDate(todayISO());
-                      setDateRangeError("");
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 transition"
-                    title="Clear date filters to include all historical transactions"
-                  >
-                    <RefreshCw size={13} />
-                    Clear Filters / All Dates
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => fetchArchivedStatements(selectedCustomerId, true)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
-                    title="View original Statement of Account PDF archives for this customer"
-                  >
-                    <Paperclip size={13} className="text-amber-600" />
-                    Archived SOAs ({archivedStatements.length})
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowMappingModal(true)}
-                    className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
-                  >
-                    <FileSpreadsheet size={13} className="text-blue-600" />
-                    Numbering Preview
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleOpenPaymentModal}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm"
-                    title="Record a payment or credit note received from this customer"
-                  >
-                    <Plus size={14} /> Record Customer Payment
-                  </button>
-                  {statement && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setShowPrintModal(true)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm"
-                        title="View Statement of Account document preview"
-                      >
-                        <Eye size={13} className="text-blue-600" /> View SOA
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowPrintModal(true)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm"
-                        title="Download Statement of Account PDF"
-                      >
-                        <Download size={13} className="text-emerald-600" /> Download PDF
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowPrintModal(true)}
-                        className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition shadow-sm"
-                        title="Print Statement of Account"
-                      >
-                        <Printer size={13} /> Print SOA
-                      </button>
-                    </>
+              {/* Search */}
+              <div className="flex-1 min-w-[180px]">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Search</label>
+                <div className="relative">
+                  <Search size={13} className="absolute left-2.5 top-2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Search ref, desc, amount..."
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 pl-8 pr-7 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2 top-2 text-slate-400 hover:text-white"
+                    >
+                      <X size={12} />
+                    </button>
                   )}
                 </div>
               </div>
+
+              {/* Clear / All Dates Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setFromDate("");
+                  setToDate("");
+                  setSearchQuery("");
+                  setDateRangeError("");
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-750 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white transition cursor-pointer shrink-0"
+                title="Reset filters to All Dates"
+              >
+                <RefreshCw size={12} />
+                <span>All Dates</span>
+              </button>
             </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
-                ✍️ <strong>Custom Customer Statement</strong>: Enter customer details directly. No entry will be added to your customer directory.
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-                <div className="md:col-span-2">
-                  <label className="mb-1 block font-semibold text-slate-700">Customer / Company Name <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    value={customCustomer.name}
-                    onChange={e => setCustomCustomer(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="e.g. Al-Futtaim Engineering LLC"
-                    required
-                    className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold focus:border-amber-500 focus:outline-none"
-                  />
-                </div>
+
+            {/* Custom Customer Secondary Row (if in custom mode) */}
+            {partyMode === "custom" && (
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-3 mt-3 border-t border-slate-800 text-xs">
                 <div>
-                  <label className="mb-1 block font-semibold text-slate-700">TRN (Optional)</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">TRN (Optional)</label>
                   <input
                     type="text"
                     value={customCustomer.trn}
                     onChange={e => setCustomCustomer(prev => ({ ...prev, trn: e.target.value }))}
                     placeholder="100XXXXXXXXX003"
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono focus:border-slate-400 focus:outline-none"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:border-cyan-500 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block font-semibold text-slate-700">Phone (Optional)</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Phone (Optional)</label>
                   <input
                     type="text"
                     value={customCustomer.phone}
                     onChange={e => setCustomCustomer(prev => ({ ...prev, phone: e.target.value }))}
                     placeholder="+971 50 123 4567"
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none"
                   />
                 </div>
-                <div className="md:col-span-2">
-                  <label className="mb-1 block font-semibold text-slate-700">Address / Location (Optional)</label>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Address (Optional)</label>
                   <input
                     type="text"
                     value={customCustomer.address}
                     onChange={e => setCustomCustomer(prev => ({ ...prev, address: e.target.value }))}
-                    placeholder="Plot / Street / Emirate"
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                    placeholder="Location / Emirate"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block font-semibold text-slate-700">From Date</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Ad-Hoc Opening Bal (AED)</label>
                   <input
-                    type="date"
-                    value={fromDate}
-                    onChange={e => setFromDate(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
+                    type="text"
+                    inputMode="decimal"
+                    value={openingBalanceInput}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (/^[0-9]*\.?[0-9]*$/.test(val)) {
+                        setOpeningBalanceInput(val);
+                        const parsed = parseFloat(val);
+                        setAppliedOpeningBalance(isNaN(parsed) ? 0 : parsed);
+                      }
+                    }}
+                    placeholder="0.00"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:border-cyan-500 focus:outline-none"
                   />
                 </div>
-                <div>
-                  <label className="mb-1 block font-semibold text-slate-700">To Date</label>
-                  <input
-                    type="date"
-                    value={toDate}
-                    onChange={e => setToDate(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-slate-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFromDate("");
-                    setToDate(todayISO());
-                    setDateRangeError("");
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition"
-                >
-                  <RefreshCw size={13} />
-                  Clear Filters / All Dates
-                </button>
-                {statement && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowPrintModal(true)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm"
-                      title="View Statement of Account document preview"
-                    >
-                      <Eye size={13} className="text-blue-600" /> View SOA
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowPrintModal(true)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-sm"
-                      title="Download Statement of Account PDF"
-                    >
-                      <Download size={13} className="text-emerald-600" /> Download PDF
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowPrintModal(true)}
-                      className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 transition shadow-sm"
-                      title="Print Statement of Account"
-                    >
-                      <Printer size={13} /> Print SOA
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          {dateRangeError && (
-            <div className="flex items-center gap-2 rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 mt-2">
-              <AlertTriangle size={15} className="text-rose-500 shrink-0" />
-              <span>{dateRangeError}</span>
-            </div>
-          )}
-        </div>
-
-        {loading || calculating ? (
-          <div className="flex justify-center py-24">
-            <Loader2 size={28} className="animate-spin text-slate-400" />
-          </div>
-        ) : !statement ? (
-          <div className="rounded-xl border border-slate-200 bg-white py-20 text-center text-slate-500">
-            Select a customer to generate their statement of account.
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* 4 Summary Cards */}
-            {(() => {
-              const totalDebits = statement.total_debits !== undefined ? statement.total_debits : statement.entries.reduce((s, e) => s + e.debit, 0);
-              const totalCredits = statement.total_credits !== undefined ? statement.total_credits : statement.entries.reduce((s, e) => s + e.credit, 0);
-              return (
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <span className="text-xs font-semibold text-slate-500 block uppercase tracking-wider">Opening Balance</span>
-                    <span className="text-lg sm:text-xl font-bold font-mono text-slate-900 block mt-1">
-                      {fmtAED(statement.opening_balance)}
-                    </span>
-                    <span className="text-[11px] text-slate-400 block mt-0.5">
-                      {fromDate ? `At start of ${new Date(fromDate).toLocaleDateString("en-AE", { dateStyle: "medium" })}` : "Initial cutover balance"}
-                    </span>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <span className="text-xs font-semibold text-rose-600 block uppercase tracking-wider">Total Invoices</span>
-                    <span className="text-lg sm:text-xl font-bold font-mono text-rose-700 block mt-1">
-                      {fmtAED(totalDebits)}
-                    </span>
-                    <span className="text-[11px] text-slate-400 block mt-0.5">
-                      {statement.entries.filter(e => e.debit > 0).length} invoice debit{statement.entries.filter(e => e.debit > 0).length === 1 ? "" : "s"}
-                    </span>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <span className="text-xs font-semibold text-emerald-600 block uppercase tracking-wider">Total Payments / Credits</span>
-                    <span className="text-lg sm:text-xl font-bold font-mono text-emerald-700 block mt-1">
-                      {fmtAED(totalCredits)}
-                    </span>
-                    <span className="text-[11px] text-slate-400 block mt-0.5">
-                      {statement.entries.filter(e => e.credit > 0).length} payment credit{statement.entries.filter(e => e.credit > 0).length === 1 ? "" : "s"}
-                    </span>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <span className="text-xs font-semibold text-slate-900 block uppercase tracking-wider">Closing Balance</span>
-                    <span className={`text-lg sm:text-xl font-bold font-mono block mt-1 ${statement.closing_balance > 0 ? "text-slate-900" : statement.closing_balance < 0 ? "text-emerald-700" : "text-slate-600"}`}>
-                      {fmtAED(statement.closing_balance)}
-                    </span>
-                    <span className="text-[11px] text-slate-400 block mt-0.5">
-                      {toDate ? `As of ${new Date(toDate).toLocaleDateString("en-AE", { dateStyle: "medium" })}` : "Net outstanding balance"}
-                    </span>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Requirement 8: Financial Consistency & Reconciliation Status */}
-            {reconciliation && (
-              <div className={`rounded-xl border p-4 shadow-sm transition ${
-                reconciliation.isReconciled 
-                  ? "border-emerald-200 bg-emerald-50/50" 
-                  : "border-amber-300 bg-amber-50/70"
-              }`}>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`rounded-lg p-2 ${
-                      reconciliation.isReconciled ? "bg-emerald-600 text-white" : "bg-amber-600 text-white"
-                    }`}>
-                      <Scale size={18} />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                          Financial Reconciliation Check
-                        </span>
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${
-                          reconciliation.isReconciled
-                            ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                            : "bg-amber-100 text-amber-900 border-amber-300"
-                        }`}>
-                          {reconciliation.isReconciled ? (
-                            <>
-                              <CheckCircle2 size={12} className="text-emerald-700" />
-                              Reconciled (0.00 Discrepancy)
-                            </>
-                          ) : (
-                            <>
-                              <AlertTriangle size={12} className="text-amber-700" />
-                              Discrepancy: {fmtAED(reconciliation.discrepancy)}
-                            </>
-                          )}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-600 mt-0.5">
-                        {reconciliation.isReconciled
-                          ? "Customer Statement Closing Balance, SOA Closing Balance, and Ledger Activity Equation are in 100% mathematical agreement."
-                          : "A discrepancy was detected between transaction running balance and closing balance equation. Review details below."}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowReconciliationDetails(!showReconciliationDetails)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 transition"
-                    >
-                      {showReconciliationDetails ? "Hide Details" : "View Reconciliation Details"}
-                    </button>
-                  </div>
-                </div>
-
-                {showReconciliationDetails && (
-                  <div className="mt-3 pt-3 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                    <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block uppercase font-semibold">1. Statement Closing Balance</span>
-                      <span className="text-sm font-mono font-bold text-slate-900 block mt-0.5">
-                        {fmtAED(reconciliation.statementClosingBalance)}
-                      </span>
-                      <span className="text-[10px] text-slate-400">From running balance table</span>
-                    </div>
-
-                    <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block uppercase font-semibold">2. SOA Document Closing Balance</span>
-                      <span className="text-sm font-mono font-bold text-slate-900 block mt-0.5">
-                        {fmtAED(reconciliation.soaClosingBalance)}
-                      </span>
-                      <span className="text-[10px] text-slate-400">From unified SOA template</span>
-                    </div>
-
-                    <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block uppercase font-semibold">3. Net Equation Balance</span>
-                      <span className="text-sm font-mono font-bold text-slate-900 block mt-0.5">
-                        {fmtAED(reconciliation.computedClosingBalance)}
-                      </span>
-                      <span className="text-[10px] text-slate-400">Opening ({fmtAED(reconciliation.openingBalance)}) + Debits ({fmtAED(reconciliation.totalDebits)}) − Credits ({fmtAED(reconciliation.totalCredits)})</span>
-                    </div>
-
-                    {reconciliation.discrepancyDetails.length > 0 && (
-                      <div className="sm:col-span-3 bg-rose-50 p-3 rounded-lg border border-rose-200 text-rose-800 space-y-1">
-                        <span className="font-bold block">Discrepancy Log:</span>
-                        {reconciliation.discrepancyDetails.map((det, dIdx) => (
-                          <div key={dIdx} className="font-mono text-[11px]">• {det}</div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 
-            {/* Table */}
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-                <div>
-                  <h2 className="font-bold text-slate-900 text-sm">{statement.customer_name}</h2>
-                  <p className="text-xs text-slate-500">Ref: {statement.statement_number}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={handleOpenPaymentModal}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm"
-                  >
-                    <Plus size={14} /> Record Customer Payment
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowPrintModal(true)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-xs"
-                    title="View Statement of Account document preview"
-                  >
-                    <Eye size={13} className="text-blue-600" /> View SOA
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowPrintModal(true)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-xs"
-                    title="Print Statement of Account (A4)"
-                  >
-                    <Printer size={13} /> Print SOA
-                  </button>
-                  <div className="text-right pl-2 border-l border-slate-200">
-                    <span className="text-[11px] text-slate-500 block">Closing Balance:</span>
-                    <span className="text-base font-extrabold font-mono text-slate-900">
-                      {fmtAED(statement.closing_balance)}
-                    </span>
-                  </div>
-                </div>
+            {dateRangeError && (
+              <div className="flex items-center gap-2 rounded-lg bg-rose-950/60 border border-rose-800 p-2.5 text-xs text-rose-300 mt-2">
+                <AlertTriangle size={14} className="text-rose-400 shrink-0" />
+                <span>{dateRangeError}</span>
               </div>
+            )}
+          </div>
 
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Ref No</th>
-                    <th className="px-4 py-3">Description</th>
-                    <th className="px-4 py-3 text-right">Debit (Charges)</th>
-                    <th className="px-4 py-3 text-right">Credit (Paid)</th>
-                    <th className="px-4 py-3 text-right">Running Balance</th>
-                    <th className="px-3 py-3 text-center w-16">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs">
-                  <tr className="bg-slate-50/60 font-semibold text-slate-700">
-                    <td className="px-4 py-2.5 font-mono">{fromDate || "—"}</td>
-                    <td className="px-4 py-2.5 font-mono">—</td>
-                    <td className="px-4 py-2.5">Opening Balance Brought Forward</td>
-                    <td className="px-4 py-2.5 text-right font-mono">—</td>
-                    <td className="px-4 py-2.5 text-right font-mono">—</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-slate-900 font-bold">
-                      {fmtAED(statement.opening_balance)}
-                    </td>
-                    <td className="px-3 py-2.5 text-center text-slate-400">—</td>
-                  </tr>
-
-                  {statement.entries.map((e, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="px-4 py-2.5 text-slate-600 font-mono">
-                        {e.date ? new Date(e.date).toLocaleDateString("en-GB") : "—"}
-                      </td>
-                      <td className="px-4 py-2.5 font-mono font-bold">
-                        {e.invoice_id ? (
-                          <Link
-                            href={`/tax-invoices?id=${e.invoice_id}`}
-                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
-                            title={`Open Tax Invoice (${e.original_reference || e.reference_no})`}
-                          >
-                            {e.reference_no}
-                            <ExternalLink size={11} className="opacity-70" />
-                          </Link>
-                        ) : (
-                          <span className="text-slate-800">{e.reference_no}</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-800">{e.description}</td>
-                      <td className="px-4 py-2.5 text-right font-mono text-rose-700">
-                        {e.debit > 0 ? fmtAED(e.debit) : "—"}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-emerald-700 font-semibold">
-                        {e.credit > 0 ? fmtAED(e.credit) : "—"}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-900">
-                        {fmtAED(e.balance)}
-                      </td>
-                      <td className="px-3 py-2.5 text-center">
-                        {(e.voucher_id || e.payment_id) ? (
-                          <button
-                            type="button"
-                            onClick={() => handleVoidTransaction(e)}
-                            className="text-slate-400 hover:text-rose-600 transition p-1 rounded"
-                            title="Void this payment credit"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-
-                  {statement.entries.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
-                        No transactions found for the selected period.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          {loading || calculating ? (
+            <div className="flex justify-center py-24">
+              <Loader2 size={28} className="animate-spin text-cyan-400" />
             </div>
+          ) : !statement ? (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 py-20 text-center text-slate-400">
+              Select a customer to generate their statement of account.
+            </div>
+          ) : (
+            <>
+              {/* 2. Compact Balance Panel */}
+              {(() => {
+                const totalDebits = statement.total_debits !== undefined ? statement.total_debits : statement.entries.reduce((s, e) => s + e.debit, 0);
+                const totalCredits = statement.total_credits !== undefined ? statement.total_credits : statement.entries.reduce((s, e) => s + e.credit, 0);
+                const isOpeningRelevant = statement.opening_balance !== 0 || (savedOpeningBalance ?? 0) !== 0;
 
-            {/* Dedicated Secondary Section: Customer Opening Balance Setting */}
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="rounded-lg bg-slate-100 p-2 text-slate-700">
-                    <ShieldCheck size={18} className="text-emerald-600" />
+                return (
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/90 p-4 shadow-xs">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      {/* Prominent Outstanding Balance */}
+                      <div className="flex items-baseline gap-3">
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Outstanding Balance
+                          </span>
+                          <div className="flex items-baseline gap-2 mt-0.5">
+                            <span className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${
+                              statement.closing_balance > 0
+                                ? "text-rose-400"
+                                : statement.closing_balance < 0
+                                ? "text-emerald-400"
+                                : "text-slate-200"
+                            }`}>
+                              {fmtAED(statement.closing_balance)}
+                            </span>
+                            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                              statement.closing_balance > 0
+                                ? "bg-rose-950/70 text-rose-300 border border-rose-800/60"
+                                : statement.closing_balance < 0
+                                ? "bg-emerald-950/70 text-emerald-300 border border-emerald-800/60"
+                                : "bg-slate-800 text-slate-400 border border-slate-700"
+                            }`}>
+                              {statement.closing_balance > 0 ? "Receivable" : statement.closing_balance < 0 ? "Advance / Credit" : "Settled"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Total Invoices, Total Payments, Opening Balance & Small Reconciliation Pill */}
+                      <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs border-t md:border-t-0 md:border-l border-slate-800 pt-3 md:pt-0 md:pl-6">
+                        {isOpeningRelevant && (
+                          <div>
+                            <span className="text-slate-400 block text-[10px] uppercase font-bold">Opening Balance</span>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="font-mono font-bold text-slate-200 text-sm">{fmtAED(statement.opening_balance)}</span>
+                              {partyMode === "existing" && (
+                                <button
+                                  type="button"
+                                  onClick={fetchBalanceHistory}
+                                  className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+                                  title="Edit cutover balance / view audit history"
+                                >
+                                  <Pencil size={11} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        <div>
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Total Invoices</span>
+                          <span className="font-mono font-bold text-rose-400 text-sm mt-0.5 block">
+                            {fmtAED(totalDebits)}
+                            <span className="text-[10px] font-normal text-slate-400 ml-1">
+                              ({statement.entries.filter(e => e.debit > 0).length})
+                            </span>
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Total Payments</span>
+                          <span className="font-mono font-bold text-emerald-400 text-sm mt-0.5 block">
+                            {fmtAED(totalCredits)}
+                            <span className="text-[10px] font-normal text-slate-400 ml-1">
+                              ({statement.entries.filter(e => e.credit > 0).length})
+                            </span>
+                          </span>
+                        </div>
+
+                        {/* Reconciliation Pill */}
+                        {reconciliation && (
+                          <div className="md:ml-auto">
+                            <button
+                              type="button"
+                              onClick={() => setShowReconciliationDetails(!showReconciliationDetails)}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                                reconciliation.isReconciled
+                                  ? "bg-emerald-950/70 text-emerald-300 border-emerald-800/80 hover:bg-emerald-900/80"
+                                  : "bg-rose-950/80 text-rose-200 border-rose-700 hover:bg-rose-900 animate-pulse"
+                              }`}
+                              title="Click to view full mathematical reconciliation breakdown"
+                            >
+                              {reconciliation.isReconciled ? (
+                                <>
+                                  <CheckCircle2 size={13} className="text-emerald-400" />
+                                  <span>Reconciled ✓</span>
+                                </>
+                              ) : (
+                                <>
+                                  <AlertTriangle size={13} className="text-rose-400" />
+                                  <span>Discrepancy: {fmtAED(reconciliation.discrepancy)}</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Expandable Reconciliation Details */}
+                    {showReconciliationDetails && reconciliation && (
+                      <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs animate-in fade-in duration-150">
+                        <div className="bg-slate-850 p-2.5 rounded-lg border border-slate-700">
+                          <span className="text-[10px] text-slate-400 block uppercase font-bold">1. Statement Closing Balance</span>
+                          <span className="text-sm font-mono font-bold text-slate-100 block mt-0.5">
+                            {fmtAED(reconciliation.statementClosingBalance)}
+                          </span>
+                          <span className="text-[10px] text-slate-500">From running balance ledger</span>
+                        </div>
+                        <div className="bg-slate-850 p-2.5 rounded-lg border border-slate-700">
+                          <span className="text-[10px] text-slate-400 block uppercase font-bold">2. SOA Document Balance</span>
+                          <span className="text-sm font-mono font-bold text-slate-100 block mt-0.5">
+                            {fmtAED(reconciliation.soaClosingBalance)}
+                          </span>
+                          <span className="text-[10px] text-slate-500">From unified SOA template</span>
+                        </div>
+                        <div className="bg-slate-850 p-2.5 rounded-lg border border-slate-700">
+                          <span className="text-[10px] text-slate-400 block uppercase font-bold">3. Net Equation Balance</span>
+                          <span className="text-sm font-mono font-bold text-slate-100 block mt-0.5">
+                            {fmtAED(reconciliation.computedClosingBalance)}
+                          </span>
+                          <span className="text-[10px] text-slate-500">
+                            Opening ({fmtAED(reconciliation.openingBalance)}) + Debits ({fmtAED(reconciliation.totalDebits)}) − Credits ({fmtAED(reconciliation.totalCredits)})
+                          </span>
+                        </div>
+                        {reconciliation.discrepancyDetails.length > 0 && (
+                          <div className="sm:col-span-3 bg-rose-950/40 p-2.5 rounded-lg border border-rose-800 text-rose-300">
+                            <span className="font-bold block mb-1">Discrepancy Details:</span>
+                            {reconciliation.discrepancyDetails.map((det, dIdx) => (
+                              <div key={dIdx} className="font-mono text-[11px]">• {det}</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">Customer Initial Opening Balance Setting</h3>
-                    <p className="text-[11px] text-slate-500">
-                      Authoritative historical ledger balance before system cutover, saved directly in database (<code className="text-slate-700 font-mono">customers.opening_balance</code>).
-                    </p>
-                  </div>
+                );
+              })()}
+
+              {/* 3. Actions Row (Record Payment & Download SOA) */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                    <span>{statement.customer_name}</span>
+                    <span className="text-xs font-mono text-slate-400 font-normal">({statement.statement_number})</span>
+                  </h2>
+                  <span className="text-xs text-slate-400 font-mono">
+                    • {filteredEntries.length} transaction{filteredEntries.length === 1 ? "" : "s"}
+                    {searchQuery && ` (filtered from ${statement.entries.length})`}
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {partyMode === "existing" && (
+                  {/* Primary: Record Payment */}
+                  <button
+                    type="button"
+                    onClick={handleOpenPaymentModal}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 text-xs font-bold transition shadow-sm cursor-pointer"
+                    title="Record a customer payment or receipt voucher"
+                  >
+                    <Plus size={14} /> Record Payment
+                  </button>
+
+                  {/* Primary: Download SOA */}
+                  <button
+                    type="button"
+                    onClick={() => setShowPrintModal(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-750 text-slate-200 px-3.5 py-1.5 text-xs font-semibold transition shadow-sm cursor-pointer"
+                    title="Download Statement of Account PDF"
+                  >
+                    <Download size={14} className="text-emerald-400" /> Download SOA
+                  </button>
+
+                  {/* Secondary: More Menu Dropdown */}
+                  <div className="relative" ref={moreMenuRef}>
                     <button
                       type="button"
-                      onClick={fetchBalanceHistory}
-                      disabled={historyLoading}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition"
-                      title="View historical changes to this customer's initial ledger opening balance"
+                      onClick={() => setShowMoreMenu(!showMoreMenu)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-750 text-slate-300 px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer"
+                      title="More actions"
                     >
-                      {historyLoading ? <Loader2 size={13} className="animate-spin" /> : <History size={13} className="text-slate-500" />}
-                      Audit History
+                      <MoreHorizontal size={15} />
+                      <span className="hidden sm:inline">More</span>
+                      <ChevronDown size={12} className={`transition-transform ${showMoreMenu ? "rotate-180" : ""}`} />
                     </button>
-                  )}
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
-                    <CheckCircle2 size={12} /> Database Authoritative
-                  </span>
-                </div>
-              </div>
 
-              <div className="bg-slate-50/70 rounded-lg p-3 text-xs text-slate-600 space-y-1 border border-slate-100">
-                <p>
-                  <strong>Note:</strong> This represents the customer&apos;s <em>pre-system cutover balance</em>. The <strong>Statement Opening Balance</strong> shown at the top of the statement is calculated dynamically as:
-                </p>
-                <p className="font-mono text-[11px] text-slate-800 bg-white p-2 rounded border border-slate-200">
-                  Statement Opening Balance = Saved Initial Balance + All Debits Before From Date - All Credits Before From Date
-                </p>
-              </div>
+                    {showMoreMenu && (
+                      <div className="absolute right-0 mt-1.5 w-56 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl py-1.5 z-50 text-xs animate-in fade-in slide-in-from-top-1 duration-100">
+                        <button
+                          type="button"
+                          onClick={() => { setShowMoreMenu(false); setShowPrintModal(true); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                        >
+                          <Eye size={14} className="text-blue-400" />
+                          <span>View SOA (Preview)</span>
+                        </button>
 
-              {partyMode === "existing" ? (
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-4">
-                    <div>
-                      <span className="text-xs font-semibold text-slate-600 block mb-1">
-                        Saved Pre-Cutover Balance
-                      </span>
-                      {isEditingBalance ? (
-                        <div className="flex items-center gap-2">
-                          <div className="relative">
-                            <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">AED</span>
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={openingBalanceInput}
-                              onChange={e => {
-                                const val = e.target.value;
-                                if (/^[0-9]*\.?[0-9]*$/.test(val)) {
-                                  setOpeningBalanceInput(val);
-                                }
-                              }}
-                              placeholder="0.00"
-                              className="w-48 rounded-lg border border-blue-400 bg-white pl-12 pr-3 py-1.5 text-xs font-mono font-bold text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none"
-                            />
+                        <button
+                          type="button"
+                          onClick={() => { setShowMoreMenu(false); setShowPrintModal(true); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                        >
+                          <Printer size={14} className="text-slate-400" />
+                          <span>Print SOA</span>
+                        </button>
+
+                        <div className="my-1 border-t border-slate-800" />
+
+                        <button
+                          type="button"
+                          onClick={() => { setShowMoreMenu(false); fetchArchivedStatements(selectedCustomerId, true); }}
+                          className="w-full flex items-center justify-between px-3 py-2 text-left text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <Paperclip size={14} className="text-amber-400" />
+                            <span>Archived SOAs</span>
                           </div>
+                          {archivedStatements.length > 0 && (
+                            <span className="px-1.5 py-0.5 rounded-full bg-amber-950 border border-amber-800 text-[10px] font-bold text-amber-300">
+                              {archivedStatements.length}
+                            </span>
+                          )}
+                        </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleSaveOpeningBalance(false)}
-                            disabled={savingBalance}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm disabled:opacity-50"
-                          >
-                            {savingBalance ? (
-                              <>
-                                <Loader2 size={13} className="animate-spin" /> Saving...
-                              </>
-                            ) : (
-                              <>
-                                <Save size={13} /> Save to Database
-                              </>
-                            )}
-                          </button>
+                        <button
+                          type="button"
+                          onClick={() => { setShowMoreMenu(false); setShowMappingModal(true); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                        >
+                          <FileSpreadsheet size={14} className="text-cyan-400" />
+                          <span>Numbering Preview</span>
+                        </button>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsEditingBalance(false);
-                              const prev = savedOpeningBalance ?? 0;
-                              setOpeningBalance(prev);
-                              setAppliedOpeningBalance(prev);
-                              setOpeningBalanceInput(prev.toFixed(2));
-                              setBalanceMessage(null);
-                            }}
-                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-3">
-                          <span className="text-base font-extrabold font-mono text-slate-900">
-                            {fmtAED(savedOpeningBalance ?? 0)}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setIsEditingBalance(true)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-xs"
-                          >
-                            <Pencil size={12} className="text-slate-500" />
-                            Edit Cutover Balance
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => { setShowMoreMenu(false); fetchBalanceHistory(); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                        >
+                          <History size={14} className="text-purple-400" />
+                          <span>Audit History & Cutover</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => { setShowMoreMenu(false); setShowReconciliationDetails(true); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                        >
+                          <Scale size={14} className="text-emerald-400" />
+                          <span>Advanced Reconciliation</span>
+                        </button>
+
+                        <div className="my-1 border-t border-slate-800" />
+
+                        <button
+                          type="button"
+                          onClick={() => { setShowMoreMenu(false); setShowCompareModal(true); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                        >
+                          <Columns2 size={14} className="text-slate-500" />
+                          <span>Compare SOA Reference</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
+                </div>
+              </div>
 
-                  {balanceMessage && (
-                    <div
-                      className={`flex items-center gap-2 rounded-lg p-2.5 text-xs ${
-                        balanceMessage.type === "success"
-                          ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                          : "bg-rose-50 text-rose-800 border border-rose-200"
-                      }`}
-                    >
-                      {balanceMessage.type === "success" ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
-                      <span>{balanceMessage.text}</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex items-center gap-3 text-xs">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Ad-Hoc Opening Balance (AED)
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={openingBalanceInput}
-                        onChange={e => {
-                          const val = e.target.value;
-                          if (/^[0-9]*\.?[0-9]*$/.test(val)) {
-                            setOpeningBalanceInput(val);
-                          }
-                        }}
-                        placeholder="0.00"
-                        className="w-48 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-mono font-bold focus:border-slate-400 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleSaveOpeningBalance(false)}
-                        className="rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 transition"
-                      >
-                        Apply to Statement
-                      </button>
-                    </div>
-                  </div>
-                  <span className="text-[11px] text-slate-400 mt-5">
-                    (Custom customer balances are report-only and not stored in customer master records)
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+              {/* 4. Compact Transaction Table */}
+              <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/90 shadow-xs max-h-[calc(100vh-270px)] overflow-y-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead className="sticky top-0 z-20 bg-slate-850 border-b border-slate-800 text-slate-400 uppercase font-semibold text-[11px] tracking-wider shadow-xs">
+                    <tr>
+                      <th className="px-4 py-2.5 text-left">Date</th>
+                      <th className="px-4 py-2.5 text-left">Reference</th>
+                      <th className="px-4 py-2.5 text-left">Description</th>
+                      <th className="px-4 py-2.5 text-right">Debit</th>
+                      <th className="px-4 py-2.5 text-right">Credit</th>
+                      <th className="px-4 py-2.5 text-right">Balance</th>
+                      <th className="px-2 py-2.5 text-center w-12"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80 text-slate-200">
+                    {/* Opening Balance Row */}
+                    <tr className="bg-slate-800/30 font-semibold text-slate-300">
+                      <td className="px-4 py-2 font-mono text-slate-400">{fromDate || "—"}</td>
+                      <td className="px-4 py-2 font-mono text-slate-500">—</td>
+                      <td className="px-4 py-2 text-slate-300">Opening Balance Brought Forward</td>
+                      <td className="px-4 py-2 text-right font-mono text-slate-500">—</td>
+                      <td className="px-4 py-2 text-right font-mono text-slate-500">—</td>
+                      <td className="px-4 py-2 text-right font-mono font-bold text-slate-100">
+                        {fmtAED(statement.opening_balance)}
+                      </td>
+                      <td className="px-2 py-2 text-center text-slate-600">—</td>
+                    </tr>
+
+                    {/* Data Rows */}
+                    {filteredEntries.map((e, idx) => (
+                      <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="px-4 py-2 font-mono text-slate-300 whitespace-nowrap">
+                          {e.date ? new Date(e.date).toLocaleDateString("en-GB") : "—"}
+                        </td>
+                        <td className="px-4 py-2 font-mono font-bold whitespace-nowrap">
+                          {e.invoice_id ? (
+                            <Link
+                              href={`/tax-invoices?id=${e.invoice_id}`}
+                              className="inline-flex items-center gap-1 text-cyan-400 hover:text-cyan-300 hover:underline"
+                              title={`Open Tax Invoice (${e.original_reference || e.reference_no})`}
+                            >
+                              {e.reference_no}
+                              <ExternalLink size={10} className="opacity-70" />
+                            </Link>
+                          ) : (
+                            <span className="text-slate-300">{e.reference_no}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-slate-300">{e.description}</td>
+                        <td className="px-4 py-2 text-right font-mono font-medium text-rose-400 whitespace-nowrap">
+                          {e.debit > 0 ? fmtAED(e.debit) : "—"}
+                        </td>
+                        <td className="px-4 py-2 text-right font-mono font-semibold text-emerald-400 whitespace-nowrap">
+                          {e.credit > 0 ? fmtAED(e.credit) : "—"}
+                        </td>
+                        <td className="px-4 py-2 text-right font-mono font-bold text-slate-100 whitespace-nowrap">
+                          {fmtAED(e.balance)}
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          {(e.voucher_id || e.payment_id) ? (
+                            <button
+                              type="button"
+                              onClick={() => handleVoidTransaction(e)}
+                              className="text-slate-500 hover:text-rose-400 transition p-1 rounded"
+                              title="Void this payment credit"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+
+                    {filteredEntries.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                          {searchQuery ? `No transactions match "${searchQuery}".` : "No transactions found for the selected period."}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -2543,6 +2353,68 @@ export default function StatementOfAccountPage() {
             </div>
 
             <div className="p-6 overflow-auto space-y-4">
+              {partyMode === "existing" && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 block">Initial Ledger Cutover Balance</span>
+                      <p className="text-[11px] text-slate-500">
+                        Historical opening balance saved directly in database (<code className="text-slate-700 font-mono">customers.opening_balance</code>).
+                      </p>
+                    </div>
+                    <span className="text-sm font-bold font-mono text-emerald-700 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-md">
+                      Current: {fmtAED(savedOpeningBalance ?? 0)}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <div className="relative">
+                      <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">AED</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={openingBalanceInput}
+                        onChange={e => {
+                          const val = e.target.value;
+                          if (/^[0-9]*\.?[0-9]*$/.test(val)) {
+                            setOpeningBalanceInput(val);
+                          }
+                        }}
+                        placeholder="0.00"
+                        className="w-36 rounded-lg border border-slate-300 bg-white pl-11 pr-3 py-1.5 text-xs font-mono font-bold text-slate-900 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      value={balanceReason}
+                      onChange={e => setBalanceReason(e.target.value)}
+                      placeholder="Reason for change (audit note)..."
+                      className="flex-1 min-w-[180px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSaveOpeningBalance(false)}
+                      disabled={savingBalance}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-xs font-bold text-white transition shadow-sm disabled:opacity-50 cursor-pointer"
+                    >
+                      {savingBalance ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                      Save
+                    </button>
+                  </div>
+
+                  {balanceMessage && (
+                    <div className={`flex items-center gap-2 rounded-lg p-2 text-xs ${
+                      balanceMessage.type === "success"
+                        ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                        : "bg-rose-50 text-rose-800 border border-rose-200"
+                    }`}>
+                      {balanceMessage.type === "success" ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                      <span>{balanceMessage.text}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {balanceHistory.length === 0 ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-8 text-center text-xs text-slate-500">
                   <Clock size={28} className="mx-auto text-slate-300 mb-2" />
