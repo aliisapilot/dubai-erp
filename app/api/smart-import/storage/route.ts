@@ -171,8 +171,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const cleanCompanyId = String(companyId || "").trim();
+    const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    if (!cleanCompanyId || !uuidRegex.test(cleanCompanyId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Valid company ID is required for private storage upload.",
+          requestId,
+        },
+        { status: 400, headers: { "x-request-id": requestId } }
+      );
+    }
+
     // Company-level authorization check
-    const authResult = await authenticateAndAuthorize(req, companyId);
+    const authResult = await authenticateAndAuthorize(req, cleanCompanyId);
     if (!authResult.authorized) {
       return NextResponse.json(
         { success: false, error: authResult.error, requestId },
@@ -190,12 +203,12 @@ export async function POST(req: NextRequest) {
 
     // Company-scoped, batch-scoped isolated private storage path
     const uniquePrefix = `${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
-    const storagePath = `${companyId}/${batchId}/${uniquePrefix}_${cleanFileName}`;
+    const storagePath = `${cleanCompanyId}/${batchId}/${uniquePrefix}_${cleanFileName}`;
 
-    // Create signed upload URL (valid for 15 minutes)
+    // Create signed upload URL (valid for 15 minutes; upsert=false since prefix is unique)
     const { data, error } = await supabase.storage
       .from(BUCKET_NAME)
-      .createSignedUploadUrl(storagePath, { upsert: true });
+      .createSignedUploadUrl(storagePath, { upsert: false });
 
     if (error || !data?.signedUrl) {
       console.warn("Signed upload URL generation failed:", error?.message);

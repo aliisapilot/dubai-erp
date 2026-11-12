@@ -209,12 +209,12 @@ export async function POST(req: NextRequest) {
     for (const item of items) {
       try {
         if (!item.storagePath) {
-          errors.push({ fileName: item.fileName, error: "Missing storagePath; original file was not saved." });
+          errors.push({ fileName: item.fileName, error: "Storage upload failed: Missing storagePath; original file was not saved." });
           continue;
         }
         // Verify storagePath is scoped to this company
         if (!item.storagePath.startsWith(`${companyId}/`)) {
-          errors.push({ fileName: item.fileName, error: "Storage path does not belong to your company." });
+          errors.push({ fileName: item.fileName, error: "Storage validation failed: Storage path does not belong to your company." });
           continue;
         }
 
@@ -222,6 +222,18 @@ export async function POST(req: NextRequest) {
           skippedCount++;
           continue;
         }
+
+        const cleanupOrphanedStorage = async () => {
+          if (item.duplicateAction !== "replace" && item.storagePath) {
+            try {
+              await supabase.storage
+                .from(item.storageBucket || "smart-imports")
+                .remove([item.storagePath]);
+            } catch {
+              // Best-effort cleanup
+            }
+          }
+        };
 
         // Resolve customer ID (either selected existing or explicitly confirmed new customer)
         let resolvedCustomerId = item.customerId || "";
@@ -253,9 +265,10 @@ export async function POST(req: NextRequest) {
                 .single();
 
               if (custInsertErr || !insertedCust?.id) {
+                await cleanupOrphanedStorage();
                 errors.push({
                   fileName: item.fileName,
-                  error: `Failed to create customer "${cleanNewName}": ${custInsertErr?.message || "Unknown error"}`,
+                  error: `Customer matching failed: Could not create customer "${cleanNewName}": ${custInsertErr?.message || "Unknown error"}`,
                 });
                 continue;
               }
@@ -266,7 +279,8 @@ export async function POST(req: NextRequest) {
         }
 
         if (!resolvedCustomerId) {
-          errors.push({ fileName: item.fileName, error: "No customer selected." });
+          await cleanupOrphanedStorage();
+          errors.push({ fileName: item.fileName, error: "Customer matching failed: No customer selected." });
           continue;
         }
 
@@ -301,7 +315,7 @@ export async function POST(req: NextRequest) {
             .eq("company_id", companyId);
 
           if (updErr) {
-            errors.push({ fileName: item.fileName, error: updErr.message });
+            errors.push({ fileName: item.fileName, error: `Metadata insertion failed: ${updErr.message}` });
           } else {
             replacedCount++;
             createdIds.push(item.existingAttachmentId);
@@ -325,7 +339,11 @@ export async function POST(req: NextRequest) {
           .single();
 
         if (insErr || !insertedAtt?.id) {
-          errors.push({ fileName: item.fileName, error: insErr?.message || "Failed to save SOA record." });
+          await cleanupOrphanedStorage();
+          errors.push({
+            fileName: item.fileName,
+            error: `Metadata insertion failed: ${insErr?.message || "Failed to save SOA record."}`,
+          });
         } else {
           importedCount++;
           createdIds.push(insertedAtt.id);

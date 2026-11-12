@@ -17,7 +17,7 @@ import {
 import JSZip from "jszip";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
-import { todayISO } from "@/lib/helpers";
+import { todayISO, getCompanyId } from "@/lib/helpers";
 import {
   type CustomerCandidate,
   type StoredSoaRecord,
@@ -272,8 +272,10 @@ export default function BulkSoaImportModal({
   async function uploadAndExtractSingle(
     item: StagedSoaItem,
     accessToken: string,
-    batchId: string
+    batchId: string,
+    resolvedCompanyId: string
   ): Promise<StagedSoaItem> {
+    let stage = "Storage upload";
     try {
       const buffer = await item.file.arrayBuffer();
       const checksumSha256 = await computeSha256Hex(buffer);
@@ -289,7 +291,7 @@ export default function BulkSoaImportModal({
           fileName: item.fileName,
           fileType: item.fileType,
           fileSize: item.fileSize,
-          companyId,
+          companyId: resolvedCompanyId,
           batchId,
         }),
       });
@@ -305,20 +307,27 @@ export default function BulkSoaImportModal({
           body: item.file,
         });
         if (!putRes.ok) {
-          throw new Error(`Storage upload failed (${putRes.status})`);
+          throw new Error(`HTTP ${putRes.status} uploading to signed storage URL`);
         }
       } else if (storagePath) {
         const { error: directErr } = await supabase.storage
           .from(storageBucket)
-          .upload(storagePath, item.file, { upsert: true });
+          .upload(storagePath, item.file, { upsert: false });
         if (directErr) {
-          throw new Error(`Storage upload failed: ${directErr.message}`);
+          const msg = directErr.message || "Unknown storage error";
+          if (msg.toLowerCase().includes("bucket not found") || msg.toLowerCase().includes("row-level security")) {
+            throw new Error(
+              `${msg} — Ensure migration 20261112180000_fix_smart_imports_storage_rls.sql is applied in Supabase.`
+            );
+          }
+          throw new Error(msg);
         }
       } else {
         throw new Error(storageInit?.error || "Could not initialize private storage upload.");
       }
 
       // 2. Extract SOA metadata
+      stage = "Extraction";
       let customerName = "";
       let soaNumber = item.fileName.replace(/\.[^.]+$/, "");
       let statementDate = todayISO();
@@ -380,6 +389,7 @@ export default function BulkSoaImportModal({
       }
 
       // 3. Smart customer matching
+      stage = "Customer matching";
       const matchOutcome = matchCustomerCandidates(customerName, customers);
 
       // 4. Duplicate detection
@@ -428,10 +438,11 @@ export default function BulkSoaImportModal({
         confirmReplace: false,
       };
     } catch (err) {
+      const rawMsg = err instanceof Error ? err.message : "Unexpected error.";
       return {
         ...item,
         processState: "failed",
-        errorMessage: err instanceof Error ? err.message : "Upload or extraction failed.",
+        errorMessage: `${stage} failed: ${rawMsg}`,
       };
     }
   }
@@ -586,6 +597,7 @@ export default function BulkSoaImportModal({
 
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData?.session?.access_token || "";
+    const resolvedCompanyId = companyId || (await getCompanyId().catch(() => ""));
     const batchId = `soa_${Date.now()}`;
 
     // Process files in concurrency batches of 4 for fast 5–100 file handling
@@ -604,7 +616,12 @@ export default function BulkSoaImportModal({
         slice.map(async (idx) => {
           results[idx] = { ...results[idx], processState: "uploading" };
           setItems([...results]);
-          const updated = await uploadAndExtractSingle(results[idx], accessToken, batchId);
+          const updated = await uploadAndExtractSingle(
+            results[idx],
+            accessToken,
+            batchId,
+            resolvedCompanyId
+          );
           results[idx] = updated;
           done++;
           setProcessedCount(done);
@@ -626,13 +643,19 @@ export default function BulkSoaImportModal({
     setProcessing(true);
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData?.session?.access_token || "";
+    const resolvedCompanyId = companyId || (await getCompanyId().catch(() => ""));
     const batchId = `soa_retry_${Date.now()}`;
 
     const next = [...items];
     for (const idx of failedIndices) {
       next[idx] = { ...next[idx], processState: "uploading", errorMessage: undefined };
       setItems([...next]);
-      next[idx] = await uploadAndExtractSingle(next[idx], accessToken, batchId);
+      next[idx] = await uploadAndExtractSingle(
+        next[idx],
+        accessToken,
+        batchId,
+        resolvedCompanyId
+      );
       setItems([...next]);
     }
     setProcessing(false);
@@ -714,6 +737,7 @@ export default function BulkSoaImportModal({
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData?.session?.access_token || "";
+      const resolvedCompanyId = companyId || (await getCompanyId().catch(() => ""));
 
       const payloadItems = items
         .filter((it) => it.processState !== "failed")
@@ -744,7 +768,7 @@ export default function BulkSoaImportModal({
           "Content-Type": "application/json",
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify({ companyId, items: payloadItems }),
+        body: JSON.stringify({ companyId: resolvedCompanyId, items: payloadItems }),
       });
 
       const data = await res.json();
