@@ -181,6 +181,20 @@ export default function CustomerStatementResetModal({
         .eq("id", customerId);
 
       if (custErr) {
+        // PGRST303 means the column doesn't exist yet — migration required
+        const isPgrst303 =
+          custErr.message?.toLowerCase().includes("opening_balance") ||
+          (custErr as { code?: string }).code === "PGRST303" ||
+          custErr.message?.includes("PGRST303");
+        if (isPgrst303) {
+          setErrorMessage(
+            "Migration required — the opening_balance column does not yet exist in the database. " +
+              "Please apply supabase/migrations/20261112000000_customer_opening_balance.sql in the Supabase SQL Editor, then try again. " +
+              "Your rollback snapshot has been saved locally."
+          );
+          setResetting(false);
+          return;
+        }
         throw new Error(`Failed to update customer opening balance: ${custErr.message}`);
       }
 
@@ -234,6 +248,18 @@ export default function CustomerStatementResetModal({
         .eq("id", customerId);
 
       if (custErr) {
+        const isPgrst303 =
+          custErr.message?.toLowerCase().includes("opening_balance") ||
+          (custErr as { code?: string }).code === "PGRST303" ||
+          custErr.message?.includes("PGRST303");
+        if (isPgrst303) {
+          setErrorMessage(
+            "Migration required — cannot restore opening balance until the database migration is applied. " +
+              "Please apply supabase/migrations/20261112000000_customer_opening_balance.sql in the Supabase SQL Editor."
+          );
+          setRestoring(false);
+          return;
+        }
         throw new Error(`Failed to restore opening balance: ${custErr.message}`);
       }
 
@@ -277,7 +303,7 @@ export default function CustomerStatementResetModal({
               <RotateCcw size={18} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Fresh Start / Reset Customer Statement</h3>
+              <h3 className="text-base font-bold text-white">Reset Opening Balance</h3>
               <p className="text-xs text-slate-400">
                 Customer: <span className="text-slate-200 font-semibold">{customerName}</span> {customerCode ? `(${customerCode})` : ""}
               </p>
@@ -323,6 +349,30 @@ export default function CustomerStatementResetModal({
             </div>
           </div>
 
+          {/* Zero-balance guard: nothing to reset */}
+          {currentOpeningBalance === 0 ? (
+            <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 flex flex-col items-center gap-3 text-center">
+              <CheckCircle2 size={32} className="text-emerald-400" />
+              <div className="space-y-1">
+                <p className="font-bold text-slate-200 text-sm">No Opening Balance to Reset</p>
+                <p className="text-slate-400 leading-relaxed">
+                  The opening balance for <strong className="text-slate-200">{customerName}</strong> is already{" "}
+                  <strong className="text-emerald-300 font-mono">AED 0.00</strong>. There is nothing to reset.
+                </p>
+                <p className="text-slate-500 text-[11px] pt-1">
+                  If you need to set an opening balance, use the Opening Balance editor on the Customer Statement page.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="mt-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-white px-5 py-2 font-semibold text-xs transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          ) : (
+            <>
           {/* Rollback Available Banner */}
           {existingRollback && (
             <div className="rounded-xl border border-purple-800/60 bg-purple-950/40 p-4 flex items-center justify-between gap-3">
@@ -478,6 +528,8 @@ export default function CustomerStatementResetModal({
               <span>{successMessage}</span>
             </div>
           )}
+          </>
+          )}
         </div>
 
         {/* Footer */}
@@ -490,24 +542,26 @@ export default function CustomerStatementResetModal({
             Cancel
           </button>
 
-          <button
-            type="button"
-            onClick={handleExecuteReset}
-            disabled={!canExecuteReset}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 font-bold transition shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-          >
-            {resetting ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                <span>Resetting...</span>
-              </>
-            ) : (
-              <>
-                <RotateCcw size={14} />
-                <span>Execute Fresh Start Reset</span>
-              </>
-            )}
-          </button>
+          {currentOpeningBalance !== 0 && (
+            <button
+              type="button"
+              onClick={handleExecuteReset}
+              disabled={!canExecuteReset}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 font-bold transition shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {resetting ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>Resetting...</span>
+                </>
+              ) : (
+                <>
+                  <RotateCcw size={14} />
+                  <span>Reset Opening Balance</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

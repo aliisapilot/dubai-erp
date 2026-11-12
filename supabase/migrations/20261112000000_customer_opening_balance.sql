@@ -46,6 +46,9 @@ CREATE POLICY "company_customer_opening_balance_history" ON public.customer_open
 -- 6. Permissions Grant to Authenticated Role
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.customer_opening_balance_history TO authenticated;
 
+-- 7. Reload PostgREST schema cache so new columns are immediately available
+NOTIFY pgrst, 'reload schema';
+
 -- ============================================================
 -- Verification Queries (Run after migration to confirm setup)
 -- ============================================================

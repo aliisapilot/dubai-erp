@@ -33,9 +33,11 @@ import {
   Search,
   Upload,
   RotateCcw,
+  FilePlus2,
 } from "lucide-react";
 import DocumentImportModal from "@/components/import/DocumentImportModal";
 import CustomerStatementResetModal from "@/components/statements/CustomerStatementResetModal";
+import StartNewSoaModal from "@/components/statements/StartNewSoaModal";
 import ImportHistoryModal from "@/components/import/ImportHistoryModal";
 import Link from "next/link";
 import StatementOfAccountTemplate, { StatementData, StatementEntry } from "@/components/documents/StatementOfAccountTemplate";
@@ -219,6 +221,7 @@ export default function StatementOfAccountPage() {
   // Import, Reset & History Modals
   const [showImportSoaModal, setShowImportSoaModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showStartNewSoaModal, setShowStartNewSoaModal] = useState(false);
   const [showImportHistoryModal, setShowImportHistoryModal] = useState(false);
 
   useEffect(() => {
@@ -283,12 +286,18 @@ export default function StatementOfAccountPage() {
 
     if (val === null) {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("customers")
           .select("opening_balance")
           .eq("id", customerId)
           .maybeSingle();
-        if (data && data.opening_balance != null) {
+        // Gracefully ignore PGRST303 (column doesn't exist yet — migration pending)
+        if (error) {
+          const isPgrst303 =
+            error.message?.toLowerCase().includes("opening_balance") ||
+            (error as { code?: string }).code === "PGRST303";
+          if (!isPgrst303) console.warn("loadCustomerOpeningBalance:", error.message);
+        } else if (data && data.opening_balance != null) {
           val = Number(data.opening_balance);
         }
       } catch {}
@@ -341,13 +350,26 @@ export default function StatementOfAccountPage() {
 
       // 1. Persist to customers table
       try {
-        await supabase
+        const { error: updateErr } = await supabase
           .from("customers")
           .update({
             opening_balance: cleanAmount,
             opening_balance_date: todayISO(),
           })
           .eq("id", selectedCustomerId);
+        if (updateErr) {
+          const isPgrst303 =
+            updateErr.message?.toLowerCase().includes("opening_balance") ||
+            (updateErr as { code?: string }).code === "PGRST303";
+          if (isPgrst303) {
+            setBalanceMessage({
+              type: "error",
+              text: "Opening balance cannot be persisted — database migration required. Please apply supabase/migrations/20261112000000_customer_opening_balance.sql in the Supabase SQL Editor. Balance is saved locally only.",
+            });
+          } else {
+            console.warn("Could not update opening_balance column on customers:", updateErr.message);
+          }
+        }
       } catch (e) {
         console.warn("Could not update opening_balance column on customers:", e);
       }
@@ -1732,11 +1754,20 @@ export default function StatementOfAccountPage() {
 
                         <button
                           type="button"
+                          onClick={() => { setShowMoreMenu(false); setShowStartNewSoaModal(true); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-cyan-300 hover:bg-cyan-950/30 transition cursor-pointer"
+                        >
+                          <FilePlus2 size={14} className="text-cyan-400" />
+                          <span>Start New SOA (Draft)</span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => { setShowMoreMenu(false); setShowResetModal(true); }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-rose-300 hover:bg-rose-950/30 transition cursor-pointer"
                         >
                           <RotateCcw size={14} className="text-rose-400" />
-                          <span>Fresh Start / Reset Statements</span>
+                          <span>Reset Opening Balance</span>
                         </button>
                       </div>
                     )}
@@ -2866,6 +2897,15 @@ export default function StatementOfAccountPage() {
         isOpen={showImportHistoryModal}
         onClose={() => setShowImportHistoryModal(false)}
         defaultModuleFilter="customer_statement"
+      />
+
+      {/* Start New SOA (Independent Draft) Modal */}
+      <StartNewSoaModal
+        isOpen={showStartNewSoaModal}
+        onClose={() => setShowStartNewSoaModal(false)}
+        customerId={selectedCustomerId}
+        customerName={customers.find(c => c.id === selectedCustomerId)?.name || statement?.customer_name || "Selected Customer"}
+        customerCode={customers.find(c => c.id === selectedCustomerId)?.customer_code || undefined}
       />
 </main>
   );
