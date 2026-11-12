@@ -11,6 +11,7 @@ import {
 import ProjectHandoverTemplate from "@/components/documents/ProjectHandoverTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 type HandoverItem = {
   id: string;
@@ -517,26 +518,39 @@ export default function ProjectHandoverPage() {
       </div>
 
       {/* PRINT PREVIEW MODAL */}
-      <PrintModal isOpen={!!previewHandover} onClose={() => setPreviewHandover(null)}>
-        {previewHandover && (
-          <ProjectHandoverTemplate
-            company={companyDoc}
-            handover={{
-              handover_number: previewHandover.handover_number,
-              handover_date: previewHandover.handover_date,
-              scope_completed: previewHandover.scope_completed,
-              snags_remarks: previewHandover.snags_remarks,
-              client_representative: previewHandover.client_representative,
-              contractor_representative: previewHandover.contractor_representative,
-              status: previewHandover.status,
-              project_name: previewHandover.projects?.name || "Project",
-              customer_name: previewHandover.client_representative || "Client Representative",
-              location: previewHandover.projects?.location || "Dubai, UAE",
-            }}
+      {previewHandover && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "handover_certificate",
+          documentNumber: previewHandover.handover_number || "HOC",
+          customerName: previewHandover.projects?.name || previewHandover.client_representative,
+          workDescription: "Handover Certificate",
+        });
+        return (
+          <PrintModal
+            isOpen={!!previewHandover}
             onClose={() => setPreviewHandover(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <ProjectHandoverTemplate
+              company={companyDoc}
+              handover={{
+                handover_number: previewHandover.handover_number,
+                handover_date: previewHandover.handover_date,
+                scope_completed: previewHandover.scope_completed,
+                snags_remarks: previewHandover.snags_remarks,
+                client_representative: previewHandover.client_representative,
+                contractor_representative: previewHandover.contractor_representative,
+                status: previewHandover.status,
+                project_name: previewHandover.projects?.name || "Project",
+                customer_name: previewHandover.client_representative || "Client Representative",
+                location: previewHandover.projects?.location || "Dubai, UAE",
+              }}
+              onClose={() => setPreviewHandover(null)}
+            />
+          </PrintModal>
+        );
+      })()}
     </div>
   );
 }

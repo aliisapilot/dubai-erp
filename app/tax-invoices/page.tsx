@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import TaxInvoiceTemplate from "@/components/documents/TaxInvoiceTemplate";
 import PrintModal from "@/components/documents/PrintModal";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { withCustomerDocumentDetails, stripCustomPartyTags } from "@/lib/documentCustomer";
@@ -725,44 +726,62 @@ function TIContent() {
       </div>
 
       {/* Print Modal */}
-      <PrintModal isOpen={!!printRec} onClose={() => setPrintRec(null)}>
-        {printRec && (
-          <TaxInvoiceTemplate
-            company={company}
-            invoice={{
-              invoice_number: printRec.ti.invoice_number || "INV",
-              invoice_date: printRec.ti.invoice_date || "",
-              supply_date: printRec.ti.supply_date,
-              customer_name: printRec.ti.customer_name || "",
-              customer_trn: printRec.ti.customer_trn,
-              customer_address: printRec.ti.customer_address,
-              contact_person: printRec.ti.contact_person,
-              contact_number: printRec.ti.contact_number,
-              contact_email: printRec.ti.contact_email,
-              project_number: printRec.ti.project_id ? projMap[printRec.ti.project_id]?.project_number : undefined,
-              project_name: printRec.ti.project_id ? projMap[printRec.ti.project_id]?.name : undefined,
-              payment_terms: stripCustomPartyTags(printRec.ti.payment_terms) || undefined,
-              notes: stripCustomPartyTags(printRec.ti.notes) || undefined,
-              status: printRec.ti.status,
-              subtotal: printRec.ti.subtotal || 0,
-              vat_amount: printRec.ti.vat_amount || 0,
-              total_amount: printRec.ti.total_amount || 0,
-              items: printRec.lines.map(l => ({
-                description: l.description,
-                quantity: l.quantity,
-                unit: l.unit,
-                unit_price: l.unit_price,
-                discount_pct: l.discount_pct,
-                taxable_amount: l.taxable_amount,
-                vat_rate: l.vat_rate,
-                vat_amount: l.vat_amount,
-                line_total: l.line_total,
-              })),
-            }}
+      {printRec && (() => {
+        const prjName = printRec.ti.custom_project_name || (printRec.ti.project_id ? projMap[printRec.ti.project_id]?.name : undefined);
+        const docFile = generateDocumentPdfFilename({
+          docType: "tax_invoice",
+          docNumber: printRec.ti.invoice_number,
+          partyName: printRec.ti.customer_name,
+          customerName: printRec.ti.customer_name,
+          projectName: prjName,
+          notes: printRec.ti.notes,
+          items: printRec.lines,
+          date: printRec.ti.invoice_date,
+        });
+        return (
+          <PrintModal
+            isOpen={!!printRec}
             onClose={() => setPrintRec(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <TaxInvoiceTemplate
+              company={company}
+              invoice={{
+                invoice_number: printRec.ti.invoice_number || "INV",
+                invoice_date: printRec.ti.invoice_date || "",
+                supply_date: printRec.ti.supply_date,
+                customer_name: printRec.ti.customer_name || "",
+                customer_trn: printRec.ti.customer_trn,
+                customer_address: printRec.ti.customer_address,
+                contact_person: printRec.ti.contact_person,
+                contact_number: printRec.ti.contact_number,
+                contact_email: printRec.ti.contact_email,
+                project_number: printRec.ti.project_id ? projMap[printRec.ti.project_id]?.project_number : undefined,
+                project_name: printRec.ti.project_id ? projMap[printRec.ti.project_id]?.name : undefined,
+                payment_terms: stripCustomPartyTags(printRec.ti.payment_terms) || undefined,
+                notes: stripCustomPartyTags(printRec.ti.notes) || undefined,
+                status: printRec.ti.status,
+                subtotal: printRec.ti.subtotal || 0,
+                vat_amount: printRec.ti.vat_amount || 0,
+                total_amount: printRec.ti.total_amount || 0,
+                items: printRec.lines.map(l => ({
+                  description: l.description,
+                  quantity: l.quantity,
+                  unit: l.unit,
+                  unit_price: l.unit_price,
+                  discount_pct: l.discount_pct,
+                  taxable_amount: l.taxable_amount,
+                  vat_rate: l.vat_rate,
+                  vat_amount: l.vat_amount,
+                  line_total: l.line_total,
+                })),
+              }}
+              onClose={() => setPrintRec(null)}
+            />
+          </PrintModal>
+        );
+      })()}
 
       {showRenameModal && (renamingInvoice || editing) && (company?.id || renamingInvoice?.company_id || editing?.company_id) && (
         <EditDocumentReferenceModal

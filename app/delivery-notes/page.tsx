@@ -17,6 +17,7 @@ import DynamicDocumentRenderer, {
 } from "@/components/documents/DynamicDocumentRenderer";
 import { usePersistedDocumentDesign } from "@/components/documents/usePersistedDocumentDesign";
 import { NumericCellInput } from "@/components/ui/NumericCellInput";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; address: string | null; contact_person: string | null; phone: string | null; mobile: string | null; email: string | null; active: boolean | null };
 type Product = { id: string; name: string | null; sku: string | null; unit: string | null; current_stock: number | null; description?: string | null };
@@ -1355,15 +1356,30 @@ export default function DeliveryNotesPage() {
       </div>
 
       {/* A4 Print Modal */}
-      <PrintModal isOpen={!!printDoc} onClose={() => setPrintDoc(null)}>
-        {printDoc && (
-          <DeliveryNoteTemplate
-            company={company}
-            deliveryNote={printDoc}
+      {printDoc && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "delivery_note",
+          documentNumber: printDoc.delivery_number || "DN",
+          customerName: printDoc.customer_name,
+          projectName: printDoc.project_name,
+          notes: printDoc.notes,
+          items: printDoc.items?.map((it) => ({ description: it.description })),
+        });
+        return (
+          <PrintModal
+            isOpen={!!printDoc}
             onClose={() => setPrintDoc(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <DeliveryNoteTemplate
+              company={company}
+              deliveryNote={printDoc}
+              onClose={() => setPrintDoc(null)}
+            />
+          </PrintModal>
+        );
+      })()}
 
       {showRenameModal && editing && (company?.id || editing.company_id) && (
         <EditDocumentReferenceModal

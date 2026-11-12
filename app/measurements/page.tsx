@@ -59,6 +59,7 @@ import NumericInput from "@/components/NumericInput";
 import PvcTankLinerCalculator from "@/components/measurements/PvcTankLinerCalculator";
 import PvcTankLinerQuotationModal, { CustomerSummary } from "@/components/measurements/PvcTankLinerQuotationModal";
 import PrintModal from "@/components/documents/PrintModal";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import MeasurementSheetTemplate, {
   MeasurementSheetDocData,
 } from "@/components/documents/MeasurementSheetTemplate";
@@ -2389,51 +2390,62 @@ export default function MeasurementsPage() {
       {/* ========================================================================= */}
       {/* PRINT / PDF PREVIEW MODAL (Requirement 18) */}
       {/* ========================================================================= */}
-      {showPrintModal && (
-        <PrintModal
-          isOpen={showPrintModal}
-          onClose={() => setShowPrintModal(false)}
-          editorHref="/settings/designer?type=measurement_sheet"
-          extraActions={
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIncludeVat((prev) => !prev)}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium border transition-colors ${
-                  includeVat
-                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                    : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
-                }`}
-                title="Toggle 5% UAE VAT in preview and export"
-              >
-                <Receipt size={13} className={includeVat ? "text-emerald-400" : "text-slate-400"} />
-                <span>{includeVat ? `VAT (${vatRate}%): ON` : "VAT: OFF"}</span>
-              </button>
+      {showPrintModal && (() => {
+        const docFile = generateDocumentPdfFilename({
+          docType: "measurement_sheet",
+          docNumber: printDocData.sheet_number,
+          customerName: printDocData.customer_name,
+          partyName: printDocData.customer_name,
+          workDescription: activeSheet?.title || (activeSheet as unknown as { project_name?: string })?.project_name || "Fabrication Measurements",
+        });
+        return (
+          <PrintModal
+            isOpen={showPrintModal}
+            onClose={() => setShowPrintModal(false)}
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+            editorHref="/settings/designer?type=measurement_sheet"
+            extraActions={
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIncludeVat((prev) => !prev)}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium border transition-colors ${
+                    includeVat
+                      ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                      : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                  }`}
+                  title="Toggle 5% UAE VAT in preview and export"
+                >
+                  <Receipt size={13} className={includeVat ? "text-emerald-400" : "text-slate-400"} />
+                  <span>{includeVat ? `VAT (${vatRate}%): ON` : "VAT: OFF"}</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setShowCalculationTypeInPdf((prev) => !prev)}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium border transition-colors ${
-                  showCalculationTypeInPdf
-                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                    : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
-                }`}
-                title="Toggle Calculation Type & Formula column in preview"
-              >
-                <Calculator size={13} className={showCalculationTypeInPdf ? "text-emerald-400" : "text-slate-400"} />
-                <span>{showCalculationTypeInPdf ? "Calculation Type: Visible" : "Calculation Type: Removed"}</span>
-              </button>
-            </div>
-          }
-        >
-          <MeasurementSheetTemplate
-            company={company}
-            data={printDocData}
-            showCalculationType={showCalculationTypeInPdf}
-            showVat={includeVat}
-          />
-        </PrintModal>
-      )}
+                <button
+                  type="button"
+                  onClick={() => setShowCalculationTypeInPdf((prev) => !prev)}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium border transition-colors ${
+                    showCalculationTypeInPdf
+                      ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                      : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                  }`}
+                  title="Toggle Calculation Type & Formula column in preview"
+                >
+                  <Calculator size={13} className={showCalculationTypeInPdf ? "text-emerald-400" : "text-slate-400"} />
+                  <span>{showCalculationTypeInPdf ? "Calculation Type: Visible" : "Calculation Type: Removed"}</span>
+                </button>
+              </div>
+            }
+          >
+            <MeasurementSheetTemplate
+              company={company}
+              data={printDocData}
+              showCalculationType={showCalculationTypeInPdf}
+              showVat={includeVat}
+            />
+          </PrintModal>
+        );
+      })()}
 
       {/* PVC Tank Liner Quotation Modal */}
       {showPvcQuotationModal && pvcQuotationLinerData && (

@@ -8,6 +8,7 @@ import SalarySlipTemplate, { SalarySlipData } from "@/components/documents/Salar
 import EmployeePaymentVoucherTemplate, { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 type Employee = {
   id: string;
@@ -271,26 +272,53 @@ export default function PayslipsPage() {
       </div>
 
       {/* Salary Slip Print Modal */}
-      <PrintModal isOpen={!!activeSlip} onClose={() => setActiveSlip(null)}>
-        {activeSlip && (
-          <SalarySlipTemplate
-            company={company}
-            slip={activeSlip}
+      {activeSlip && (() => {
+        const docFile = generateDocumentPdfFilename({
+          docType: "payslip",
+          employeeName: activeSlip.employee_name,
+          month: Number(activeSlip.month) || undefined,
+          year: Number(activeSlip.year) || undefined,
+        });
+        return (
+          <PrintModal
+            isOpen={!!activeSlip}
             onClose={() => setActiveSlip(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <SalarySlipTemplate
+              company={company}
+              slip={activeSlip}
+              onClose={() => setActiveSlip(null)}
+            />
+          </PrintModal>
+        );
+      })()}
 
       {/* Payment Voucher Print Modal */}
-      <PrintModal isOpen={!!activeVoucher} onClose={() => setActiveVoucher(null)}>
-        {activeVoucher && (
-          <EmployeePaymentVoucherTemplate
-            company={company}
-            voucher={activeVoucher}
+      {activeVoucher && (() => {
+        const docFile = generateDocumentPdfFilename({
+          docType: "employee_payment_voucher",
+          docNumber: activeVoucher.voucher_number,
+          employeeName: activeVoucher.employee_name,
+          month: Number(activeVoucher.month) || undefined,
+          year: Number(activeVoucher.year) || undefined,
+        });
+        return (
+          <PrintModal
+            isOpen={!!activeVoucher}
             onClose={() => setActiveVoucher(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <EmployeePaymentVoucherTemplate
+              company={company}
+              voucher={activeVoucher}
+              onClose={() => setActiveVoucher(null)}
+            />
+          </PrintModal>
+        );
+      })()}
     </main>
   );
 }

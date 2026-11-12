@@ -11,6 +11,7 @@ import {
 import PettyCashVoucherTemplate, { PettyCashVoucherData } from "@/components/documents/PettyCashVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 type PettyCashTx = {
   id: string;
@@ -557,15 +558,28 @@ export default function PettyCashPage() {
       )}
 
       {/* PRINT MODAL */}
-      {printVoucher && (
-        <PrintModal isOpen={Boolean(printVoucher)} onClose={() => setPrintVoucher(null)}>
-          <PettyCashVoucherTemplate
-            company={company}
-            voucher={printVoucher}
+      {printVoucher && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "petty_cash_voucher",
+          documentNumber: printVoucher.voucher_number || "PCV",
+          customerName: printVoucher.payee,
+          workDescription: printVoucher.description || printVoucher.category,
+        });
+        return (
+          <PrintModal
+            isOpen={Boolean(printVoucher)}
             onClose={() => setPrintVoucher(null)}
-          />
-        </PrintModal>
-      )}
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <PettyCashVoucherTemplate
+              company={company}
+              voucher={printVoucher}
+              onClose={() => setPrintVoucher(null)}
+            />
+          </PrintModal>
+        );
+      })()}
     </div>
   );
 }

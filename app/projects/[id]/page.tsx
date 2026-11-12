@@ -33,6 +33,7 @@ import { readProjectResult, writeProjectResult, unsavedProjectExpenses, saveProj
 import { getProjectMaterialConsumption, type MaterialMovementRecord } from "@/lib/materialInventory";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 type Project = {
   id: string;
@@ -2255,37 +2256,76 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {/* WMS Print Modal */}
-      <PrintModal isOpen={!!printWms} onClose={() => setPrintWms(null)}>
-        {printWms && (
-          <WorkMethodStatementTemplate
-            company={company}
-            wms={printWms}
+      {printWms && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "method_statement",
+          documentNumber: printWms.wms_number || "WMS",
+          customerName: printWms.project_name,
+          workDescription: printWms.title || "Method Statement",
+        });
+        return (
+          <PrintModal
+            isOpen={!!printWms}
             onClose={() => setPrintWms(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <WorkMethodStatementTemplate
+              company={company}
+              wms={printWms}
+              onClose={() => setPrintWms(null)}
+            />
+          </PrintModal>
+        );
+      })()}
 
       {/* Handover Print Modal */}
-      <PrintModal isOpen={!!printHandover} onClose={() => setPrintHandover(null)}>
-        {printHandover && (
-          <ProjectHandoverTemplate
-            company={company}
-            handover={printHandover}
+      {printHandover && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "handover_certificate",
+          documentNumber: printHandover.handover_number || "HOC",
+          customerName: printHandover.project_name || printHandover.customer_name,
+          workDescription: "Handover Certificate",
+        });
+        return (
+          <PrintModal
+            isOpen={!!printHandover}
             onClose={() => setPrintHandover(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <ProjectHandoverTemplate
+              company={company}
+              handover={printHandover}
+              onClose={() => setPrintHandover(null)}
+            />
+          </PrintModal>
+        );
+      })()}
 
       {/* Project Material Consumption Print Modal (Part 8 & 11) */}
-      {printMaterialReport && (
-        <PrintModal isOpen={Boolean(printMaterialReport)} onClose={() => setPrintMaterialReport(null)}>
-          <ProjectMaterialConsumptionTemplate
-            company={company}
-            data={printMaterialReport}
+      {printMaterialReport && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "material_consumption",
+          documentNumber: printMaterialReport.project_number || "PMC",
+          customerName: printMaterialReport.project_name,
+          workDescription: "Material Consumption",
+        });
+        return (
+          <PrintModal
+            isOpen={Boolean(printMaterialReport)}
             onClose={() => setPrintMaterialReport(null)}
-          />
-        </PrintModal>
-      )}
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <ProjectMaterialConsumptionTemplate
+              company={company}
+              data={printMaterialReport}
+              onClose={() => setPrintMaterialReport(null)}
+            />
+          </PrintModal>
+        );
+      })()}
     </main>
   );
 }

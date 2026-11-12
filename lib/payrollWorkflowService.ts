@@ -51,7 +51,7 @@ export const DEFAULT_MONTHLY_ADJUSTMENT: MonthlyEmployeeAdjustment = {
   present_days_adjustment: 0,
   payable_days_adjustment: 0,
   attendance_remarks: "",
-  overtime_costing_method: "auto",
+  overtime_costing_method: "hourly_rate",
   overtime_rate: null,
   overtime_manual_amount: null,
   overtime_hours_adjustment: 0,
@@ -144,16 +144,17 @@ export function calculateAttendanceTotals(
 }
 
 /**
- * 2. Calculate Overtime charges with strict exclusivity among the 3 costing methods
+ * 2. Calculate Overtime charges with strict decimal-safe monetary precision
  */
 export function calculateOvertimeCharge(
   basicSalary: number,
   rawHours: number,
   adj: MonthlyEmployeeAdjustment,
-  rules: CompanyPayrollRules = DEFAULT_PAYROLL_RULES
+  rules: CompanyPayrollRules = DEFAULT_PAYROLL_RULES,
+  defaultRate?: number | null
 ): OvertimeCalculationResult {
   const effectiveHours = Math.max(0, rawHours + (adj.overtime_hours_adjustment || 0));
-  const method = adj.overtime_costing_method || "auto";
+  const method = adj.overtime_costing_method || "hourly_rate";
 
   let hourlyRate = 0;
   let totalCharge = 0;
@@ -168,10 +169,18 @@ export function calculateOvertimeCharge(
     hourlyRate = effectiveHours > 0 ? Number((totalCharge / effectiveHours).toFixed(2)) : 0;
     explanation = `Manual Flat Charge: AED ${totalCharge.toFixed(2)} (Overridden by user)`;
   } else if (method === "hourly_rate") {
-    // METHOD B: Manual hourly rate
-    hourlyRate = Math.max(0, Number(adj.overtime_rate) || 0);
+    // METHOD B: Hourly rate (default method per user instructions)
+    const autoBaseRate = basicSalary > 0 ? Number(((basicSalary / divisor / 8) * multiplier).toFixed(2)) : 0;
+    const rateCandidate =
+      adj.overtime_rate != null && !isNaN(Number(adj.overtime_rate))
+        ? Number(adj.overtime_rate)
+        : defaultRate != null && !isNaN(Number(defaultRate))
+        ? Number(defaultRate)
+        : autoBaseRate;
+
+    hourlyRate = Math.max(0, Number(rateCandidate.toFixed(2)));
     totalCharge = Number((effectiveHours * hourlyRate).toFixed(2));
-    explanation = `Manual Hourly Rate: ${effectiveHours.toFixed(1)} hrs × AED ${hourlyRate.toFixed(2)}/hr = AED ${totalCharge.toFixed(2)}`;
+    explanation = `Hourly Rate: ${effectiveHours.toFixed(1)} hrs × AED ${hourlyRate.toFixed(2)}/hr = AED ${totalCharge.toFixed(2)}`;
   } else {
     // METHOD A: Automatic UAE calculation
     // Base hourly rate = Basic Salary / Divisor / 8 hrs
@@ -182,13 +191,14 @@ export function calculateOvertimeCharge(
   }
 
   const isApproved = adj.overtime_approved !== false;
-  const calculatedCharge = Math.round(totalCharge);
+  // Decimal-safe exact calculation without rounding away cents
+  const calculatedCharge = Number(totalCharge.toFixed(2));
 
   return {
-    rawRecordedHours: rawHours,
-    effectiveHours: Number(effectiveHours.toFixed(1)),
+    rawRecordedHours: Number(rawHours.toFixed(2)),
+    effectiveHours: Number(effectiveHours.toFixed(2)),
     method,
-    hourlyRate,
+    hourlyRate: Number(hourlyRate.toFixed(2)),
     totalCharge: isApproved ? calculatedCharge : 0,
     isApproved,
     explanation: isApproved
@@ -197,9 +207,117 @@ export function calculateOvertimeCharge(
   };
 }
 
+export interface AuthoritativeMonthlyOvertime {
+  rawHours: number;
+  hoursAdjustment: number;
+  effectiveHours: number;
+  costingMethod: OvertimeCostingMethod;
+  hourlyRate: number;
+  totalCharge: number;
+  rate: number;
+  amount: number;
+  method: OvertimeCostingMethod;
+  isApproved: boolean;
+  explanation: string;
+}
 
 /**
- * 3. Calculate Itemized Salary Breakdown
+ * Authoritative single monthly overtime calculation shared across:
+ * Overtime workbook, Payroll Charges popup, Payroll Summary, Salary Statements,
+ * Payslips, Payment Vouchers, and PDF exports.
+ */
+export function calculateAuthoritativeMonthlyOvertime(params: {
+  rawHours: number;
+  basicSalary?: number;
+  employee?: {
+    basic_salary?: number | null;
+    overtime_rate?: number | null;
+    overtime_costing_method?: OvertimeCostingMethod | string | null;
+  } | null;
+  adjustment?: Partial<MonthlyEmployeeAdjustment> | null;
+  employeeOvertimeRate?: number | null;
+  employeeCostingMethod?: OvertimeCostingMethod | null;
+  rules?: CompanyPayrollRules;
+}): AuthoritativeMonthlyOvertime {
+  const rawHours = Math.max(0, Number(params.rawHours) || 0);
+  const basic = Math.max(
+    0,
+    Number(params.basicSalary ?? params.employee?.basic_salary) || 0
+  );
+  const rules = params.rules || DEFAULT_PAYROLL_RULES;
+  const adj = params.adjustment || {};
+
+  const hoursAdjustment = Number(adj.overtime_hours_adjustment) || 0;
+  const effectiveHours = Math.max(0, rawHours + hoursAdjustment);
+
+  const empMethod = (params.employeeCostingMethod ??
+    params.employee?.overtime_costing_method) as OvertimeCostingMethod | undefined;
+  const empRate =
+    params.employeeOvertimeRate ??
+    (params.employee?.overtime_rate != null
+      ? Number(params.employee.overtime_rate)
+      : null);
+
+  // Costing method priority:
+  // 1. Explicit adjustment method if set
+  // 2. Employee profile default method if set
+  // 3. Fallback to "hourly_rate" (default specified by user)
+  const costingMethod: OvertimeCostingMethod =
+    adj.overtime_costing_method || empMethod || "hourly_rate";
+
+  const divisor = rules.workingDaysDivisor || 30;
+  const multiplier = rules.regularOtMultiplier || 1.25;
+
+  let hourlyRate = 0;
+  let totalCharge = 0;
+  let explanation = "";
+
+  if (costingMethod === "manual_fixed") {
+    totalCharge = Math.max(0, Number(adj.overtime_manual_amount) || 0);
+    hourlyRate = effectiveHours > 0 ? Number((totalCharge / effectiveHours).toFixed(2)) : 0;
+    explanation = `Fixed Amount: AED ${totalCharge.toFixed(2)} (Manual)`;
+  } else if (costingMethod === "hourly_rate") {
+    const autoBaseRate = basic > 0 ? Number(((basic / divisor / 8) * multiplier).toFixed(2)) : 0;
+    const rateCandidate =
+      adj.overtime_rate != null && !isNaN(Number(adj.overtime_rate))
+        ? Number(adj.overtime_rate)
+        : empRate != null && !isNaN(Number(empRate))
+        ? Number(empRate)
+        : autoBaseRate;
+
+    hourlyRate = Math.max(0, Number(rateCandidate.toFixed(2)));
+    totalCharge = Number((effectiveHours * hourlyRate).toFixed(2));
+    explanation = `Hourly Rate: ${effectiveHours.toFixed(1)} hrs × AED ${hourlyRate.toFixed(2)}/hr = AED ${totalCharge.toFixed(2)}`;
+  } else {
+    // "auto" (UAE Standard)
+    const baseHour = basic > 0 ? basic / divisor / 8 : 0;
+    hourlyRate = Number((baseHour * multiplier).toFixed(2));
+    totalCharge = Number((effectiveHours * hourlyRate).toFixed(2));
+    explanation = `Auto UAE Formula: (AED ${basic} / ${divisor}d / 8h) × ${multiplier} = AED ${hourlyRate.toFixed(2)}/h × ${effectiveHours.toFixed(1)} hrs = AED ${totalCharge.toFixed(2)}`;
+  }
+
+  const isApproved = adj.overtime_approved !== false;
+  const exactCharge = Number(totalCharge.toFixed(2));
+
+  return {
+    rawHours: Number(rawHours.toFixed(2)),
+    hoursAdjustment: Number(hoursAdjustment.toFixed(2)),
+    effectiveHours: Number(effectiveHours.toFixed(2)),
+    costingMethod,
+    hourlyRate: Number(hourlyRate.toFixed(2)),
+    totalCharge: isApproved ? exactCharge : 0,
+    rate: Number(hourlyRate.toFixed(2)),
+    amount: isApproved ? exactCharge : 0,
+    method: costingMethod,
+    isApproved,
+    explanation: isApproved
+      ? explanation
+      : `Pending Approval: ${effectiveHours.toFixed(1)} hrs (Calculated: AED ${exactCharge.toFixed(2)}, excluded from payroll until approved)`,
+  };
+}
+
+/**
+ * 3. Calculate Itemized Salary Breakdown with decimal-safe exact currency
  */
 export function calculateCompletePayrollBreakdown(params: {
   basicSalary: number;
@@ -216,7 +334,7 @@ export function calculateCompletePayrollBreakdown(params: {
   const housing = Math.max(0, params.housingAllowance || 0);
   const transport = Math.max(0, params.transportAllowance || 0);
   const otherAllow = Math.max(0, params.otherAllowances || 0);
-  const totalAllowances = housing + transport + otherAllow;
+  const totalAllowances = Number((housing + transport + otherAllow).toFixed(2));
 
   const stdDays = params.standardDays || 30;
   const payDays = params.payableDays ?? stdDays;
@@ -227,25 +345,25 @@ export function calculateCompletePayrollBreakdown(params: {
   let attendanceAdjustment = 0;
 
   if (payDays < stdDays) {
-    absenceDeduction = Math.round((basic / stdDays) * (stdDays - payDays));
+    absenceDeduction = Number(((basic / stdDays) * (stdDays - payDays)).toFixed(2));
     attendanceAdjustment = -absenceDeduction;
   } else if (payDays > stdDays) {
-    attendanceAdjustment = Math.round((basic / stdDays) * (payDays - stdDays));
+    attendanceAdjustment = Number(((basic / stdDays) * (payDays - stdDays)).toFixed(2));
   }
 
-  const overtime = Math.max(0, params.overtimeCharge || 0);
-  const advances = Math.max(0, params.advanceDeduction || 0);
-  const otherDed = Math.max(0, params.otherDeductions || 0);
-  const totalDeductions = absenceDeduction + advances + otherDed;
+  const overtime = Math.max(0, Number(Number(params.overtimeCharge || 0).toFixed(2)));
+  const advances = Math.max(0, Number(Number(params.advanceDeduction || 0).toFixed(2)));
+  const otherDed = Math.max(0, Number(Number(params.otherDeductions || 0).toFixed(2)));
+  const totalDeductions = Number((absenceDeduction + advances + otherDed).toFixed(2));
 
-  const gross = basic + totalAllowances + overtime + (attendanceAdjustment > 0 ? attendanceAdjustment : 0);
-  const net = Math.max(0, gross - totalDeductions);
+  const gross = Number((basic + totalAllowances + overtime + (attendanceAdjustment > 0 ? attendanceAdjustment : 0)).toFixed(2));
+  const net = Math.max(0, Number((gross - totalDeductions).toFixed(2)));
 
   return {
-    basicSalary: basic,
-    housingAllowance: housing,
-    transportAllowance: transport,
-    otherAllowances: otherAllow,
+    basicSalary: Number(basic.toFixed(2)),
+    housingAllowance: Number(housing.toFixed(2)),
+    transportAllowance: Number(transport.toFixed(2)),
+    otherAllowances: Number(otherAllow.toFixed(2)),
     totalAllowances,
     attendanceAdjustment,
     overtimeCharge: overtime,
@@ -417,6 +535,7 @@ export async function syncSalaryStatementFromWorkbook(params: {
 
   // Add optional breakdown columns if supported
   try {
+    corePayload.overtime_hours = params.overtimeHours;
     corePayload.housing_allowance = params.breakdown.housingAllowance;
     corePayload.transport_allowance = params.breakdown.transportAllowance;
     corePayload.other_allowances = params.breakdown.otherAllowances;
@@ -432,6 +551,7 @@ export async function syncSalaryStatementFromWorkbook(params: {
 
     if (updateError) {
       // If error occurred due to unmigrated columns, fallback to basic columns
+      delete corePayload.overtime_hours;
       delete corePayload.housing_allowance;
       delete corePayload.transport_allowance;
       delete corePayload.other_allowances;
@@ -452,6 +572,7 @@ export async function syncSalaryStatementFromWorkbook(params: {
       .single();
 
     if (insertError) {
+      delete corePayload.overtime_hours;
       delete corePayload.housing_allowance;
       delete corePayload.transport_allowance;
       delete corePayload.other_allowances;

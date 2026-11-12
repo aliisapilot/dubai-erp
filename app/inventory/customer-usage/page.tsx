@@ -27,6 +27,7 @@ import CustomerMaterialUsageTemplate, {
   CustomerMaterialUsageData,
 } from "@/components/documents/CustomerMaterialUsageTemplate";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 export default function CustomerMaterialUsagePage() {
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
@@ -516,15 +517,27 @@ export default function CustomerMaterialUsagePage() {
       </div>
 
       {/* Print Statement Modal */}
-      {showPrintModal && (
-        <PrintModal isOpen={showPrintModal} onClose={() => setShowPrintModal(false)}>
-          <CustomerMaterialUsageTemplate
-            company={company}
-            data={printData}
+      {showPrintModal && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "material_usage_statement",
+          customerName: customerPrintTitle,
+          workDescription: "Material Usage Statement",
+        });
+        return (
+          <PrintModal
+            isOpen={showPrintModal}
             onClose={() => setShowPrintModal(false)}
-          />
-        </PrintModal>
-      )}
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <CustomerMaterialUsageTemplate
+              company={company}
+              data={printData}
+              onClose={() => setShowPrintModal(false)}
+            />
+          </PrintModal>
+        );
+      })()}
     </div>
   );
 }

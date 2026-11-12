@@ -6,6 +6,7 @@ import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO
 import { useRouter } from "next/navigation";
 import QuotationTemplate from "@/components/documents/QuotationTemplate";
 import PrintModal from "@/components/documents/PrintModal";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { withCustomerDocumentDetails, stripCustomPartyTags } from "@/lib/documentCustomer";
@@ -973,44 +974,61 @@ export default function QuotationsPage() {
       </div>
 
       {/* A4 Print Modal */}
-      <PrintModal isOpen={!!printRec} onClose={() => setPrintRec(null)}>
-        {printRec && (
-          <QuotationTemplate
-            company={company}
-            quotation={{
-              quotation_number: printRec.q.quotation_number || "QUO",
-              quotation_date: printRec.q.quotation_date || "",
-              expiry_date: printRec.q.expiry_date,
-              customer_name: printRec.q.customer_name || "",
-              customer_trn: printRec.q.customer_trn,
-              customer_address: printRec.q.customer_address,
-              contact_person: printRec.q.contact_person,
-              contact_number: printRec.q.contact_number,
-              contact_email: printRec.q.contact_email,
-              project_number: printRec.q.project_id ? prjMap[printRec.q.project_id]?.project_number : undefined,
-              project_name: printRec.q.project_id ? prjMap[printRec.q.project_id]?.name : undefined,
-              payment_terms: "As per agreement",
-              terms_conditions: stripCustomPartyTags(printRec.q.terms) || undefined,
-              notes: stripCustomPartyTags(printRec.q.notes) || undefined,
-              status: printRec.q.status,
-              subtotal: printRec.q.subtotal || 0,
-              vat_amount: printRec.q.vat_amount || 0,
-              total_amount: printRec.q.total_amount || 0,
-              items: printRec.lines.map(l => ({
-                description: l.description,
-                quantity: l.quantity,
-                unit: l.unit,
-                unit_price: l.unit_price,
-                discount_percent: l.discount_percent,
-                vat_rate: l.vat_rate,
-                vat_amount: l.vat_amount,
-                line_total: l.line_total,
-              })),
-            }}
+      {printRec && (() => {
+        const prjName = printRec.q.custom_project_name || (printRec.q.project_id ? prjMap[printRec.q.project_id]?.name : undefined);
+        const docFile = generateDocumentPdfFilename({
+          docType: "quotation",
+          docNumber: printRec.q.quotation_number,
+          partyName: printRec.q.customer_name,
+          customerName: printRec.q.customer_name,
+          projectName: prjName,
+          items: printRec.lines,
+          date: printRec.q.quotation_date,
+        });
+        return (
+          <PrintModal
+            isOpen={!!printRec}
             onClose={() => setPrintRec(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <QuotationTemplate
+              company={company}
+              quotation={{
+                quotation_number: printRec.q.quotation_number || "QUO",
+                quotation_date: printRec.q.quotation_date || "",
+                expiry_date: printRec.q.expiry_date,
+                customer_name: printRec.q.customer_name || "",
+                customer_trn: printRec.q.customer_trn,
+                customer_address: printRec.q.customer_address,
+                contact_person: printRec.q.contact_person,
+                contact_number: printRec.q.contact_number,
+                contact_email: printRec.q.contact_email,
+                project_number: printRec.q.project_id ? prjMap[printRec.q.project_id]?.project_number : undefined,
+                project_name: printRec.q.project_id ? prjMap[printRec.q.project_id]?.name : undefined,
+                payment_terms: "As per agreement",
+                terms_conditions: stripCustomPartyTags(printRec.q.terms) || undefined,
+                notes: stripCustomPartyTags(printRec.q.notes) || undefined,
+                status: printRec.q.status,
+                subtotal: printRec.q.subtotal || 0,
+                vat_amount: printRec.q.vat_amount || 0,
+                total_amount: printRec.q.total_amount || 0,
+                items: printRec.lines.map(l => ({
+                  description: l.description,
+                  quantity: l.quantity,
+                  unit: l.unit,
+                  unit_price: l.unit_price,
+                  discount_percent: l.discount_percent,
+                  vat_rate: l.vat_rate,
+                  vat_amount: l.vat_amount,
+                  line_total: l.line_total,
+                })),
+              }}
+              onClose={() => setPrintRec(null)}
+            />
+          </PrintModal>
+        );
+      })()}
 
       {showRenameModal && editing && (company?.id || editing.company_id) && (
         <EditDocumentReferenceModal

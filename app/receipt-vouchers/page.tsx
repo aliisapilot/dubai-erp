@@ -13,6 +13,7 @@ import DynamicDocumentRenderer, {
   getDocumentPageCount,
 } from "@/components/documents/DynamicDocumentRenderer";
 import { usePersistedDocumentDesign } from "@/components/documents/usePersistedDocumentDesign";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import {
   CustomPartyData,
   withCustomerDocumentDetails,
@@ -1026,15 +1027,29 @@ export default function ReceiptVouchersPage() {
       </div>
 
       {/* Print Modal */}
-      <PrintModal isOpen={!!printVoucher} onClose={() => setPrintVoucher(null)}>
-        {printVoucher && (
-          <ReceiptVoucherTemplate
-            company={company}
-            voucher={printVoucher}
+      {printVoucher && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "receipt_voucher",
+          documentNumber: printVoucher.voucher_number || "RV",
+          customerName: printVoucher.received_from,
+          notes: printVoucher.notes,
+          workDescription: "Payment",
+        });
+        return (
+          <PrintModal
+            isOpen={!!printVoucher}
             onClose={() => setPrintVoucher(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <ReceiptVoucherTemplate
+              company={company}
+              voucher={printVoucher}
+              onClose={() => setPrintVoucher(null)}
+            />
+          </PrintModal>
+        );
+      })()}
     </main>
   );
 }

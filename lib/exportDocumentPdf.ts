@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { waitForDocumentImages } from "./printAssets";
+import { sanitizeFilenamePart } from "./documentFilename";
 
 export interface DocumentPdfExportOptions {
   filename?: string;
@@ -291,13 +292,9 @@ export async function exportDocumentToPdf(
 
     // Ensure valid characters and .pdf extension
     if (defaultFilename) {
-      defaultFilename = defaultFilename
-        .replace(/[<>:"/\\|?*\x00-\x1F]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (!defaultFilename.toLowerCase().endsWith(".pdf")) {
-        defaultFilename += ".pdf";
-      }
+      let clean = sanitizeFilenamePart(defaultFilename.replace(/\.pdf$/i, ""));
+      if (!clean) clean = "Document";
+      defaultFilename = `${clean}.pdf`;
     } else {
       defaultFilename = "Document.pdf";
     }

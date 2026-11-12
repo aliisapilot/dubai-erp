@@ -10,6 +10,7 @@ import {
 import EmployeePaymentVoucherTemplate, { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 type Employee = {
   id: string;
@@ -323,15 +324,29 @@ export default function EmployeePaymentVouchersPage() {
       </div>
 
       {/* PRINT VOUCHER MODAL */}
-      <PrintModal isOpen={!!activeVoucher} onClose={() => setActiveVoucher(null)}>
-        {activeVoucher && (
-          <EmployeePaymentVoucherTemplate
-            company={company}
-            voucher={activeVoucher}
+      {activeVoucher && (() => {
+        const docFile = generateDocumentPdfFilename({
+          docType: "employee_payment_voucher",
+          docNumber: activeVoucher.voucher_number,
+          employeeName: activeVoucher.employee_name,
+          month: Number(activeVoucher.month) || undefined,
+          year: Number(activeVoucher.year) || undefined,
+        });
+        return (
+          <PrintModal
+            isOpen={!!activeVoucher}
             onClose={() => setActiveVoucher(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <EmployeePaymentVoucherTemplate
+              company={company}
+              voucher={activeVoucher}
+              onClose={() => setActiveVoucher(null)}
+            />
+          </PrintModal>
+        );
+      })()}
     </div>
   );
 }

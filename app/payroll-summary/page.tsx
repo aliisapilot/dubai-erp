@@ -3,10 +3,12 @@
 import ReportLoadState from "@/components/ReportLoadState";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
-import { BarChart3, Filter, Search, Download, CheckCircle, Clock } from "lucide-react";
+import { BarChart3, Filter, Search, Download, CheckCircle, Clock, Printer } from "lucide-react";
 import { fmtAED, getCompanyId, formatEmployeeCode, compareEmployees, compareSalaryStatements } from "@/lib/helpers";
 import { normalizeSalaryStatementStatus, formatSalaryStatementStatus } from "@/lib/payrollTypes";
-import { getMonthlyAdjustmentsForPeriod, MonthlyEmployeeAdjustment } from "@/lib/payrollWorkflowService";
+import { getMonthlyAdjustmentsForPeriod, MonthlyEmployeeAdjustment, calculateAuthoritativeMonthlyOvertime } from "@/lib/payrollWorkflowService";
+import { printCurrentDocument } from "@/lib/print";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 
 type SS = {
@@ -39,6 +41,8 @@ type Employee = {
   employee_number: string | null;
   designation?: string | null;
   basic_salary?: number | null;
+  overtime_rate?: number | null;
+  overtime_costing_method?: string | null;
 };
 
 const MONTHS = [
@@ -89,11 +93,11 @@ export default function PayrollSummaryPage() {
           .lte("payroll_month", endDate),
         supabase
           .from("employees")
-          .select("id, first_name, employee_number, designation, basic_salary")
+          .select("id, first_name, employee_number, designation, basic_salary, overtime_rate, overtime_costing_method")
           .order("first_name"),
         supabase
           .from("attendance")
-          .select("employee_id, status, attendance_date")
+          .select("employee_id, status, attendance_date, overtime_hours")
           .gte("attendance_date", startDate)
           .lte("attendance_date", endDate),
         supabase
@@ -140,12 +144,20 @@ export default function PayrollSummaryPage() {
         const calculatedPayable = Math.max(0, 30 - absentCount - (halfDayCount * 0.5) + payableAdj);
         payableMap[e.id] = calculatedPayable;
 
-        // OT Hours calc
+        // OT Hours calc: unified authoritative calculation
         const empOt = (otData || []).filter((o) => o.employee_id === e.id);
-        const approvedOt = empOt
-          .filter((o) => (o.approval_status || "").toLowerCase() === "approved")
-          .reduce((s, o) => s + (Number(o.hours) || 0), 0);
-        otHoursMap[e.id] = approvedOt + (adj?.overtime_hours_adjustment || 0);
+        let rawOtHours = empOt.reduce((s, o) => s + (Number(o.hours) || 0), 0);
+        if (rawOtHours === 0) {
+          rawOtHours = empAtt.reduce((s, a) => s + (Number((a as unknown as { overtime_hours?: number }).overtime_hours) || 0), 0);
+        }
+        const otAuthoritative = calculateAuthoritativeMonthlyOvertime({
+          rawHours: rawOtHours,
+          basicSalary: Number(e.basic_salary) || 0,
+          adjustment: adj,
+          employeeOvertimeRate: e.overtime_rate != null ? Number(e.overtime_rate) : null,
+          employeeCostingMethod: (e.overtime_costing_method as "auto" | "hourly_rate" | "manual_fixed") || null,
+        });
+        otHoursMap[e.id] = otAuthoritative.effectiveHours;
       });
 
       setMonthPayableDays(payableMap);
@@ -289,6 +301,19 @@ export default function PayrollSummaryPage() {
     document.body.removeChild(link);
   }
 
+  async function handlePrintSummary() {
+    const docFile = generateDocumentPdfFilename({
+      docType: "payroll_summary",
+      period: `${MONTHS[month - 1]} ${year}`,
+      year,
+      month,
+    });
+    await printCurrentDocument({
+      documentTitle: docFile.title,
+      documentFilename: docFile.filename,
+    });
+  }
+
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white shadow-sm">
@@ -331,6 +356,14 @@ export default function PayrollSummaryPage() {
               title="Export Summary CSV"
             >
               <Download size={15} /> Export CSV
+            </button>
+            <button
+              onClick={handlePrintSummary}
+              disabled={filteredRecords.length === 0}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition shadow-2xs"
+              title="Print / Save PDF"
+            >
+              <Printer size={15} className="text-emerald-600" /> Print / Save PDF
             </button>
           </div>
         </div>

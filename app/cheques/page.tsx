@@ -23,6 +23,7 @@ import { openWhatsApp, generateChequeWhatsAppMessage } from "@/lib/whatsappUtils
 import PrintModal from "@/components/documents/PrintModal";
 import ChequePrintTemplate from "@/components/cheques/ChequePrintTemplate";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 type Customer = { id: string; name: string | null; customer_code: string | null; trn: string | null; phone?: string | null };
 type Supplier = { id: string; name: string | null; supplier_code: string | null; trn: string | null; phone?: string | null };
@@ -1464,11 +1465,28 @@ export default function ChequeRegisterPage() {
       )}
 
       {/* The shared portal keeps the voucher outside hidden screen ancestors. */}
-      {printCheque && (
-        <PrintModal isOpen={true} onClose={() => setPrintCheque(null)}>
-          <ChequePrintTemplate mode="voucher" company={company} cheque={printCheque} />
-        </PrintModal>
-      )}
+      {printCheque && (() => {
+        const partyName =
+          printCheque.payee_name ||
+          (printCheque as unknown as { customer?: { name?: string } }).customer?.name ||
+          (printCheque as unknown as { supplier?: { name?: string } }).supplier?.name;
+        const docFile = generateDocumentPdfFilename({
+          documentType: "cheque_voucher",
+          documentNumber: printCheque.cheque_number ? `CHQ-${printCheque.cheque_number}` : "Cheque",
+          customerName: partyName,
+          notes: printCheque.bank_name,
+        });
+        return (
+          <PrintModal
+            isOpen={true}
+            onClose={() => setPrintCheque(null)}
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <ChequePrintTemplate mode="voucher" company={company} cheque={printCheque} />
+          </PrintModal>
+        );
+      })()}
       {/* WHATSAPP REMINDER DISPATCH MODAL */}
       {whatsAppModalCheque && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">

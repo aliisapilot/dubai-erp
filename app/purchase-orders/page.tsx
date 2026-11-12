@@ -7,6 +7,7 @@ import PurchaseOrderTemplate, { PurchaseOrderData, POLineItem } from "@/componen
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import DocumentSplitScreenEditor, {
   DocumentEditorFormState,
   EditorLineItem,
@@ -667,15 +668,30 @@ export default function PurchaseOrdersPage() {
       </div>
 
       {/* A4 Print Modal */}
-      <PrintModal isOpen={!!printDoc} onClose={() => setPrintDoc(null)}>
-        {printDoc && (
-          <PurchaseOrderTemplate
-            company={company}
-            po={printDoc}
+      {printDoc && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "purchase_order",
+          documentNumber: printDoc.po_number || "PO",
+          supplierName: printDoc.supplier_name,
+          projectName: printDoc.project_name,
+          notes: printDoc.notes,
+          items: printDoc.items?.map((it) => ({ description: it.description })),
+        });
+        return (
+          <PrintModal
+            isOpen={!!printDoc}
             onClose={() => setPrintDoc(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <PurchaseOrderTemplate
+              company={company}
+              po={printDoc}
+              onClose={() => setPrintDoc(null)}
+            />
+          </PrintModal>
+        );
+      })()}
 
       {showRenameModal && editing && (company?.id || editing.company_id) && (
         <EditDocumentReferenceModal

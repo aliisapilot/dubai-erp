@@ -12,6 +12,7 @@ import {
 import WorkMethodStatementTemplate, { WMSData, RiskAssessmentRow, QAQCChecklistItem } from "@/components/documents/WorkMethodStatementTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 type WMSItem = {
   id: string;
@@ -276,21 +277,34 @@ export default function WorkMethodStatementsPage() {
       </div>
 
       {/* PRINT PREVIEW MODAL */}
-      <PrintModal isOpen={!!previewWms} onClose={() => setPreviewWms(null)}>
-        {previewWms && (
-          <WorkMethodStatementTemplate
-            company={companyDoc}
-            wms={{
-              ...(previewWms as unknown as WMSData),
-              project_name: previewWms.projects?.name || "Project",
-              date: previewWms.document_date || todayISO(),
-              risk_assessment: risks,
-              qaqc_checklist: qaqc,
-            }}
+      {previewWms && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "method_statement",
+          documentNumber: previewWms.wms_number || "WMS",
+          customerName: previewWms.projects?.name,
+          workDescription: previewWms.title || "Method Statement",
+        });
+        return (
+          <PrintModal
+            isOpen={!!previewWms}
             onClose={() => setPreviewWms(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <WorkMethodStatementTemplate
+              company={companyDoc}
+              wms={{
+                ...(previewWms as unknown as WMSData),
+                project_name: previewWms.projects?.name || "Project",
+                date: previewWms.document_date || todayISO(),
+                risk_assessment: risks,
+                qaqc_checklist: qaqc,
+              }}
+              onClose={() => setPreviewWms(null)}
+            />
+          </PrintModal>
+        );
+      })()}
     </div>
   );
 }

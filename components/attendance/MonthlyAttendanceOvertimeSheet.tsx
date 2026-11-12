@@ -49,6 +49,7 @@ import PrintModal from "@/components/documents/PrintModal";
 import {
   calculateAttendanceTotals,
   calculateOvertimeCharge,
+  calculateAuthoritativeMonthlyOvertime,
   calculateCompletePayrollBreakdown,
   getMonthlyAdjustmentsForPeriod,
   saveMonthlyEmployeeAdjustment,
@@ -57,7 +58,9 @@ import {
   DEFAULT_MONTHLY_ADJUSTMENT,
   DEFAULT_PAYROLL_RULES,
   CompletePayrollBreakdown,
+  OvertimeCostingMethod,
 } from "@/lib/payrollWorkflowService";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 export type ExtendedEmployeeInfo = EmployeeInfo & {
   designation?: string | null;
@@ -65,6 +68,9 @@ export type ExtendedEmployeeInfo = EmployeeInfo & {
   bank_name?: string | null;
   account_number?: string | null;
   iban?: string | null;
+  overtime_rate?: number | null;
+  overtime_costing_method?: OvertimeCostingMethod | null;
+  overtime_multiplier?: number | null;
 };
 
 interface MonthlyAttendanceOvertimeSheetProps {
@@ -303,7 +309,7 @@ export default function MonthlyAttendanceOvertimeSheet({
         const [empsRes, attRes, otRes, comp] = await Promise.all([
           supabase
             .from("employees")
-            .select("id, employee_number, first_name, designation, department, bank_name, account_number, iban, basic_salary, status")
+            .select("id, employee_number, first_name, designation, department, bank_name, account_number, iban, basic_salary, overtime_rate, overtime_costing_method, overtime_multiplier, status")
             .in("status", ["active", "Active"])
             .order("employee_number"),
           supabase.from("attendance").select("*").gte("attendance_date", startDate).lte("attendance_date", endDate),
@@ -343,7 +349,8 @@ export default function MonthlyAttendanceOvertimeSheet({
         const aMap: Record<string, { id?: string; status: AttendanceStatus; remarks?: string }> = {};
         (attRes.data || []).forEach(r => {
           if (r.employee_id && r.attendance_date) {
-            aMap[`${r.employee_id}_${r.attendance_date}`] = {
+            const cleanDate = String(r.attendance_date).split("T")[0].trim();
+            aMap[`${r.employee_id}_${cleanDate}`] = {
               id: r.id,
               status: (r.status as AttendanceStatus) || "present",
               remarks: r.remarks,
@@ -352,15 +359,31 @@ export default function MonthlyAttendanceOvertimeSheet({
         });
         setAttendanceRecords(aMap);
 
-        // Map Overtime
+        // Map Overtime with date normalization, multiple-entry summation, and attendance fallback
         const oMap: Record<string, { id?: string; hours: number; approval_status?: string }> = {};
         (otRes.data || []).forEach(r => {
           if (r.employee_id && r.overtime_date) {
-            oMap[`${r.employee_id}_${r.overtime_date}`] = {
+            const cleanDate = String(r.overtime_date).split("T")[0].trim();
+            const key = `${r.employee_id}_${cleanDate}`;
+            const currentHours = oMap[key]?.hours || 0;
+            oMap[key] = {
               id: r.id,
-              hours: Number(r.hours) || 0,
+              hours: currentHours + (Number(r.hours) || 0),
               approval_status: r.approval_status || "approved",
             };
+          }
+        });
+        (attRes.data || []).forEach(r => {
+          if (r.employee_id && r.attendance_date && Number(r.overtime_hours) > 0) {
+            const cleanDate = String(r.attendance_date).split("T")[0].trim();
+            const key = `${r.employee_id}_${cleanDate}`;
+            if (!oMap[key] || oMap[key].hours === 0) {
+              oMap[key] = {
+                id: r.id,
+                hours: Number(r.overtime_hours) || 0,
+                approval_status: "approved",
+              };
+            }
           }
         });
         setOvertimeRecords(oMap);
@@ -992,7 +1015,14 @@ export default function MonthlyAttendanceOvertimeSheet({
         });
         let rawOt = 0;
         days.forEach(d => { rawOt += getOvertimeHours(emp.id, d.dateStr); });
-        const otTotals = calculateOvertimeCharge(Number(emp.basic_salary) || 0, rawOt, adj, DEFAULT_PAYROLL_RULES);
+        const otTotals = calculateAuthoritativeMonthlyOvertime({
+          rawHours: rawOt,
+          basicSalary: Number(emp.basic_salary) || 0,
+          adjustment: adj,
+          employeeOvertimeRate: emp.overtime_rate,
+          employeeCostingMethod: emp.overtime_costing_method,
+          rules: DEFAULT_PAYROLL_RULES,
+        });
         const breakdown = calculateCompletePayrollBreakdown({
           basicSalary: Number(emp.basic_salary) || 0,
           payableDays: attTotals.payableDays,
@@ -1335,7 +1365,14 @@ export default function MonthlyAttendanceOvertimeSheet({
       });
       ot += empOt;
       const adj = monthlyAdjustments[emp.id] || DEFAULT_MONTHLY_ADJUSTMENT;
-      const otCalc = calculateOvertimeCharge(Number(emp.basic_salary) || 0, empOt, adj, DEFAULT_PAYROLL_RULES);
+      const otCalc = calculateAuthoritativeMonthlyOvertime({
+        rawHours: empOt,
+        basicSalary: Number(emp.basic_salary) || 0,
+        adjustment: adj,
+        employeeOvertimeRate: emp.overtime_rate,
+        employeeCostingMethod: emp.overtime_costing_method,
+        rules: DEFAULT_PAYROLL_RULES,
+      });
       if (otCalc.isApproved) otCharges += otCalc.totalCharge;
     });
 
@@ -1818,7 +1855,14 @@ export default function MonthlyAttendanceOvertimeSheet({
                     presentAdj: adj.present_days_adjustment,
                     payableAdj: adj.payable_days_adjustment,
                   });
-                  const otTotals = calculateOvertimeCharge(Number(emp.basic_salary) || 0, totalOt, adj, DEFAULT_PAYROLL_RULES);
+                  const otTotals = calculateAuthoritativeMonthlyOvertime({
+                    rawHours: totalOt,
+                    basicSalary: Number(emp.basic_salary) || 0,
+                    adjustment: adj,
+                    employeeOvertimeRate: emp.overtime_rate,
+                    employeeCostingMethod: emp.overtime_costing_method,
+                    rules: DEFAULT_PAYROLL_RULES,
+                  });
                   const breakdown = calculateCompletePayrollBreakdown({
                     basicSalary: Number(emp.basic_salary) || 0,
                     payableDays: attTotals.payableDays,
@@ -2319,18 +2363,45 @@ export default function MonthlyAttendanceOvertimeSheet({
       )}
 
       {/* Salary Slip Print Modal */}
-      {activeSlipModal && (
-        <PrintModal isOpen={Boolean(activeSlipModal)} onClose={() => setActiveSlipModal(null)}>
-          <SalarySlipTemplate company={company} slip={activeSlipModal} onClose={() => setActiveSlipModal(null)} />
-        </PrintModal>
-      )}
+      {activeSlipModal && (() => {
+        const docFile = generateDocumentPdfFilename({
+          docType: "payslip",
+          employeeName: activeSlipModal.employee_name,
+          month: Number(activeSlipModal.month) || undefined,
+          year: Number(activeSlipModal.year) || undefined,
+        });
+        return (
+          <PrintModal
+            isOpen={Boolean(activeSlipModal)}
+            onClose={() => setActiveSlipModal(null)}
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <SalarySlipTemplate company={company} slip={activeSlipModal} onClose={() => setActiveSlipModal(null)} />
+          </PrintModal>
+        );
+      })()}
 
       {/* Payment Voucher Print Modal */}
-      {activeVoucherModal && (
-        <PrintModal isOpen={Boolean(activeVoucherModal)} onClose={() => setActiveVoucherModal(null)}>
-          <EmployeePaymentVoucherTemplate company={company} voucher={activeVoucherModal} onClose={() => setActiveVoucherModal(null)} />
-        </PrintModal>
-      )}
+      {activeVoucherModal && (() => {
+        const docFile = generateDocumentPdfFilename({
+          docType: "employee_payment_voucher",
+          docNumber: activeVoucherModal.voucher_number,
+          employeeName: activeVoucherModal.employee_name,
+          month: Number(activeVoucherModal.month) || undefined,
+          year: Number(activeVoucherModal.year) || undefined,
+        });
+        return (
+          <PrintModal
+            isOpen={Boolean(activeVoucherModal)}
+            onClose={() => setActiveVoucherModal(null)}
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <EmployeePaymentVoucherTemplate company={company} voucher={activeVoucherModal} onClose={() => setActiveVoucherModal(null)} />
+          </PrintModal>
+        );
+      })()}
 
 
       {/* Excel Import Modal */}

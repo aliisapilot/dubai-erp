@@ -630,9 +630,17 @@ export default function DynamicDocumentRenderer({
   const dataRecord = data as Record<string, unknown>;
   const { filename: autoPdfFilename, title: autoPdfTitle } = generateDocumentPdfFilename({
     docType: layout.documentType,
-    docNumber: (dataRecord.document_number as string) || (dataRecord.reference_number as string) || data.document_number,
-    partyName: (dataRecord.customer_name as string) || (dataRecord.supplier_name as string) || (dataRecord.employee_name as string) || data.customer_name,
-    date: (dataRecord.document_date as string) || (dataRecord.date as string) || data.document_date,
+    docNumber: (dataRecord.document_number as string) || (dataRecord.reference_number as string) || (dataRecord.voucher_number as string) || data.document_number,
+    partyName: (dataRecord.customer_name as string) || (dataRecord.supplier_name as string) || (dataRecord.employee_name as string) || (dataRecord.received_from as string) || ((data as Record<string, unknown>).customer_name as string),
+    customerName: (dataRecord.customer_name as string) || ((data as Record<string, unknown>).customer_name as string),
+    supplierName: (dataRecord.supplier_name as string) || ((data as Record<string, unknown>).supplier_name as string),
+    employeeName: (dataRecord.employee_name as string) || ((data as Record<string, unknown>).employee_name as string),
+    workDescription: (dataRecord.work_description as string) || (dataRecord.scope_of_work as string) || (dataRecord.project_name as string),
+    subject: (dataRecord.subject as string) || (dataRecord.title as string),
+    projectName: (dataRecord.project_name as string),
+    items: Array.isArray(dataRecord.items) ? (dataRecord.items as Array<{ description?: string }>) : undefined,
+    date: (dataRecord.document_date as string) || (dataRecord.date as string) || (dataRecord.voucher_date as string) || data.document_date,
+    period: (dataRecord.payroll_month as string) || (dataRecord.period as string),
   });
 
   const fontWeight = (weight: LayoutElement["fontWeight"]): CSSProperties["fontWeight"] => {

@@ -37,6 +37,7 @@ import CustomerForWhomSelector from "@/components/inventory/CustomerForWhomSelec
 import PrintModal from "@/components/documents/PrintModal";
 import MaterialIssueNoteTemplate, { MaterialIssueNoteData } from "@/components/documents/MaterialIssueNoteTemplate";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 type ProjectOption = {
   id: string;
@@ -798,15 +799,30 @@ function StockOutForm() {
       </div>
 
       {/* Print Material Issue Note (MIN) Modal */}
-      {printMinData && (
-        <PrintModal isOpen={Boolean(printMinData)} onClose={() => setPrintMinData(null)}>
-          <MaterialIssueNoteTemplate
-            company={company}
-            data={printMinData}
+      {printMinData && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "material_issue_note",
+          documentNumber: printMinData.document_number || "MIN",
+          customerName: printMinData.customer_name,
+          projectName: printMinData.project_name,
+          items: printMinData.items?.map((it) => ({ description: it.material_name })),
+          workDescription: "Material Issue Note",
+        });
+        return (
+          <PrintModal
+            isOpen={Boolean(printMinData)}
             onClose={() => setPrintMinData(null)}
-          />
-        </PrintModal>
-      )}
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <MaterialIssueNoteTemplate
+              company={company}
+              data={printMinData}
+              onClose={() => setPrintMinData(null)}
+            />
+          </PrintModal>
+        );
+      })()}
     </div>
   );
 }

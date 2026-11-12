@@ -15,6 +15,7 @@ import {
   getMonthlyAdjustmentsForPeriod,
   calculateAttendanceTotals,
   calculateOvertimeCharge,
+  calculateAuthoritativeMonthlyOvertime,
   calculateCompletePayrollBreakdown,
   AttendanceStatus,
   DEFAULT_MONTHLY_ADJUSTMENT,
@@ -23,6 +24,7 @@ import SalarySlipTemplate, { SalarySlipData } from "@/components/documents/Salar
 import EmployeePaymentVoucherTemplate, { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 type Employee = {
   id: string;
@@ -218,7 +220,7 @@ export default function SalaryStatementsPage() {
       // 3. Fetch attendance
       const { data: attData } = await supabase
         .from("attendance")
-        .select("attendance_date, status")
+        .select("attendance_date, status, overtime_hours")
         .eq("employee_id", empId)
         .gte("attendance_date", `${period}-01`)
         .lte("attendance_date", `${period}-${String(daysInMonth).padStart(2, "0")}`);
@@ -238,29 +240,31 @@ export default function SalaryStatementsPage() {
         payableAdj: adj.payable_days_adjustment,
       });
 
-      // 4. Fetch overtime hours for this month
+      // 4. Fetch overtime hours for this month (unified authoritative calculation)
       const { data: otData } = await supabase
         .from("overtime")
-        .select("hours, approval_status")
+        .select("hours, approval_status, overtime_date")
         .eq("employee_id", empId)
         .gte("overtime_date", `${period}-01`)
         .lte("overtime_date", `${period}-${String(daysInMonth).padStart(2, "0")}`);
 
-      const approvedOtRows = (otData || []).filter(
-        (r) => (r.approval_status || "").toLowerCase() === "approved"
-      );
-      const totalOtHours = approvedOtRows.reduce((sum, r) => sum + (Number(r.hours) || 0), 0);
+      let rawOtHours = (otData || []).reduce((sum, r) => sum + (Number(r.hours) || 0), 0);
+      if (rawOtHours === 0) {
+        rawOtHours = (attData || []).reduce((sum, a) => sum + (Number((a as unknown as { overtime_hours?: number }).overtime_hours) || 0), 0);
+      }
 
-      const otCalc = calculateOvertimeCharge(
+      const otCalc = calculateAuthoritativeMonthlyOvertime({
+        rawHours: rawOtHours,
         basicSalary,
-        totalOtHours,
-        adj,
-        {
+        adjustment: adj,
+        employeeOvertimeRate: empSettings.overtime_rate,
+        employeeCostingMethod: empSettings.overtime_costing_method,
+        rules: {
           workingDaysDivisor: divisor,
           regularOtMultiplier: empSettings.overtime_multiplier || 1.25,
           nightWeekendOtMultiplier: 1.50,
-        }
-      );
+        },
+      });
 
 
       // 5. Complete breakdown
@@ -786,26 +790,53 @@ export default function SalaryStatementsPage() {
       </div>
 
       {/* Salary Slip Print Modal */}
-      <PrintModal isOpen={!!activeSlip} onClose={() => setActiveSlip(null)}>
-        {activeSlip && (
-          <SalarySlipTemplate
-            company={company}
-            slip={activeSlip}
+      {activeSlip && (() => {
+        const docFile = generateDocumentPdfFilename({
+          docType: "salary_statement",
+          employeeName: activeSlip.employee_name,
+          month: Number(activeSlip.month) || undefined,
+          year: Number(activeSlip.year) || undefined,
+        });
+        return (
+          <PrintModal
+            isOpen={!!activeSlip}
             onClose={() => setActiveSlip(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <SalarySlipTemplate
+              company={company}
+              slip={activeSlip}
+              onClose={() => setActiveSlip(null)}
+            />
+          </PrintModal>
+        );
+      })()}
 
       {/* Employee Payment Voucher Print Modal */}
-      <PrintModal isOpen={!!activeVoucher} onClose={() => setActiveVoucher(null)}>
-        {activeVoucher && (
-          <EmployeePaymentVoucherTemplate
-            company={company}
-            voucher={activeVoucher}
+      {activeVoucher && (() => {
+        const docFile = generateDocumentPdfFilename({
+          docType: "employee_payment_voucher",
+          docNumber: activeVoucher.voucher_number,
+          employeeName: activeVoucher.employee_name,
+          month: Number(activeVoucher.month) || undefined,
+          year: Number(activeVoucher.year) || undefined,
+        });
+        return (
+          <PrintModal
+            isOpen={!!activeVoucher}
             onClose={() => setActiveVoucher(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <EmployeePaymentVoucherTemplate
+              company={company}
+              voucher={activeVoucher}
+              onClose={() => setActiveVoucher(null)}
+            />
+          </PrintModal>
+        );
+      })()}
     </main>
   );
 }

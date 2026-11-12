@@ -31,6 +31,7 @@ import StockBalanceReportTemplate, {
   StockBalanceReportData,
 } from "@/components/documents/StockBalanceReportTemplate";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 export default function InventoryStockPage() {
   const [company, setCompany] = useState<CompanyDocInfo | null>(null);
@@ -456,15 +457,26 @@ export default function InventoryStockPage() {
       </div>
 
       {/* Print Stock Balance Report Modal */}
-      {showPrintModal && (
-        <PrintModal isOpen={showPrintModal} onClose={() => setShowPrintModal(false)}>
-          <StockBalanceReportTemplate
-            company={company}
-            data={printReportData}
+      {showPrintModal && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "stock_balance_report",
+          workDescription: "Stock Balance Report",
+        });
+        return (
+          <PrintModal
+            isOpen={showPrintModal}
             onClose={() => setShowPrintModal(false)}
-          />
-        </PrintModal>
-      )}
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <StockBalanceReportTemplate
+              company={company}
+              data={printReportData}
+              onClose={() => setShowPrintModal(false)}
+            />
+          </PrintModal>
+        );
+      })()}
     </div>
   );
 }

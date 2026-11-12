@@ -11,6 +11,7 @@ import EditDocumentReferenceModal from "@/components/documents/EditDocumentRefer
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { withCustomerDocumentDetails, stripCustomPartyTags, serializeCustomPartyNotes } from "@/lib/documentCustomer";
 import { parseDatabaseError } from "@/lib/paymentTypes";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import DocumentSplitScreenEditor, {
   DocumentEditorFormState,
   EditorLineItem,
@@ -667,44 +668,59 @@ function PIContent() {
       </div>
 
       {/* A4 Print Modal */}
-      {printRec && (
-        <PrintModal isOpen={!!printRec} onClose={() => setPrintRec(null)}>
-          <ProformaInvoiceTemplate
-            company={company}
-            proforma={{
-              proforma_number: printRec.pi.proforma_number || "PRO",
-              proforma_date: printRec.pi.proforma_date || "",
-              customer_name: printRec.pi.customer_name || "",
-              customer_trn: printRec.pi.customer_trn,
-              customer_address: printRec.pi.customer_address,
-              contact_person: printRec.pi.contact_person,
-              contact_number: printRec.pi.contact_number,
-              contact_email: printRec.pi.contact_email,
-              payment_terms:
-                stripCustomPartyTags((printRec.pi as unknown as { terms_conditions?: string | null }).terms_conditions) ||
-                stripCustomPartyTags(printRec.pi.notes) ||
-                undefined,
-              notes: stripCustomPartyTags(printRec.pi.notes) || undefined,
-              status: printRec.pi.status,
-              subtotal: printRec.pi.subtotal || 0,
-              vat_amount: printRec.pi.vat_amount || 0,
-              total_amount: printRec.pi.total_amount || 0,
-              items: printRec.lines.map(l => ({
-                description: l.description,
-                quantity: l.quantity,
-                unit: l.unit || "Nos",
-                unit_price: l.unit_price,
-                discount_pct: l.discount_pct,
-                taxable_amount: (l.quantity * l.unit_price) * (1 - (l.discount_pct || 0) / 100),
-                vat_rate: l.vat_rate,
-                vat_amount: l.vat_amount,
-                line_total: l.line_total,
-              })),
-            }}
+      {printRec && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "proforma_invoice",
+          documentNumber: printRec.pi.proforma_number || "PRO",
+          customerName: printRec.pi.customer_name,
+          projectName: printRec.pi.custom_project_name,
+          notes: printRec.pi.notes,
+          items: printRec.lines.map((l) => ({ description: l.description })),
+        });
+        return (
+          <PrintModal
+            isOpen={!!printRec}
             onClose={() => setPrintRec(null)}
-          />
-        </PrintModal>
-      )}
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <ProformaInvoiceTemplate
+              company={company}
+              proforma={{
+                proforma_number: printRec.pi.proforma_number || "PRO",
+                proforma_date: printRec.pi.proforma_date || "",
+                customer_name: printRec.pi.customer_name || "",
+                customer_trn: printRec.pi.customer_trn,
+                customer_address: printRec.pi.customer_address,
+                contact_person: printRec.pi.contact_person,
+                contact_number: printRec.pi.contact_number,
+                contact_email: printRec.pi.contact_email,
+                payment_terms:
+                  stripCustomPartyTags((printRec.pi as unknown as { terms_conditions?: string | null }).terms_conditions) ||
+                  stripCustomPartyTags(printRec.pi.notes) ||
+                  undefined,
+                notes: stripCustomPartyTags(printRec.pi.notes) || undefined,
+                status: printRec.pi.status,
+                subtotal: printRec.pi.subtotal || 0,
+                vat_amount: printRec.pi.vat_amount || 0,
+                total_amount: printRec.pi.total_amount || 0,
+                items: printRec.lines.map(l => ({
+                  description: l.description,
+                  quantity: l.quantity,
+                  unit: l.unit || "Nos",
+                  unit_price: l.unit_price,
+                  discount_pct: l.discount_pct,
+                  taxable_amount: (l.quantity * l.unit_price) * (1 - (l.discount_pct || 0) / 100),
+                  vat_rate: l.vat_rate,
+                  vat_amount: l.vat_amount,
+                  line_total: l.line_total,
+                })),
+              }}
+              onClose={() => setPrintRec(null)}
+            />
+          </PrintModal>
+        );
+      })()}
 
       {showRenameModal && editing && (company?.id || editing.company_id) && (
         <EditDocumentReferenceModal

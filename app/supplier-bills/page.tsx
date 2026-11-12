@@ -11,6 +11,7 @@ import SupplierBillTemplate, { SupplierBillData } from "@/components/documents/S
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { NumericCellInput } from "@/components/ui/NumericCellInput";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 type Supplier = { id: string; name: string | null; trn: string | null; address: string | null };
 type PO = { id: string; purchase_order_number?: string | null; total_amount: number | null };
@@ -798,15 +799,30 @@ export default function SupplierBillsPage() {
       </div>
 
       {/* Print / PDF Modal */}
-      <PrintModal isOpen={!!printBill} onClose={() => setPrintBill(null)}>
-        {printBill && (
-          <SupplierBillTemplate
-            company={company}
-            bill={printBill}
+      {printBill && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "supplier_bill",
+          documentNumber: printBill.bill_number || "BILL",
+          supplierName: printBill.supplier_name,
+          projectName: printBill.project_name,
+          notes: printBill.notes,
+          items: printBill.items?.map((it) => ({ description: it.description })),
+        });
+        return (
+          <PrintModal
+            isOpen={!!printBill}
             onClose={() => setPrintBill(null)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <SupplierBillTemplate
+              company={company}
+              bill={printBill}
+              onClose={() => setPrintBill(null)}
+            />
+          </PrintModal>
+        );
+      })()}
     </main>
   );
 }

@@ -39,6 +39,10 @@ interface DocumentContainerProps {
   customerName?: string | null;
   /** Optional document date for statement/slip filenames */
   documentDate?: string | null;
+  /** Optional work description / subject for filename */
+  workDescription?: string | null;
+  subject?: string | null;
+  projectName?: string | null;
 }
 
 export default function DocumentContainer({
@@ -62,6 +66,9 @@ export default function DocumentContainer({
   partyName,
   customerName,
   documentDate,
+  workDescription,
+  subject,
+  projectName,
 }: DocumentContainerProps) {
   const [isExporting, setIsExporting] = useState(false);
 
@@ -69,6 +76,9 @@ export default function DocumentContainer({
     docType: docTypeLabel || layout?.documentType,
     docNumber,
     partyName: partyName || customerName,
+    workDescription,
+    subject,
+    projectName,
     date: documentDate,
   });
 

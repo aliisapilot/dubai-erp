@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { generateDocumentPdfFilename } from "./documentFilename";
 
 export interface AttendancePdfExportOptions {
   monthName: string;
@@ -118,13 +119,17 @@ export async function exportAttendanceToPdf({
     pdf.addImage(imgData, "PNG", offsetX, offsetY, renderW, renderH, undefined, "FAST");
   }
 
-  const prefix =
+  const docType =
     mode === "overtime"
-      ? "Employee_Overtime_Sheet"
+      ? "overtime"
       : mode === "summary"
-      ? "Payroll_Attendance_Summary"
-      : "Employee_Attendance_Sheet";
-  const filename = `${prefix}_${monthName}_${year}.pdf`;
+      ? "payroll_summary"
+      : "attendance";
+
+  const { filename } = generateDocumentPdfFilename({
+    docType,
+    period: `${monthName} ${year}`,
+  });
 
   // Trigger client download
   pdf.save(filename);

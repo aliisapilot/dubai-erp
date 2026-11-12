@@ -38,6 +38,7 @@ import QuickAddMaterialModal from "@/components/inventory/QuickAddMaterialModal"
 import PrintModal from "@/components/documents/PrintModal";
 import GoodsReceiptNoteTemplate, { GoodsReceiptNoteData } from "@/components/documents/GoodsReceiptNoteTemplate";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 function StockInForm() {
   const searchParams = useSearchParams();
@@ -848,15 +849,29 @@ function StockInForm() {
       />
 
       {/* Print Goods Receipt Note (GRN) Modal */}
-      {printGrnData && (
-        <PrintModal isOpen={Boolean(printGrnData)} onClose={() => setPrintGrnData(null)}>
-          <GoodsReceiptNoteTemplate
-            company={company}
-            data={printGrnData}
+      {printGrnData && (() => {
+        const docFile = generateDocumentPdfFilename({
+          documentType: "goods_receipt_note",
+          documentNumber: printGrnData.document_number || "GRN",
+          supplierName: printGrnData.supplier_name,
+          items: printGrnData.items?.map((it) => ({ description: it.material_name })),
+          workDescription: "Goods Receipt Note",
+        });
+        return (
+          <PrintModal
+            isOpen={Boolean(printGrnData)}
             onClose={() => setPrintGrnData(null)}
-          />
-        </PrintModal>
-      )}
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <GoodsReceiptNoteTemplate
+              company={company}
+              data={printGrnData}
+              onClose={() => setPrintGrnData(null)}
+            />
+          </PrintModal>
+        );
+      })()}
     </div>
   );
 }

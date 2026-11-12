@@ -12,6 +12,7 @@ import {
 import StatementOfAccountTemplate, { StatementData, StatementEntry } from "@/components/documents/StatementOfAccountTemplate";
 import PrintModal from "@/components/documents/PrintModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 type Supplier = {
   id: string;
@@ -378,18 +379,31 @@ export default function SupplierStatementOfAccountPage() {
       </div>
 
       {/* PRINT MODAL */}
-      <PrintModal isOpen={showPrintModal && !!statement} onClose={() => setShowPrintModal(false)}>
-        {statement && (
-          <StatementOfAccountTemplate
-            company={company}
-            statement={{
-              ...statement,
-              customer_name: `[Supplier] ${statement.customer_name}`,
-            }}
+      {statement && (() => {
+        const docFile = generateDocumentPdfFilename({
+          docType: "supplier_statement",
+          supplierName: statement.customer_name,
+          partyName: statement.customer_name,
+          date: statement.statement_date,
+        });
+        return (
+          <PrintModal
+            isOpen={showPrintModal && !!statement}
             onClose={() => setShowPrintModal(false)}
-          />
-        )}
-      </PrintModal>
+            documentFilename={docFile.filename}
+            documentTitle={docFile.title}
+          >
+            <StatementOfAccountTemplate
+              company={company}
+              statement={{
+                ...statement,
+                customer_name: `[Supplier] ${statement.customer_name}`,
+              }}
+              onClose={() => setShowPrintModal(false)}
+            />
+          </PrintModal>
+        );
+      })()}
     </div>
   );
 }

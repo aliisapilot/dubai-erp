@@ -1,6 +1,5 @@
 "use client";
 import React, { useState } from "react";
-
 import {
   X,
   Save,
@@ -12,19 +11,27 @@ import {
   FileCheck2,
   ShieldCheck,
   Loader2,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import {
   MonthlyEmployeeAdjustment,
   DEFAULT_PAYROLL_RULES,
   calculateAttendanceTotals,
-  calculateOvertimeCharge,
+  calculateAuthoritativeMonthlyOvertime,
   calculateCompletePayrollBreakdown,
   CompletePayrollBreakdown,
+  OvertimeCostingMethod,
 } from "@/lib/payrollWorkflowService";
 import { EmployeeInfo, AttendanceStatus } from "./AttendanceImportModal";
 import { SalarySlipData } from "@/components/documents/SalarySlipTemplate";
 import { PaymentVoucherData } from "@/components/documents/EmployeePaymentVoucherTemplate";
 import { fmtAED } from "@/lib/helpers";
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
 
 interface EmployeePayrollChargesModalProps {
   isOpen: boolean;
@@ -35,6 +42,9 @@ interface EmployeePayrollChargesModalProps {
     bank_name?: string | null;
     account_number?: string | null;
     iban?: string | null;
+    overtime_rate?: number | null;
+    overtime_costing_method?: OvertimeCostingMethod | null;
+    overtime_multiplier?: number | null;
   };
   empCode: string;
   year: number;
@@ -67,24 +77,71 @@ export default function EmployeePayrollChargesModal({
   onOpenPayslip,
   onOpenVoucher,
 }: EmployeePayrollChargesModalProps) {
+  // Determine effective initial costing method:
+  // Default is "hourly_rate" per user instructions, but preserve existing saved method if set
+  const initialCostingMethod: OvertimeCostingMethod =
+    currentAdjustment?.overtime_costing_method ||
+    employee?.overtime_costing_method ||
+    "hourly_rate";
+
+  // Initial hourly rate: check adjustment first, then employee profile, then auto formula
+  const basicSalary = Number(employee?.basic_salary) || 0;
+  const autoUaeRate = basicSalary > 0
+    ? Number(((basicSalary / 30 / 8) * (employee?.overtime_multiplier || 1.25)).toFixed(2))
+    : 0;
+
+  const initialRate =
+    currentAdjustment?.overtime_rate != null
+      ? currentAdjustment.overtime_rate
+      : employee?.overtime_rate != null
+      ? employee.overtime_rate
+      : autoUaeRate;
+
   // Local editable adjustment state
-  const [form, setForm] = useState<MonthlyEmployeeAdjustment>({ ...currentAdjustment });
-  const [prevSyncKey, setPrevSyncKey] = useState<string>(`${employee?.id}-${year}-${month}-${isOpen}`);
+  const [form, setForm] = useState<MonthlyEmployeeAdjustment>(() => ({
+    ...currentAdjustment,
+    overtime_costing_method: initialCostingMethod,
+    overtime_rate: initialRate > 0 ? initialRate : null,
+  }));
+
+  const [prevSyncKey, setPrevSyncKey] = useState<string>(
+    `${employee?.id}-${year}-${month}-${isOpen}`
+  );
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [notification, setNotification] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
 
   // Sync state during render when employee or modal open state changes
   const currentKey = `${employee?.id}-${year}-${month}-${isOpen}`;
   if (prevSyncKey !== currentKey) {
     setPrevSyncKey(currentKey);
-    setForm({ ...currentAdjustment });
+    const resolvedMethod: OvertimeCostingMethod =
+      currentAdjustment?.overtime_costing_method ||
+      employee?.overtime_costing_method ||
+      "hourly_rate";
+    const resolvedRate =
+      currentAdjustment?.overtime_rate != null
+        ? currentAdjustment.overtime_rate
+        : employee?.overtime_rate != null
+        ? employee.overtime_rate
+        : autoUaeRate;
+
+    setForm({
+      ...currentAdjustment,
+      overtime_costing_method: resolvedMethod,
+      overtime_rate: resolvedRate > 0 ? resolvedRate : null,
+    });
     setNotification(null);
   }
 
   if (!isOpen) return null;
 
-  const basicSalary = Number(employee.basic_salary) || 0;
+  const monthName = MONTH_NAMES[month - 1] || "";
+  const periodStr = `${monthName} ${year}`;
 
   // 1. Attendance calculation
   const attResult = calculateAttendanceTotals(
@@ -97,13 +154,15 @@ export default function EmployeePayrollChargesModal({
     }
   );
 
-  // 2. Overtime calculation
-  const otResult = calculateOvertimeCharge(
+  // 2. Authoritative Overtime calculation (shared with workbook & payroll)
+  const otResult = calculateAuthoritativeMonthlyOvertime({
+    rawHours: rawOtHours,
     basicSalary,
-    rawOtHours,
-    form,
-    DEFAULT_PAYROLL_RULES
-  );
+    adjustment: form,
+    employeeOvertimeRate: employee?.overtime_rate,
+    employeeCostingMethod: employee?.overtime_costing_method,
+    rules: DEFAULT_PAYROLL_RULES,
+  });
 
   // 3. Complete Payroll Breakdown
   const breakdown = calculateCompletePayrollBreakdown({
@@ -118,16 +177,20 @@ export default function EmployeePayrollChargesModal({
     otherDeductions: 0,
   });
 
-  const periodStr = `${year}-${String(month).padStart(2, "0")}`;
-
   async function handleSaveCharges() {
     setSaving(true);
     setNotification(null);
     try {
       await onSaveAdjustment(form);
-      setNotification({ type: "success", message: "Employee charges & adjustments saved successfully!" });
+      setNotification({
+        type: "success",
+        message: "Overtime & payroll charges saved successfully!",
+      });
     } catch (err: unknown) {
-      setNotification({ type: "error", message: err instanceof Error ? err.message : "Failed to save adjustments" });
+      setNotification({
+        type: "error",
+        message: err instanceof Error ? err.message : "Failed to save charges",
+      });
     } finally {
       setSaving(false);
     }
@@ -137,14 +200,18 @@ export default function EmployeePayrollChargesModal({
     setSyncing(true);
     setNotification(null);
     try {
-      // First save adjustment settings
       await onSaveAdjustment(form);
-      // Then sync official salary statement
-      const note = `Synced from Attendance & Overtime Workbook: ${attResult.payableDays} payable days, ${otResult.effectiveHours} OT hrs via ${form.overtime_costing_method}.`;
+      const note = `Synced from Overtime Workbook: ${attResult.payableDays} payable days, ${otResult.effectiveHours} OT hrs via ${form.overtime_costing_method}.`;
       await onSyncStatement(breakdown, note);
-      setNotification({ type: "success", message: `Salary Statement for ${periodStr} synchronized successfully!` });
+      setNotification({
+        type: "success",
+        message: `Salary Statement for ${periodStr} synchronized successfully!`,
+      });
     } catch (err: unknown) {
-      setNotification({ type: "error", message: err instanceof Error ? err.message : "Failed to sync salary statement" });
+      setNotification({
+        type: "error",
+        message: err instanceof Error ? err.message : "Failed to sync salary statement",
+      });
     } finally {
       setSyncing(false);
     }
@@ -179,7 +246,7 @@ export default function EmployeePayrollChargesModal({
 
   function handlePreviewVoucher() {
     const voucherData: PaymentVoucherData = {
-      voucher_number: `EPV-${year}-${String(month).padStart(2, "0")}-${empCode.replace(/\D/g, "")}`,
+      voucher_number: `PV-${year}-${String(month).padStart(2, "0")}-${empCode.replace(/\D/g, "")}`,
       voucher_date: `${year}-${String(month).padStart(2, "0")}-28`,
       employee_name: employee.first_name || "Employee",
       employee_id: empCode,
@@ -194,26 +261,30 @@ export default function EmployeePayrollChargesModal({
     onOpenVoucher(voucherData);
   }
 
+  // Costing method handler ensuring mutual exclusivity
+  const activeMethod = form.overtime_costing_method || "hourly_rate";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
-      <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-150">
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-emerald-600/20 text-emerald-400 border border-emerald-500/30">
-              <Calculator size={20} />
+            <div className="p-2 rounded-xl bg-purple-600/20 text-purple-400 border border-purple-500/30">
+              <Clock size={20} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xs px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 font-bold border border-emerald-700">
+                <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-800 text-emerald-400 font-bold border border-slate-700">
                   {empCode}
                 </span>
                 <h2 className="text-base font-bold text-white leading-tight">
-                  {employee.first_name || "Employee"} — Payroll Charges & Breakdown
+                  {employee.first_name || "Employee"} — Overtime & Payroll Charges
                 </h2>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Period: {periodStr} · Basic Salary: <span className="text-emerald-400 font-semibold">{fmtAED(basicSalary)}</span>
+                Period: <span className="text-white font-medium">{periodStr}</span> · Basic Salary:{" "}
+                <span className="text-emerald-400 font-semibold">{fmtAED(basicSalary)}</span>
                 {employee.designation ? ` · ${employee.designation}` : ""}
               </p>
             </div>
@@ -239,324 +310,433 @@ export default function EmployeePayrollChargesModal({
               }`}
             >
               <span>{notification.message}</span>
-              <button onClick={() => setNotification(null)} className="text-slate-400 hover:text-slate-700">
+              <button
+                onClick={() => setNotification(null)}
+                className="text-slate-400 hover:text-slate-700"
+              >
                 <X size={14} />
               </button>
             </div>
           </div>
         )}
 
-        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
-          {/* SECTION 1: ATTENDANCE & PAYABLE DAYS */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CalendarCheck size={18} className="text-emerald-700" />
-                <h3 className="text-sm font-bold text-slate-900">1. Attendance & Payable Days</h3>
-              </div>
-              <div className="flex items-center gap-2 text-xs font-semibold">
-                <span className="bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded">
-                  Actual Worked: <b>{attResult.actualAttendanceDays} d</b>
+        <div className="p-6 space-y-5 max-h-[72vh] overflow-y-auto">
+          {/* PRIMARY OVERTIME CHARGE CARD (Simplified layout per Part 2) */}
+          <div className="rounded-xl border border-purple-200 bg-purple-50/40 p-5 space-y-4">
+            {/* Top row: Employee, Period, Calculated Overtime Hours */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                  Employee
                 </span>
-                <span className="bg-blue-100 text-blue-900 px-2 py-0.5 rounded">
-                  Payable Days: <b>{attResult.payableDays} d</b>
+                <span className="text-sm font-bold text-slate-900 block truncate mt-0.5">
+                  {employee.first_name || "Employee"}
+                </span>
+                <span className="font-mono text-xs text-slate-400">{empCode}</span>
+              </div>
+
+              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                  Payroll Period
+                </span>
+                <span className="text-sm font-bold text-slate-900 block mt-0.5">
+                  {periodStr}
+                </span>
+                <span className="text-xs text-slate-400">{daysInMonth} calendar days</span>
+              </div>
+
+              <div className="bg-white p-3 rounded-xl border border-purple-200 shadow-2xs">
+                <span className="text-[11px] font-semibold text-purple-700 uppercase tracking-wider block">
+                  Overtime Hours
+                </span>
+                <span className="text-lg font-black text-purple-900 block mt-0.5">
+                  {otResult.effectiveHours.toFixed(1)} hrs
+                </span>
+                <span className="text-[11px] text-slate-500 block">
+                  Raw: {rawOtHours.toFixed(1)} hrs
+                  {form.overtime_hours_adjustment !== 0 && (
+                    <span className="text-purple-600 font-semibold ml-1">
+                      ({form.overtime_hours_adjustment > 0 ? "+" : ""}
+                      {form.overtime_hours_adjustment.toFixed(1)} adj)
+                    </span>
+                  )}
                 </span>
               </div>
             </div>
 
-            <p className="text-xs text-slate-500">
-              Recorded raw: {attResult.presentDaysCount} Present (P), {attResult.halfDaysCount} Half Day (HD), {attResult.absentDaysCount} Absent (A), {attResult.leaveDaysCount} Leave (L), {attResult.holidayDaysCount} Holiday (H).
-              Original records remain untouched. Adjustments are auditable additions.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-              {/* Present Days Adjustment */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Manual Present Days Adjustment (+/- days)
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={form.present_days_adjustment || ""}
-                    placeholder="0"
-                    onChange={(e) => setForm({ ...form, present_days_adjustment: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                  />
-                  <span className="text-xs text-slate-400 whitespace-nowrap">
-                    Total: {attResult.actualAttendanceDays} d
-                  </span>
-                </div>
-              </div>
-
-              {/* Payable Days Adjustment */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Manual Payable Days Adjustment (+/- days)
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={form.payable_days_adjustment || ""}
-                    placeholder="0"
-                    onChange={(e) => setForm({ ...form, payable_days_adjustment: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                  />
-                  <span className="text-xs text-slate-400 whitespace-nowrap">
-                    Total: {attResult.payableDays} d
-                  </span>
-                </div>
-              </div>
-            </div>
-
+            {/* Payment Method Selector (Strictly mutually exclusive, default Hourly Rate) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Attendance Correction Remarks / Audit Reason
+              <label className="block text-xs font-bold text-slate-800 mb-2">
+                Payment Method (Choose one):
               </label>
-              <input
-                type="text"
-                value={form.attendance_remarks || ""}
-                placeholder="e.g. Approved site off-day compensation, medical excuse..."
-                onChange={(e) => setForm({ ...form, attendance_remarks: e.target.value })}
-                className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-600"
-              />
-            </div>
-          </div>
 
-          {/* SECTION 2: OVERTIME CHARGES & COSTING METHODS */}
-          <div className="rounded-xl border border-slate-200 bg-purple-50/40 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Clock size={18} className="text-purple-700" />
-                <h3 className="text-sm font-bold text-slate-900">2. Overtime Costing & Charges</h3>
-              </div>
-              <div className="flex items-center gap-2 text-xs font-semibold">
-                <span className="bg-purple-100 text-purple-900 px-2.5 py-0.5 rounded">
-                  Total OT Charge: <b>{fmtAED(otResult.totalCharge)}</b>
-                </span>
-                <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                  form.overtime_approved ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                }`}>
-                  {form.overtime_approved ? "✓ Approved" : "Pending Approval"}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4 text-xs text-slate-600 flex-wrap">
-              <span>Raw Recorded Hours: <b>{rawOtHours.toFixed(1)} hrs</b></span>
-              <div className="flex items-center gap-1.5">
-                <span>Manual Hours Adjustment:</span>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={form.overtime_hours_adjustment || ""}
-                  placeholder="0"
-                  onChange={(e) => setForm({ ...form, overtime_hours_adjustment: parseFloat(e.target.value) || 0 })}
-                  className="w-16 px-2 py-0.5 text-xs rounded border border-slate-300 bg-white font-bold text-center"
-                />
-                <span>hrs</span>
-              </div>
-              <span>Effective Hours: <b>{otResult.effectiveHours.toFixed(1)} hrs</b></span>
-            </div>
-
-            {/* Costing Method Selector (Strictly mutually exclusive) */}
-            <div className="space-y-2 pt-1">
-              <span className="block text-xs font-bold text-slate-800">
-                Costing Method (Select exactly one method):
-              </span>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                {/* Method A: Auto UAE */}
-                <label
-                  className={`flex flex-col p-3 rounded-xl border cursor-pointer transition ${
-                    form.overtime_costing_method === "auto"
-                      ? "border-purple-600 bg-purple-100/60 shadow-xs"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 font-bold text-slate-900">
-                    <input
-                      type="radio"
-                      name="ot_method"
-                      checked={form.overtime_costing_method === "auto"}
-                      onChange={() => setForm({ ...form, overtime_costing_method: "auto" })}
-                      className="text-purple-600"
-                    />
-                    <span>A. Auto (UAE Standard)</span>
-                  </div>
-                  <span className="text-[11px] text-slate-500 mt-1">
-                    (Basic / 30d / 8h) × 1.25 multiplier
-                  </span>
-                  <span className="text-xs font-bold text-purple-900 mt-1.5">
-                    Rate: {fmtAED(basicSalary > 0 ? (basicSalary / 30 / 8) * 1.25 : 0)}/hr
-                  </span>
-                </label>
-
-                {/* Method B: Manual Hourly Rate */}
-                <label
-                  className={`flex flex-col p-3 rounded-xl border cursor-pointer transition ${
-                    form.overtime_costing_method === "hourly_rate"
-                      ? "border-purple-600 bg-purple-100/60 shadow-xs"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 font-bold text-slate-900">
-                    <input
-                      type="radio"
-                      name="ot_method"
-                      checked={form.overtime_costing_method === "hourly_rate"}
-                      onChange={() => setForm({ ...form, overtime_costing_method: "hourly_rate" })}
-                      className="text-purple-600"
-                    />
-                    <span>B. Manual Hourly Rate</span>
-                  </div>
-                  <span className="text-[11px] text-slate-500 mt-1">
-                    Hours × Custom Rate per Hour
-                  </span>
-                  <div className="flex items-center gap-1.5 mt-1.5">
-                    <span className="text-xs font-bold text-slate-700">AED</span>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      value={form.overtime_rate ?? ""}
-                      placeholder="e.g. 25"
-                      disabled={form.overtime_costing_method !== "hourly_rate"}
-                      onChange={(e) => setForm({ ...form, overtime_rate: parseFloat(e.target.value) || 0 })}
-                      className="w-20 px-2 py-0.5 text-xs rounded border border-slate-300 bg-white font-bold focus:outline-none focus:ring-1 focus:ring-purple-600"
-                    />
-                    <span className="text-xs text-slate-500">/hr</span>
-                  </div>
-                </label>
-
-                {/* Method C: Manual Total Charge */}
-                <label
-                  className={`flex flex-col p-3 rounded-xl border cursor-pointer transition ${
-                    form.overtime_costing_method === "manual_fixed"
-                      ? "border-purple-600 bg-purple-100/60 shadow-xs"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 font-bold text-slate-900">
-                    <input
-                      type="radio"
-                      name="ot_method"
-                      checked={form.overtime_costing_method === "manual_fixed"}
-                      onChange={() => setForm({ ...form, overtime_costing_method: "manual_fixed" })}
-                      className="text-purple-600"
-                    />
-                    <span>C. Manual Flat Total</span>
-                  </div>
-                  <span className="text-[11px] text-slate-500 mt-1">
-                    Direct entry of final overtime amount
-                  </span>
-                  <div className="flex items-center gap-1.5 mt-1.5">
-                    <span className="text-xs font-bold text-slate-700">AED</span>
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      value={form.overtime_manual_amount ?? ""}
-                      placeholder="e.g. 500"
-                      disabled={form.overtime_costing_method !== "manual_fixed"}
-                      onChange={(e) => setForm({ ...form, overtime_manual_amount: parseFloat(e.target.value) || 0 })}
-                      className="w-24 px-2 py-0.5 text-xs rounded border border-slate-300 bg-white font-bold focus:outline-none focus:ring-1 focus:ring-purple-600"
-                    />
-                    <span className="text-xs text-slate-500">flat</span>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* Calculation Explanation */}
-            <div className="bg-white/80 p-2.5 rounded-lg border border-purple-200 text-xs text-purple-950 font-medium">
-              💡 {otResult.explanation}
-            </div>
-
-            {/* Overtime Remarks & Approval */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Overtime Remarks / Project Reference
-                </label>
-                <input
-                  type="text"
-                  value={form.overtime_remarks || ""}
-                  placeholder="e.g. Rigging shift, weekend emergency delivery..."
-                  onChange={(e) => setForm({ ...form, overtime_remarks: e.target.value })}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-600"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Approval Status
-                </label>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Method 1: Hourly Rate (Default) */}
                 <button
                   type="button"
-                  onClick={() => setForm({ ...form, overtime_approved: !form.overtime_approved })}
-                  className={`w-full py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                    form.overtime_approved
-                      ? "bg-emerald-600 text-white shadow-xs hover:bg-emerald-500"
-                      : "bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200"
+                  onClick={() => setForm({ ...form, overtime_costing_method: "hourly_rate" })}
+                  className={`flex flex-col p-3 rounded-xl border text-left transition ${
+                    activeMethod === "hourly_rate"
+                      ? "border-purple-600 bg-purple-100/70 ring-1 ring-purple-600 shadow-xs"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
                   }`}
                 >
-                  <ShieldCheck size={14} />
-                  <span>{form.overtime_approved ? "Approved for Payroll" : "Pending Approval"}</span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm text-slate-900">Hourly Rate</span>
+                    <span
+                      className={`h-4 w-4 rounded-full border flex items-center justify-center ${
+                        activeMethod === "hourly_rate"
+                          ? "border-purple-600 bg-purple-600"
+                          : "border-slate-300"
+                      }`}
+                    >
+                      {activeMethod === "hourly_rate" && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                      )}
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-500 mt-1">
+                    Hours × Rate per Hour
+                  </span>
                 </button>
+
+                {/* Method 2: Fixed Amount */}
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, overtime_costing_method: "manual_fixed" })}
+                  className={`flex flex-col p-3 rounded-xl border text-left transition ${
+                    activeMethod === "manual_fixed"
+                      ? "border-purple-600 bg-purple-100/70 ring-1 ring-purple-600 shadow-xs"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm text-slate-900">Fixed Amount</span>
+                    <span
+                      className={`h-4 w-4 rounded-full border flex items-center justify-center ${
+                        activeMethod === "manual_fixed"
+                          ? "border-purple-600 bg-purple-600"
+                          : "border-slate-300"
+                      }`}
+                    >
+                      {activeMethod === "manual_fixed" && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                      )}
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-500 mt-1">
+                    Direct flat charge entered manually
+                  </span>
+                </button>
+              </div>
+
+              {/* Advanced Auto UAE method indicator if active */}
+              {activeMethod === "auto" && (
+                <div className="mt-2 text-xs bg-amber-50 border border-amber-200 text-amber-900 p-2.5 rounded-lg flex items-center justify-between">
+                  <span>Currently using Advanced UAE Formula: (Basic / 30d / 8h) × 1.25</span>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, overtime_costing_method: "hourly_rate" })}
+                    className="underline font-bold hover:text-amber-950"
+                  >
+                    Switch to Hourly Rate
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Editable Rate or Amount Input & Live Calculation */}
+            <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+              {activeMethod === "hourly_rate" ? (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Hourly Rate (AED / hour):
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                        AED
+                      </span>
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0"
+                        value={form.overtime_rate ?? ""}
+                        placeholder={autoUaeRate > 0 ? autoUaeRate.toFixed(2) : "0.00"}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setForm({ ...form, overtime_rate: isNaN(val) ? null : val });
+                        }}
+                        className="w-full pl-12 pr-4 py-2 text-sm rounded-lg border border-slate-300 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-600"
+                      />
+                    </div>
+                    <div className="text-xs text-slate-500 whitespace-nowrap">
+                      Formula: <b>{otResult.effectiveHours.toFixed(1)} hrs</b> × AED{" "}
+                      <b>{otResult.hourlyRate.toFixed(2)}</b>
+                    </div>
+                  </div>
+                </div>
+              ) : activeMethod === "manual_fixed" ? (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Fixed Overtime Amount (AED Flat):
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      AED
+                    </span>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0"
+                      value={form.overtime_manual_amount ?? ""}
+                      placeholder="0.00"
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setForm({ ...form, overtime_manual_amount: isNaN(val) ? null : val });
+                      }}
+                      className="w-full pl-12 pr-4 py-2 text-sm rounded-lg border border-slate-300 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-600"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-700">
+                  Auto formula rate: <b>AED {otResult.hourlyRate.toFixed(2)} / hr</b> (Basic: AED {basicSalary})
+                </div>
+              )}
+
+              {/* Total Overtime Charge & Approval Status Card */}
+              <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <span className="text-xs text-slate-500 font-medium block">
+                    Total Overtime Charge
+                  </span>
+                  <span className="text-2xl font-black text-emerald-700 tracking-tight">
+                    {fmtAED(otResult.totalCharge)}
+                  </span>
+                  {!otResult.isApproved && (
+                    <span className="text-[11px] text-amber-700 block font-medium">
+                      (Excluded from payroll totals until approved)
+                    </span>
+                  )}
+                </div>
+
+                {/* Approval Status Toggle */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-600 font-medium">Status:</span>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, overtime_approved: !form.overtime_approved })}
+                    className={`py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-2xs ${
+                      form.overtime_approved
+                        ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                        : "bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200"
+                    }`}
+                  >
+                    <ShieldCheck size={14} />
+                    <span>{form.overtime_approved ? "✓ Approved" : "Pending Approval"}</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* SECTION 3: ITEMIZED SALARY BREAKDOWN & PAYROLL PREVIEW */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Calculator size={18} className="text-slate-700" />
-                <span>3. Live Salary Breakdown Preview ({periodStr})</span>
-              </h3>
-              <div className="text-xs text-slate-500">
-                Official Status: <span className="font-bold text-slate-800">{existingStatement?.status || "Unsynchronized"}</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                <span className="text-slate-400 block font-medium">Basic Salary</span>
-                <span className="text-sm font-bold text-slate-900">{fmtAED(breakdown.basicSalary)}</span>
-              </div>
-
-              <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200">
-                <span className="text-emerald-700 block font-medium">Overtime Pay</span>
-                <span className="text-sm font-black text-emerald-800">
-                  {otResult.isApproved ? `+ ${fmtAED(breakdown.overtimeCharge)}` : "AED 0.00 (Pending)"}
+          {/* ADVANCED SETTINGS COLLAPSIBLE SECTION (Per Part 2) */}
+          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="w-full px-4 py-3 bg-slate-50 hover:bg-slate-100 flex items-center justify-between text-left transition"
+            >
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                {showAdvanced ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                <span>Advanced Settings & Adjustments</span>
+                <span className="text-[11px] font-normal text-slate-500">
+                  (Attendance adjustments, audit reasons, hours offset)
                 </span>
               </div>
-
-              <div className="p-2.5 rounded-lg bg-rose-50/70 border border-rose-200">
-                <span className="text-rose-700 block font-medium">Absence / Deductions</span>
-                <span className="text-sm font-bold text-rose-800">
-                  {breakdown.totalDeductions > 0 ? `- ${fmtAED(breakdown.totalDeductions)}` : "AED 0.00"}
-                </span>
+              <div className="text-xs font-medium text-slate-500">
+                Payable Days: <b>{attResult.payableDays} d</b>
               </div>
+            </button>
 
-              <div className="p-2.5 rounded-lg bg-slate-900 text-white shadow-xs">
-                <span className="text-slate-300 block font-medium">Estimated Net Salary</span>
-                <span className="text-sm font-black text-emerald-400">{fmtAED(breakdown.netSalary)}</span>
+            {showAdvanced && (
+              <div className="p-4 space-y-4 border-t border-slate-200 bg-white">
+                {/* Attendance & Payable Days */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <CalendarCheck size={15} className="text-emerald-700" />
+                      <span>Attendance & Payable Days</span>
+                    </span>
+                    <div className="text-xs text-slate-500">
+                      Actual Worked: <b>{attResult.actualAttendanceDays} d</b> · Payable:{" "}
+                      <b>{attResult.payableDays} d</b>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Manual Present Days Adjustment (+/- days)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={form.present_days_adjustment || ""}
+                        placeholder="0"
+                        onChange={(e) =>
+                          setForm({ ...form, present_days_adjustment: parseFloat(e.target.value) || 0 })
+                        }
+                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Manual Payable Days Adjustment (+/- days)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={form.payable_days_adjustment || ""}
+                        placeholder="0"
+                        onChange={(e) =>
+                          setForm({ ...form, payable_days_adjustment: parseFloat(e.target.value) || 0 })
+                        }
+                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Attendance Correction Remarks / Audit Reason
+                    </label>
+                    <input
+                      type="text"
+                      value={form.attendance_remarks || ""}
+                      placeholder="e.g. Approved site off-day compensation, medical excuse..."
+                      onChange={(e) => setForm({ ...form, attendance_remarks: e.target.value })}
+                      className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                    />
+                  </div>
+                </div>
+
+                {/* Overtime Hours Adjustment & Project Remarks */}
+                <div className="pt-3 border-t border-slate-100 space-y-3">
+                  <span className="text-xs font-bold text-slate-800 block">
+                    Overtime Adjustments & Remarks
+                  </span>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Hours Adjustment (+/- hrs)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={form.overtime_hours_adjustment || ""}
+                        placeholder="0"
+                        onChange={(e) =>
+                          setForm({ ...form, overtime_hours_adjustment: parseFloat(e.target.value) || 0 })
+                        }
+                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-600"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Overtime Remarks / Project Reference
+                      </label>
+                      <input
+                        type="text"
+                        value={form.overtime_remarks || ""}
+                        placeholder="e.g. Rigging shift, weekend emergency delivery..."
+                        onChange={(e) => setForm({ ...form, overtime_remarks: e.target.value })}
+                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-600"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Optional UAE standard formula button */}
+                  <div className="pt-1 flex items-center justify-between text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                    <div>
+                      <span className="font-semibold text-slate-800 block">
+                        UAE Standard Auto Formula
+                      </span>
+                      <span className="text-[11px] text-slate-500">
+                        (Basic Salary / 30 days / 8 hrs) × 1.25 multiplier = AED {autoUaeRate.toFixed(2)}/hr
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, overtime_costing_method: "auto" })}
+                      className={`px-2.5 py-1 rounded text-xs font-bold transition ${
+                        activeMethod === "auto"
+                          ? "bg-purple-600 text-white"
+                          : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      {activeMethod === "auto" ? "✓ Active" : "Apply Auto Method"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Salary Breakdown Preview */}
+                <div className="pt-3 border-t border-slate-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Calculator size={14} className="text-slate-600" />
+                      <span>Live Salary Breakdown Preview</span>
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      Official Statement: {existingStatement?.status || "Unsynchronized"}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div className="p-2 rounded bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate-500 block">Basic Salary</span>
+                      <span className="font-bold text-slate-900">{fmtAED(breakdown.basicSalary)}</span>
+                    </div>
+
+                    <div className="p-2 rounded bg-purple-50 border border-purple-200">
+                      <span className="text-[10px] text-purple-700 block">Overtime</span>
+                      <span className="font-bold text-purple-900">
+                        +{fmtAED(otResult.isApproved ? otResult.totalCharge : 0)}
+                      </span>
+                    </div>
+
+                    <div className="p-2 rounded bg-rose-50 border border-rose-200">
+                      <span className="text-[10px] text-rose-700 block">Deductions</span>
+                      <span className="font-bold text-rose-800">
+                        -{fmtAED(breakdown.totalDeductions)}
+                      </span>
+                    </div>
+
+                    <div className="p-2 rounded bg-slate-900 text-white">
+                      <span className="text-[10px] text-slate-300 block">Net Salary</span>
+                      <span className="font-black text-emerald-400">{fmtAED(breakdown.netSalary)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
-        {/* Footer Actions */}
+        {/* Footer Actions (Per Part 2) */}
         <div className="bg-slate-100 border-t border-slate-200 px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
+          {/* Secondary Actions */}
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handlePreviewSlip}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition"
+              disabled={saving || syncing}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition"
+              title="Preview and export Payslip PDF"
             >
               <Printer size={14} className="text-slate-500" />
               <span>Preview Payslip</span>
@@ -565,32 +745,44 @@ export default function EmployeePayrollChargesModal({
             <button
               type="button"
               onClick={handlePreviewVoucher}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition"
+              disabled={saving || syncing}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition"
+              title="Preview and export Payment Voucher PDF"
             >
               <FileCheck2 size={14} className="text-blue-600" />
               <span>Payment Voucher</span>
             </button>
           </div>
 
+          {/* Primary Actions: Cancel, Save, Save & Sync */}
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={onClose}
+              disabled={saving || syncing}
+              className="px-3.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
               onClick={handleSaveCharges}
-              disabled={saving}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 transition"
+              disabled={saving || syncing}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-white text-slate-900 hover:bg-slate-50 disabled:opacity-50 transition shadow-2xs"
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-              <span>Save Charges Only</span>
+              <span>{saving ? "Saving…" : "Save"}</span>
             </button>
 
             <button
               type="button"
               onClick={handleSyncToStatement}
-              disabled={syncing}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-700 text-white hover:bg-emerald-600 transition shadow-xs"
+              disabled={saving || syncing}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-50 transition shadow-xs"
             >
               {syncing ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-              <span>Save & Sync Salary Statement</span>
+              <span>{syncing ? "Syncing…" : "Save & Sync Salary Statement"}</span>
             </button>
           </div>
         </div>
