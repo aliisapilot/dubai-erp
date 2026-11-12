@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Search, FileCheck2, X, Save, Loader2, Pencil, Printer, Trash2, Ban, FileEdit } from "lucide-react";
+import { Plus, Search, FileCheck2, X, Save, Loader2, Pencil, Printer, Trash2, Ban, FileEdit, Upload, Download } from "lucide-react";
+import DocumentImportModal from "@/components/import/DocumentImportModal";
 import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, calcLineItem, formatDisplayDocNumber, detectDocumentCollisions, DocumentMappingItem } from "@/lib/helpers";
 import DocumentNumberMappingPreviewModal from "@/components/documents/DocumentNumberMappingPreviewModal";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -90,7 +91,44 @@ function TIContent() {
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renamingInvoice, setRenamingInvoice] = useState<TI | null>(null);
   const [showMappingModal, setShowMappingModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [editing, setEditing] = useState<TI | null>(null);
+
+  const handleExportInvoices = () => {
+    if (!filtered || filtered.length === 0) return;
+    const headers = [
+      "Invoice Number",
+      "Invoice Date",
+      "Customer",
+      "TRN",
+      "Status",
+      "Subtotal (AED)",
+      "VAT Amount (AED)",
+      "Total Amount (AED)",
+      "Payment Terms",
+      "Notes",
+    ];
+    const rows = filtered.map((inv) => [
+      inv.invoice_number || "",
+      inv.invoice_date || "",
+      `"${(inv.customer_name || "").replace(/"/g, '""')}"`,
+      inv.customer_trn || "",
+      inv.status || "",
+      (inv.subtotal || 0).toFixed(2),
+      (inv.vat_amount || 0).toFixed(2),
+      (inv.total_amount || 0).toFixed(2),
+      `"${(inv.payment_terms || "").replace(/"/g, '""')}"`,
+      `"${(inv.notes || "").replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tax_invoices_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
   const [printRec, setPrintRec] = useState<{ti: TI; lines: LineItem[]} | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -578,6 +616,25 @@ function TIContent() {
           >
             Numbering Preview
           </button>
+          <button
+            type="button"
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm"
+            title="Import Invoices from Excel, CSV, or PDF"
+          >
+            <Upload size={16} className="text-cyan-600" />
+            Import Invoices
+          </button>
+          <button
+            type="button"
+            onClick={handleExportInvoices}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm disabled:opacity-50"
+            title="Export filtered invoices to CSV"
+          >
+            <Download size={16} className="text-emerald-600" />
+            Export
+          </button>
           <button onClick={openAdd} className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"><Plus size={18}/>New Invoice</button>
         </div>
       </div></header>
@@ -805,6 +862,13 @@ function TIContent() {
           }}
         />
       )}
+      {/* Universal Tax Invoice Import Wizard */}
+      <DocumentImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        moduleType="tax_invoice"
+        onSuccess={() => loadAll()}
+      />
     </main>
   );
 }

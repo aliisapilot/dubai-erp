@@ -31,7 +31,12 @@ import {
   MoreHorizontal,
   ChevronDown,
   Search,
+  Upload,
+  RotateCcw,
 } from "lucide-react";
+import DocumentImportModal from "@/components/import/DocumentImportModal";
+import CustomerStatementResetModal from "@/components/statements/CustomerStatementResetModal";
+import ImportHistoryModal from "@/components/import/ImportHistoryModal";
 import Link from "next/link";
 import StatementOfAccountTemplate, { StatementData, StatementEntry } from "@/components/documents/StatementOfAccountTemplate";
 import PrintModal from "@/components/documents/PrintModal";
@@ -210,6 +215,11 @@ export default function StatementOfAccountPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  // Import, Reset & History Modals
+  const [showImportSoaModal, setShowImportSoaModal] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [showImportHistoryModal, setShowImportHistoryModal] = useState(false);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -1610,6 +1620,16 @@ export default function StatementOfAccountPage() {
                     <Download size={14} className="text-emerald-400" /> Download SOA
                   </button>
 
+                  {/* Primary: Import SOA */}
+                  <button
+                    type="button"
+                    onClick={() => setShowImportSoaModal(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-750 text-slate-200 px-3.5 py-1.5 text-xs font-semibold transition shadow-sm cursor-pointer"
+                    title="Import Statement of Account from Excel, CSV, or PDF"
+                  >
+                    <Upload size={14} className="text-cyan-400" /> Import SOA
+                  </button>
+
                   {/* Secondary: More Menu Dropdown */}
                   <div className="relative" ref={moreMenuRef}>
                     <button
@@ -1697,6 +1717,26 @@ export default function StatementOfAccountPage() {
                         >
                           <Columns2 size={14} className="text-slate-500" />
                           <span>Compare SOA Reference</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => { setShowMoreMenu(false); setShowImportHistoryModal(true); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                        >
+                          <History size={14} className="text-cyan-400" />
+                          <span>Import History</span>
+                        </button>
+
+                        <div className="my-1 border-t border-slate-800" />
+
+                        <button
+                          type="button"
+                          onClick={() => { setShowMoreMenu(false); setShowResetModal(true); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-rose-300 hover:bg-rose-950/30 transition cursor-pointer"
+                        >
+                          <RotateCcw size={14} className="text-rose-400" />
+                          <span>Fresh Start / Reset Statements</span>
                         </button>
                       </div>
                     )}
@@ -2791,6 +2831,41 @@ export default function StatementOfAccountPage() {
         onClose={() => setShowMappingModal(false)}
         mappings={auditMappings}
         title="Customer Statement Numbering & Collision Audit"
+      />
+
+      {/* Universal SOA Import Wizard */}
+      <DocumentImportModal
+        isOpen={showImportSoaModal}
+        onClose={() => setShowImportSoaModal(false)}
+        moduleType="customer_statement"
+        defaultCustomerId={selectedCustomerId}
+        defaultCustomerName={customers.find(c => c.id === selectedCustomerId)?.name || statement?.customer_name}
+        onSuccess={() => {
+          loadInitialData();
+          generateStatement();
+        }}
+      />
+
+      {/* Customer Statement Fresh Start / Non-Destructive Reset Modal */}
+      <CustomerStatementResetModal
+        isOpen={showResetModal}
+        onClose={() => setShowResetModal(false)}
+        customerId={selectedCustomerId}
+        customerName={customers.find(c => c.id === selectedCustomerId)?.name || statement?.customer_name || "Selected Customer"}
+        customerCode={customers.find(c => c.id === selectedCustomerId)?.customer_code || undefined}
+        currentOpeningBalance={statement?.opening_balance || 0}
+        statement={statement}
+        onResetComplete={() => {
+          loadInitialData();
+          generateStatement();
+        }}
+      />
+
+      {/* Import History & Audit Batches Modal */}
+      <ImportHistoryModal
+        isOpen={showImportHistoryModal}
+        onClose={() => setShowImportHistoryModal(false)}
+        defaultModuleFilter="customer_statement"
       />
 </main>
   );

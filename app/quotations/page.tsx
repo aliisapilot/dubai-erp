@@ -1,7 +1,8 @@
 "use client";
 import { FormEvent, useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { Plus, Search, FileText, X, Save, Loader2, Pencil, Eye, ArrowRight, Printer, Trash2 } from "lucide-react";
+import { Plus, Search, FileText, X, Save, Loader2, Pencil, Eye, ArrowRight, Printer, Trash2, Upload, Download } from "lucide-react";
+import DocumentImportModal from "@/components/import/DocumentImportModal";
 import { getCompanyId, getCurrentCompany, statusClass, fmtAED, fmtDate, todayISO, generateDocNumber, calcLineItem, formatDisplayDocNumber } from "@/lib/helpers";
 import { useRouter } from "next/navigation";
 import QuotationTemplate from "@/components/documents/QuotationTemplate";
@@ -136,6 +137,41 @@ export default function QuotationsPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [showRenameModal, setShowRenameModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+
+  const handleExportQuotations = () => {
+    if (!filtered || filtered.length === 0) return;
+    const headers = [
+      "Quotation Number",
+      "Quotation Date",
+      "Valid Until",
+      "Customer",
+      "Status",
+      "Subtotal (AED)",
+      "VAT Amount (AED)",
+      "Total Amount (AED)",
+      "Notes",
+    ];
+    const rows = filtered.map((q) => [
+      q.quotation_number || "",
+      q.quotation_date || "",
+      q.expiry_date || "",
+      `"${(q.customer_name || "").replace(/"/g, '""')}"`,
+      q.status || "",
+      (q.subtotal || 0).toFixed(2),
+      (q.vat_amount || 0).toFixed(2),
+      (q.total_amount || 0).toFixed(2),
+      `"${(q.notes || "").replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `quotations_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   useEffect(() => { loadAll(); }, []);
 
@@ -717,7 +753,28 @@ export default function QuotationsPage() {
             <div className="rounded-xl bg-slate-900 p-2.5 text-white"><FileText size={22} /></div>
             <div><h1 className="text-2xl font-bold text-slate-900">Quotations</h1><p className="text-sm text-slate-500">Create and manage sales quotations</p></div>
           </div>
-          <button onClick={openAdd} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 sm:gap-2 sm:px-4 sm:text-sm"><Plus size={18} /><span className="hidden min-[360px]:inline">New Quotation</span><span className="min-[360px]:hidden">New</span></button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowImportModal(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm sm:px-3.5 sm:py-2.5 sm:text-sm cursor-pointer"
+              title="Import Quotations from Excel, CSV, or PDF"
+            >
+              <Upload size={16} className="text-cyan-600" />
+              <span>Import Quotations</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleExportQuotations}
+              disabled={filtered.length === 0}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm disabled:opacity-50 sm:px-3.5 sm:py-2.5 sm:text-sm cursor-pointer"
+              title="Export filtered quotations to CSV"
+            >
+              <Download size={16} className="text-emerald-600" />
+              <span>Export</span>
+            </button>
+            <button onClick={openAdd} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 sm:gap-2 sm:px-4 sm:text-sm"><Plus size={18} /><span className="hidden min-[360px]:inline">New Quotation</span><span className="min-[360px]:hidden">New</span></button>
+          </div>
         </div>
       </header>
       <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-8">
@@ -1047,6 +1104,13 @@ export default function QuotationsPage() {
           }}
         />
       )}
+      {/* Universal Quotation Import Wizard */}
+      <DocumentImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        moduleType="quotation"
+        onSuccess={() => loadAll()}
+      />
     </main>
   );
 }
