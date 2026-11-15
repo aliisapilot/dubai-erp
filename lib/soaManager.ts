@@ -10,6 +10,8 @@
  */
 
 import { generateDocumentPdfFilename } from "./documentFilename";
+import type { RawHistoricalEntry } from "./customerStatementEngine";
+import * as XLSX from "xlsx";
 
 export interface CustomerCandidate {
   id: string;
@@ -27,9 +29,21 @@ export interface CustomerMatchOutcome {
   suggestions: Array<{ id: string; name: string; score: number }>;
 }
 
+export interface SoaAuditEntry {
+  timestamp: string;
+  user?: string;
+  action: "create" | "edit" | "delete" | "cutover_approved";
+  entryId?: string;
+  original?: Partial<RawHistoricalEntry> | Record<string, unknown>;
+  updated?: Partial<RawHistoricalEntry> | Record<string, unknown>;
+  reason?: string;
+}
+
 export interface SoaRecordMetadata {
   soaNumber: string;
   statementDate: string;
+  fromDate?: string | null;
+  toDate?: string | null;
   openingBalance: number;
   charges: number;
   credits: number;
@@ -39,6 +53,12 @@ export interface SoaRecordMetadata {
   isScannedPdf?: boolean;
   storagePath?: string;
   storageBucket?: string;
+  cutoverDate?: string | null;
+  isCutoverApproved?: boolean;
+  cutoverApprovedBy?: string | null;
+  cutoverApprovedAt?: string | null;
+  entries?: RawHistoricalEntry[];
+  auditTrail?: SoaAuditEntry[];
 }
 
 export interface StoredSoaRecord {
@@ -54,13 +74,23 @@ export interface StoredSoaRecord {
   created_at: string;
   soa_number: string;
   statement_date: string;
+  from_date?: string | null;
+  to_date?: string | null;
   opening_balance: number;
+  charges: number;
+  credits: number;
   closing_balance: number;
   checksum_sha256: string | null;
   needs_review: boolean;
   is_scanned_pdf: boolean;
   storage_path: string | null;
   storage_bucket: string;
+  cutover_date?: string | null;
+  is_cutover_approved?: boolean;
+  cutover_approved_by?: string | null;
+  cutover_approved_at?: string | null;
+  entries: RawHistoricalEntry[];
+  audit_trail: SoaAuditEntry[];
 }
 
 export const SUPPORTED_SOA_EXTENSIONS = ["pdf", "xlsx", "xls", "csv", "zip"] as const;
@@ -229,10 +259,37 @@ export function validateSoaFile(file: { name: string; size: number }): {
 }
 
 /**
- * Serializes SOA metadata into `document_attachments.description` in a format
- * backwards-compatible with existing Smart Import SOA records.
+ * Serializes SOA metadata into `document_attachments.description`.
+ * Uses JSON `soa_v2` payload when entries or cutover settings are present,
+ * ensuring robust persistence of full transaction line items.
  */
 export function buildSoaAttachmentDescription(meta: SoaRecordMetadata): string {
+  if (meta.entries && meta.entries.length > 0 || meta.cutoverDate || meta.auditTrail) {
+    const payload = {
+      version: "soa_v2",
+      soaNumber: meta.soaNumber || "SOA",
+      statementDate: meta.statementDate || new Date().toISOString().slice(0, 10),
+      fromDate: meta.fromDate || null,
+      toDate: meta.toDate || null,
+      openingBalance: meta.openingBalance || 0,
+      charges: meta.charges || 0,
+      credits: meta.credits || 0,
+      closingBalance: meta.closingBalance || 0,
+      checksumSha256: meta.checksumSha256 || null,
+      needsReview: meta.needsReview || false,
+      isScannedPdf: meta.isScannedPdf || false,
+      storagePath: meta.storagePath || null,
+      storageBucket: meta.storageBucket || "smart-imports",
+      cutoverDate: meta.cutoverDate || null,
+      isCutoverApproved: meta.isCutoverApproved || false,
+      cutoverApprovedBy: meta.cutoverApprovedBy || null,
+      cutoverApprovedAt: meta.cutoverApprovedAt || null,
+      entries: meta.entries || [],
+      auditTrail: meta.auditTrail || [],
+    };
+    return JSON.stringify(payload);
+  }
+
   const parts = [
     `Statement of Account ${meta.soaNumber || "SOA"} (${meta.statementDate || "Undated"})`,
   ];
@@ -254,6 +311,7 @@ export function buildSoaAttachmentDescription(meta: SoaRecordMetadata): string {
 
 /**
  * Parses SOA metadata from a `document_attachments` row.
+ * Seamlessly handles both modern `soa_v2` JSON format and legacy formatted string.
  */
 export function parseSoaAttachmentRow(row: {
   id: string;
@@ -267,18 +325,7 @@ export function parseSoaAttachmentRow(row: {
   created_at: string;
   customer_name?: string | null;
 }): StoredSoaRecord {
-  const desc = row.description || "";
-
-  const soaMatch = desc.match(/Statement of Account\s+([^\s(]+(?:\s+[^\s(]+)*?)\s*\(([^)]*)\)/i);
-  const soaNumber = soaMatch?.[1]?.trim() || row.file_name.replace(/\.[^.]+$/, "");
-  const statementDate = soaMatch?.[2]?.trim() || row.created_at.slice(0, 10);
-
-  const openMatch = desc.match(/Opening:\s*AED\s*(-?[0-9.,]+)/i);
-  const closeMatch = desc.match(/Closing:\s*AED\s*(-?[0-9.,]+)/i);
-  const shaMatch = desc.match(/\[SHA256:\s*([a-f0-9_-]+)\]/i);
-
-  const openingBalance = openMatch ? parseFloat(openMatch[1].replace(/,/g, "")) || 0 : 0;
-  const closingBalance = closeMatch ? parseFloat(closeMatch[1].replace(/,/g, "")) || 0 : 0;
+  const desc = (row.description || "").trim();
 
   let storagePath: string | null = null;
   let storageBucket = "smart-imports";
@@ -295,6 +342,62 @@ export function parseSoaAttachmentRow(row: {
     }
   }
 
+  // 1. Try JSON parsing for modern `soa_v2` records
+  if (desc.startsWith("{")) {
+    try {
+      const data = JSON.parse(desc);
+      return {
+        id: row.id,
+        company_id: row.company_id,
+        customer_id: row.entity_id,
+        customer_name: row.customer_name || "Unknown Customer",
+        file_name: row.file_name,
+        file_url: row.file_url,
+        file_type: row.file_type || null,
+        file_size: row.file_size ?? null,
+        description: row.description || null,
+        created_at: row.created_at,
+        soa_number: data.soaNumber || row.file_name.replace(/\.[^.]+$/, ""),
+        statement_date: data.statementDate || row.created_at.slice(0, 10),
+        from_date: data.fromDate || null,
+        to_date: data.toDate || null,
+        opening_balance: Number(data.openingBalance) || 0,
+        charges: Number(data.charges) || 0,
+        credits: Number(data.credits) || 0,
+        closing_balance: Number(data.closingBalance) || 0,
+        checksum_sha256: data.checksumSha256 || null,
+        needs_review: Boolean(data.needsReview),
+        is_scanned_pdf: Boolean(data.isScannedPdf),
+        storage_path: data.storagePath || storagePath,
+        storage_bucket: data.storageBucket || storageBucket,
+        cutover_date: data.cutoverDate || null,
+        is_cutover_approved: Boolean(data.isCutoverApproved),
+        cutover_approved_by: data.cutoverApprovedBy || null,
+        cutover_approved_at: data.cutoverApprovedAt || null,
+        entries: Array.isArray(data.entries) ? data.entries : [],
+        audit_trail: Array.isArray(data.auditTrail) ? data.auditTrail : [],
+      };
+    } catch {
+      // JSON parse failed -> fall through to legacy regex parser
+    }
+  }
+
+  // 2. Legacy regex parser
+  const soaMatch = desc.match(/Statement of Account\s+([^\s(]+(?:\s+[^\s(]+)*?)\s*\(([^)]*)\)/i);
+  const soaNumber = soaMatch?.[1]?.trim() || row.file_name.replace(/\.[^.]+$/, "");
+  const statementDate = soaMatch?.[2]?.trim() || row.created_at.slice(0, 10);
+
+  const openMatch = desc.match(/Opening:\s*AED\s*(-?[0-9.,]+)/i);
+  const closeMatch = desc.match(/Closing:\s*AED\s*(-?[0-9.,]+)/i);
+  const chargesMatch = desc.match(/Charges:\s*AED\s*(-?[0-9.,]+)/i);
+  const creditsMatch = desc.match(/Credits:\s*AED\s*(-?[0-9.,]+)/i);
+  const shaMatch = desc.match(/\[SHA256:\s*([a-f0-9_-]+)\]/i);
+
+  const openingBalance = openMatch ? parseFloat(openMatch[1].replace(/,/g, "")) || 0 : 0;
+  const closingBalance = closeMatch ? parseFloat(closeMatch[1].replace(/,/g, "")) || 0 : 0;
+  const charges = chargesMatch ? parseFloat(chargesMatch[1].replace(/,/g, "")) || 0 : 0;
+  const credits = creditsMatch ? parseFloat(creditsMatch[1].replace(/,/g, "")) || 0 : 0;
+
   return {
     id: row.id,
     company_id: row.company_id,
@@ -308,13 +411,23 @@ export function parseSoaAttachmentRow(row: {
     created_at: row.created_at,
     soa_number: soaNumber,
     statement_date: statementDate === "Undated" ? row.created_at.slice(0, 10) : statementDate,
+    from_date: null,
+    to_date: null,
     opening_balance: openingBalance,
+    charges: charges,
+    credits: credits,
     closing_balance: closingBalance,
     checksum_sha256: shaMatch?.[1] || null,
     needs_review: desc.includes("[Needs Review]"),
     is_scanned_pdf: desc.includes("[Scanned PDF]"),
     storage_path: storagePath,
     storage_bucket: storageBucket,
+    cutover_date: null,
+    is_cutover_approved: false,
+    cutover_approved_by: null,
+    cutover_approved_at: null,
+    entries: [],
+    audit_trail: [],
   };
 }
 
@@ -394,4 +507,221 @@ export function getExportSoaPdfFilename(
     customerName: customerName || "Customer",
     date: statementDate || undefined,
   }).filename;
+}
+
+function parseNum(raw: unknown): number {
+  if (typeof raw === "number") return Number.isFinite(raw) ? Math.round(raw * 100) / 100 : 0;
+  if (raw == null) return 0;
+  const cleaned = String(raw).replace(/[^0-9.-]/g, "");
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+}
+
+function parseSpreadsheetDate(raw: unknown): string {
+  if (!raw) return "";
+  if (raw instanceof Date) {
+    return raw.toISOString().slice(0, 10);
+  }
+  if (typeof raw === "number") {
+    // Excel date serial number
+    const jsDate = new Date((raw - (25567 + 2)) * 86400 * 1000);
+    if (!isNaN(jsDate.getTime())) return jsDate.toISOString().slice(0, 10);
+  }
+  const str = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  // Handle DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, "0");
+    const month = dmyMatch[2].padStart(2, "0");
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  return str.slice(0, 10);
+}
+
+export interface ExtractedSoaSpreadsheetResult {
+  customerName: string;
+  soaNumber: string;
+  statementDate: string;
+  openingBalance: number;
+  charges: number;
+  credits: number;
+  closingBalance: number;
+  entries: RawHistoricalEntry[];
+  needsReview: boolean;
+}
+
+/**
+ * Parses full SOA transaction rows and summary header from an Excel/CSV spreadsheet.
+ */
+export function extractSoaRowsFromSpreadsheet(
+  buffer: ArrayBuffer | Buffer,
+  fileName: string
+): ExtractedSoaSpreadsheetResult {
+  const wb = XLSX.read(buffer, { type: "array" });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  if (!sheet) {
+    return {
+      customerName: "",
+      soaNumber: fileName.replace(/\.[^.]+$/, ""),
+      statementDate: new Date().toISOString().slice(0, 10),
+      openingBalance: 0,
+      charges: 0,
+      credits: 0,
+      closingBalance: 0,
+      entries: [],
+      needsReview: true,
+    };
+  }
+
+  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
+  let customerName = "";
+  let soaNumber = "";
+  let statementDate = "";
+  let openingBalance = 0;
+  let closingBalance: number | null = null;
+  let charges = 0;
+  let credits = 0;
+
+  // 1. Scan top header rows for Customer, SOA number, Statement Date
+  for (let r = 0; r < Math.min(25, matrix.length); r++) {
+    const row = matrix[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      const cell = String(row[c] ?? "").trim();
+      const lower = cell.toLowerCase();
+      const nextCell = String(row[c + 1] ?? row[c + 2] ?? "").trim();
+
+      if (!customerName && /^(customer|client|account\s*name|bill\s*to|to)\s*:?$/i.test(lower) && nextCell) {
+        customerName = nextCell;
+      } else if (!customerName && /^(customer|client|account\s*name)\s*[:\-]\s*(.+)$/i.test(cell)) {
+        const m = cell.match(/^(?:customer|client|account\s*name)\s*[:\-]\s*(.+)$/i);
+        if (m?.[1]) customerName = m[1].trim();
+      }
+
+      if (!soaNumber && /^(soa|statement\s*(?:no|number|ref)|reference)\s*:?$/i.test(lower) && nextCell) {
+        soaNumber = nextCell;
+      } else if (!soaNumber && /\b(SOA[-/]?\d[\w-]*)\b/i.test(cell)) {
+        const m = cell.match(/\b(SOA[-/]?\d[\w-]*)\b/i);
+        if (m?.[1]) soaNumber = m[1];
+      }
+
+      if (!statementDate && /^(statement\s*date|as\s*of|date)\s*:?$/i.test(lower) && nextCell) {
+        statementDate = parseSpreadsheetDate(nextCell);
+      }
+    }
+  }
+
+  // 2. Scan table rows for date/reference/description/debit/credit/balance columns
+  let headerRowIdx = -1;
+  let dateCol = -1;
+  let refCol = -1;
+  let descCol = -1;
+  let debitCol = -1;
+  let creditCol = -1;
+  let balanceCol = -1;
+
+  for (let r = 0; r < Math.min(40, matrix.length); r++) {
+    const row = (matrix[r] || []).map((v) => String(v ?? "").toLowerCase().trim());
+    const dIdx = row.findIndex((h) => h === "debit" || h === "dr" || h.includes("debit") || h.includes("charge"));
+    const cIdx = row.findIndex((h) => h === "credit" || h === "cr" || h.includes("credit"));
+    const bIdx = row.findIndex((h) => h === "balance" || h.includes("balance"));
+    const dateIdx = row.findIndex((h) => h === "date" || h.includes("date"));
+    const rIdx = row.findIndex((h) => h === "reference" || h === "ref" || h.includes("inv") || h.includes("doc"));
+    const descIdx = row.findIndex((h) => h === "description" || h === "particulars" || h.includes("desc") || h.includes("detail"));
+
+    if (dIdx !== -1 || cIdx !== -1 || bIdx !== -1) {
+      headerRowIdx = r;
+      debitCol = dIdx;
+      creditCol = cIdx;
+      balanceCol = bIdx;
+      dateCol = dateIdx;
+      refCol = rIdx;
+      descCol = descIdx;
+      break;
+    }
+  }
+
+  const entries: RawHistoricalEntry[] = [];
+  let runningBal = 0;
+
+  if (headerRowIdx !== -1) {
+    for (let r = headerRowIdx + 1; r < matrix.length; r++) {
+      const row = matrix[r] || [];
+      const rowText = row.map((v) => String(v ?? "").toLowerCase()).join(" ");
+      if (!rowText.trim()) continue;
+
+      if (rowText.includes("opening balance") || rowText.includes("brought forward") || rowText.includes("b/f")) {
+        const val = balanceCol >= 0 ? parseNum(row[balanceCol]) : parseNum(row[row.length - 1]);
+        if (val !== 0) {
+          openingBalance = val;
+          runningBal = val;
+        }
+        continue;
+      }
+
+      if (rowText.includes("closing balance") || rowText.includes("total balance") || rowText.includes("balance due") || rowText.includes("total:")) {
+        const val = balanceCol >= 0 ? parseNum(row[balanceCol]) : parseNum(row[row.length - 1]);
+        if (val !== 0) closingBalance = val;
+        continue;
+      }
+
+      const rowDebit = debitCol >= 0 ? parseNum(row[debitCol]) : 0;
+      const rowCredit = creditCol >= 0 ? parseNum(row[creditCol]) : 0;
+
+      if (rowDebit === 0 && rowCredit === 0) {
+        continue;
+      }
+
+      const rowDate = dateCol >= 0 ? parseSpreadsheetDate(row[dateCol]) : "";
+      const rowRef = refCol >= 0 ? String(row[refCol] ?? "").trim() : "";
+      const rowDesc = descCol >= 0 ? String(row[descCol] ?? "").trim() : "";
+      const statedBal = balanceCol >= 0 ? parseNum(row[balanceCol]) : undefined;
+
+      runningBal = Math.round((runningBal + rowDebit - rowCredit) * 100) / 100;
+      charges += rowDebit;
+      credits += rowCredit;
+
+      entries.push({
+        id: `row_${Date.now()}_${r}_${Math.random().toString(36).slice(2, 7)}`,
+        date: rowDate || statementDate || new Date().toISOString().slice(0, 10),
+        reference_no: rowRef || (rowDebit > 0 ? "INV" : "REC"),
+        original_reference: rowRef,
+        description: rowDesc || (rowDebit > 0 ? "Invoice Charge" : "Customer Payment"),
+        debit: rowDebit,
+        credit: rowCredit,
+        balance: statedBal !== undefined ? statedBal : runningBal,
+        status: "historical",
+        source_filename: fileName,
+      });
+    }
+  }
+
+  const finalClosing =
+    closingBalance !== null
+      ? closingBalance
+      : Math.round((openingBalance + charges - credits) * 100) / 100;
+
+  if (!soaNumber) {
+    const baseMatch = fileName.match(/\b(SOA[-_]?\d[\w-]*)\b/i);
+    soaNumber = baseMatch?.[1] || fileName.replace(/\.[^.]+$/, "");
+  }
+
+  if (!statementDate || !/^\d{4}-\d{2}-\d{2}$/.test(statementDate)) {
+    statementDate = new Date().toISOString().slice(0, 10);
+  }
+
+  const needsReview = !customerName || !soaNumber || entries.length === 0;
+
+  return {
+    customerName,
+    soaNumber,
+    statementDate,
+    openingBalance,
+    charges: Math.round(charges * 100) / 100,
+    credits: Math.round(credits * 100) / 100,
+    closingBalance: finalClosing,
+    entries,
+    needsReview,
+  };
 }

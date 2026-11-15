@@ -11,7 +11,15 @@ import { createClient } from "@supabase/supabase-js";
 import {
   buildSoaAttachmentDescription,
   parseSoaAttachmentRow,
+  type SoaAuditEntry,
 } from "@/lib/soaManager";
+import {
+  calculateCustomerStatement,
+  type RawHistoricalEntry,
+  type RawInvoice,
+  type RawReceiptVoucher,
+  type RawPayment,
+} from "@/lib/customerStatementEngine";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -103,6 +111,9 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const requestedCompanyId = searchParams.get("companyId") || undefined;
+    const customerId = searchParams.get("customerId") || undefined;
+    const fromDate = searchParams.get("fromDate") || undefined;
+    const toDate = searchParams.get("toDate") || undefined;
 
     const ctx = await resolveCompanyContext(req, requestedCompanyId);
     if (!ctx.ok) {
@@ -111,11 +122,11 @@ export async function GET(req: NextRequest) {
 
     const { supabase, companyId } = ctx;
 
-    const [{ data: customers, error: custErr }, { data: attachments, error: attErr }] =
+    const [{ data: customers, error: custErr }, { data: attachments, error: attErr }, { data: companyRecord }] =
       await Promise.all([
         supabase
           .from("customers")
-          .select("id, name, customer_code, trn")
+          .select("id, name, customer_code, trn, phone, email, address")
           .eq("company_id", companyId)
           .eq("active", true)
           .order("name"),
@@ -125,6 +136,11 @@ export async function GET(req: NextRequest) {
           .eq("company_id", companyId)
           .eq("entity_type", "customer")
           .order("created_at", { ascending: false }),
+        supabase
+          .from("companies")
+          .select("*")
+          .eq("id", companyId)
+          .maybeSingle(),
       ]);
 
     if (custErr) throw new Error(custErr.message);
@@ -140,11 +156,72 @@ export async function GET(req: NextRequest) {
       })
     );
 
+    let statementData = null;
+    let selectedCustomer = null;
+    let customerSavedSoa = null;
+
+    const targetCustomerId = customerId || customers?.[0]?.id;
+    if (targetCustomerId) {
+      selectedCustomer = customers?.find((c) => c.id === targetCustomerId) || null;
+
+      // Find newest saved SOA for this customer
+      customerSavedSoa = statements.find((s) => s.customer_id === targetCustomerId) || null;
+
+      // Fetch live invoices & receipts & payments
+      const [invRes, recRes, payRes] = await Promise.all([
+        supabase
+          .from("tax_invoices")
+          .select("id, invoice_number, invoice_date, total_amount, status, company_id, customer_id, customer_name, customer_trn, notes")
+          .eq("company_id", companyId)
+          .eq("customer_id", targetCustomerId)
+          .not("status", "in", '("cancelled","void")'),
+        supabase
+          .from("receipt_vouchers")
+          .select("id, voucher_number, voucher_date, amount, status, invoice_id, payment_method, reference_number, notes")
+          .eq("company_id", companyId)
+          .eq("customer_id", targetCustomerId)
+          .not("status", "in", '("cancelled","void")'),
+        supabase
+          .from("payments")
+          .select("id, payment_number, payment_date, amount, status, invoice_id, reference_number, notes")
+          .eq("company_id", companyId)
+          .eq("customer_id", targetCustomerId)
+          .not("status", "in", '("cancelled","void")'),
+      ]);
+
+      const rawInvoices = (invRes.data || []) as RawInvoice[];
+      const rawReceipts = (recRes.data || []) as RawReceiptVoucher[];
+      const rawPayments = (payRes.data || []) as RawPayment[];
+
+      statementData = calculateCustomerStatement({
+        customerId: targetCustomerId,
+        customerName: selectedCustomer?.name || customerSavedSoa?.customer_name || "Customer",
+        customerTrn: selectedCustomer?.trn || null,
+        customerAddress: selectedCustomer?.address || null,
+        customerPhone: selectedCustomer?.phone || null,
+        customerCode: selectedCustomer?.customer_code || null,
+        initialCutoverBalance: customerSavedSoa?.opening_balance || 0,
+        cutoverDate: customerSavedSoa?.cutover_date || null,
+        fromDate: fromDate || customerSavedSoa?.from_date || null,
+        toDate: toDate || customerSavedSoa?.to_date || null,
+        invoices: rawInvoices,
+        receipts: rawReceipts,
+        payments: rawPayments,
+        historicalEntries: customerSavedSoa?.entries || [],
+        statementNumber: customerSavedSoa?.soa_number || undefined,
+        statementDate: customerSavedSoa?.statement_date || undefined,
+      });
+    }
+
     return NextResponse.json({
       success: true,
       companyId,
       customers: customers || [],
       statements,
+      company: companyRecord || null,
+      selectedCustomer,
+      statement: statementData,
+      customerSavedSoa,
     });
   } catch (err) {
     return NextResponse.json(
@@ -164,6 +241,8 @@ export interface SaveSoaItemPayload {
   newCustomerName?: string;
   soaNumber: string;
   statementDate: string;
+  fromDate?: string | null;
+  toDate?: string | null;
   openingBalance: number;
   charges: number;
   credits: number;
@@ -171,6 +250,9 @@ export interface SaveSoaItemPayload {
   checksumSha256?: string;
   needsReview?: boolean;
   isScannedPdf?: boolean;
+  cutoverDate?: string | null;
+  isCutoverApproved?: boolean;
+  entries?: RawHistoricalEntry[];
   duplicateAction?: "skip" | "replace" | "none";
   existingAttachmentId?: string;
 }
@@ -289,6 +371,8 @@ export async function POST(req: NextRequest) {
         const description = buildSoaAttachmentDescription({
           soaNumber: item.soaNumber,
           statementDate: item.statementDate,
+          fromDate: item.fromDate,
+          toDate: item.toDate,
           openingBalance: item.openingBalance,
           charges: item.charges,
           credits: item.credits,
@@ -298,6 +382,9 @@ export async function POST(req: NextRequest) {
           isScannedPdf: item.isScannedPdf,
           storagePath: item.storagePath,
           storageBucket: bucket,
+          cutoverDate: item.cutoverDate,
+          isCutoverApproved: item.isCutoverApproved,
+          entries: item.entries,
         });
 
         if (item.duplicateAction === "replace" && item.existingAttachmentId) {
@@ -391,6 +478,212 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     return NextResponse.json(
       { success: false, error: err instanceof Error ? err.message : "Failed to save SOAs." },
+      { status: 500 }
+    );
+  }
+}
+
+export interface UpdateSoaPayload {
+  companyId?: string;
+  attachmentId: string;
+  action: "edit_entry" | "add_entry" | "delete_entry" | "update_cutover";
+  entryId?: string;
+  entry?: Partial<RawHistoricalEntry>;
+  cutoverDate?: string | null;
+  isCutoverApproved?: boolean;
+  reason?: string;
+}
+
+export async function PUT(req: NextRequest) {
+  try {
+    const body = (await req.json()) as UpdateSoaPayload;
+    const { attachmentId, action, entryId, entry, cutoverDate, isCutoverApproved, reason, companyId: requestedCompanyId } = body;
+
+    if (!attachmentId) {
+      return NextResponse.json({ success: false, error: "attachmentId is required." }, { status: 400 });
+    }
+
+    const ctx = await resolveCompanyContext(req, requestedCompanyId);
+    if (!ctx.ok) {
+      return NextResponse.json({ success: false, error: ctx.error }, { status: ctx.status });
+    }
+
+    const { supabase, user, companyId } = ctx;
+
+    const { data: attachmentRow, error: fetchErr } = await supabase
+      .from("document_attachments")
+      .select("*")
+      .eq("id", attachmentId)
+      .eq("company_id", companyId)
+      .single();
+
+    if (fetchErr || !attachmentRow) {
+      return NextResponse.json({ success: false, error: "Attachment record not found." }, { status: 404 });
+    }
+
+    const stored = parseSoaAttachmentRow(attachmentRow);
+    const existingEntries: RawHistoricalEntry[] = [...stored.entries];
+    const auditTrail: SoaAuditEntry[] = [...stored.audit_trail];
+    const nowIso = new Date().toISOString();
+    const userIdentifier = user.email || "Current User";
+
+    let updatedCutoverDate = stored.cutover_date;
+    let updatedCutoverApproved = stored.is_cutover_approved;
+    let cutoverApprovedBy = stored.cutover_approved_by;
+    let cutoverApprovedAt = stored.cutover_approved_at;
+
+    if (action === "edit_entry") {
+      if (!entryId) {
+        return NextResponse.json({ success: false, error: "entryId is required for edit_entry." }, { status: 400 });
+      }
+      const idx = existingEntries.findIndex((e) => e.id === entryId);
+      if (idx === -1) {
+        return NextResponse.json({ success: false, error: "Historical entry not found." }, { status: 404 });
+      }
+      const originalEntry = { ...existingEntries[idx] };
+      const updatedEntry: RawHistoricalEntry = {
+        ...originalEntry,
+        date: entry?.date ? entry.date.slice(0, 10) : originalEntry.date,
+        reference_no: entry?.reference_no !== undefined ? entry.reference_no.trim() : originalEntry.reference_no,
+        description: entry?.description !== undefined ? entry.description.trim() : originalEntry.description,
+        debit: entry?.debit !== undefined ? Math.round(Number(entry.debit) * 100) / 100 : originalEntry.debit,
+        credit: entry?.credit !== undefined ? Math.round(Number(entry.credit) * 100) / 100 : originalEntry.credit,
+        is_edited: true,
+      };
+      existingEntries[idx] = updatedEntry;
+
+      auditTrail.push({
+        timestamp: nowIso,
+        user: userIdentifier,
+        action: "edit",
+        entryId,
+        original: originalEntry,
+        updated: updatedEntry,
+        reason: reason || "User edited statement transaction row",
+      });
+    } else if (action === "add_entry") {
+      if (!entry) {
+        return NextResponse.json({ success: false, error: "Entry data is required for add_entry." }, { status: 400 });
+      }
+      const newEntry: RawHistoricalEntry = {
+        id: entry.id || `hist_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        date: entry.date ? entry.date.slice(0, 10) : nowIso.slice(0, 10),
+        reference_no: entry.reference_no?.trim() || "ADJ",
+        original_reference: entry.reference_no?.trim() || "ADJ",
+        description: entry.description?.trim() || "Historical Adjustment",
+        debit: Math.round((Number(entry.debit) || 0) * 100) / 100,
+        credit: Math.round((Number(entry.credit) || 0) * 100) / 100,
+        status: "historical",
+        is_edited: true,
+        source_doc_id: attachmentId,
+        source_filename: stored.file_name,
+      };
+      existingEntries.push(newEntry);
+
+      auditTrail.push({
+        timestamp: nowIso,
+        user: userIdentifier,
+        action: "create",
+        entryId: newEntry.id,
+        updated: newEntry,
+        reason: reason || "User added historical statement transaction row",
+      });
+    } else if (action === "delete_entry") {
+      if (!entryId) {
+        return NextResponse.json({ success: false, error: "entryId is required for delete_entry." }, { status: 400 });
+      }
+      const idx = existingEntries.findIndex((e) => e.id === entryId);
+      if (idx === -1) {
+        return NextResponse.json({ success: false, error: "Historical entry not found." }, { status: 404 });
+      }
+      const removed = existingEntries.splice(idx, 1)[0];
+      auditTrail.push({
+        timestamp: nowIso,
+        user: userIdentifier,
+        action: "delete",
+        entryId,
+        original: removed,
+        reason: reason || "User deleted historical statement transaction row",
+      });
+    } else if (action === "update_cutover") {
+      updatedCutoverDate = cutoverDate !== undefined ? cutoverDate : stored.cutover_date;
+      updatedCutoverApproved = isCutoverApproved !== undefined ? isCutoverApproved : stored.is_cutover_approved;
+      if (updatedCutoverApproved && !stored.is_cutover_approved) {
+        cutoverApprovedBy = userIdentifier;
+        cutoverApprovedAt = nowIso;
+      }
+      auditTrail.push({
+        timestamp: nowIso,
+        user: userIdentifier,
+        action: "cutover_approved",
+        original: { cutoverDate: stored.cutover_date, isCutoverApproved: stored.is_cutover_approved },
+        updated: { cutoverDate: updatedCutoverDate, isCutoverApproved: updatedCutoverApproved },
+        reason: reason || "User updated cutover settings",
+      });
+    }
+
+    // Recompute charges, credits, and closing balance across historical entries
+    let totalDebits = 0;
+    let totalCredits = 0;
+    existingEntries.forEach((e) => {
+      totalDebits += Number(e.debit) || 0;
+      totalCredits += Number(e.credit) || 0;
+    });
+
+    const openingBalance = stored.opening_balance;
+    const closingBalance = Math.round((openingBalance + totalDebits - totalCredits) * 100) / 100;
+
+    const newDescription = buildSoaAttachmentDescription({
+      soaNumber: stored.soa_number,
+      statementDate: stored.statement_date,
+      fromDate: stored.from_date,
+      toDate: stored.to_date,
+      openingBalance,
+      charges: Math.round(totalDebits * 100) / 100,
+      credits: Math.round(totalCredits * 100) / 100,
+      closingBalance,
+      checksumSha256: stored.checksum_sha256 || undefined,
+      needsReview: stored.needs_review,
+      isScannedPdf: stored.is_scanned_pdf,
+      storagePath: stored.storage_path || undefined,
+      storageBucket: stored.storage_bucket,
+      cutoverDate: updatedCutoverDate,
+      isCutoverApproved: updatedCutoverApproved,
+      cutoverApprovedBy,
+      cutoverApprovedAt,
+      entries: existingEntries,
+      auditTrail,
+    });
+
+    const { error: updErr } = await supabase
+      .from("document_attachments")
+      .update({ description: newDescription })
+      .eq("id", attachmentId)
+      .eq("company_id", companyId);
+
+    if (updErr) {
+      return NextResponse.json({ success: false, error: updErr.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      updatedRecord: {
+        ...stored,
+        opening_balance: openingBalance,
+        charges: Math.round(totalDebits * 100) / 100,
+        credits: Math.round(totalCredits * 100) / 100,
+        closing_balance: closingBalance,
+        cutover_date: updatedCutoverDate,
+        is_cutover_approved: updatedCutoverApproved,
+        cutover_approved_by: cutoverApprovedBy,
+        cutover_approved_at: cutoverApprovedAt,
+        entries: existingEntries,
+        audit_trail: auditTrail,
+      },
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { success: false, error: err instanceof Error ? err.message : "Failed to update statement." },
       { status: 500 }
     );
   }

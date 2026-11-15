@@ -59,7 +59,27 @@ export interface RawPayment {
   notes?: string | null;
 }
 
+export interface RawHistoricalEntry {
+  id: string;
+  date: string;
+  reference_no: string;
+  original_reference?: string;
+  description: string;
+  debit: number;
+  credit: number;
+  balance?: number;
+  status?: "matched" | "historical" | "needs_review" | "duplicate" | "conflict";
+  matched_invoice_id?: string;
+  matched_payment_id?: string;
+  matched_voucher_id?: string;
+  is_edited?: boolean;
+  source_doc_id?: string;
+  source_filename?: string;
+  created_at?: string;
+}
+
 export interface StatementEntry {
+  id?: string;
   date: string;
   reference_no: string;
   original_reference?: string;
@@ -70,6 +90,13 @@ export interface StatementEntry {
   debit: number;
   credit: number;
   balance: number;
+  type?: "invoice" | "receipt_voucher" | "payment" | "historical" | "opening";
+  status?: "matched" | "historical" | "live" | "needs_review" | "conflict";
+  is_historical?: boolean;
+  is_edited?: boolean;
+  historical_entry_id?: string;
+  source_doc_id?: string;
+  source_filename?: string;
 }
 
 export interface StatementData {
@@ -77,6 +104,8 @@ export interface StatementData {
   statement_date: string;
   from_date?: string | null;
   to_date?: string | null;
+  cutover_date?: string | null;
+  is_cutover_approved?: boolean;
   customer_name: string;
   customer_trn?: string | null;
   customer_address?: string | null;
@@ -115,7 +144,183 @@ export interface NormalizedTransaction {
   description: string;
   debit: number;
   credit: number;
-  type: "invoice" | "receipt_voucher" | "payment";
+  type: "invoice" | "receipt_voucher" | "payment" | "historical" | "opening";
+  status?: "matched" | "historical" | "live" | "needs_review" | "conflict";
+  is_historical?: boolean;
+  is_edited?: boolean;
+  historical_entry_id?: string;
+  source_doc_id?: string;
+  source_filename?: string;
+}
+
+export function normalizeDocRef(ref?: string | null): string {
+  if (!ref) return "";
+  return ref.toLowerCase().replace(/[-_/\s]/g, "").trim();
+}
+
+export interface ErpMatchOutcome {
+  matchedId?: string;
+  matchedType?: "invoice" | "receipt_voucher" | "payment";
+  status: "matched" | "historical" | "needs_review" | "conflict";
+  reason: string;
+}
+
+/**
+ * Matches an imported historical row against live ERP invoices and payments.
+ * Exact document number match is the strongest evidence.
+ */
+export function matchSingleHistoricalEntry(
+  entry: RawHistoricalEntry,
+  invoices: RawInvoice[],
+  receipts: RawReceiptVoucher[],
+  payments: RawPayment[]
+): ErpMatchOutcome {
+  const normRef = normalizeDocRef(entry.reference_no || entry.original_reference);
+  const entryDebit = roundCurrency(Number(entry.debit) || 0);
+  const entryCredit = roundCurrency(Number(entry.credit) || 0);
+  const entryDate = entry.date ? entry.date.slice(0, 10) : "";
+
+  // 1. Debits match against Tax Invoices
+  if (entryDebit > 0) {
+    if (entry.matched_invoice_id) {
+      const direct = invoices.find((inv) => inv.id === entry.matched_invoice_id);
+      if (direct) {
+        return {
+          matchedId: direct.id,
+          matchedType: "invoice",
+          status: "matched",
+          reason: `Linked directly to invoice ${direct.invoice_number}`,
+        };
+      }
+    }
+
+    if (normRef) {
+      const matchByNum = invoices.find(
+        (inv) => normalizeDocRef(inv.invoice_number) === normRef
+      );
+      if (matchByNum) {
+        const invAmt = roundCurrency(Number(matchByNum.total_amount) || 0);
+        if (Math.abs(invAmt - entryDebit) <= 0.05) {
+          return {
+            matchedId: matchByNum.id,
+            matchedType: "invoice",
+            status: "matched",
+            reason: `Exact invoice number match (${matchByNum.invoice_number}) and amount (AED ${entryDebit.toFixed(2)})`,
+          };
+        } else {
+          return {
+            matchedId: matchByNum.id,
+            matchedType: "invoice",
+            status: "conflict",
+            reason: `Invoice number matches (${matchByNum.invoice_number}) but amount differs (SOA: ${entryDebit.toFixed(2)}, ERP: ${invAmt.toFixed(2)})`,
+          };
+        }
+      }
+    }
+
+    // Secondary candidate: same date and exact amount if reference is generic (e.g. "INV", "Tax Invoice")
+    if (normRef === "inv" || normRef === "taxinvoice" || !normRef) {
+      const matchDateAmt = invoices.find((inv) => {
+        const invAmt = roundCurrency(Number(inv.total_amount) || 0);
+        const invDate = inv.invoice_date ? inv.invoice_date.slice(0, 10) : "";
+        return invDate === entryDate && Math.abs(invAmt - entryDebit) <= 0.01;
+      });
+      if (matchDateAmt) {
+        return {
+          matchedId: matchDateAmt.id,
+          matchedType: "invoice",
+          status: "needs_review",
+          reason: `Potential match on date (${entryDate}) and amount (AED ${entryDebit.toFixed(2)}) with ${matchDateAmt.invoice_number}`,
+        };
+      }
+    }
+
+    return {
+      status: "historical",
+      reason: "Historical invoice with no matching record in ERP",
+    };
+  }
+
+  // 2. Credits match against Receipt Vouchers and Payments
+  if (entryCredit > 0) {
+    if (entry.matched_voucher_id) {
+      const direct = receipts.find((r) => r.id === entry.matched_voucher_id);
+      if (direct) {
+        return {
+          matchedId: direct.id,
+          matchedType: "receipt_voucher",
+          status: "matched",
+          reason: `Linked to receipt voucher ${direct.voucher_number}`,
+        };
+      }
+    }
+    if (entry.matched_payment_id) {
+      const direct = payments.find((p) => p.id === entry.matched_payment_id);
+      if (direct) {
+        return {
+          matchedId: direct.id,
+          matchedType: "payment",
+          status: "matched",
+          reason: `Linked to payment ${direct.payment_number || direct.reference_number}`,
+        };
+      }
+    }
+
+    // Match Receipt Vouchers by voucher number or cheque number
+    if (normRef) {
+      const matchRcv = receipts.find((r) => {
+        const vNorm = normalizeDocRef(r.voucher_number);
+        const cNorm = normalizeDocRef(r.cheque_number);
+        return vNorm === normRef || (cNorm && cNorm === normRef);
+      });
+      if (matchRcv) {
+        const rcvAmt = roundCurrency(Number(matchRcv.amount) || 0);
+        if (Math.abs(rcvAmt - entryCredit) <= 0.05) {
+          return {
+            matchedId: matchRcv.id,
+            matchedType: "receipt_voucher",
+            status: "matched",
+            reason: `Receipt voucher match (${matchRcv.voucher_number}) and amount (AED ${entryCredit.toFixed(2)})`,
+          };
+        } else {
+          return {
+            matchedId: matchRcv.id,
+            matchedType: "receipt_voucher",
+            status: "conflict",
+            reason: `Voucher matches (${matchRcv.voucher_number}) but amount differs`,
+          };
+        }
+      }
+
+      // Match Payments table by payment number or reference
+      const matchPay = payments.find((p) => {
+        const pNorm = normalizeDocRef(p.payment_number);
+        const rNorm = normalizeDocRef(p.reference_number);
+        return pNorm === normRef || (rNorm && rNorm === normRef);
+      });
+      if (matchPay) {
+        const payAmt = roundCurrency(Number(matchPay.amount) || 0);
+        if (Math.abs(payAmt - entryCredit) <= 0.05) {
+          return {
+            matchedId: matchPay.id,
+            matchedType: "payment",
+            status: "matched",
+            reason: `Payment match (${matchPay.payment_number || matchPay.reference_number})`,
+          };
+        }
+      }
+    }
+
+    return {
+      status: "historical",
+      reason: "Historical payment with no matching record in ERP",
+    };
+  }
+
+  return {
+    status: "historical",
+    reason: "Historical entry",
+  };
 }
 
 /**
@@ -301,12 +506,15 @@ export function sortTransactionsChronologically(txs: NormalizedTransaction[]): N
 }
 
 export interface StatementCalculationInput {
+  customerId?: string;
   initialCutoverBalance: number;
+  cutoverDate?: string | null;
   fromDate?: string | null;
   toDate?: string | null;
   invoices: RawInvoice[];
   receipts: RawReceiptVoucher[];
   payments: RawPayment[];
+  historicalEntries?: RawHistoricalEntry[];
   customerName: string;
   customerTrn?: string | null;
   customerAddress?: string | null;
@@ -318,11 +526,86 @@ export interface StatementCalculationInput {
 
 /**
  * SINGLE SOURCE OF TRUTH: Calculates customer statement and SOA dataset.
+ * Seamlessly integrates historical imported SOA transactions and live ERP invoices/payments,
+ * strictly preventing double-counting of matched transactions.
  */
 export function calculateCustomerStatement(input: StatementCalculationInput): StatementData {
   const normInvoices = filterEligibleInvoices(input.invoices);
   const normCredits = filterAndDeduplicateCredits(input.receipts, input.payments);
-  const allTxs = sortTransactionsChronologically([...normInvoices, ...normCredits]);
+
+  let mergedTxs: NormalizedTransaction[] = [];
+
+  if (input.historicalEntries && input.historicalEntries.length > 0) {
+    const matchedInvoiceIds = new Set<string>();
+    const matchedVoucherIds = new Set<string>();
+    const matchedPaymentIds = new Set<string>();
+
+    // 1. Process and match historical entries
+    const historicalTxs: NormalizedTransaction[] = input.historicalEntries.map((h) => {
+      const match = matchSingleHistoricalEntry(h, input.invoices, input.receipts, input.payments);
+      const invoiceId = match.matchedType === "invoice" ? match.matchedId : h.matched_invoice_id;
+      const voucherId = match.matchedType === "receipt_voucher" ? match.matchedId : h.matched_voucher_id;
+      const paymentId = match.matchedType === "payment" ? match.matchedId : h.matched_payment_id;
+
+      if (invoiceId) matchedInvoiceIds.add(invoiceId);
+      if (voucherId) matchedVoucherIds.add(voucherId);
+      if (paymentId) matchedPaymentIds.add(paymentId);
+
+      const dAmt = roundCurrency(Number(h.debit) || 0);
+      const cAmt = roundCurrency(Number(h.credit) || 0);
+
+      return {
+        id: h.id || `hist_${Math.random().toString(36).slice(2, 9)}`,
+        date: h.date ? h.date.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        reference_no: h.reference_no,
+        original_reference: h.original_reference || h.reference_no,
+        invoice_id: invoiceId,
+        voucher_id: voucherId,
+        payment_id: paymentId,
+        description: h.description,
+        debit: dAmt,
+        credit: cAmt,
+        type: invoiceId ? "invoice" : voucherId ? "receipt_voucher" : paymentId ? "payment" : "historical",
+        status: match.status === "matched" ? "matched" : "historical",
+        is_historical: true,
+        is_edited: h.is_edited ?? false,
+        historical_entry_id: h.id,
+        source_doc_id: h.source_doc_id,
+        source_filename: h.source_filename,
+      };
+    });
+
+    // 2. Add live invoices that were NOT already present in historicalEntries (Zero Double Counting!)
+    const liveInvoices = normInvoices
+      .filter((inv) => !matchedInvoiceIds.has(inv.id))
+      .map((inv) => ({
+        ...inv,
+        status: "live" as const,
+        is_historical: false,
+      }));
+
+    // 3. Add live credits that were NOT already present in historicalEntries (Zero Double Counting!)
+    const liveCredits = normCredits
+      .filter((c) => {
+        if (c.voucher_id && matchedVoucherIds.has(c.voucher_id)) return false;
+        if (c.payment_id && matchedPaymentIds.has(c.payment_id)) return false;
+        return true;
+      })
+      .map((c) => ({
+        ...c,
+        status: "live" as const,
+        is_historical: false,
+      }));
+
+    mergedTxs = [...historicalTxs, ...liveInvoices, ...liveCredits];
+  } else {
+    mergedTxs = [
+      ...normInvoices.map((inv) => ({ ...inv, status: "live" as const, is_historical: false })),
+      ...normCredits.map((c) => ({ ...c, status: "live" as const, is_historical: false })),
+    ];
+  }
+
+  const allTxs = sortTransactionsChronologically(mergedTxs);
 
   const cleanInitialBal = roundCurrency(Number(input.initialCutoverBalance) || 0);
   const cleanFromDate = input.fromDate ? input.fromDate.slice(0, 10) : null;
@@ -353,6 +636,7 @@ export function calculateCustomerStatement(input: StatementCalculationInput): St
     currentBalance = roundCurrency(currentBalance + tx.debit - tx.credit);
 
     return {
+      id: tx.id,
       date: tx.date,
       reference_no: tx.reference_no,
       original_reference: tx.original_reference,
@@ -363,6 +647,13 @@ export function calculateCustomerStatement(input: StatementCalculationInput): St
       debit: tx.debit,
       credit: tx.credit,
       balance: currentBalance,
+      type: tx.type,
+      status: tx.status || (tx.is_historical ? "historical" : "live"),
+      is_historical: Boolean(tx.is_historical),
+      is_edited: tx.is_edited,
+      historical_entry_id: tx.historical_entry_id,
+      source_doc_id: tx.source_doc_id,
+      source_filename: tx.source_filename,
     };
   });
 
@@ -373,6 +664,7 @@ export function calculateCustomerStatement(input: StatementCalculationInput): St
     statement_date: input.statementDate || new Date().toISOString().slice(0, 10),
     from_date: cleanFromDate,
     to_date: cleanToDate,
+    cutover_date: input.cutoverDate || null,
     customer_name: input.customerName || "Customer",
     customer_trn: input.customerTrn || null,
     customer_address: input.customerAddress || null,
