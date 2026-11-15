@@ -22,6 +22,9 @@ export interface ParsedPdfPage {
   text: string;
   lines: string[];
   items: ParsedPdfTextItem[];
+  characterCount?: number;
+  nonWhitespaceCharacterCount?: number;
+  imageOperatorCount?: number;
 }
 
 export interface PdfParseResult {
@@ -29,6 +32,11 @@ export interface PdfParseResult {
   pages: ParsedPdfPage[];
   allText: string;
   sourceSnippets: { location: SourceLocation; text: string }[];
+  totalCharacterCount: number;
+  nonWhitespaceCharacterCount: number;
+  imageOperatorCount: number;
+  hasSelectableText: boolean;
+  isImageOnly: boolean;
 }
 
 export async function parsePdf(
@@ -75,9 +83,25 @@ export async function parsePdf(
     } catch {}
   }
 
-  const uint8Data = new Uint8Array(buffer);
+  const uint8Data = new Uint8Array(
+    (buffer as { slice?: (start: number, end?: number) => unknown }).slice
+      ? (buffer as { slice: (start: number) => ArrayBuffer }).slice(0)
+      : buffer
+  );
+
+  const isNode = typeof window === "undefined";
+  const standardFontsUrl = isNode
+    ? "./node_modules/pdfjs-dist/standard_fonts/"
+    : `https://unpkg.com/pdfjs-dist@${pdfjs.version || "4.10.38"}/standard_fonts/`;
+  const cMapUrl = isNode
+    ? "./node_modules/pdfjs-dist/cmaps/"
+    : `https://unpkg.com/pdfjs-dist@${pdfjs.version || "4.10.38"}/cmaps/`;
+
   const loadingTask = pdfjs.getDocument({
     data: uint8Data,
+    cMapUrl,
+    cMapPacked: true,
+    standardFontDataUrl: standardFontsUrl,
     useSystemFonts: true,
   });
 
@@ -86,13 +110,37 @@ export async function parsePdf(
   const sourceSnippets: { location: SourceLocation; text: string }[] = [];
   const textAccumulator: string[] = [];
 
+  let totalChars = 0;
+  let totalNonWhitespaceChars = 0;
+  let totalImageOps = 0;
+
   for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
     const page = await pdfDoc.getPage(pageNum);
     const viewport = page.getViewport({ scale: 1.0 });
     const textContent = await page.getTextContent();
 
+    // Inspect operator list for image operations
+    let pageImageOps = 0;
+    try {
+      const opList = await (page as unknown as { getOperatorList?: () => Promise<{ fnArray: number[] }> }).getOperatorList?.();
+      if (opList && Array.isArray(opList.fnArray)) {
+        const paintImageXObject = (pdfjs as unknown as { OPS?: { paintImageXObject?: number } }).OPS?.paintImageXObject ?? 85;
+        const paintInlineImageXObject = (pdfjs as unknown as { OPS?: { paintInlineImageXObject?: number } }).OPS?.paintInlineImageXObject ?? 86;
+        for (const fn of opList.fnArray) {
+          if (fn === paintImageXObject || fn === paintInlineImageXObject) {
+            pageImageOps++;
+          }
+        }
+      }
+    } catch (opErr) {
+      console.warn(`Could not get operator list for page ${pageNum}:`, opErr);
+    }
+    totalImageOps += pageImageOps;
+
     const items: ParsedPdfTextItem[] = [];
     const lineMap: Map<number, { str: string; x: number; width: number }[]> = new Map();
+    let pageChars = 0;
+    let pageNonWhitespaceChars = 0;
 
     for (const rawItem of textContent.items) {
       const item = rawItem as { str?: string; transform?: number[]; width?: number; height?: number };
@@ -101,6 +149,9 @@ export async function parsePdf(
       const y = Math.round(item.transform?.[5] || 0);
       const width = item.width || 0;
       const str = item.str;
+
+      pageChars += str.length;
+      pageNonWhitespaceChars += str.replace(/\s+/g, "").length;
 
       items.push({
         str,
@@ -118,6 +169,9 @@ export async function parsePdf(
       }
       lineMap.get(bucketY)!.push({ str, x, width });
     }
+
+    totalChars += pageChars;
+    totalNonWhitespaceChars += pageNonWhitespaceChars;
 
     // Sort lines from top (highest Y in PDF coords) to bottom
     const sortedY = Array.from(lineMap.keys()).sort((a, b) => b - a);
@@ -168,13 +222,24 @@ export async function parsePdf(
       text: pageText,
       lines,
       items,
+      characterCount: pageChars,
+      nonWhitespaceCharacterCount: pageNonWhitespaceChars,
+      imageOperatorCount: pageImageOps,
     });
   }
+
+  const hasSelectableText = totalNonWhitespaceChars >= 20;
+  const isImageOnly = totalImageOps > 0 && !hasSelectableText;
 
   return {
     pagesCount: pdfDoc.numPages,
     pages,
     allText: textAccumulator.join("\n\n"),
     sourceSnippets,
+    totalCharacterCount: totalChars,
+    nonWhitespaceCharacterCount: totalNonWhitespaceChars,
+    imageOperatorCount: totalImageOps,
+    hasSelectableText,
+    isImageOnly,
   };
 }

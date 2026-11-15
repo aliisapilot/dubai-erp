@@ -18,6 +18,7 @@
  */
 
 import { formatDisplayDocNumber } from "./helpers";
+import { extractHistoricalSequence, getCommonDocPrefixes } from "./documentSequenceParsing";
 
 export interface RawInvoice {
   id: string;
@@ -194,13 +195,14 @@ export function matchSingleHistoricalEntry(
       }
     }
 
+    // 2. Exact normalized reference match
     if (normRef) {
       const matchByNum = invoices.find(
         (inv) => normalizeDocRef(inv.invoice_number) === normRef
       );
       if (matchByNum) {
         const invAmt = roundCurrency(Number(matchByNum.total_amount) || 0);
-        if (Math.abs(invAmt - entryDebit) <= 0.05) {
+        if (roundCurrency(Math.abs(invAmt - entryDebit)) <= 0.05) {
           return {
             matchedId: matchByNum.id,
             matchedType: "invoice",
@@ -218,12 +220,50 @@ export function matchSingleHistoricalEntry(
       }
     }
 
+    // 3. Sequence-aware matching (e.g. INV-101 matches INV-2026-000101 when amounts match within 0.05)
+    const invPrefixes = [...getCommonDocPrefixes("tax_invoice"), ""];
+    const rawRef = (entry.reference_no || entry.original_reference || "").trim();
+    const entrySeq = extractHistoricalSequence(rawRef, invPrefixes);
+
+    if (entrySeq !== null) {
+      const seqMatches = invoices.filter((inv) => {
+        const invSeq = extractHistoricalSequence(inv.invoice_number || "", invPrefixes);
+        return invSeq === entrySeq;
+      });
+
+      if (seqMatches.length > 0) {
+        const amtMatch = seqMatches.find((inv) => {
+          const invAmt = roundCurrency(Number(inv.total_amount) || 0);
+          return roundCurrency(Math.abs(invAmt - entryDebit)) <= 0.05;
+        });
+
+        if (amtMatch) {
+          return {
+            matchedId: amtMatch.id,
+            matchedType: "invoice",
+            status: "matched",
+            reason: `Sequence-aware invoice match (#${entrySeq}: ${amtMatch.invoice_number}) and amount (AED ${entryDebit.toFixed(2)})`,
+          };
+        }
+
+        if (seqMatches.length === 1) {
+          const invAmt = roundCurrency(Number(seqMatches[0].total_amount) || 0);
+          return {
+            matchedId: seqMatches[0].id,
+            matchedType: "invoice",
+            status: "conflict",
+            reason: `Invoice sequence matches (#${entrySeq}: ${seqMatches[0].invoice_number}) but amount differs (SOA: ${entryDebit.toFixed(2)}, ERP: ${invAmt.toFixed(2)})`,
+          };
+        }
+      }
+    }
+
     // Secondary candidate: same date and exact amount if reference is generic (e.g. "INV", "Tax Invoice")
     if (normRef === "inv" || normRef === "taxinvoice" || !normRef) {
       const matchDateAmt = invoices.find((inv) => {
         const invAmt = roundCurrency(Number(inv.total_amount) || 0);
         const invDate = inv.invoice_date ? inv.invoice_date.slice(0, 10) : "";
-        return invDate === entryDate && Math.abs(invAmt - entryDebit) <= 0.01;
+        return invDate === entryDate && roundCurrency(Math.abs(invAmt - entryDebit)) <= 0.01;
       });
       if (matchDateAmt) {
         return {
@@ -275,7 +315,7 @@ export function matchSingleHistoricalEntry(
       });
       if (matchRcv) {
         const rcvAmt = roundCurrency(Number(matchRcv.amount) || 0);
-        if (Math.abs(rcvAmt - entryCredit) <= 0.05) {
+        if (roundCurrency(Math.abs(rcvAmt - entryCredit)) <= 0.05) {
           return {
             matchedId: matchRcv.id,
             matchedType: "receipt_voucher",
@@ -300,12 +340,78 @@ export function matchSingleHistoricalEntry(
       });
       if (matchPay) {
         const payAmt = roundCurrency(Number(matchPay.amount) || 0);
-        if (Math.abs(payAmt - entryCredit) <= 0.05) {
+        if (roundCurrency(Math.abs(payAmt - entryCredit)) <= 0.05) {
           return {
             matchedId: matchPay.id,
             matchedType: "payment",
             status: "matched",
             reason: `Payment match (${matchPay.payment_number || matchPay.reference_number})`,
+          };
+        }
+      }
+    }
+
+    // 3. Sequence-aware matching for Receipt Vouchers
+    const rcvPrefixes = [...getCommonDocPrefixes("receipt_voucher"), ""];
+    const rawCreditRef = (entry.reference_no || entry.original_reference || "").trim();
+    const entryRcvSeq = extractHistoricalSequence(rawCreditRef, rcvPrefixes);
+
+    if (entryRcvSeq !== null) {
+      const rcvMatches = receipts.filter((r) => {
+        const vSeq = extractHistoricalSequence(r.voucher_number || "", rcvPrefixes);
+        const cSeq = r.cheque_number ? extractHistoricalSequence(r.cheque_number, rcvPrefixes) : null;
+        return vSeq === entryRcvSeq || cSeq === entryRcvSeq;
+      });
+
+      if (rcvMatches.length > 0) {
+        const amtMatch = rcvMatches.find((r) => {
+          const rcvAmt = roundCurrency(Number(r.amount) || 0);
+          return roundCurrency(Math.abs(rcvAmt - entryCredit)) <= 0.05;
+        });
+
+        if (amtMatch) {
+          return {
+            matchedId: amtMatch.id,
+            matchedType: "receipt_voucher",
+            status: "matched",
+            reason: `Sequence-aware voucher match (#${entryRcvSeq}: ${amtMatch.voucher_number}) and amount (AED ${entryCredit.toFixed(2)})`,
+          };
+        }
+
+        if (rcvMatches.length === 1) {
+          return {
+            matchedId: rcvMatches[0].id,
+            matchedType: "receipt_voucher",
+            status: "conflict",
+            reason: `Voucher sequence matches (#${entryRcvSeq}: ${rcvMatches[0].voucher_number}) but amount differs`,
+          };
+        }
+      }
+    }
+
+    // 4. Sequence-aware matching for Payments
+    const payPrefixes = [...getCommonDocPrefixes("employee_payment_voucher"), ""];
+    const entryPaySeq = extractHistoricalSequence(rawCreditRef, payPrefixes);
+
+    if (entryPaySeq !== null) {
+      const payMatches = payments.filter((p) => {
+        const pSeq = extractHistoricalSequence(p.payment_number || "", payPrefixes);
+        const rSeq = p.reference_number ? extractHistoricalSequence(p.reference_number, payPrefixes) : null;
+        return pSeq === entryPaySeq || rSeq === entryPaySeq;
+      });
+
+      if (payMatches.length > 0) {
+        const amtMatch = payMatches.find((p) => {
+          const payAmt = roundCurrency(Number(p.amount) || 0);
+          return roundCurrency(Math.abs(payAmt - entryCredit)) <= 0.05;
+        });
+
+        if (amtMatch) {
+          return {
+            matchedId: amtMatch.id,
+            matchedType: "payment",
+            status: "matched",
+            reason: `Sequence-aware payment match (#${entryPaySeq}: ${amtMatch.payment_number || amtMatch.reference_number}) and amount (AED ${entryCredit.toFixed(2)})`,
           };
         }
       }
@@ -328,7 +434,8 @@ export function matchSingleHistoricalEntry(
  */
 export function roundCurrency(num: number): number {
   if (isNaN(num)) return 0;
-  return Math.round((num + Number.EPSILON) * 100) / 100;
+  const sign = num < 0 ? -1 : 1;
+  return (sign * Math.round((Math.abs(num) + Number.EPSILON) * 100)) / 100;
 }
 
 /**
@@ -566,7 +673,7 @@ export function calculateCustomerStatement(input: StatementCalculationInput): St
         debit: dAmt,
         credit: cAmt,
         type: invoiceId ? "invoice" : voucherId ? "receipt_voucher" : paymentId ? "payment" : "historical",
-        status: match.status === "matched" ? "matched" : "historical",
+        status: match.status === "matched" ? "matched" : match.status === "conflict" ? "conflict" : "historical",
         is_historical: true,
         is_edited: h.is_edited ?? false,
         historical_entry_id: h.id,

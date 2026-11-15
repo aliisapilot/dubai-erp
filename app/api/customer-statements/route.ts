@@ -156,6 +156,11 @@ export async function GET(req: NextRequest) {
       })
     );
 
+    // Segregate attachments: Only statements where s.is_verified && !s.needs_review
+    // can populate customerSavedSoa. Unverified/pending statements are segregated as pendingDocuments.
+    const verifiedStatements = statements.filter((s) => s.is_verified && !s.needs_review);
+    const pendingDocuments = statements.filter((s) => !s.is_verified || s.needs_review);
+
     let statementData = null;
     let selectedCustomer = null;
     let customerSavedSoa = null;
@@ -164,8 +169,8 @@ export async function GET(req: NextRequest) {
     if (targetCustomerId) {
       selectedCustomer = customers?.find((c) => c.id === targetCustomerId) || null;
 
-      // Find newest saved SOA for this customer
-      customerSavedSoa = statements.find((s) => s.customer_id === targetCustomerId) || null;
+      // Find newest verified SOA for this customer
+      customerSavedSoa = verifiedStatements.find((s) => s.customer_id === targetCustomerId) || null;
 
       // Fetch live invoices & receipts & payments
       const [invRes, recRes, payRes] = await Promise.all([
@@ -217,7 +222,8 @@ export async function GET(req: NextRequest) {
       success: true,
       companyId,
       customers: customers || [],
-      statements,
+      statements: verifiedStatements,
+      pendingDocuments,
       company: companyRecord || null,
       selectedCustomer,
       statement: statementData,
@@ -250,6 +256,8 @@ export interface SaveSoaItemPayload {
   checksumSha256?: string;
   needsReview?: boolean;
   isScannedPdf?: boolean;
+  isVerified?: boolean;
+  status?: "verified" | "pending_verification" | "rejected";
   cutoverDate?: string | null;
   isCutoverApproved?: boolean;
   entries?: RawHistoricalEntry[];
@@ -366,6 +374,24 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
+        // Validate verification guardrails:
+        // isVerified === true can only be set if statement has non-empty entries and customer assigned.
+        // Unverified files are saved with isVerified: false and status: "pending_verification".
+        const hasEntries = Array.isArray(item.entries) && item.entries.length > 0;
+        const hasCustomer = Boolean(resolvedCustomerId);
+        const requestedVerified = Boolean(item.isVerified);
+
+        let finalIsVerified = false;
+        let finalStatus: "verified" | "pending_verification" | "rejected" = "pending_verification";
+
+        if (requestedVerified && hasEntries && hasCustomer && !item.needsReview && !item.isScannedPdf) {
+          finalIsVerified = true;
+          finalStatus = "verified";
+        } else {
+          finalIsVerified = false;
+          finalStatus = item.status === "rejected" ? "rejected" : "pending_verification";
+        }
+
         const bucket = item.storageBucket || "smart-imports";
         const fileUrl = `/api/smart-import/storage?path=${encodeURIComponent(item.storagePath)}&bucket=${encodeURIComponent(bucket)}`;
         const description = buildSoaAttachmentDescription({
@@ -378,8 +404,10 @@ export async function POST(req: NextRequest) {
           credits: item.credits,
           closingBalance: item.closingBalance,
           checksumSha256: item.checksumSha256,
-          needsReview: item.needsReview,
+          needsReview: item.needsReview !== undefined ? item.needsReview : !finalIsVerified,
           isScannedPdf: item.isScannedPdf,
+          isVerified: finalIsVerified,
+          status: finalStatus,
           storagePath: item.storagePath,
           storageBucket: bucket,
           cutoverDate: item.cutoverDate,
@@ -633,6 +661,9 @@ export async function PUT(req: NextRequest) {
     const openingBalance = stored.opening_balance;
     const closingBalance = Math.round((openingBalance + totalDebits - totalCredits) * 100) / 100;
 
+    const isStillVerified = stored.is_verified && existingEntries.length > 0;
+    const putStatus = isStillVerified ? "verified" : stored.status === "rejected" ? "rejected" : "pending_verification";
+
     const newDescription = buildSoaAttachmentDescription({
       soaNumber: stored.soa_number,
       statementDate: stored.statement_date,
@@ -645,6 +676,8 @@ export async function PUT(req: NextRequest) {
       checksumSha256: stored.checksum_sha256 || undefined,
       needsReview: stored.needs_review,
       isScannedPdf: stored.is_scanned_pdf,
+      isVerified: isStillVerified,
+      status: putStatus,
       storagePath: stored.storage_path || undefined,
       storageBucket: stored.storage_bucket,
       cutoverDate: updatedCutoverDate,
@@ -679,6 +712,9 @@ export async function PUT(req: NextRequest) {
         cutover_approved_at: cutoverApprovedAt,
         entries: existingEntries,
         audit_trail: auditTrail,
+        is_verified: isStillVerified,
+        isVerified: isStillVerified,
+        status: putStatus,
       },
     });
   } catch (err) {

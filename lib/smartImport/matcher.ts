@@ -117,8 +117,8 @@ export function normalizeEntityName(name: string): string {
   if (!name) return "";
   return name
     .toLowerCase()
-    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, " ")
-    .replace(/\b(co|company|l\s*l\s*c|llc|fze|fzc|est|establishment|trading|general\s*trading)\b/gi, " ")
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()'"&““”‘’]/g, " ")
+    .replace(/\b(co|company|l\s*l\s*c|llc|llc[- ]?fz|fze|fzc|fz|sp|spc|est|establishment|trading|general\s*trading)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }

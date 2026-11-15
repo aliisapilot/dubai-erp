@@ -1192,7 +1192,7 @@ export default function CustomerStatementsPage() {
                     <div>
                       <p className="font-semibold text-white">{s.file_name}</p>
                       <p className="text-[11px] text-slate-400">
-                        SOA: {s.soa_number} • Date: {s.statement_date} • Closing: AED {s.closing_balance.toFixed(2)}
+                        SOA: {s.soa_number} • Date: {s.statement_date} • Closing: {s.closing_balance != null ? `AED ${s.closing_balance.toFixed(2)}` : "Not extracted"}
                       </p>
                     </div>
                     {s.storage_path && (

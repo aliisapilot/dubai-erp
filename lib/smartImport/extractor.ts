@@ -15,6 +15,17 @@ import type { DocxParseResult } from "./parsers/docxParser";
 import type { XlsxParseResult } from "./parsers/xlsxParser";
 import type { PdfParseResult } from "./parsers/pdfParser";
 
+declare module "./types" {
+  interface ExtractedLineItem {
+    date?: string | null;
+    reference?: string;
+    reference_no?: string;
+    debit?: number;
+    credit?: number;
+    balance?: number;
+  }
+}
+
 export interface ExtractionOutput {
   fields: Record<string, ExtractedField>;
   items: ExtractedLineItem[];
@@ -36,30 +47,85 @@ function parseNumber(val: unknown): number | null {
   // Fix spaces before/in comma thousands: "2 ,719.00" -> "2719.00"
   str = str.replace(/(\d+)\s*,\s*(\d+)/g, "$1$2");
   str = str.replace(/(\d+)\s+(\d{3})(?=[^\d]|$)/g, "$1$2");
-  const cleaned = str.replace(/[^0-9.-]/g, "");
+  const isNegative = /^\s*\(.*?\)\s*$/.test(str) || str.includes("-");
+  const cleaned = str.replace(/[^0-9.]/g, "");
   const num = parseFloat(cleaned);
-  return isNaN(num) ? null : num;
+  if (isNaN(num)) return null;
+  if (num === 0) return 0;
+  return isNegative ? -Math.abs(num) : Math.abs(num);
+}
+
+function isValidCalendarDate(y: number, m: number, d: number): boolean {
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const isLeap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const daysInMonth = [0, 31, isLeap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return d <= daysInMonth[m];
 }
 
 function parseDate(val: unknown): string | null {
   if (!val) return null;
   const str = String(val).trim();
-  // Try YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-
-  // Try DD/MM/YYYY or DD-MM-YYYY
-  const dmy = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-  if (dmy) {
-    const day = dmy[1].padStart(2, "0");
-    const month = dmy[2].padStart(2, "0");
-    const year = dmy[3];
-    return `${year}-${month}-${day}`;
+  // Try YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const ymd = str.match(/^(\d{4})[/. -](\d{1,2})[/. -](\d{1,2})$/);
+  if (ymd) {
+    const y = parseInt(ymd[1], 10);
+    const m = parseInt(ymd[2], 10);
+    const d = parseInt(ymd[3], 10);
+    if (!isValidCalendarDate(y, m, d)) return null;
+    return `${ymd[1]}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   }
 
-  // Try parsing with Date
+  // Try DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const dmy = str.match(/^(\d{1,2})[/. -](\d{1,2})[/. -](\d{4})$/);
+  if (dmy) {
+    const d = parseInt(dmy[1], 10);
+    const m = parseInt(dmy[2], 10);
+    const y = parseInt(dmy[3], 10);
+    if (!isValidCalendarDate(y, m, d)) return null;
+    return `${dmy[3]}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+
+  // Try DD-MMM-YYYY or DD MMM YYYY (e.g. 15-Oct-2026, 01-Oct-2026)
+  const dMmmY = str.match(/^(\d{1,2})[-/.\s]([A-Za-z]{3,9})[-/.\s](\d{2,4})$/);
+  if (dMmmY) {
+    const d = parseInt(dMmmY[1], 10);
+    const mStr = dMmmY[2].slice(0, 3).toLowerCase();
+    const months: Record<string, number> = {
+      jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+      jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+    };
+    const m = months[mStr];
+    if (!m) return null;
+    let y = parseInt(dMmmY[3], 10);
+    if (dMmmY[3].length === 2) y += 2000;
+    if (!isValidCalendarDate(y, m, d)) return null;
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+
+  // Try MMM DD, YYYY or Month DD, YYYY (e.g. October 31, 2026)
+  const mmmDY = str.match(/^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})$/);
+  if (mmmDY) {
+    const mStr = mmmDY[1].slice(0, 3).toLowerCase();
+    const months: Record<string, number> = {
+      jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+      jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+    };
+    const m = months[mStr];
+    if (!m) return null;
+    const d = parseInt(mmmDY[2], 10);
+    const y = parseInt(mmmDY[3], 10);
+    if (!isValidCalendarDate(y, m, d)) return null;
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+
+  // Try parsing with Date using local components to avoid UTC shift
   const d = new Date(str);
   if (!isNaN(d.getTime())) {
-    return d.toISOString().split("T")[0];
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    if (!isValidCalendarDate(y, m, day)) return null;
+    return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   }
   return null;
 }
@@ -1067,7 +1133,8 @@ export function extractFromPdf(
   const fnSingleMatch = !fnTripleMatch && !fnDoubleMatch ? baseName.match(/^([A-Za-z0-9/_-]+)\.(docx|pdf|xlsx|csv)$/i) : null;
 
   const fnDocNo = fnTripleMatch ? fnTripleMatch[1].trim() : fnDoubleMatch ? fnDoubleMatch[1].trim() : fnSingleMatch ? fnSingleMatch[1].trim() : null;
-  const fnCust = fnTripleMatch ? fnTripleMatch[2].trim() : fnDoubleMatch ? fnDoubleMatch[2].trim() : null;
+  const rawCust = fnTripleMatch ? fnTripleMatch[2] : fnDoubleMatch ? fnDoubleMatch[2] : null;
+  const fnCust = rawCust ? rawCust.replace(/^[-–—\s]+|[-–—\s]+$/g, "").trim() : null;
   const fnScope = fnTripleMatch ? fnTripleMatch[3].trim() : null;
 
   // Primary customer name defaults from systematic file naming
@@ -1154,10 +1221,10 @@ export function extractFromPdf(
   for (let lIdx = 0; lIdx < lines.length; lIdx++) {
     const line = lines[lIdx];
     const combined = line + " " + (lines[lIdx + 1] || "");
-    if (!fields.document_date && /\b(?:date|supply|dated|statement\s*date)\b/i.test(combined)) {
-      const dm = combined.match(/(?:date|supply|dated|statement\s*date)[:\s]+([0-9\s/.-]{8,15})/i);
+    if (!fields.document_date && /\b(?:date\s*of\s*issue|issue\s*date|statement\s*date|supply\s*date|dated|date)\b/i.test(combined)) {
+      const dm = combined.match(/(?:date\s*of\s*issue|issue\s*date|statement\s*date|supply\s*date|dated|date)[:\s]+((?:[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})|(?:\d{1,2}[-/\s](?:[A-Za-z]{3,9}|\d{1,2})[-/\s]\d{2,4})|(?:\d{4}[-/\s]\d{1,2}[-/\s]\d{1,2})|[0-9\s/.-]{8,15})/i);
       if (dm) {
-        const dStr = dm[1].replace(/\s+/g, "");
+        const dStr = dm[1].trim();
         const pd = parseDate(dStr);
         if (pd) {
           fields.document_date = {
@@ -1169,6 +1236,17 @@ export function extractFromPdf(
             validationStatus: "valid",
             originalRawValue: dStr,
           };
+          if (docType === "customer_statement") {
+            fields.statement_date = {
+              fieldKey: "statement_date",
+              label: "Statement Date",
+              value: pd,
+              source: { file: fileName, page: 1, row: lIdx + 1, rawText: combined },
+              confidence: 0.98,
+              validationStatus: "valid",
+              originalRawValue: dStr,
+            };
+          }
         }
       }
     }
@@ -1303,7 +1381,7 @@ export function extractFromPdf(
     if (docType === "customer_statement") {
       // Opening Balance / Previous Balance
       if (!fields.opening_balance && /(?:previous\s*balance|opening\s*balance|balance\s*brought\s*forward)/i.test(combined)) {
-        const m = combined.match(/(?:previous\s*balance|opening\s*balance|balance\s*brought\s*forward)\s*[:]?\s*(?:AED)?\s*(-?[0-9,]+(?:\.[0-9]+)?)/i);
+        const m = combined.match(/(?:previous\s*balance|opening\s*balance|balance\s*brought\s*forward)\s*[:]?\s*(?:AED\s*)?(\(-?[0-9,]+(?:\.[0-9]+)?\)|-?[0-9,]+(?:\.[0-9]+)?)/i);
         if (m) {
           const val = parseNumber(m[1]) ?? 0;
           fields.opening_balance = {
@@ -1354,7 +1432,7 @@ export function extractFromPdf(
 
       // Closing Balance / Total Balance Due
       if (!fields.total_amount && /(?:total\s*balance\s*due|account\s*current\s*balance|closing\s*balance|balance\s*due)/i.test(combined)) {
-        const m = combined.match(/(?:total\s*balance\s*due|account\s*current\s*balance|closing\s*balance|balance\s*due)\s*[:]?\s*(?:AED)?\s*(-?[0-9,]+(?:\.[0-9]+)?)/i);
+        const m = combined.match(/(?:total\s*balance\s*due|account\s*current\s*balance|closing\s*balance|balance\s*due)\s*[:]?\s*(?:AED\s*)?(\(-?[0-9,]+(?:\.[0-9]+)?\)|-?[0-9,]+(?:\.[0-9]+)?)/i);
         if (m) {
           const val = parseNumber(m[1]) ?? 0;
           fields.total_amount = {
@@ -1464,42 +1542,62 @@ export function extractFromPdf(
 
       // Statement of Account (SOA) Transaction Row Parser
       if (docType === "customer_statement") {
-        const mDate = line.match(/^([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})\s+(.+)$/);
+        const soaDateRegex = /^((?:\d{1,2}[-/.\s](?:[A-Za-z]{3,9}|\d{1,2})[-/.\s]\d{2,4})|(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2})|(?:[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}))\s+(.+)$/;
+        const mDate = line.match(soaDateRegex);
         if (mDate) {
-          const transDate = mDate[1];
+          const transDate = mDate[1].trim();
           const rest = mDate[2].trim();
-          const numMatches = Array.from(rest.matchAll(/(?:AED\s*)?(-?[0-9,]+\.[0-9]{2})/gi));
+          const tokenRegex = /(?:^|\s)(?:AED\s*)?(\(-?[0-9,]+(?:\.[0-9]+)?\)|-?[0-9,]+(?:\.[0-9]+)?|---|—|–|-)(?=\s|$)/gi;
+          const numMatches = Array.from(rest.matchAll(tokenRegex));
           if (numMatches.length > 0) {
-            const firstNumIdx = rest.indexOf(numMatches[0][0]);
+            const trailingMatches = numMatches.slice(-3);
+            const firstNumIdx = trailingMatches[0].index ?? rest.indexOf(trailingMatches[0][0]);
             const transDesc = rest.slice(0, firstNumIdx).trim();
-            const nums = numMatches.map(m => parseNumber(m[1]) ?? 0);
+
+            const parsedNums = trailingMatches.map(m => {
+              const raw = m[1];
+              if (raw === "—" || raw === "–" || raw === "-" || raw === "---" || /^[-—–]+$/.test(raw)) return 0;
+              return parseNumber(raw) ?? 0;
+            });
 
             let charge = 0;
             let credit = 0;
             let balance = 0;
 
-            if (nums.length >= 3) {
-              charge = nums[0];
-              credit = nums[1];
-              balance = nums[2];
-            } else if (nums.length === 2) {
+            if (parsedNums.length >= 3) {
+              charge = parsedNums[0];
+              credit = parsedNums[1];
+              balance = parsedNums[2];
+            } else if (parsedNums.length === 2) {
               if (/rv|receipt|pay|cred/i.test(transDesc)) {
-                credit = nums[0];
+                credit = parsedNums[0];
               } else {
-                charge = nums[0];
+                charge = parsedNums[0];
               }
-              balance = nums[1];
-            } else if (nums.length === 1) {
-              balance = nums[0];
+              balance = parsedNums[1];
+            } else if (parsedNums.length === 1) {
+              balance = parsedNums[0];
               if (/opening|brought\s*forward/i.test(transDesc)) {
-                charge = nums[0];
+                charge = parsedNums[0];
               }
             }
+
+            // Extract reference number
+            const refMatch = transDesc.match(/\b((?:INV|TAX|BILL|RV|REC|RCPT|PAY|PV|CN|DN|QTN|SO|SOA)[-_/][0-9A-Za-z-_/]+)\b/i) ||
+                             transDesc.match(/\b([A-Za-z]{2,5}[-_/][0-9A-Za-z-_/]+)\b/i) ||
+                             transDesc.match(/\b([A-Z]{2,4}[0-9]{3,})\b/i);
+            const refNo = refMatch ? refMatch[1] : "";
 
             items.push({
               id: `item_soa_${itemSeq}`,
               itemNumber: itemSeq++,
               description: `${transDate} - ${transDesc || "Statement Entry"}`,
+              date: parseDate(transDate) || transDate,
+              reference: refNo || undefined,
+              reference_no: refNo || undefined,
+              debit: charge,
+              credit: credit,
+              balance: balance,
               quantity: 1,
               unit: "Doc",
               unitPrice: charge > 0 ? charge : credit,

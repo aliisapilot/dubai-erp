@@ -9,11 +9,11 @@ export function extractHistoricalSequence(reference: string, prefixes: readonly 
     if (!tail) continue;
 
     const patterns = [
-      /^20\d{2}[-_ /]+(\d{1,9})$/,           // e.g. 2026-0145 -> 145
-      /^(\d{1,9})[-_ /]+20\d{2}$/,           // e.g. 145-2026 -> 145
-      /^\d{2}[-_ /]+(\d{1,9})$/,             // e.g. 26-0145 -> 145
-      /^(\d{1,9})\/\d{1,2}\/\d{2,4}$/,       // e.g. 145/10/26 -> 145
-      /^(\d{1,9})(?:[-/]\d{2})?$/,           // e.g. 145, 145-26, 031 -> 145, 31
+      /^20\d{2}[-_ /]+0*(\d{1,9})$/,           // e.g. 2026-0145 -> 145, 2026-0000000145 -> 145
+      /^0*(\d{1,9})[-_ /]+20\d{2}$/,           // e.g. 145-2026 -> 145, 0000000145-2026 -> 145
+      /^\d{2}[-_ /]+0*(\d{1,9})$/,             // e.g. 26-0145 -> 145, 26-0000000145 -> 145
+      /^0*(\d{1,9})\/\d{1,2}\/\d{2,4}$/,       // e.g. 145/10/26 -> 145, 0000000145/10/26 -> 145
+      /^0*(\d{1,9})(?:[-/]\d{2})?$/,           // e.g. 145, 145-26, 031, 0000000000101 -> 145, 31, 101
     ];
     for (const pattern of patterns) {
       const match = tail.match(pattern);
@@ -26,9 +26,14 @@ export function extractHistoricalSequence(reference: string, prefixes: readonly 
 
   // Fallback: If no candidate prefix matched, check if raw reference ends with sequence
   const fallbackPatterns = [
-    /^[A-Z]{1,6}[-_ /]*20\d{2}[-_ /]+(\d{1,9})$/,
-    /^[A-Z]{1,6}[-_ /]*(\d{1,9})[-_ /]+20\d{2}$/,
-    /^[A-Z]{1,6}[-_ /]*(\d{1,9})(?:[-/]\d{2})?$/,
+    /^[A-Z]{1,6}[-_ /]*20\d{2}[-_ /]+0*(\d{1,9})$/,
+    /^[A-Z]{1,6}[-_ /]*0*(\d{1,9})[-_ /]+20\d{2}$/,
+    /^[A-Z]{1,6}[-_ /]*\d{2}[-_ /]+0*(\d{1,9})$/,
+    /^[A-Z]{1,6}[-_ /]*0*(\d{1,9})(?:[-/]\d{2})?$/,
+    /^20\d{2}[-_ /]+0*(\d{1,9})$/,
+    /^0*(\d{1,9})[-_ /]+20\d{2}$/,
+    /^\d{2}[-_ /]+0*(\d{1,9})$/,
+    /^0*(\d{1,9})(?:[-/]\d{2})?$/,
   ];
   for (const pattern of fallbackPatterns) {
     const match = cleanRef.match(pattern);

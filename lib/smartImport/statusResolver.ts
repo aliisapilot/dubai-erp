@@ -291,10 +291,24 @@ export function resolveDocumentStatus(
     }
 
     case "customer_statement": {
+      const rawClosing = fields.closing_balance?.value ?? fields.total_amount?.value;
+      const hasClosing = rawClosing !== undefined && rawClosing !== null && rawClosing !== "";
+      const hasCharges = fields.subtotal?.value !== undefined && fields.subtotal?.value !== null && fields.subtotal?.value !== "";
+      const hasCredits = fields.total_credits?.value !== undefined && fields.total_credits?.value !== null && fields.total_credits?.value !== "";
+      const hasOpening = fields.opening_balance?.value !== undefined && fields.opening_balance?.value !== null && fields.opening_balance?.value !== "";
+
+      if (!hasClosing || (!hasCharges && !hasCredits && !hasOpening && Number(rawClosing) === 0)) {
+        proposedStatus = "unreconciled";
+        isAssumed = true;
+        rawEvidence = "Closing balance not extracted or empty statement; document requires manual reconciliation.";
+        mappingReason = "Unverified statement: missing verified closing balance or empty transactions";
+        break;
+      }
+
       const openBal = Number(fields.opening_balance?.value) || 0;
       const charges = Number(fields.subtotal?.value) || 0;
       const credits = Number(fields.total_credits?.value) || 0;
-      const closeBal = Number(fields.total_amount?.value ?? fields.closing_balance?.value) || 0;
+      const closeBal = Number(rawClosing) || 0;
       const diff = Math.abs((openBal + charges - credits) - closeBal);
 
       if (diff <= 0.05) {

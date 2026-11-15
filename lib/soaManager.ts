@@ -51,6 +51,8 @@ export interface SoaRecordMetadata {
   checksumSha256?: string;
   needsReview?: boolean;
   isScannedPdf?: boolean;
+  isVerified?: boolean;
+  status?: "verified" | "pending_verification" | "rejected";
   storagePath?: string;
   storageBucket?: string;
   cutoverDate?: string | null;
@@ -79,10 +81,13 @@ export interface StoredSoaRecord {
   opening_balance: number;
   charges: number;
   credits: number;
-  closing_balance: number;
+  closing_balance: number | null;
   checksum_sha256: string | null;
   needs_review: boolean;
   is_scanned_pdf: boolean;
+  is_verified: boolean;
+  isVerified: boolean;
+  status: "verified" | "pending_verification" | "rejected";
   storage_path: string | null;
   storage_bucket: string;
   cutover_date?: string | null;
@@ -104,12 +109,137 @@ export function normalizeCustomerName(name: string): string {
   if (!name) return "";
   return name
     .toLowerCase()
+    .replace(/l\.?\s*l\.?\s*c\.?[- ]?f\.?\s*z\.?/gi, " ")
     .replace(/l\.?\s*l\.?\s*c\.?/gi, " ")
-    .replace(/f\.?\s*z\.?\s*[ec]\.?/gi, " ")
+    .replace(/f\.?\s*z\.?\s*[ec]?\.?/gi, " ")
+    .replace(/s\.?\s*p\.?\s*c?\.?/gi, " ")
     .replace(/\b(co|company|est|establishment|trading|general\s*trading|ltd|limited|inc|corp)\b/gi, " ")
-    .replace(/[.,/#!$%^&*;:{}=\-_`~()'"&]/g, " ")
+    .replace(/[.,/#!$%^&*;:{}=\-_`~()'"&““”‘’]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export interface ParsedSoaFilename {
+  soaNumber: string;
+  customerName: string;
+  statementDate?: string | null;
+}
+
+/**
+ * Extracts SOA Number (e.g. 'SOA101-26') and customer name (e.g. 'Al Karwan Solution FZC')
+ * from systematic filenames like 'SOA101-26 Al Karwan Solution FZC.pdf'.
+ */
+export function parseSoaFilename(fileName: string): ParsedSoaFilename {
+  const base = (fileName || "").split(/[/\\]/).pop() || fileName;
+  const noExt = base.replace(/\.[a-zA-Z0-9]+$/, "").trim();
+
+  let soaNumber = "";
+  let customerName = "";
+  let statementDate: string | null = null;
+
+  const isDateToken = (tok: string): boolean => {
+    return /^(\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}|\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.\s][A-Za-z]{3,9}[-/.\s]\d{2,4})$/.test(tok.trim());
+  };
+
+  const tryNormalizeDate = (tok: string): string | null => {
+    const trimmed = tok.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const dmy = trimmed.match(/^(\d{1,2})[/. -](\d{1,2})[/. -](\d{4})$/);
+    if (dmy) {
+      return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+    }
+    const dMmmY = trimmed.match(/^(\d{1,2})[-/\s]([A-Za-z]{3,9})[-/\s](\d{2,4})$/);
+    if (dMmmY) {
+      const months: Record<string, string> = {
+        jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+        jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+      };
+      const m = months[dMmmY[2].slice(0, 3).toLowerCase()];
+      let y = dMmmY[3];
+      if (y.length === 2) y = `20${y}`;
+      if (m) return `${y}-${m}-${dMmmY[1].padStart(2, "0")}`;
+    }
+    return trimmed;
+  };
+
+  // Check for SOA prefix like 'SOA101-26 Al Karwan Solution FZC' or 'SOA 101-26 Customer' or 'SOA-001 - Customer - 31-Oct-2026'
+  const prefixMatch = noExt.match(/^(SOA\s*[-_]?[0-9A-Za-z-_]+)\s+(.+)$/i);
+  if (prefixMatch) {
+    soaNumber = prefixMatch[1].trim();
+    const rest = prefixMatch[2].replace(/^[-–—\s]+/, "").trim();
+    if (rest.includes(" - ")) {
+      const parts = rest.split(/\s+-\s+/);
+      customerName = parts[0].trim();
+      if (parts.length > 1) {
+        const lastPart = parts[parts.length - 1].trim();
+        if (isDateToken(lastPart)) {
+          statementDate = tryNormalizeDate(lastPart);
+        }
+      }
+    } else {
+      customerName = rest;
+    }
+  } else if (noExt.includes(" - ")) {
+    const parts = noExt.split(/\s+-\s+/);
+    if (parts.length >= 3) {
+      if (/statement/i.test(parts[0])) {
+        if (/^SOA/i.test(parts[2])) {
+          soaNumber = parts[2].trim();
+          customerName = parts[1].trim();
+        } else if (isDateToken(parts[2])) {
+          customerName = parts[1].trim();
+          statementDate = tryNormalizeDate(parts[2]);
+        } else {
+          customerName = parts[1].trim();
+        }
+      } else if (/^SOA/i.test(parts[0])) {
+        soaNumber = parts[0].trim();
+        customerName = parts[1].trim();
+        if (isDateToken(parts[2])) {
+          statementDate = tryNormalizeDate(parts[2]);
+        }
+      } else {
+        customerName = parts[0].trim();
+      }
+    } else {
+      if (/^SOA/i.test(parts[0])) {
+        soaNumber = parts[0].trim();
+        customerName = parts[1].trim();
+      } else if (/^SOA/i.test(parts[1])) {
+        soaNumber = parts[1].trim();
+        customerName = parts[0].trim();
+      } else if (parts[0].toLowerCase().includes("statement")) {
+        customerName = parts[1].trim();
+      } else {
+        customerName = parts[0].trim();
+      }
+    }
+  } else {
+    const underscoreMatch = noExt.match(/^(SOA_\d+_\d+)_(.+)$/i);
+    if (underscoreMatch) {
+      soaNumber = underscoreMatch[1].replace(/_/g, "-");
+      customerName = underscoreMatch[2].replace(/_/g, " ").trim();
+    } else if (/^SOA[-_]?[0-9A-Za-z-_]+$/i.test(noExt) && !noExt.includes(" ")) {
+      soaNumber = noExt;
+    } else {
+      // Find embedded SOA number
+      const embedded = noExt.match(/\b(SOA[-_\s]?[0-9A-Za-z-_]+)\b/i);
+      if (embedded) {
+        soaNumber = embedded[1].trim();
+        customerName = noExt.replace(embedded[0], "").replace(/[-_]/g, " ").trim();
+      } else {
+        customerName = noExt.replace(/[-_]/g, " ").trim();
+      }
+    }
+  }
+
+  // Clean customerName from common non-customer prefixes and leading/trailing dashes/spaces
+  customerName = customerName
+    .replace(/^(?:statement\s*of\s*account|customer\s*statement|soa)\s*[-:]?\s*/i, "")
+    .replace(/^[-–—\s]+|[-–—\s]+$/g, "")
+    .trim();
+
+  return { soaNumber, customerName, statementDate };
 }
 
 export function levenshteinSimilarity(a: string, b: string): number {
@@ -264,20 +394,29 @@ export function validateSoaFile(file: { name: string; size: number }): {
  * ensuring robust persistence of full transaction line items.
  */
 export function buildSoaAttachmentDescription(meta: SoaRecordMetadata): string {
+  const isVerified = meta.isVerified !== undefined
+    ? Boolean(meta.isVerified)
+    : (!meta.needsReview && Boolean(meta.entries && meta.entries.length > 0) && !meta.isScannedPdf);
+  const status: "verified" | "pending_verification" | "rejected" = meta.status
+    ? meta.status
+    : (isVerified ? "verified" : meta.needsReview ? "pending_verification" : "pending_verification");
+
   if (meta.entries && meta.entries.length > 0 || meta.cutoverDate || meta.auditTrail) {
     const payload = {
       version: "soa_v2",
       soaNumber: meta.soaNumber || "SOA",
-      statementDate: meta.statementDate || new Date().toISOString().slice(0, 10),
+      statementDate: meta.statementDate || null,
       fromDate: meta.fromDate || null,
       toDate: meta.toDate || null,
       openingBalance: meta.openingBalance || 0,
       charges: meta.charges || 0,
       credits: meta.credits || 0,
-      closingBalance: meta.closingBalance || 0,
+      closingBalance: meta.closingBalance !== undefined && meta.closingBalance !== null ? meta.closingBalance : null,
       checksumSha256: meta.checksumSha256 || null,
       needsReview: meta.needsReview || false,
       isScannedPdf: meta.isScannedPdf || false,
+      isVerified,
+      status,
       storagePath: meta.storagePath || null,
       storageBucket: meta.storageBucket || "smart-imports",
       cutoverDate: meta.cutoverDate || null,
@@ -296,14 +435,24 @@ export function buildSoaAttachmentDescription(meta: SoaRecordMetadata): string {
   if (meta.checksumSha256) {
     parts.push(`[SHA256: ${meta.checksumSha256}]`);
   }
+  const closingStr = meta.closingBalance !== undefined && meta.closingBalance !== null
+    ? `AED ${Number(meta.closingBalance).toFixed(2)}`
+    : "Not extracted";
   parts.push(
-    `| Opening: AED ${(meta.openingBalance || 0).toFixed(2)}, Charges: AED ${(meta.charges || 0).toFixed(2)}, Credits: AED ${(meta.credits || 0).toFixed(2)}, Closing: AED ${(meta.closingBalance || 0).toFixed(2)}`
+    `| Opening: AED ${(meta.openingBalance || 0).toFixed(2)}, Charges: AED ${(meta.charges || 0).toFixed(2)}, Credits: AED ${(meta.credits || 0).toFixed(2)}, Closing: ${closingStr}`
   );
   if (meta.isScannedPdf) {
     parts.push("[Scanned PDF]");
   }
   if (meta.needsReview) {
     parts.push("[Needs Review]");
+  }
+  if (isVerified) {
+    parts.push("[Verified]");
+  } else if (status === "rejected") {
+    parts.push("[Rejected]");
+  } else {
+    parts.push("[Pending Verification]");
   }
   parts.push("[Document-only archive; zero ledger mutations]");
   return parts.join(" ");
@@ -346,6 +495,31 @@ export function parseSoaAttachmentRow(row: {
   if (desc.startsWith("{")) {
     try {
       const data = JSON.parse(desc);
+      const rawIsVerified = data.isVerified !== undefined ? data.isVerified : data.is_verified;
+      const needsReview = Boolean(data.needsReview);
+      const entriesList: RawHistoricalEntry[] = Array.isArray(data.entries) ? data.entries : [];
+      const closingBal = data.closingBalance !== null && data.closingBalance !== undefined && data.closingBalance !== "" ? Number(data.closingBalance) : null;
+
+      let isVerified: boolean;
+      let status: "verified" | "pending_verification" | "rejected";
+
+      if (rawIsVerified !== undefined) {
+        isVerified = Boolean(rawIsVerified);
+        status = (data.status as "verified" | "pending_verification" | "rejected") || (isVerified ? "verified" : "pending_verification");
+      } else {
+        // Safe backward-compatibility default:
+        if (data.status === "verified" || (!needsReview && entriesList.length > 0 && closingBal !== null && !data.isScannedPdf)) {
+          isVerified = true;
+          status = "verified";
+        } else if (data.status === "rejected") {
+          isVerified = false;
+          status = "rejected";
+        } else {
+          isVerified = false;
+          status = "pending_verification";
+        }
+      }
+
       return {
         id: row.id,
         company_id: row.company_id,
@@ -358,23 +532,26 @@ export function parseSoaAttachmentRow(row: {
         description: row.description || null,
         created_at: row.created_at,
         soa_number: data.soaNumber || row.file_name.replace(/\.[^.]+$/, ""),
-        statement_date: data.statementDate || row.created_at.slice(0, 10),
+        statement_date: data.statementDate || "",
         from_date: data.fromDate || null,
         to_date: data.toDate || null,
         opening_balance: Number(data.openingBalance) || 0,
         charges: Number(data.charges) || 0,
         credits: Number(data.credits) || 0,
-        closing_balance: Number(data.closingBalance) || 0,
+        closing_balance: closingBal,
         checksum_sha256: data.checksumSha256 || null,
-        needs_review: Boolean(data.needsReview),
+        needs_review: needsReview,
         is_scanned_pdf: Boolean(data.isScannedPdf),
+        is_verified: isVerified,
+        isVerified: isVerified,
+        status: status,
         storage_path: data.storagePath || storagePath,
         storage_bucket: data.storageBucket || storageBucket,
         cutover_date: data.cutoverDate || null,
         is_cutover_approved: Boolean(data.isCutoverApproved),
         cutover_approved_by: data.cutoverApprovedBy || null,
         cutover_approved_at: data.cutoverApprovedAt || null,
-        entries: Array.isArray(data.entries) ? data.entries : [],
+        entries: entriesList,
         audit_trail: Array.isArray(data.auditTrail) ? data.auditTrail : [],
       };
     } catch {
@@ -385,7 +562,8 @@ export function parseSoaAttachmentRow(row: {
   // 2. Legacy regex parser
   const soaMatch = desc.match(/Statement of Account\s+([^\s(]+(?:\s+[^\s(]+)*?)\s*\(([^)]*)\)/i);
   const soaNumber = soaMatch?.[1]?.trim() || row.file_name.replace(/\.[^.]+$/, "");
-  const statementDate = soaMatch?.[2]?.trim() || row.created_at.slice(0, 10);
+  const rawDate = soaMatch?.[2]?.trim();
+  const statementDate = rawDate && rawDate !== "Undated" && rawDate !== "Unknown" ? rawDate : "";
 
   const openMatch = desc.match(/Opening:\s*AED\s*(-?[0-9.,]+)/i);
   const closeMatch = desc.match(/Closing:\s*AED\s*(-?[0-9.,]+)/i);
@@ -394,9 +572,25 @@ export function parseSoaAttachmentRow(row: {
   const shaMatch = desc.match(/\[SHA256:\s*([a-f0-9_-]+)\]/i);
 
   const openingBalance = openMatch ? parseFloat(openMatch[1].replace(/,/g, "")) || 0 : 0;
-  const closingBalance = closeMatch ? parseFloat(closeMatch[1].replace(/,/g, "")) || 0 : 0;
+  const closingBalance = closeMatch ? (parseFloat(closeMatch[1].replace(/,/g, "")) || 0) : null;
   const charges = chargesMatch ? parseFloat(chargesMatch[1].replace(/,/g, "")) || 0 : 0;
   const credits = creditsMatch ? parseFloat(creditsMatch[1].replace(/,/g, "")) || 0 : 0;
+
+  const hasVerifiedTag = desc.includes("[Verified]");
+  const hasRejectedTag = desc.includes("[Rejected]");
+  let legacyIsVerified = false;
+  let legacyStatus: "verified" | "pending_verification" | "rejected" = "pending_verification";
+
+  if (hasVerifiedTag) {
+    legacyIsVerified = true;
+    legacyStatus = "verified";
+  } else if (hasRejectedTag) {
+    legacyIsVerified = false;
+    legacyStatus = "rejected";
+  } else {
+    legacyIsVerified = false;
+    legacyStatus = "pending_verification";
+  }
 
   return {
     id: row.id,
@@ -410,7 +604,7 @@ export function parseSoaAttachmentRow(row: {
     description: row.description || null,
     created_at: row.created_at,
     soa_number: soaNumber,
-    statement_date: statementDate === "Undated" ? row.created_at.slice(0, 10) : statementDate,
+    statement_date: statementDate,
     from_date: null,
     to_date: null,
     opening_balance: openingBalance,
@@ -418,8 +612,11 @@ export function parseSoaAttachmentRow(row: {
     credits: credits,
     closing_balance: closingBalance,
     checksum_sha256: shaMatch?.[1] || null,
-    needs_review: desc.includes("[Needs Review]"),
+    needs_review: desc.includes("[Needs Review]") || !statementDate,
     is_scanned_pdf: desc.includes("[Scanned PDF]"),
+    is_verified: legacyIsVerified,
+    isVerified: legacyIsVerified,
+    status: legacyStatus,
     storage_path: storagePath,
     storage_bucket: storageBucket,
     cutover_date: null,
@@ -512,9 +709,13 @@ export function getExportSoaPdfFilename(
 function parseNum(raw: unknown): number {
   if (typeof raw === "number") return Number.isFinite(raw) ? Math.round(raw * 100) / 100 : 0;
   if (raw == null) return 0;
-  const cleaned = String(raw).replace(/[^0-9.-]/g, "");
+  const str = String(raw).trim();
+  const isNegative = /^\s*\(.*?\)\s*$/.test(str) || str.includes("-");
+  const cleaned = str.replace(/[^0-9.]/g, "");
   const n = parseFloat(cleaned);
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+  if (!Number.isFinite(n)) return 0;
+  const val = isNegative ? -Math.abs(n) : Math.abs(n);
+  return Math.round(val * 100) / 100;
 }
 
 function parseSpreadsheetDate(raw: unknown): string {
@@ -547,7 +748,7 @@ export interface ExtractedSoaSpreadsheetResult {
   openingBalance: number;
   charges: number;
   credits: number;
-  closingBalance: number;
+  closingBalance: number | null;
   entries: RawHistoricalEntry[];
   needsReview: boolean;
 }
@@ -565,11 +766,11 @@ export function extractSoaRowsFromSpreadsheet(
     return {
       customerName: "",
       soaNumber: fileName.replace(/\.[^.]+$/, ""),
-      statementDate: new Date().toISOString().slice(0, 10),
+      statementDate: "",
       openingBalance: 0,
       charges: 0,
       credits: 0,
-      closingBalance: 0,
+      closingBalance: null,
       entries: [],
       needsReview: true,
     };
@@ -662,7 +863,7 @@ export function extractSoaRowsFromSpreadsheet(
 
       if (rowText.includes("closing balance") || rowText.includes("total balance") || rowText.includes("balance due") || rowText.includes("total:")) {
         const val = balanceCol >= 0 ? parseNum(row[balanceCol]) : parseNum(row[row.length - 1]);
-        if (val !== 0) closingBalance = val;
+        if (typeof val === "number" && !isNaN(val)) closingBalance = val;
         continue;
       }
 
@@ -684,7 +885,7 @@ export function extractSoaRowsFromSpreadsheet(
 
       entries.push({
         id: `row_${Date.now()}_${r}_${Math.random().toString(36).slice(2, 7)}`,
-        date: rowDate || statementDate || new Date().toISOString().slice(0, 10),
+        date: rowDate || statementDate || "",
         reference_no: rowRef || (rowDebit > 0 ? "INV" : "REC"),
         original_reference: rowRef,
         description: rowDesc || (rowDebit > 0 ? "Invoice Charge" : "Customer Payment"),
@@ -697,26 +898,22 @@ export function extractSoaRowsFromSpreadsheet(
     }
   }
 
-  const finalClosing =
-    closingBalance !== null
-      ? closingBalance
-      : Math.round((openingBalance + charges - credits) * 100) / 100;
-
-  if (!soaNumber) {
-    const baseMatch = fileName.match(/\b(SOA[-_]?\d[\w-]*)\b/i);
-    soaNumber = baseMatch?.[1] || fileName.replace(/\.[^.]+$/, "");
+  if (!soaNumber || !customerName) {
+    const fnParsed = parseSoaFilename(fileName);
+    if (!soaNumber && fnParsed.soaNumber) soaNumber = fnParsed.soaNumber;
+    if (!customerName && fnParsed.customerName) customerName = fnParsed.customerName;
   }
 
-  if (!statementDate || !/^\d{4}-\d{2}-\d{2}$/.test(statementDate)) {
-    statementDate = new Date().toISOString().slice(0, 10);
-  }
+  const validStatementDate = statementDate && /^\d{4}-\d{2}-\d{2}$/.test(statementDate) ? statementDate : "";
 
-  const needsReview = !customerName || !soaNumber || entries.length === 0;
+  const finalClosing = closingBalance !== null ? closingBalance : null;
+
+  const needsReview = !customerName || !soaNumber || !validStatementDate || finalClosing === null || entries.length === 0;
 
   return {
     customerName,
     soaNumber,
-    statementDate,
+    statementDate: validStatementDate,
     openingBalance,
     charges: Math.round(charges * 100) / 100,
     credits: Math.round(credits * 100) / 100,

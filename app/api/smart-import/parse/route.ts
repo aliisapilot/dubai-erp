@@ -42,6 +42,23 @@ import {
 } from "@/lib/smartImport/relationshipBuilder";
 import type { ParsedDocument, SupportedFileType, CalculationAuditRow } from "@/lib/smartImport/types";
 
+declare module "@/lib/smartImport/types" {
+  interface ParsedDocument {
+    rawTextPreview?: string;
+    customerName?: string;
+    partyName?: string;
+    documentNumber?: string;
+    documentDate?: string | null;
+    openingBalance?: number;
+    subtotal?: number;
+    totalCredits?: number;
+    closingBalance?: number | null;
+    isScannedPdf?: boolean;
+    hasSelectableText?: boolean;
+    isImageOnly?: boolean;
+  }
+}
+
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // 60s timeout for heavy parsing on Node.js Serverless runtime
 
@@ -238,6 +255,10 @@ export async function POST(req: NextRequest) {
       let sheetsOrTablesCount = 1;
       let extraction: ExtractionOutput | null = null;
       let classification = classifyDocument(fileItem.name, "", 1);
+      let hasSelectableText = true;
+      let isImageOnly = false;
+      let isScannedPdf = false;
+      let ocrError: string | undefined = undefined;
 
       // 1. Parse by format with per-file error isolation
       try {
@@ -259,6 +280,12 @@ export async function POST(req: NextRequest) {
           sheetsOrTablesCount = pdfRes.pagesCount;
           classification = classifyDocument(fileItem.name, fullText, sheetsOrTablesCount);
           extraction = extractFromPdf(pdfRes, fileItem.name, classification.documentType);
+          hasSelectableText = pdfRes.hasSelectableText;
+          isImageOnly = pdfRes.isImageOnly;
+          isScannedPdf = isImageOnly && !hasSelectableText;
+          if (isScannedPdf) {
+            ocrError = "OCR Required: Document contains scanned images only. No OCR service configured.";
+          }
         }
       } catch (fileErr: unknown) {
         const errMsg = fileErr instanceof Error ? fileErr.message : String(fileErr);
@@ -305,6 +332,18 @@ export async function POST(req: NextRequest) {
           validationWarnings: [],
           isDuplicate: false,
           rawContentSummary: { rawSnippets: [] },
+          rawTextPreview: "",
+          customerName: "",
+          partyName: "",
+          documentNumber: "",
+          documentDate: null,
+          openingBalance: 0,
+          subtotal: 0,
+          totalCredits: 0,
+          closingBalance: null,
+          isScannedPdf: false,
+          hasSelectableText: false,
+          isImageOnly: false,
         });
         continue;
       }
@@ -552,6 +591,10 @@ export async function POST(req: NextRequest) {
         statusResolution
       );
 
+      if (ocrError) {
+        validationErrors.push(ocrError);
+      }
+
       if (validationErrors.length > 0) {
         destinationMappings.forEach(m => {
           if (m.proposedAction === "create_new") {
@@ -559,6 +602,33 @@ export async function POST(req: NextRequest) {
           }
         });
       }
+
+      const rawPreview = fullText ? fullText.slice(0, 1000) : "";
+      const custName = fields.customer_name?.value
+        ? String(fields.customer_name.value)
+        : (customerResolution?.extractedName || "");
+      const docNum = fields.document_number?.value ? String(fields.document_number.value) : "";
+      const docDate = fields.statement_date?.value
+        ? String(fields.statement_date.value)
+        : fields.document_date?.value
+        ? String(fields.document_date.value)
+        : null;
+      const openBal = fields.opening_balance?.value !== undefined && fields.opening_balance?.value !== null && fields.opening_balance?.value !== ""
+        ? Number(fields.opening_balance.value)
+        : 0;
+      const subTot = fields.total_debits?.value !== undefined && fields.total_debits?.value !== null
+        ? Number(fields.total_debits.value)
+        : fields.subtotal?.value !== undefined && fields.subtotal?.value !== null
+        ? Number(fields.subtotal.value)
+        : 0;
+      const totCredits = fields.total_credits?.value !== undefined && fields.total_credits?.value !== null
+        ? Number(fields.total_credits.value)
+        : 0;
+      const closeBal = fields.closing_balance?.value !== undefined && fields.closing_balance?.value !== null && fields.closing_balance?.value !== ""
+        ? Number(fields.closing_balance.value)
+        : fields.total_amount?.value !== undefined && fields.total_amount?.value !== null && fields.total_amount?.value !== ""
+        ? Number(fields.total_amount.value)
+        : null;
 
       parsedDocuments.push({
         id: docId,
@@ -569,7 +639,8 @@ export async function POST(req: NextRequest) {
         documentType: classification.documentType,
         classificationConfidence: classification.confidence,
         classificationReason: classification.reason,
-        extractionStatus: "success",
+        extractionStatus: ocrError ? "failed" : "success",
+        extractionError: ocrError,
         fields,
         items,
         measurements,
@@ -585,6 +656,18 @@ export async function POST(req: NextRequest) {
         isDuplicate: duplicateCheck.isDuplicate,
         duplicateReason: duplicateCheck.reason,
         rawContentSummary: extraction.rawSummary || { rawSnippets: [] },
+        rawTextPreview: rawPreview,
+        customerName: custName,
+        partyName: custName,
+        documentNumber: docNum,
+        documentDate: docDate,
+        openingBalance: openBal,
+        subtotal: subTot,
+        totalCredits: totCredits,
+        closingBalance: closeBal,
+        isScannedPdf,
+        hasSelectableText,
+        isImageOnly,
       });
     }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   X,
   Upload,
@@ -11,7 +11,6 @@ import {
   Loader2,
   RotateCw,
   Trash2,
-  UserPlus,
   CopyCheck,
   Undo,
   Redo,
@@ -62,18 +61,19 @@ export interface StagedSoaItem {
   customerMatchReason: string;
   customerSuggestions: Array<{ id: string; name: string; score: number }>;
   soaNumber: string;
-  statementDate: string;
+  statementDate: string | null;
   fromDate?: string;
   toDate?: string;
   openingBalance: number;
   charges: number;
   credits: number;
-  closingBalance: number;
+  closingBalance: number | null;
   entries: RawHistoricalEntry[];
   cutoverDate?: string;
   isCutoverApproved?: boolean;
   // Statuses
   processState: "queued" | "uploading" | "parsing" | "ready" | "needs_review" | "failed";
+  isVerified?: boolean;
   isScannedPdf: boolean;
   errorMessage?: string;
   // Duplicate handling
@@ -102,6 +102,17 @@ function parseNum(raw: unknown): number {
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
 }
 
+function formatDisplayDate(iso: string | null | undefined): string {
+  if (!iso || !iso.trim()) return "Unknown";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "Unknown";
+    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  } catch {
+    return "Unknown";
+  }
+}
+
 let rowIdCounter = 0;
 function createRowId(prefix = "row"): string {
   rowIdCounter++;
@@ -118,6 +129,9 @@ export default function BulkSoaImportModal({
 }: BulkSoaImportModalProps) {
   const [step, setStep] = useState<"upload" | "review" | "done">("upload");
   const [items, setItems] = useState<StagedSoaItem[]>([]);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<"all" | "issues" | "ready" | "failed">("all");
+  const [batchCustomerId, setBatchCustomerId] = useState<string>("");
   const [processing, setProcessing] = useState(false);
   const [processedCount, setProcessedCount] = useState(0);
   const [savingAll, setSavingAll] = useState(false);
@@ -141,14 +155,30 @@ export default function BulkSoaImportModal({
   const [rawPasteText, setRawPasteText] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeBlobUrlRef = useRef<string | null>(null);
+
+  const revokeActiveBlobUrl = useCallback(() => {
+    if (activeBlobUrlRef.current) {
+      try {
+        URL.revokeObjectURL(activeBlobUrlRef.current);
+      } catch {
+        // ignore
+      }
+      activeBlobUrlRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
     let mounted = true;
     queueMicrotask(() => {
       if (!mounted) return;
+      revokeActiveBlobUrl();
       setStep("upload");
       setItems([]);
+      setSelectedItemIds(new Set());
+      setStatusFilter("all");
+      setBatchCustomerId("");
       setProcessing(false);
       setProcessedCount(0);
       setSavingAll(false);
@@ -162,32 +192,44 @@ export default function BulkSoaImportModal({
     });
     return () => {
       mounted = false;
+      revokeActiveBlobUrl();
     };
-  }, [isOpen]);
+  }, [isOpen, revokeActiveBlobUrl]);
+
+  function handleCloseModal() {
+    revokeActiveBlobUrl();
+    onClose();
+  }
 
   function handleOpenReviewScreen(localId: string) {
     const it = items.find((i) => i.localId === localId);
     if (!it) return;
+    revokeActiveBlobUrl();
     setEditingRowsItemId(localId);
     setUndoStack([]);
     setRedoStack([]);
-    if (it.file) {
+    if (it.file && typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
       try {
         const url = URL.createObjectURL(it.file);
+        activeBlobUrlRef.current = url;
         setPreviewBlobUrl(url);
       } catch {
         setPreviewBlobUrl(null);
       }
+    } else if (it.storagePath) {
+      setPreviewBlobUrl(
+        `/api/smart-import/storage?path=${encodeURIComponent(it.storagePath)}&bucket=${encodeURIComponent(
+          it.storageBucket || "smart-imports"
+        )}`
+      );
+    } else {
+      setPreviewBlobUrl(null);
     }
   }
 
   function handleCloseReviewScreen() {
-    if (previewBlobUrl) {
-      try {
-        URL.revokeObjectURL(previewBlobUrl);
-      } catch {}
-      setPreviewBlobUrl(null);
-    }
+    revokeActiveBlobUrl();
+    setPreviewBlobUrl(null);
     setEditingRowsItemId(null);
     setUndoStack([]);
     setRedoStack([]);
@@ -447,11 +489,11 @@ export default function BulkSoaImportModal({
       stage = "Extraction";
       let customerName = "";
       let soaNumber = item.fileName.replace(/\.[^.]+$/, "");
-      let statementDate = todayISO();
+      let statementDate: string | null = null;
       let openingBalance = 0;
       let charges = 0;
       let credits = 0;
-      let closingBalance = 0;
+      let closingBalance: number | null = null;
       let isScannedPdf = false;
       let extractionUncertain = false;
       let entries: RawHistoricalEntry[] = [];
@@ -460,13 +502,13 @@ export default function BulkSoaImportModal({
         const parsed = extractSoaRowsFromSpreadsheet(buffer, item.fileName);
         customerName = parsed.customerName;
         soaNumber = parsed.soaNumber;
-        statementDate = parsed.statementDate;
+        statementDate = parsed.statementDate || null;
         openingBalance = parsed.openingBalance;
         charges = parsed.charges;
         credits = parsed.credits;
-        closingBalance = parsed.closingBalance;
+        closingBalance = parsed.closingBalance ?? null;
         entries = parsed.entries;
-        extractionUncertain = parsed.needsReview;
+        extractionUncertain = parsed.needsReview || !statementDate || closingBalance === null;
       } else if (item.ext === "pdf") {
         const parseRes = await fetch("/api/smart-import/parse", {
           method: "POST",
@@ -492,16 +534,21 @@ export default function BulkSoaImportModal({
           const textLen = String(doc.rawTextPreview || "").trim().length;
           customerName = doc.customerName || doc.partyName || "";
           soaNumber = doc.documentNumber || soaNumber;
-          statementDate = doc.documentDate || statementDate;
+          statementDate = doc.documentDate || null;
           openingBalance = Number(doc.openingBalance || 0);
           charges = Number(doc.subtotal || doc.totalDebits || 0);
           credits = Number(doc.totalCredits || 0);
-          closingBalance = Number(doc.totalAmount ?? doc.closingBalance ?? 0);
+          closingBalance =
+            doc.closingBalance != null
+              ? Number(doc.closingBalance)
+              : doc.totalAmount != null
+              ? Number(doc.totalAmount)
+              : null;
 
           if (Array.isArray(doc.items) && doc.items.length > 0) {
             entries = doc.items.map((it: Record<string, unknown>, idx: number) => ({
               id: createRowId(`pdf_${idx}`),
-              date: String(it.date || statementDate),
+              date: String(it.date || statementDate || ""),
               reference_no: String(it.reference || it.documentNumber || `INV-${idx + 1}`),
               original_reference: it.reference ? String(it.reference) : undefined,
               description: String(it.description || "Historical Item"),
@@ -512,11 +559,19 @@ export default function BulkSoaImportModal({
             }));
           }
 
-          if (textLen < 30 && !customerName && closingBalance === 0) {
+          if (textLen < 30 && !customerName && (closingBalance === 0 || closingBalance === null)) {
             isScannedPdf = true;
             extractionUncertain = true;
-          } else if (!customerName || !doc.documentNumber) {
+          } else if (!customerName || !doc.documentNumber || !statementDate || closingBalance === null) {
             extractionUncertain = true;
+          }
+
+          // Mathematical audit
+          if (closingBalance !== null) {
+            const expectedClosing = Math.round((openingBalance + charges - credits) * 100) / 100;
+            if (Math.abs(closingBalance - expectedClosing) > 0.05) {
+              extractionUncertain = true;
+            }
           }
         }
       }
@@ -540,7 +595,15 @@ export default function BulkSoaImportModal({
         extractionUncertain ||
         isScannedPdf ||
         matchOutcome.needsReview ||
-        !matchOutcome.matchedCustomerId;
+        !matchOutcome.matchedCustomerId ||
+        !statementDate ||
+        closingBalance === null ||
+        entries.length === 0;
+
+      const isVerified =
+        !needsReview &&
+        !dupOutcome.isDuplicate &&
+        Boolean(matchOutcome.matchedCustomerId);
 
       return {
         ...item,
@@ -563,6 +626,7 @@ export default function BulkSoaImportModal({
         credits,
         closingBalance,
         entries,
+        isVerified,
         processState: needsReview ? "needs_review" : "ready",
         isScannedPdf,
         isDuplicate: dupOutcome.isDuplicate,
@@ -575,6 +639,9 @@ export default function BulkSoaImportModal({
       const rawMsg = err instanceof Error ? err.message : "Unexpected error.";
       return {
         ...item,
+        statementDate: null,
+        closingBalance: null,
+        isVerified: false,
         processState: "failed",
         errorMessage: `${stage} failed: ${rawMsg}`,
       };
@@ -615,12 +682,13 @@ export default function BulkSoaImportModal({
             customerMatchReason: "",
             customerSuggestions: [],
             soaNumber: f.name,
-            statementDate: todayISO(),
+            statementDate: null,
             openingBalance: 0,
             charges: 0,
             credits: 0,
-            closingBalance: 0,
+            closingBalance: null,
             entries: [],
+            isVerified: false,
             processState: "failed",
             isScannedPdf: false,
             errorMessage: validation.error,
@@ -675,12 +743,13 @@ export default function BulkSoaImportModal({
             customerMatchReason: "",
             customerSuggestions: [],
             soaNumber: f.name,
-            statementDate: todayISO(),
+            statementDate: null,
             openingBalance: 0,
             charges: 0,
             credits: 0,
-            closingBalance: 0,
+            closingBalance: null,
             entries: [],
+            isVerified: false,
             processState: "failed",
             isScannedPdf: false,
             errorMessage: "Corrupted or unreadable ZIP archive.",
@@ -714,12 +783,13 @@ export default function BulkSoaImportModal({
         customerMatchReason: "",
         customerSuggestions: [],
         soaNumber: file.name.replace(/\.[^.]+$/, ""),
-        statementDate: todayISO(),
+        statementDate: null,
         openingBalance: 0,
         charges: 0,
         credits: 0,
-        closingBalance: 0,
+        closingBalance: null,
         entries: [],
+        isVerified: false,
         processState: "queued" as const,
         isScannedPdf: false,
         isDuplicate: false,
@@ -737,7 +807,7 @@ export default function BulkSoaImportModal({
     const resolvedCompanyId = companyId || (await getCompanyId().catch(() => ""));
     const batchId = `soa_${Date.now()}`;
 
-    // Process files in concurrency batches of 4 for fast 5–100 file handling
+    // Process files in concurrency batches of 4
     const results = [...initialStaged];
     const queueIndices = results
       .map((it, idx) => (it.processState === "queued" ? idx : -1))
@@ -770,12 +840,62 @@ export default function BulkSoaImportModal({
     setProcessing(false);
   }
 
-  async function handleRetryFailed() {
-    const failedIndices = items
-      .map((it, idx) => (it.processState === "failed" && validateSoaFile(it.file).valid ? idx : -1))
+  // 1. Batch Action: Apply Customer to All (with per-file overrides)
+  function handleApplyCustomerToAll(targetCustomerId: string) {
+    if (!targetCustomerId) return;
+    const targetCust = customers.find((c) => c.id === targetCustomerId);
+    setItems((prev) =>
+      prev.map((it) => {
+        if (selectedItemIds.size > 0 && !selectedItemIds.has(it.localId)) return it;
+        const dup = detectSoaDuplicate(
+          {
+            customerId: targetCustomerId,
+            soaNumber: it.soaNumber,
+            fileName: it.fileName,
+            checksumSha256: it.checksumSha256,
+          },
+          existingStatements
+        );
+        const isReady =
+          Boolean(targetCustomerId) &&
+          Boolean(it.soaNumber.trim()) &&
+          !dup.isDuplicate &&
+          !it.isScannedPdf &&
+          it.statementDate !== null &&
+          it.closingBalance !== null &&
+          it.entries.length > 0;
+        return {
+          ...it,
+          customerId: targetCustomerId,
+          createNewCustomer: false,
+          customerMatchReason: `Batch assigned to ${targetCust?.name || "selected customer"}`,
+          isDuplicate: dup.isDuplicate,
+          duplicateReason: dup.reason,
+          existingAttachmentId: dup.existingRecord?.id,
+          duplicateAction: dup.isDuplicate ? "skip" : "none",
+          isVerified: isReady,
+          processState: it.processState === "failed" ? "failed" : isReady ? "ready" : "needs_review",
+        };
+      })
+    );
+  }
+
+  // 2. Batch Action: Retry Extraction
+  async function handleRetryExtraction() {
+    const targets = items
+      .map((it, idx) => {
+        if (selectedItemIds.size > 0) {
+          return selectedItemIds.has(it.localId) ? idx : -1;
+        }
+        const isUnextracted = it.entries.length === 0 || it.closingBalance === null || !it.statementDate;
+        return (it.processState === "failed" || it.processState === "needs_review" || isUnextracted) &&
+          validateSoaFile(it.file).valid
+          ? idx
+          : -1;
+      })
       .filter((idx) => idx >= 0);
 
-    if (failedIndices.length === 0) return;
+    if (targets.length === 0) return;
 
     setProcessing(true);
     const { data: sessionData } = await supabase.auth.getSession();
@@ -784,7 +904,7 @@ export default function BulkSoaImportModal({
     const batchId = `soa_retry_${Date.now()}`;
 
     const next = [...items];
-    for (const idx of failedIndices) {
+    for (const idx of targets) {
       next[idx] = { ...next[idx], processState: "uploading", errorMessage: undefined };
       setItems([...next]);
       next[idx] = await uploadAndExtractSingle(
@@ -827,8 +947,20 @@ export default function BulkSoaImportModal({
         const hasCustomer =
           Boolean(merged.customerId) ||
           (merged.createNewCustomer && Boolean(merged.newCustomerName.trim()) && merged.confirmNewCustomer);
+        const hasDate = Boolean(merged.statementDate);
+        const hasBalance = merged.closingBalance !== null && merged.closingBalance !== undefined;
+        const isReady =
+          hasCustomer &&
+          Boolean(merged.soaNumber.trim()) &&
+          hasDate &&
+          hasBalance &&
+          !merged.isDuplicate &&
+          !merged.isScannedPdf &&
+          merged.entries.length > 0;
+
         if (merged.processState !== "failed") {
-          merged.processState = hasCustomer && merged.soaNumber.trim() ? "ready" : "needs_review";
+          merged.processState = isReady ? "ready" : "needs_review";
+          merged.isVerified = isReady;
         }
         return merged;
       })
@@ -836,19 +968,37 @@ export default function BulkSoaImportModal({
   }
 
   function removeItem(localId: string) {
+    if (editingRowsItemId === localId) {
+      handleCloseReviewScreen();
+    }
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      next.delete(localId);
+      return next;
+    });
     setItems((prev) => prev.filter((it) => it.localId !== localId));
   }
 
-  async function handleImportAll() {
+  // 3. Batch Action: Import Execution (Verified only or All)
+  async function executeImport(options?: { verifiedOnly?: boolean }) {
     setErrorBanner("");
+    const verifiedOnly = Boolean(options?.verifiedOnly);
 
-    const savable = items.filter((it) => {
+    const eligibleItems = items.filter((it) => {
       if (it.processState === "failed") return false;
       if (it.isDuplicate && it.duplicateAction === "skip") return false;
+      if (verifiedOnly) {
+        return (it.isVerified || it.processState === "ready") && !it.isDuplicate;
+      }
       return true;
     });
 
-    const missingCustomer = savable.find(
+    if (eligibleItems.length === 0) {
+      setErrorBanner(verifiedOnly ? "No verified SOA items ready to import." : "No SOA items to import.");
+      return;
+    }
+
+    const missingCustomer = eligibleItems.find(
       (it) =>
         !it.customerId &&
         !(it.createNewCustomer && it.newCustomerName.trim() && it.confirmNewCustomer)
@@ -860,7 +1010,7 @@ export default function BulkSoaImportModal({
       return;
     }
 
-    const unconfirmedReplace = savable.find(
+    const unconfirmedReplace = eligibleItems.find(
       (it) => it.isDuplicate && it.duplicateAction === "replace" && !it.confirmReplace
     );
     if (unconfirmedReplace) {
@@ -876,9 +1026,12 @@ export default function BulkSoaImportModal({
       const accessToken = sessionData?.session?.access_token || "";
       const resolvedCompanyId = companyId || (await getCompanyId().catch(() => ""));
 
-      const payloadItems = items
-        .filter((it) => it.processState !== "failed")
-        .map((it) => ({
+      const payloadItems = eligibleItems.map((it) => {
+        const itemVerified = Boolean(
+          it.isVerified ||
+          (it.processState === "ready" && !it.isDuplicate && it.entries.length > 0 && it.closingBalance !== null)
+        );
+        return {
           fileName: it.fileName,
           fileType: it.fileType,
           fileSize: it.fileSize,
@@ -893,16 +1046,19 @@ export default function BulkSoaImportModal({
           openingBalance: it.openingBalance || 0,
           charges: it.charges || 0,
           credits: it.credits || 0,
-          closingBalance: it.closingBalance || 0,
+          closingBalance: it.closingBalance ?? 0,
           entries: it.entries,
           cutoverDate: it.cutoverDate,
           isCutoverApproved: it.isCutoverApproved,
           checksumSha256: it.checksumSha256,
-          needsReview: it.processState === "needs_review",
+          needsReview: !itemVerified,
           isScannedPdf: it.isScannedPdf,
+          isVerified: itemVerified,
+          status: itemVerified ? ("verified" as const) : ("pending_verification" as const),
           duplicateAction: it.isDuplicate ? it.duplicateAction : "none",
           existingAttachmentId: it.existingAttachmentId,
-        }));
+        };
+      });
 
       const res = await fetch("/api/customer-statements", {
         method: "POST",
@@ -936,42 +1092,108 @@ export default function BulkSoaImportModal({
     }
   }
 
+  async function handleImportVerified() {
+    await executeImport({ verifiedOnly: true });
+  }
+
+  async function handleImportAll() {
+    await executeImport({ verifiedOnly: false });
+  }
+
   const totalCount = items.length;
-  const readyCount = items.filter((i) => i.processState === "ready").length;
-  const reviewCount = items.filter((i) => i.processState === "needs_review").length;
+  const readyCount = items.filter((i) => i.processState === "ready" || i.isVerified).length;
+  const reviewCount = items.filter((i) => i.processState === "needs_review" || (!i.isVerified && i.processState !== "failed")).length;
   const failedCount = items.filter((i) => i.processState === "failed").length;
+  const issuesCount = items.filter(
+    (i) =>
+      i.processState === "needs_review" ||
+      i.processState === "failed" ||
+      i.isDuplicate ||
+      i.closingBalance === null ||
+      !i.statementDate ||
+      !i.isVerified
+  ).length;
+
+  const filteredItems = items.filter((it) => {
+    if (statusFilter === "issues") {
+      return (
+        it.processState === "needs_review" ||
+        it.processState === "failed" ||
+        it.isDuplicate ||
+        it.closingBalance === null ||
+        !it.statementDate ||
+        !it.isVerified
+      );
+    }
+    if (statusFilter === "ready") {
+      return it.processState === "ready" || it.isVerified;
+    }
+    if (statusFilter === "failed") {
+      return it.processState === "failed";
+    }
+    return true;
+  });
+
+  const allFilteredSelected =
+    filteredItems.length > 0 &&
+    filteredItems.every((it) => selectedItemIds.has(it.localId));
+
+  function toggleSelectAll() {
+    if (allFilteredSelected) {
+      setSelectedItemIds(new Set());
+    } else {
+      const next = new Set(selectedItemIds);
+      filteredItems.forEach((it) => next.add(it.localId));
+      setSelectedItemIds(next);
+    }
+  }
+
+  function toggleSelectRow(localId: string) {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(localId)) {
+        next.delete(localId);
+      } else {
+        next.add(localId);
+      }
+      return next;
+    });
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
       <div
         className={`w-full rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden text-slate-100 my-2 flex flex-col transition-all duration-200 ${
-          editingRowsItemId ? "max-w-7xl h-[96vh]" : "max-w-5xl max-h-[92vh]"
+          editingRowsItemId ? "max-w-7xl h-[96vh]" : "max-w-6xl max-h-[92vh]"
         }`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-900/95 shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-900/90 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-cyan-950/80 p-2 text-cyan-400 border border-cyan-800/60">
-              <Upload size={18} />
+            <div className="rounded-xl bg-cyan-600/20 p-2 text-cyan-400 border border-cyan-500/30">
+              <FileSpreadsheet size={20} />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">Import SOA Files</h2>
+              <h2 className="text-base font-bold text-white tracking-tight">
+                Bulk Customer Statements Importer
+              </h2>
               <p className="text-xs text-slate-400">
-                Upload PDF, Excel (.xlsx/.xls), CSV, or ZIP archives. Historical SOAs are stored safely without modifying live ledgers.
+                Multi-file statement import with automatic customer matching, duplicate detection &amp; live spreadsheet editor
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition cursor-pointer"
+            onClick={handleCloseModal}
+            className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            title="Close modal"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
+        <div className="p-5 flex-1 overflow-y-auto space-y-4">
           {step === "upload" && (
             <div
               onDragOver={(e) => {
@@ -986,37 +1208,49 @@ export default function BulkSoaImportModal({
                   void handleFilesSelected(e.dataTransfer.files);
                 }
               }}
-              className={`rounded-2xl border-2 border-dashed p-8 sm:p-12 text-center transition ${
+              className={`rounded-2xl border-2 border-dashed p-10 text-center transition-all ${
                 isDragging
-                  ? "border-cyan-400 bg-cyan-950/30"
-                  : "border-slate-700 bg-slate-950/40 hover:border-slate-500"
+                  ? "border-cyan-400 bg-cyan-950/20 shadow-lg shadow-cyan-950/50"
+                  : "border-slate-700 bg-slate-950/40 hover:border-slate-600"
               }`}
             >
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.xlsx,.xls,.csv,.zip"
-                onChange={(e) => {
-                  if (e.target.files?.length) void handleFilesSelected(e.target.files);
-                }}
-                className="hidden"
-              />
-              <Upload size={36} className="mx-auto mb-3 text-cyan-400" />
-              <p className="text-sm font-bold text-white mb-1">
-                Drag and drop SOA files here
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-950/80 border border-cyan-700 text-cyan-400 mb-4">
+                <Upload size={24} />
+              </div>
+              <h3 className="text-sm font-bold text-white">
+                Drag &amp; Drop Statement Files (PDF, Excel, CSV, or ZIP)
+              </h3>
+              <p className="mt-1 text-xs text-slate-400 max-w-md mx-auto">
+                Upload one or dozens of Customer SOA documents at once. Supports single statements, bulk PDFs, Excel ledgers, or a ZIP archive.
               </p>
-              <p className="text-xs text-slate-400 mb-5">
-                Select 1, 20, 50, or 100+ files at once (.pdf, .xlsx, .xls, .csv, .zip)
-              </p>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2.5 text-xs font-bold transition shadow-sm cursor-pointer"
-              >
-                <Upload size={14} />
-                <span>Browse Files</span>
-              </button>
+
+              <div className="mt-5 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2.5 text-xs font-bold transition shadow-sm cursor-pointer"
+                >
+                  <Upload size={14} />
+                  <span>Select Files to Import</span>
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.xlsx,.xls,.csv,.zip"
+                  onChange={(e) => {
+                    if (e.target.files?.length) void handleFilesSelected(e.target.files);
+                  }}
+                  className="hidden"
+                />
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-[11px] text-slate-400 font-mono">
+                <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800">PDF Statements</span>
+                <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800">Excel (.xlsx, .xls)</span>
+                <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800">CSV Ledgers</span>
+                <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800">ZIP Archive</span>
+              </div>
             </div>
           )}
 
@@ -1026,10 +1260,10 @@ export default function BulkSoaImportModal({
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3.5">
                 <div className="flex flex-wrap items-center gap-4 text-xs">
                   <span>
-                    Selected: <strong className="text-white">{totalCount}</strong>
+                    Total Documents: <strong className="text-white">{totalCount}</strong>
                   </span>
                   <span className="text-emerald-300">
-                    Ready: <strong>{readyCount}</strong>
+                    Verified: <strong>{readyCount}</strong>
                   </span>
                   <span className="text-amber-300">
                     Needs Review: <strong>{reviewCount}</strong>
@@ -1039,24 +1273,19 @@ export default function BulkSoaImportModal({
                       Failed: <strong>{failedCount}</strong>
                     </span>
                   )}
+                  {selectedItemIds.size > 0 && (
+                    <span className="text-cyan-300 font-semibold">
+                      Selected: <strong>{selectedItemIds.size}</strong>
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {failedCount > 0 && !processing && (
-                    <button
-                      type="button"
-                      onClick={handleRetryFailed}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-rose-950 hover:bg-rose-900 border border-rose-700 text-rose-200 px-3 py-1.5 font-semibold transition cursor-pointer"
-                    >
-                      <RotateCw size={12} />
-                      <span>Retry Failed ({failedCount})</span>
-                    </button>
-                  )}
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={processing}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 font-semibold transition cursor-pointer disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 font-semibold transition cursor-pointer disabled:opacity-50 text-xs"
                   >
                     <Upload size={12} />
                     <span>Add More Files</span>
@@ -1076,10 +1305,10 @@ export default function BulkSoaImportModal({
 
               {processing && (
                 <div className="rounded-xl border border-cyan-800/60 bg-cyan-950/30 p-3 space-y-2">
-                  <div className="flex items-center justify-between text-cyan-200">
+                  <div className="flex items-center justify-between text-cyan-200 text-xs">
                     <span className="flex items-center gap-2 font-semibold">
                       <Loader2 size={14} className="animate-spin" />
-                      Uploading & extracting SOA details...
+                      Uploading &amp; extracting SOA details...
                     </span>
                     <span className="font-mono">
                       {processedCount} / {totalCount}
@@ -1097,13 +1326,13 @@ export default function BulkSoaImportModal({
               )}
 
               {errorBanner && (
-                <div className="flex items-center gap-2 rounded-xl bg-rose-950/70 border border-rose-800 p-3 text-rose-200">
+                <div className="flex items-center gap-2 rounded-xl bg-rose-950/70 border border-rose-800 p-3 text-rose-200 text-xs">
                   <AlertTriangle size={15} className="text-rose-400 shrink-0" />
                   <span>{errorBanner}</span>
                 </div>
               )}
 
-              {/* Content View: Either Spreadsheet Editor or Batch List */}
+              {/* Content View: Either Spreadsheet Editor or Compact Batch Table */}
               {editingRowsItemId && activeItem ? (
                 <div className="flex flex-col h-full space-y-3">
                   {/* Subheader Toolbar */}
@@ -1150,7 +1379,7 @@ export default function BulkSoaImportModal({
                     </div>
                   </div>
 
-                  {/* Metadata & Reconciliation Banner */}
+                  {/* Metadata & Live Discrepancy Banner */}
                   <div className="grid grid-cols-1 sm:grid-cols-6 gap-2.5 bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 text-xs shrink-0">
                     <div className="sm:col-span-2 space-y-1">
                       <label className="text-[10px] text-slate-400 uppercase font-semibold">Customer</label>
@@ -1209,7 +1438,29 @@ export default function BulkSoaImportModal({
                     <div className="space-y-1">
                       <label className="text-[10px] text-slate-400 uppercase font-semibold">Closing Balance</label>
                       <div className="rounded-lg bg-slate-900 border border-slate-800 px-2 py-1.5 text-xs font-mono font-bold text-white text-right">
-                        AED {activeItem.closingBalance.toFixed(2)}
+                        {activeItem.closingBalance !== null ? `AED ${activeItem.closingBalance.toFixed(2)}` : "Not extracted"}
+                      </div>
+                    </div>
+
+                    {/* Balance Discrepancy Indicator Pill */}
+                    <div className="sm:col-span-6 flex items-center justify-between pt-1 border-t border-slate-800/60">
+                      <div className="flex items-center gap-2">
+                        {activeItem.closingBalance === null || activeItem.closingBalance === undefined ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-950/80 border border-amber-700 px-3 py-1 text-xs font-semibold text-amber-300">
+                            <AlertTriangle size={13} />
+                            <span>Closing balance: Not extracted</span>
+                          </span>
+                        ) : Math.abs(activeItem.closingBalance - (activeItem.openingBalance + activeItem.charges - activeItem.credits)) < 0.05 ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-950/80 border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300">
+                            <CheckCircle2 size={13} />
+                            <span>Matched (AED {activeItem.closingBalance.toFixed(2)})</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-950/80 border border-rose-700 px-3 py-1 text-xs font-semibold text-rose-300">
+                            <AlertTriangle size={13} />
+                            <span>Discrepancy: AED {Math.abs(activeItem.closingBalance - (activeItem.openingBalance + activeItem.charges - activeItem.credits)).toFixed(2)}</span>
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1224,7 +1475,7 @@ export default function BulkSoaImportModal({
                           onChange={(e) =>
                             updateItem(activeItem.localId, {
                               isCutoverApproved: e.target.checked,
-                              cutoverDate: e.target.checked ? activeItem.cutoverDate || activeItem.statementDate : undefined,
+                              cutoverDate: e.target.checked ? activeItem.cutoverDate || activeItem.statementDate || undefined : undefined,
                             })
                           }
                           className="rounded border-slate-600 bg-slate-900"
@@ -1236,7 +1487,7 @@ export default function BulkSoaImportModal({
                           <span className="text-slate-400 text-[11px]">Cutover on:</span>
                           <input
                             type="date"
-                            value={activeItem.cutoverDate || activeItem.statementDate}
+                            value={activeItem.cutoverDate || activeItem.statementDate || ""}
                             onChange={(e) => updateItem(activeItem.localId, { cutoverDate: e.target.value })}
                             className="rounded border border-slate-700 bg-slate-900 px-2 py-0.5 text-xs text-white"
                           />
@@ -1325,11 +1576,46 @@ export default function BulkSoaImportModal({
                     </div>
                   )}
 
-                  {/* Split View Container */}
+                  {/* Split View Container: Left pane PDF viewer iframe, Right pane Spreadsheet table */}
                   <div className={`grid gap-3 flex-1 overflow-hidden min-h-[380px] ${showSplitPreview ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
-                    {/* Spreadsheet Table */}
+                    {/* Left Pane: Original Document Preview / PDF Viewer */}
+                    {showSplitPreview && (
+                      <div className="rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden flex flex-col h-full">
+                        <div className="bg-slate-900 px-3 py-2 border-b border-slate-800 text-[11px] text-slate-400 flex items-center justify-between shrink-0">
+                          <span>Original Document: <strong className="text-white">{activeItem.fileName}</strong></span>
+                          <span className="font-mono text-[10px]">
+                            {activeItem.ext.toUpperCase()} • {Math.max(1, Math.round(activeItem.fileSize / 1024))} KB
+                          </span>
+                        </div>
+                        <div className="flex-1 bg-slate-950 p-2 overflow-hidden flex items-center justify-center">
+                          {previewBlobUrl && activeItem.ext === "pdf" ? (
+                            <iframe
+                              src={previewBlobUrl}
+                              title="Original PDF Document"
+                              className="w-full h-full min-h-[380px] rounded border border-slate-800 bg-white"
+                            />
+                          ) : activeItem.storagePath && activeItem.ext === "pdf" ? (
+                            <iframe
+                              src={`/api/smart-import/storage?path=${encodeURIComponent(activeItem.storagePath)}&bucket=${encodeURIComponent(activeItem.storageBucket || "smart-imports")}`}
+                              title="Original PDF Document"
+                              className="w-full h-full min-h-[380px] rounded border border-slate-800 bg-white"
+                            />
+                          ) : (
+                            <div className="text-center p-6 space-y-2 text-slate-400">
+                              <FileSpreadsheet size={32} className="mx-auto text-emerald-400" />
+                              <p className="text-xs font-semibold text-white">{activeItem.fileName}</p>
+                              <p className="text-[11px]">
+                                Original spreadsheet parsed ({activeItem.entries.length} rows loaded into the editor).
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Right Pane: Spreadsheet Table */}
                     <div
-                      className="rounded-xl border border-slate-800 bg-slate-950/60 overflow-y-auto flex flex-col"
+                      className="rounded-xl border border-slate-800 bg-slate-950/60 overflow-y-auto flex flex-col h-full"
                       onPaste={(e) => {
                         const text = e.clipboardData.getData("text");
                         if (text && text.includes("\t")) {
@@ -1424,292 +1710,391 @@ export default function BulkSoaImportModal({
                         </tbody>
                       </table>
                     </div>
-
-                    {/* Original Document Preview Side */}
-                    {showSplitPreview && (
-                      <div className="rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden flex flex-col">
-                        <div className="bg-slate-900 px-3 py-2 border-b border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-                          <span>Original Document: <strong>{activeItem.fileName}</strong></span>
-                          <span className="font-mono text-[10px]">
-                            {activeItem.ext.toUpperCase()} • {Math.round(activeItem.fileSize / 1024)} KB
-                          </span>
-                        </div>
-                        <div className="flex-1 bg-slate-950 p-2 overflow-hidden flex items-center justify-center">
-                          {previewBlobUrl && activeItem.ext === "pdf" ? (
-                            <iframe
-                              src={previewBlobUrl}
-                              title="Original PDF Document"
-                              className="w-full h-full min-h-[380px] rounded border border-slate-800 bg-white"
-                            />
-                          ) : (
-                            <div className="text-center p-6 space-y-2 text-slate-400">
-                              <FileSpreadsheet size={32} className="mx-auto text-emerald-400" />
-                              <p className="text-xs font-semibold text-white">{activeItem.fileName}</p>
-                              <p className="text-[11px]">
-                                Original spreadsheet parsed ({activeItem.entries.length} rows loaded into the editor).
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               ) : (
-                /* Batch Review List */
-                <div className="space-y-2.5">
-                  {items.map((it) => (
-                    <div
-                      key={it.localId}
-                      className={`rounded-xl border p-3.5 space-y-3 ${
-                        it.processState === "failed"
-                          ? "border-rose-800/80 bg-rose-950/20"
-                          : it.processState === "needs_review"
-                          ? "border-amber-800/70 bg-amber-950/15"
-                          : "border-slate-800 bg-slate-950/50"
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          {it.ext === "pdf" ? (
-                            <FileText size={16} className="text-rose-400 shrink-0" />
-                          ) : (
-                            <FileSpreadsheet size={16} className="text-emerald-400 shrink-0" />
-                          )}
-                          <span className="font-semibold text-white truncate max-w-[260px] sm:max-w-md">
-                            {it.fileName}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            ({Math.max(1, Math.round(it.fileSize / 1024))} KB)
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {it.processState === "uploading" || it.processState === "queued" ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-2.5 py-0.5 text-[11px] text-slate-300">
-                              <Loader2 size={11} className="animate-spin" /> Processing
-                            </span>
-                          ) : it.processState === "failed" ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-950 border border-rose-800 px-2.5 py-0.5 text-[11px] font-semibold text-rose-300">
-                              Failed
-                            </span>
-                          ) : it.processState === "needs_review" ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-950 border border-amber-700 px-2.5 py-0.5 text-[11px] font-semibold text-amber-300">
-                              {it.isScannedPdf ? "Needs Review (Scanned PDF)" : "Needs Review"}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-950 border border-emerald-700 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
-                              Ready
-                            </span>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => removeItem(it.localId)}
-                            className="text-slate-500 hover:text-rose-400 p-1 cursor-pointer"
-                            title="Remove from batch"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
+                /* Compact Table View with Batch Actions Toolbar */
+                <div className="space-y-3">
+                  {/* Batch Actions Toolbar */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs">
+                    {/* Left: Apply Customer to All & Retry Extraction */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={batchCustomerId}
+                          onChange={(e) => setBatchCustomerId(e.target.value)}
+                          className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-white max-w-[200px] truncate focus:border-cyan-500 focus:outline-none"
+                        >
+                          <option value="">-- Apply Customer to All --</option>
+                          {customers.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!batchCustomerId}
+                          onClick={() => handleApplyCustomerToAll(batchCustomerId)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white px-3 py-1.5 font-semibold transition cursor-pointer"
+                          title="Apply selected customer across all or selected files"
+                        >
+                          <span>Apply Customer to All</span>
+                        </button>
                       </div>
 
-                      {it.processState === "failed" ? (
-                        <p className="text-rose-300 text-[11px]">{it.errorMessage}</p>
-                      ) : it.processState !== "queued" && it.processState !== "uploading" ? (
-                        <>
-                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
-                            {/* Customer Selector or Create New */}
-                            <div className="sm:col-span-2 space-y-1">
-                              <div className="flex items-center justify-between">
-                                <label className="text-[10px] text-slate-400 uppercase font-semibold">
-                                  Customer {it.detectedCustomerName ? `(Detected: ${it.detectedCustomerName})` : ""}
-                                </label>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    updateItem(it.localId, {
-                                      createNewCustomer: !it.createNewCustomer,
-                                      customerId: "",
-                                    })
-                                  }
-                                  className="inline-flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300 cursor-pointer"
-                                >
-                                  <UserPlus size={11} />
-                                  <span>{it.createNewCustomer ? "Select Existing" : "Create New"}</span>
-                                </button>
-                              </div>
+                      <button
+                        type="button"
+                        onClick={handleRetryExtraction}
+                        disabled={processing}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 font-semibold transition cursor-pointer disabled:opacity-50"
+                        title="Re-parse failed, unextracted, or selected documents"
+                      >
+                        <RotateCw size={13} className={processing ? "animate-spin" : ""} />
+                        <span>Retry Extraction</span>
+                      </button>
+                    </div>
 
-                              {!it.createNewCustomer ? (
-                                <select
-                                  value={it.customerId}
-                                  onChange={(e) => updateItem(it.localId, { customerId: e.target.value })}
-                                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-white focus:border-cyan-500 focus:outline-none"
-                                >
-                                  <option value="">-- Select Customer --</option>
-                                  {it.customerSuggestions.length > 0 && (
-                                    <optgroup label="Suggested Matches">
-                                      {it.customerSuggestions.map((s) => (
-                                        <option key={`sug-${s.id}`} value={s.id}>
-                                          {s.name} ({Math.round(s.score * 100)}% match)
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                  )}
-                                  <optgroup label="All Customers">
-                                    {customers.map((c) => (
-                                      <option key={c.id} value={c.id}>
-                                        {c.name}
-                                      </option>
-                                    ))}
-                                  </optgroup>
-                                </select>
-                              ) : (
-                                <div className="space-y-1.5">
-                                  <input
-                                    type="text"
-                                    value={it.newCustomerName}
-                                    placeholder="New customer name"
-                                    onChange={(e) =>
-                                      updateItem(it.localId, { newCustomerName: e.target.value })
-                                    }
-                                    className="w-full rounded-lg border border-cyan-700 bg-slate-900 px-2.5 py-1.5 text-xs text-white focus:border-cyan-500 focus:outline-none"
-                                  />
-                                  <label className="flex items-center gap-1.5 text-[11px] text-cyan-200 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={it.confirmNewCustomer}
-                                      onChange={(e) =>
-                                        updateItem(it.localId, { confirmNewCustomer: e.target.checked })
-                                      }
-                                      className="rounded border-slate-600 bg-slate-900"
-                                    />
-                                    <span>Confirm creating new customer</span>
-                                  </label>
-                                </div>
-                              )}
+                    {/* Right: Review Issues Filter & Import Verified Shortcut */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Filter tabs */}
+                      <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950 p-0.5 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setStatusFilter("all")}
+                          className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
+                            statusFilter === "all" ? "bg-slate-800 text-white font-bold" : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          All ({totalCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setStatusFilter("issues")}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
+                            statusFilter === "issues"
+                              ? "bg-amber-950 text-amber-200 border border-amber-800 font-bold"
+                              : issuesCount > 0
+                              ? "text-amber-400 hover:text-amber-200"
+                              : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          <AlertTriangle size={11} />
+                          <span>Review Issues ({issuesCount})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setStatusFilter("ready")}
+                          className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
+                            statusFilter === "ready" ? "bg-emerald-950 text-emerald-200 border border-emerald-800 font-bold" : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          Verified ({readyCount})
+                        </button>
+                        {failedCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setStatusFilter("failed")}
+                            className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
+                              statusFilter === "failed" ? "bg-rose-950 text-rose-200 border border-rose-800 font-bold" : "text-rose-400 hover:text-rose-200"
+                            }`}
+                          >
+                            Error ({failedCount})
+                          </button>
+                        )}
+                      </div>
 
-                              {it.customerMatchReason && (
-                                <p className="text-[10px] text-slate-400">{it.customerMatchReason}</p>
-                              )}
-                            </div>
+                      {readyCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleImportVerified}
+                          disabled={processing || savingAll}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
+                        >
+                          <CheckCircle2 size={13} />
+                          <span>Import Verified ({readyCount})</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
-                            {/* SOA Number */}
-                            <div className="space-y-1">
-                              <label className="text-[10px] text-slate-400 uppercase font-semibold block">
-                                SOA Number
-                              </label>
-                              <input
-                                type="text"
-                                value={it.soaNumber}
-                                onChange={(e) => updateItem(it.localId, { soaNumber: e.target.value })}
-                                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-white font-mono focus:border-cyan-500 focus:outline-none"
-                              />
-                            </div>
-
-                            {/* Statement Date & Closing Balance */}
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="space-y-1">
-                                <label className="text-[10px] text-slate-400 uppercase font-semibold block">
-                                  Date
-                                </label>
-                                <input
-                                  type="date"
-                                  value={it.statementDate}
-                                  onChange={(e) =>
-                                    updateItem(it.localId, { statementDate: e.target.value })
-                                  }
-                                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] text-white focus:border-cyan-500 focus:outline-none"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[10px] text-slate-400 uppercase font-semibold block">
-                                  Closing (AED)
-                                </label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={it.closingBalance}
-                                  onChange={(e) =>
-                                    updateItem(it.localId, {
-                                      closingBalance: parseNum(e.target.value),
-                                    })
-                                  }
-                                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] text-right font-mono text-white focus:border-cyan-500 focus:outline-none"
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Duplicate Resolution */}
-                          {it.isDuplicate && (
-                            <div className="rounded-lg border border-amber-700/70 bg-amber-950/30 p-2.5 flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 text-amber-200 text-[11px]">
-                                <CopyCheck size={14} className="text-amber-400 shrink-0" />
-                                <span>Duplicate detected: {it.duplicateReason}</span>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-3 text-[11px]">
-                                <label className="flex items-center gap-1 cursor-pointer">
-                                  <input
-                                    type="radio"
-                                    name={`dup-${it.localId}`}
-                                    checked={it.duplicateAction === "skip"}
-                                    onChange={() =>
-                                      updateItem(it.localId, {
-                                        duplicateAction: "skip",
-                                        confirmReplace: false,
-                                      })
-                                    }
-                                  />
-                                  <span>Skip</span>
-                                </label>
-                                <label className="flex items-center gap-1 cursor-pointer text-rose-300">
-                                  <input
-                                    type="radio"
-                                    name={`dup-${it.localId}`}
-                                    checked={it.duplicateAction === "replace"}
-                                    onChange={() =>
-                                      updateItem(it.localId, { duplicateAction: "replace" })
-                                    }
-                                  />
-                                  <span>Replace</span>
-                                </label>
-                                <label className="flex items-center gap-1 cursor-pointer text-rose-200 font-semibold">
+                  {/* Compact High-Density Table */}
+                  <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/60 shadow-sm">
+                    <table className="w-full text-xs border-collapse">
+                      <thead className="bg-slate-900 border-b border-slate-800 text-slate-400 uppercase text-[10px] font-mono sticky top-0 z-10">
+                        <tr>
+                          <th className="py-2.5 px-3 text-center w-10">
+                            <input
+                              type="checkbox"
+                              checked={allFilteredSelected}
+                              onChange={toggleSelectAll}
+                              className="rounded border-slate-600 bg-slate-900 cursor-pointer"
+                              title="Select all"
+                            />
+                          </th>
+                          <th className="py-2.5 px-3 text-left w-56">Filename</th>
+                          <th className="py-2.5 px-3 text-left w-52">Customer</th>
+                          <th className="py-2.5 px-3 text-left w-36">SOA Number</th>
+                          <th className="py-2.5 px-3 text-center w-28">Date</th>
+                          <th className="py-2.5 px-3 text-right w-32">Closing Balance</th>
+                          <th className="py-2.5 px-3 text-center w-20">Rows</th>
+                          <th className="py-2.5 px-3 text-center w-36">Status</th>
+                          <th className="py-2.5 px-3 text-right w-24">Edit</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {filteredItems.map((it) => {
+                          const isSelected = selectedItemIds.has(it.localId);
+                          return (
+                            <React.Fragment key={it.localId}>
+                              <tr
+                                className={`hover:bg-slate-900/60 transition ${
+                                  isSelected ? "bg-cyan-950/20" : ""
+                                } ${
+                                  it.processState === "failed"
+                                    ? "bg-rose-950/10"
+                                    : it.processState === "needs_review"
+                                    ? "bg-amber-950/10"
+                                    : ""
+                                }`}
+                              >
+                                {/* 1. Checkbox */}
+                                <td className="py-2 px-3 text-center">
                                   <input
                                     type="checkbox"
-                                    checked={it.confirmReplace}
-                                    onChange={(e) =>
-                                      updateItem(it.localId, { confirmReplace: e.target.checked })
-                                    }
+                                    checked={isSelected}
+                                    onChange={() => toggleSelectRow(it.localId)}
+                                    className="rounded border-slate-600 bg-slate-900 cursor-pointer"
                                   />
-                                  <span>Confirm overwrite</span>
-                                </label>
-                              </div>
-                            </div>
-                          )}
+                                </td>
 
-                          {/* Row Details Bar & Open Spreadsheet Review button */}
-                          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
-                            <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                              <span>Extracted rows: <strong className="text-white">{it.entries?.length || 0}</strong></span>
-                              <span>•</span>
-                              <span>Debits: <strong className="text-slate-300">AED {it.charges.toFixed(2)}</strong></span>
-                              <span>•</span>
-                              <span>Credits: <strong className="text-slate-300">AED {it.credits.toFixed(2)}</strong></span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenReviewScreen(it.localId)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-700/70 bg-cyan-950/70 hover:bg-cyan-900 text-cyan-300 px-3 py-1.5 text-xs font-bold transition cursor-pointer"
-                            >
-                              <FileSpreadsheet size={13} />
-                              <span>Review & Edit Rows ({it.entries?.length || 0})</span>
-                            </button>
-                          </div>
-                        </>
-                      ) : null}
-                    </div>
-                  ))}
+                                {/* 2. Filename */}
+                                <td className="py-2 px-3">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    {it.ext === "pdf" ? (
+                                      <FileText size={15} className="text-rose-400 shrink-0" />
+                                    ) : (
+                                      <FileSpreadsheet size={15} className="text-emerald-400 shrink-0" />
+                                    )}
+                                    <span
+                                      className="font-semibold text-white truncate max-w-[190px]"
+                                      title={it.fileName}
+                                    >
+                                      {it.fileName}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                                      ({Math.max(1, Math.round(it.fileSize / 1024))} KB)
+                                    </span>
+                                  </div>
+                                </td>
+
+                                {/* 3. Customer */}
+                                <td className="py-2 px-3">
+                                  {!it.createNewCustomer ? (
+                                    <select
+                                      value={it.customerId}
+                                      onChange={(e) => updateItem(it.localId, { customerId: e.target.value })}
+                                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                                      title={it.customerMatchReason || "Select customer"}
+                                    >
+                                      <option value="">-- Select Customer --</option>
+                                      {it.customerSuggestions.length > 0 && (
+                                        <optgroup label="Suggested Matches">
+                                          {it.customerSuggestions.map((s) => (
+                                            <option key={`sug-${s.id}`} value={s.id}>
+                                              {s.name} ({Math.round(s.score * 100)}%)
+                                            </option>
+                                          ))}
+                                        </optgroup>
+                                      )}
+                                      <optgroup label="All Customers">
+                                        {customers.map((c) => (
+                                          <option key={c.id} value={c.id}>
+                                            {c.name}
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                    </select>
+                                  ) : (
+                                    <div className="flex items-center gap-1.5">
+                                      <input
+                                        type="text"
+                                        value={it.newCustomerName}
+                                        placeholder="New customer"
+                                        onChange={(e) => updateItem(it.localId, { newCustomerName: e.target.value })}
+                                        className="w-full rounded-lg border border-cyan-700 bg-slate-900 px-2 py-1 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                                      />
+                                    </div>
+                                  )}
+                                </td>
+
+                                {/* 4. SOA Number */}
+                                <td className="py-2 px-3">
+                                  <input
+                                    type="text"
+                                    value={it.soaNumber}
+                                    onChange={(e) => updateItem(it.localId, { soaNumber: e.target.value })}
+                                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-mono text-white focus:border-cyan-500 focus:outline-none"
+                                  />
+                                </td>
+
+                                {/* 5. Statement Date */}
+                                <td className="py-2 px-3 text-center">
+                                  {it.statementDate ? (
+                                    <span className="font-mono text-slate-300">
+                                      {formatDisplayDate(it.statementDate)}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-950/70 border border-amber-800 text-amber-300">
+                                      Unknown
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* 6. Closing Balance */}
+                                <td className="py-2 px-3 text-right">
+                                  {it.closingBalance !== null && it.closingBalance !== undefined ? (
+                                    <span className="font-mono font-bold text-white">
+                                      AED {it.closingBalance.toFixed(2)}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-950/70 border border-amber-800 text-amber-300">
+                                      Not extracted
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* 7. Rows */}
+                                <td className="py-2 px-3 text-center">
+                                  <span
+                                    className={`font-mono ${
+                                      it.entries.length === 0 ? "text-amber-400 font-semibold" : "text-slate-300"
+                                    }`}
+                                  >
+                                    {it.entries.length} rows
+                                  </span>
+                                </td>
+
+                                {/* 8. Status */}
+                                <td className="py-2 px-3 text-center">
+                                  {it.processState === "uploading" || it.processState === "queued" ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 border border-slate-700 px-2 py-0.5 text-[10px] text-slate-300">
+                                      <Loader2 size={10} className="animate-spin" /> Processing
+                                    </span>
+                                  ) : it.processState === "failed" ? (
+                                    <span
+                                      className="inline-flex items-center gap-1 rounded-full bg-rose-950 border border-rose-800 px-2 py-0.5 text-[10px] font-semibold text-rose-300"
+                                      title={it.errorMessage}
+                                    >
+                                      Error
+                                    </span>
+                                  ) : it.isDuplicate ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-950 border border-amber-700 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                                      Duplicate
+                                    </span>
+                                  ) : it.isVerified || it.processState === "ready" ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-950 border border-emerald-700 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                                      Verified
+                                    </span>
+                                  ) : it.isScannedPdf ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-950 border border-amber-700 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                                      Needs Review
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-cyan-950 border border-cyan-800 px-2 py-0.5 text-[10px] font-semibold text-cyan-300">
+                                      Pending Verification
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* 9. Actions */}
+                                <td className="py-2 px-3 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenReviewScreen(it.localId)}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-cyan-700/70 bg-cyan-950/60 hover:bg-cyan-900 text-cyan-300 px-2.5 py-1 text-xs font-semibold cursor-pointer transition"
+                                      title="Open side-by-side spreadsheet editor"
+                                    >
+                                      <FileSpreadsheet size={13} />
+                                      <span>Edit</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeItem(it.localId)}
+                                      className="p-1 text-slate-500 hover:text-rose-400 rounded transition cursor-pointer"
+                                      title="Remove from batch"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+
+                              {/* Duplicate Resolution Sub-Row */}
+                              {it.isDuplicate && (
+                                <tr className="bg-amber-950/20 border-t border-amber-800/40">
+                                  <td colSpan={9} className="py-2 px-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+                                      <div className="flex items-center gap-2 text-amber-200">
+                                        <CopyCheck size={14} className="text-amber-400 shrink-0" />
+                                        <span>Duplicate detected: {it.duplicateReason}</span>
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-3">
+                                        <label className="flex items-center gap-1 cursor-pointer text-slate-300">
+                                          <input
+                                            type="radio"
+                                            name={`dup-${it.localId}`}
+                                            checked={it.duplicateAction === "skip"}
+                                            onChange={() =>
+                                              updateItem(it.localId, {
+                                                duplicateAction: "skip",
+                                                confirmReplace: false,
+                                              })
+                                            }
+                                          />
+                                          <span>Skip</span>
+                                        </label>
+                                        <label className="flex items-center gap-1 cursor-pointer text-rose-300">
+                                          <input
+                                            type="radio"
+                                            name={`dup-${it.localId}`}
+                                            checked={it.duplicateAction === "replace"}
+                                            onChange={() =>
+                                              updateItem(it.localId, { duplicateAction: "replace" })
+                                            }
+                                          />
+                                          <span>Replace</span>
+                                        </label>
+                                        <label className="flex items-center gap-1 cursor-pointer text-rose-200 font-semibold">
+                                          <input
+                                            type="checkbox"
+                                            checked={it.confirmReplace}
+                                            onChange={(e) =>
+                                              updateItem(it.localId, { confirmReplace: e.target.checked })
+                                            }
+                                          />
+                                          <span>Confirm overwrite</span>
+                                        </label>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+
+                        {filteredItems.length === 0 && (
+                          <tr>
+                            <td colSpan={9} className="py-10 text-center text-slate-500">
+                              No items match the selected filter.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </>
@@ -1744,31 +2129,49 @@ export default function BulkSoaImportModal({
         <div className="flex items-center justify-between px-5 py-3.5 bg-slate-900 border-t border-slate-800 text-xs shrink-0">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCloseModal}
             className="rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 px-4 py-2 font-semibold text-slate-300 hover:text-white transition cursor-pointer"
           >
             {step === "done" ? "Close" : "Cancel"}
           </button>
 
           {step === "review" && (
-            <button
-              type="button"
-              onClick={handleImportAll}
-              disabled={processing || savingAll || readyCount + reviewCount === 0}
-              className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2 font-bold transition shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {savingAll ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  <span>Importing...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 size={14} />
-                  <span>Import All SOAs ({readyCount + reviewCount})</span>
-                </>
+            <div className="flex items-center gap-2.5">
+              {readyCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleImportVerified}
+                  disabled={processing || savingAll}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 font-bold transition shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {savingAll ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <CheckCircle2 size={14} />
+                  )}
+                  <span>Import Verified ({readyCount})</span>
+                </button>
               )}
-            </button>
+
+              <button
+                type="button"
+                onClick={handleImportAll}
+                disabled={processing || savingAll || totalCount === 0}
+                className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2 font-bold transition shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {savingAll ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Importing...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={14} />
+                    <span>Import All SOAs ({totalCount})</span>
+                  </>
+                )}
+              </button>
+            </div>
           )}
         </div>
       </div>
