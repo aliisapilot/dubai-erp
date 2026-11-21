@@ -47,7 +47,7 @@ function parseNumber(val: unknown): number | null {
   // Fix spaces before/in comma thousands: "2 ,719.00" -> "2719.00"
   str = str.replace(/(\d+)\s*,\s*(\d+)/g, "$1$2");
   str = str.replace(/(\d+)\s+(\d{3})(?=[^\d]|$)/g, "$1$2");
-  const isNegative = /^\s*\(.*?\)\s*$/.test(str) || str.includes("-");
+  const isNegative = /^\s*\(.*?\)\s*$/.test(str) || str.includes("-") || /\b(?:cr|credit)\b/i.test(str);
   const cleaned = str.replace(/[^0-9.]/g, "");
   const num = parseFloat(cleaned);
   if (isNaN(num)) return null;
@@ -1221,8 +1221,8 @@ export function extractFromPdf(
   for (let lIdx = 0; lIdx < lines.length; lIdx++) {
     const line = lines[lIdx];
     const combined = line + " " + (lines[lIdx + 1] || "");
-    if (!fields.document_date && /\b(?:date\s*of\s*issue|issue\s*date|statement\s*date|supply\s*date|dated|date)\b/i.test(combined)) {
-      const dm = combined.match(/(?:date\s*of\s*issue|issue\s*date|statement\s*date|supply\s*date|dated|date)[:\s]+((?:[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})|(?:\d{1,2}[-/\s](?:[A-Za-z]{3,9}|\d{1,2})[-/\s]\d{2,4})|(?:\d{4}[-/\s]\d{1,2}[-/\s]\d{1,2})|[0-9\s/.-]{8,15})/i);
+    if (!fields.document_date && /\b(?:date\s*of\s*issue|issue\s*date|statement\s*date|supply\s*date|dated|as\s*of\s*date|as\s*of|as\s*at|to\s*date|closing\s*date|date)\b/i.test(combined)) {
+      const dm = combined.match(/(?:date\s*of\s*issue|issue\s*date|statement\s*date|supply\s*date|dated|as\s*of\s*date|as\s*of|as\s*at|to\s*date|closing\s*date|date)[:\s]+((?:[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})|(?:\d{1,2}[-/\s.](?:[A-Za-z]{3,9}|\d{1,2})[-/\s.]\d{2,4})|(?:\d{4}[-/\s.]\d{1,2}[-/\s.]\d{1,2})|[0-9\s/.-]{8,15})/i);
       if (dm) {
         const dStr = dm[1].trim();
         const pd = parseDate(dStr);
@@ -1252,31 +1252,109 @@ export function extractFromPdf(
     }
   }
 
+  // Fallback: If date not found in document text for SOA, check filename date tokens (e.g. '31-Oct-2026' or '31.10.2026')
+  if (!fields.statement_date && docType === "customer_statement") {
+    const fnDateMatch = baseName.match(/\b((?:\d{1,2}[-/.\s](?:[A-Za-z]{3,9}|\d{1,2})[-/.\s]\d{2,4})|(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}))\b/);
+    if (fnDateMatch) {
+      const pd = parseDate(fnDateMatch[1]);
+      if (pd) {
+        fields.statement_date = {
+          fieldKey: "statement_date",
+          label: "Statement Date",
+          value: pd,
+          source: { file: fileName, rawText: `Filename: ${fileName}` },
+          confidence: 0.95,
+          validationStatus: "valid",
+          originalRawValue: fnDateMatch[1],
+        };
+        if (!fields.document_date) {
+          fields.document_date = fields.statement_date;
+        }
+      }
+    }
+  }
+
   // 4. Scan for Document / Invoice / Quotation / Statement Number
+  // For systematic SOA files (e.g. 'SOA107-26 Al Karwan Solution FZC.pdf'), the filename is authoritative.
+  const isSystematicSoaFilename = Boolean(
+    fnDocNo &&
+    /^SOA\s*[-_]?[0-9]+(?:[-_/][0-9A-Za-z]+)?$/i.test(fnDocNo) &&
+    !/test|dummy|sample/i.test(fnDocNo)
+  );
+  if (isSystematicSoaFilename && fnDocNo) {
+    fields.document_number = {
+      fieldKey: "document_number",
+      label: "Document Number",
+      value: fnDocNo,
+      source: { file: fileName, rawText: `Filename: ${fileName}` },
+      confidence: 0.99,
+      validationStatus: "valid",
+      originalRawValue: fnDocNo,
+    };
+  }
+
+  // Now scan the document text for internal document number, cross-checking against filename
+  let internalDocNum: string | null = null;
+  let internalDocLoc: SourceLocation | null = null;
+
   for (let lIdx = 0; lIdx < lines.length; lIdx++) {
     const line = lines[lIdx];
     const combined = line + " " + (lines[lIdx + 1] || "");
-    if (!fields.document_number && /(?:invoice\s*no\.?|quotation\s*no\.?|quote\s*no\.?|qtn\s*no\.?|statement\s*#|statement\s*no\.?|statement\s*ref|soa\s*#|soa\s*no\.?|ref\s*:|invoice\s*ref)/i.test(combined)) {
+    if (/(?:invoice\s*no\.?|quotation\s*no\.?|quote\s*no\.?|qtn\s*no\.?|statement\s*#|statement\s*no\.?|statement\s*ref|soa\s*#|soa\s*no\.?|ref\s*:|invoice\s*ref)/i.test(combined)) {
       const im = combined.match(/(?:invoice\s*no\.?|quotation\s*no\.?|quote\s*no\.?|qtn\s*no\.?|statement\s*#|statement\s*no\.?|statement\s*ref\s*:?|soa\s*#|soa\s*no\.?|ref\s*:|invoice\s*ref\s*:)\s*([A-Za-z0-9\s/_#-]+)/i);
       if (im) {
         let rawNum = im[1].trim();
         rawNum = rawNum.replace(/\s+(Location|Ref|Mobile|Date|Supply|Terms|Company|Buyer|To|From|Customer|Page).*$/i, "");
         const clean = rawNum.replace(/\s+/g, "");
         if (clean.length >= 3 && /^(?:INV|TAX|QTN|QUO|PI|DN|PO|LPO|BILL|SOA)/i.test(clean)) {
-          fields.document_number = {
-            fieldKey: "document_number",
-            label: "Document Number",
-            value: clean,
-            source: { file: fileName, page: 1, row: lIdx + 1, rawText: combined },
-            confidence: 0.99,
-            validationStatus: "valid",
-            originalRawValue: clean,
-          };
+          if (!internalDocNum) {
+            internalDocNum = clean;
+            internalDocLoc = { file: fileName, page: 1, row: lIdx + 1, rawText: combined };
+          }
         }
       }
     }
   }
-  if (!fields.document_number && fnDocNo && !/statement.*account/i.test(fnDocNo)) {
+
+  if (internalDocNum && internalDocLoc) {
+    if (!fields.document_number) {
+      // Filename had no systematic document number, use internal document number
+      fields.document_number = {
+        fieldKey: "document_number",
+        label: "Document Number",
+        value: internalDocNum,
+        source: internalDocLoc,
+        confidence: 0.99,
+        validationStatus: "valid",
+        originalRawValue: internalDocNum,
+      };
+    } else {
+      // Both filename and internal text have document numbers -> check for conflict!
+      const currentVal = String(fields.document_number.value).trim();
+      const normCurrent = currentVal.replace(/[/_]/g, "-").toUpperCase();
+      const normInternal = internalDocNum.replace(/[/_]/g, "-").toUpperCase();
+      if (normCurrent !== normInternal && !normInternal.startsWith(normCurrent) && !normCurrent.startsWith(normInternal)) {
+        fields.internal_document_number = {
+          fieldKey: "internal_document_number",
+          label: "Internal Document Number",
+          value: internalDocNum,
+          source: internalDocLoc,
+          confidence: 0.90,
+          validationStatus: "valid",
+          originalRawValue: internalDocNum,
+        };
+        fields.number_conflict = {
+          fieldKey: "number_conflict",
+          label: "Number Conflict",
+          value: `Filename states '${currentVal}' but document text states '${internalDocNum}'. Filename preserved as primary document identifier.`,
+          source: internalDocLoc,
+          confidence: 1.0,
+          validationStatus: "valid",
+          originalRawValue: `${currentVal} vs ${internalDocNum}`,
+        };
+      }
+    }
+  } else if (!fields.document_number && fnDocNo && !/statement.*account/i.test(fnDocNo)) {
     fields.document_number = {
       fieldKey: "document_number",
       label: "Document Number",
@@ -1431,28 +1509,30 @@ export function extractFromPdf(
       }
 
       // Closing Balance / Total Balance Due
-      if (!fields.total_amount && /(?:total\s*balance\s*due|account\s*current\s*balance|closing\s*balance|balance\s*due)/i.test(combined)) {
-        const m = combined.match(/(?:total\s*balance\s*due|account\s*current\s*balance|closing\s*balance|balance\s*due)\s*[:]?\s*(?:AED\s*)?(\(-?[0-9,]+(?:\.[0-9]+)?\)|-?[0-9,]+(?:\.[0-9]+)?)/i);
+      if (!fields.closing_balance && /(?:total\s*balance\s*due|account\s*current\s*balance|closing\s*balance|balance\s*due|net\s*outstanding|total\s*outstanding|current\s*balance|ending\s*balance|total\s*balance|net\s*due|amount\s*due)/i.test(combined)) {
+        const m = combined.match(/(?:total\s*balance\s*due|account\s*current\s*balance|closing\s*balance|balance\s*due|net\s*outstanding|total\s*outstanding|current\s*balance|ending\s*balance|total\s*balance|net\s*due|amount\s*due)\s*[:]?\s*(?:AED\s*)?(\(-?[0-9,]+(?:\.[0-9]+)?\)|-?[0-9,]+(?:\.[0-9]+)?(?:\s*(?:Cr|Dr|Credit|Debit))?)/i);
         if (m) {
-          const val = parseNumber(m[1]) ?? 0;
-          fields.total_amount = {
-            fieldKey: "total_amount",
-            label: "Total Balance Due",
-            value: val,
-            source: loc,
-            confidence: 0.98,
-            validationStatus: "valid",
-            originalRawValue: m[1],
-          };
-          fields.closing_balance = {
-            fieldKey: "closing_balance",
-            label: "Closing Balance",
-            value: val,
-            source: loc,
-            confidence: 0.98,
-            validationStatus: "valid",
-            originalRawValue: m[1],
-          };
+          const val = parseNumber(m[1]);
+          if (val !== null) {
+            fields.total_amount = {
+              fieldKey: "total_amount",
+              label: "Total Balance Due",
+              value: val,
+              source: loc,
+              confidence: 0.98,
+              validationStatus: "valid",
+              originalRawValue: m[1],
+            };
+            fields.closing_balance = {
+              fieldKey: "closing_balance",
+              label: "Closing Balance",
+              value: val,
+              source: loc,
+              confidence: 0.98,
+              validationStatus: "valid",
+              originalRawValue: m[1],
+            };
+          }
         }
       }
     }
@@ -1489,46 +1569,22 @@ export function extractFromPdf(
     return s;
   }
 
-  let tableHeaderStart = -1;
-  let tableHeaderEnd = -1;
-  let tableEndIndex = lines.length;
-
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    if (
-      /offer\s*price|sl\s*\.?\s*no|description.*qty|description.*unit|^(?:SN|#)\s+(?:DESCRIPTION|Item\s+Description)/i.test(l) ||
-      (docType === "customer_statement" && /date.*(?:type|ref|particular|transaction|charges|credits|balance)/i.test(l))
-    ) {
-      if (tableHeaderStart === -1) tableHeaderStart = i;
-    }
-    if (tableHeaderStart !== -1 && tableHeaderEnd === -1) {
-      if (/amount.*amount|net.*vat.*total|no\.\s+price|qty\s+unit\s+rate|balance\s*\(?aed\)?|charges|credits/i.test(l)) {
-        tableHeaderEnd = i;
-      }
-    }
-    if (tableHeaderStart !== -1 && i > (tableHeaderEnd !== -1 ? tableHeaderEnd : tableHeaderStart)) {
-      if (/net\s*amount|subtotal|sub-total|total\s*amount|grand\s*total|total\s*balance\s*due|account\s*current\s*balance|closing\s*balance/i.test(l)) {
-        tableEndIndex = i;
-        break;
-      }
-    }
-  }
-
-  if (tableHeaderEnd === -1 && tableHeaderStart !== -1) {
-    tableHeaderEnd = docType === "customer_statement" ? tableHeaderStart : tableHeaderStart + 3;
-  }
-
-  if (tableHeaderStart !== -1) {
+  if (docType === "customer_statement") {
     let itemSeq = 1;
-    let pendingDesc: string[] = [];
 
-    for (let i = tableHeaderEnd + 1; i < tableEndIndex; i++) {
+    // Scan all lines of the document across all pages without prematurely terminating
+    for (let i = 0; i < lines.length; i++) {
       const rawLine = lines[i].trim();
       if (!rawLine || /^[0-9]\s*\.?$/.test(rawLine)) continue;
-      // Skip validity / terms
-      if (/price\s*validity|payment\s*terms|all\s*options\s*given/i.test(rawLine)) break;
-      // Skip running headers / footers across multi-page tables
-      if (/goldenelitetents|P\.\s*O\.\s*Box|AL SAFWAH|\+971/i.test(rawLine)) continue;
+
+      // Skip validity / terms / bank details / running headers / footers
+      if (/price\s*validity|payment\s*terms|all\s*options\s*given/i.test(rawLine)) continue;
+      if (/goldenelitetents|P\.\s*O\.\s*Box|AL SAFWAH|\+971|thank\s*you\s*for\s*your\s*business|enquiries\s*concerning\s*this\s*statement|warehouse\s*no\./i.test(rawLine)) continue;
+      if (/^page\s+\d+\s+of\s+\d+/i.test(rawLine) || /•\s*page\s+\d+\s+of\s+\d+/i.test(rawLine)) continue;
+      // Skip repeated table headers across pages
+      if (/^(?:date\s+type|date\s+ref|date\s+particulars|date\s+description|date\s+invoice|date\s+charges)/i.test(rawLine)) continue;
+      // Skip summary banner lines
+      if (/^(?:previous\s*balance|opening\s*balance|credits|new\s*charges|total\s*balance\s*due)\s*AED/i.test(rawLine)) continue;
 
       if (/^note\s*:/i.test(rawLine)) {
         if (items.length > 0) {
@@ -1538,164 +1594,214 @@ export function extractFromPdf(
       }
 
       const line = cleanLineForTable(rawLine);
-      const combinedLine = pendingDesc.length > 0 ? pendingDesc.join(" ") + " " + line : line;
 
       // Statement of Account (SOA) Transaction Row Parser
-      if (docType === "customer_statement") {
-        const soaDateRegex = /^((?:\d{1,2}[-/.\s](?:[A-Za-z]{3,9}|\d{1,2})[-/.\s]\d{2,4})|(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2})|(?:[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}))\s+(.+)$/;
-        const mDate = line.match(soaDateRegex);
-        if (mDate) {
-          const transDate = mDate[1].trim();
-          const rest = mDate[2].trim();
-          const tokenRegex = /(?:^|\s)(?:AED\s*)?(\(-?[0-9,]+(?:\.[0-9]+)?\)|-?[0-9,]+(?:\.[0-9]+)?|---|—|–|-)(?=\s|$)/gi;
-          const numMatches = Array.from(rest.matchAll(tokenRegex));
-          if (numMatches.length > 0) {
-            const trailingMatches = numMatches.slice(-3);
-            const firstNumIdx = trailingMatches[0].index ?? rest.indexOf(trailingMatches[0][0]);
-            const transDesc = rest.slice(0, firstNumIdx).trim();
+      // Allows optional leading index/number: "1 09/05/2026..." or directly "09/05/2026..."
+      const soaDateRegex = /^(?:([0-9]{1,4})\.?\s+)?((?:\d{1,2}[-/.\s](?:[A-Za-z]{3,9}|\d{1,2})[-/.\s]\d{2,4})|(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2})|(?:[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}))\s+(.+)$/;
+      const mDate = line.match(soaDateRegex);
+      if (mDate) {
+        const transDate = mDate[2].trim();
+        const rest = mDate[3].trim();
+        const tokenRegex = /(?:^|\s)(?:AED\s*)?(\(-?[0-9,]+(?:\.[0-9]+)?\)|-?[0-9,]+(?:\.[0-9]+)?(?:\s*(?:Cr|Dr|Credit|Debit))?|---|—|–|-)(?=\s|$)/gi;
+        const numMatches = Array.from(rest.matchAll(tokenRegex));
+        if (numMatches.length > 0) {
+          const trailingMatches = numMatches.slice(-3);
+          const firstNumIdx = trailingMatches[0].index ?? rest.indexOf(trailingMatches[0][0]);
+          const transDesc = rest.slice(0, firstNumIdx).trim();
 
-            const parsedNums = trailingMatches.map(m => {
-              const raw = m[1];
-              if (raw === "—" || raw === "–" || raw === "-" || raw === "---" || /^[-—–]+$/.test(raw)) return 0;
-              return parseNumber(raw) ?? 0;
-            });
+          const parsedNums = trailingMatches.map(m => {
+            const raw = m[1];
+            if (raw === "—" || raw === "–" || raw === "-" || raw === "---" || /^[-—–]+$/.test(raw)) return 0;
+            return parseNumber(raw) ?? 0;
+          });
 
-            let charge = 0;
-            let credit = 0;
-            let balance = 0;
+          let charge = 0;
+          let credit = 0;
+          let balance = 0;
 
-            if (parsedNums.length >= 3) {
+          if (parsedNums.length >= 3) {
+            charge = parsedNums[0];
+            credit = parsedNums[1];
+            balance = parsedNums[2];
+          } else if (parsedNums.length === 2) {
+            if (/rv|receipt|pay|cred/i.test(transDesc)) {
+              credit = parsedNums[0];
+            } else {
               charge = parsedNums[0];
-              credit = parsedNums[1];
-              balance = parsedNums[2];
-            } else if (parsedNums.length === 2) {
-              if (/rv|receipt|pay|cred/i.test(transDesc)) {
-                credit = parsedNums[0];
-              } else {
-                charge = parsedNums[0];
-              }
-              balance = parsedNums[1];
-            } else if (parsedNums.length === 1) {
-              balance = parsedNums[0];
-              if (/opening|brought\s*forward/i.test(transDesc)) {
-                charge = parsedNums[0];
-              }
             }
-
-            // Extract reference number
-            const refMatch = transDesc.match(/\b((?:INV|TAX|BILL|RV|REC|RCPT|PAY|PV|CN|DN|QTN|SO|SOA)[-_/][0-9A-Za-z-_/]+)\b/i) ||
-                             transDesc.match(/\b([A-Za-z]{2,5}[-_/][0-9A-Za-z-_/]+)\b/i) ||
-                             transDesc.match(/\b([A-Z]{2,4}[0-9]{3,})\b/i);
-            const refNo = refMatch ? refMatch[1] : "";
-
-            items.push({
-              id: `item_soa_${itemSeq}`,
-              itemNumber: itemSeq++,
-              description: `${transDate} - ${transDesc || "Statement Entry"}`,
-              date: parseDate(transDate) || transDate,
-              reference: refNo || undefined,
-              reference_no: refNo || undefined,
-              debit: charge,
-              credit: credit,
-              balance: balance,
-              quantity: 1,
-              unit: "Doc",
-              unitPrice: charge > 0 ? charge : credit,
-              discount: 0,
-              vatRate: 0,
-              vatAmount: 0,
-              taxableAmount: charge > 0 ? charge : 0,
-              total: charge > 0 ? charge : credit,
-              calculatedTotal: balance,
-              difference: 0,
-              calculationStatus: "match",
-              source: { file: fileName, page: 1, row: i + 1, rawText: rawLine },
-            });
-            pendingDesc = [];
-            continue;
+            balance = parsedNums[1];
+          } else if (parsedNums.length === 1) {
+            balance = parsedNums[0];
+            if (/opening|brought\s*forward/i.test(transDesc)) {
+              charge = parsedNums[0];
+            }
           }
+
+          // Extract reference number
+          const refMatch = transDesc.match(/\b((?:INV|TAX|BILL|RV|REC|RCPT|PAY|PV|CN|DN|QTN|SO|SOA)[-_/][0-9A-Za-z-_/]+)\b/i) ||
+                           transDesc.match(/\b([A-Za-z]{2,5}[-_/][0-9A-Za-z-_/]+)\b/i) ||
+                           transDesc.match(/\b([A-Z]{2,4}[0-9]{3,})\b/i);
+          const refNo = refMatch ? refMatch[1] : "";
+
+          items.push({
+            id: `item_soa_${itemSeq}`,
+            itemNumber: itemSeq++,
+            description: `${transDate} - ${transDesc || "Statement Entry"}`,
+            date: parseDate(transDate) || transDate,
+            reference: refNo || undefined,
+            reference_no: refNo || undefined,
+            debit: charge,
+            credit: credit,
+            balance: balance,
+            quantity: 1,
+            unit: "Doc",
+            unitPrice: charge > 0 ? charge : credit,
+            discount: 0,
+            vatRate: 0,
+            vatAmount: 0,
+            taxableAmount: charge > 0 ? charge : 0,
+            total: charge > 0 ? charge : credit,
+            calculatedTotal: balance,
+            difference: 0,
+            calculationStatus: "match",
+            source: { file: fileName, page: 1, row: i + 1, rawText: rawLine },
+          });
+          continue;
         }
       }
+    }
+  } else {
+    // Non-statement documents (Invoices, Quotations, Purchase Orders, Delivery Notes)
+    let tableHeaderStart = -1;
+    let tableHeaderEnd = -1;
+    let tableEndIndex = lines.length;
 
-      // 1. Check for 8/7-column layout (Quotation / Tax Invoice with separate Net, VAT, Total):
-      // [itemNo] [desc] [unit] [qty] [rate] [net] [vat] [total]
-      const m8 = combinedLine.match(/^(?:([0-9]+)\.?\s+)?(.*?)\s+([A-Za-z²m]+|\S+)\s+([0-9][0-9,.]*)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)$/i);
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (/offer\s*price|sl\s*\.?\s*no|description.*qty|description.*unit|^(?:SN|#)\s+(?:DESCRIPTION|Item\s+Description)/i.test(l)) {
+        if (tableHeaderStart === -1) tableHeaderStart = i;
+      }
+      if (tableHeaderStart !== -1 && tableHeaderEnd === -1) {
+        if (/amount.*amount|net.*vat.*total|no\.\s+price|qty\s+unit\s+rate|balance\s*\(?aed\)?|charges|credits/i.test(l)) {
+          tableHeaderEnd = i;
+        }
+      }
+      if (tableHeaderStart !== -1 && i > (tableHeaderEnd !== -1 ? tableHeaderEnd : tableHeaderStart)) {
+        if (/net\s*amount|subtotal|sub-total|total\s*amount|grand\s*total/i.test(l)) {
+          tableEndIndex = i;
+          break;
+        }
+      }
+    }
 
-      // 2. Check for 6-column layout (Standard Invoice: Qty Unit Rate Amount):
-      const m6 = !m8 ? combinedLine.match(/^(?:([0-9]+)\.?\s+)?(.*?)\s*(-|[0-9][0-9,.]*)\s+([A-Za-z]+)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)$/i) : null;
+    if (tableHeaderEnd === -1 && tableHeaderStart !== -1) {
+      tableHeaderEnd = tableHeaderStart + 3;
+    }
 
-      if (m8) {
-        const itemNo = m8[1] ? parseInt(m8[1]) : itemSeq;
-        let lineDesc = m8[2]?.trim() || "";
-        lineDesc = lineDesc.replace(/^Description\s+Unit\s+Qty\s+No\.\s+price\s+Amount\s+Amount\s+Amount\s*/i, "");
-        const unit = m8[3].trim();
-        const qty = parseNumber(m8[4]) || 1;
-        const rate = parseNumber(m8[5]) || 0;
-        const taxableAmount = parseNumber(m8[6]) || Number((qty * rate).toFixed(2));
-        const vatAmt = parseNumber(m8[7]) || Number((taxableAmount * 0.05).toFixed(2));
-        const grossTotal = parseNumber(m8[8]) || Number((taxableAmount + vatAmt).toFixed(2));
+    if (tableHeaderStart !== -1) {
+      let itemSeq = 1;
+      let pendingDesc: string[] = [];
 
-        items.push({
-          id: `item_pdf_${itemSeq}`,
-          itemNumber: itemSeq++,
-          description: lineDesc || `Item ${itemNo}`,
-          quantity: qty,
-          unit,
-          unitPrice: rate,
-          discount: 0,
-          vatRate: 5,
-          vatAmount: vatAmt,
-          taxableAmount,
-          total: grossTotal,
-          calculatedTotal: grossTotal,
-          difference: 0,
-          calculationStatus: "match",
-          source: { file: fileName, page: 1, row: i + 1, rawText: rawLine },
-        });
-        pendingDesc = [];
-      } else if (m6) {
-        const itemNo = m6[1] ? parseInt(m6[1]) : itemSeq;
-        const lineDesc = m6[2]?.trim() || "";
-        const qty = m6[3] === "-" ? 1 : parseNumber(m6[3]) || 1;
-        const unit = m6[4].trim();
-        const rate = parseNumber(m6[5]) || 0;
-        const amountCol = parseNumber(m6[6]) || 0;
+      for (let i = tableHeaderEnd + 1; i < tableEndIndex; i++) {
+        const rawLine = lines[i].trim();
+        if (!rawLine || /^[0-9]\s*\.?$/.test(rawLine)) continue;
+        // Skip validity / terms
+        if (/price\s*validity|payment\s*terms|all\s*options\s*given/i.test(rawLine)) break;
+        // Skip running headers / footers across multi-page tables
+        if (/goldenelitetents|P\.\s*O\.\s*Box|AL SAFWAH|\+971/i.test(rawLine)) continue;
 
-        let taxableAmount = amountCol || Number((qty * rate).toFixed(2));
-        let vatAmt = Number((taxableAmount * 0.05).toFixed(2));
-        let grossTotal = Number((taxableAmount + vatAmt).toFixed(2));
-
-        // Advance billing adjustment if invoice billed an advance amount
-        const advVal = fields.advance_billed?.value;
-        if (typeof advVal === "number" && advVal > 0 && taxableAmount > advVal) {
-          taxableAmount = advVal;
-          vatAmt = Number((taxableAmount * 0.05).toFixed(2));
-          grossTotal = Number((taxableAmount + vatAmt).toFixed(2));
+        if (/^note\s*:/i.test(rawLine)) {
+          if (items.length > 0) {
+            items[items.length - 1].description += " (" + rawLine + ")";
+          }
+          continue;
         }
 
-        items.push({
-          id: `item_pdf_${itemSeq}`,
-          itemNumber: itemSeq++,
-          description: lineDesc || `Item ${itemNo}`,
-          quantity: qty,
-          unit,
-          unitPrice: rate,
-          discount: 0,
-          vatRate: 5,
-          vatAmount: vatAmt,
-          taxableAmount,
-          total: grossTotal,
-          calculatedTotal: grossTotal,
-          difference: 0,
-          calculationStatus: "match",
-          source: { file: fileName, page: 1, row: i + 1, rawText: rawLine },
-        });
-        pendingDesc = [];
-      } else {
-        pendingDesc.push(rawLine);
+        const line = cleanLineForTable(rawLine);
+        const combinedLine = pendingDesc.length > 0 ? pendingDesc.join(" ") + " " + line : line;
+
+        // 1. Check for 8/7-column layout (Quotation / Tax Invoice with separate Net, VAT, Total):
+        // [itemNo] [desc] [unit] [qty] [rate] [net] [vat] [total]
+        const m8 = combinedLine.match(/^(?:([0-9]+)\.?\s+)?(.*?)\s+([A-Za-z²m]+|\S+)\s+([0-9][0-9,.]*)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)$/i);
+
+        // 2. Check for 6-column layout (Standard Invoice: Qty Unit Rate Amount):
+        const m6 = !m8 ? combinedLine.match(/^(?:([0-9]+)\.?\s+)?(.*?)\s*(-|[0-9][0-9,.]*)\s+([A-Za-z]+)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)$/i) : null;
+
+        if (m8) {
+          const itemNo = m8[1] ? parseInt(m8[1]) : itemSeq;
+          let lineDesc = m8[2]?.trim() || "";
+          lineDesc = lineDesc.replace(/^Description\s+Unit\s+Qty\s+No\.\s+price\s+Amount\s+Amount\s+Amount\s*/i, "");
+          const unit = m8[3].trim();
+          const qty = parseNumber(m8[4]) || 1;
+          const rate = parseNumber(m8[5]) || 0;
+          const taxableAmount = parseNumber(m8[6]) || Number((qty * rate).toFixed(2));
+          const vatAmt = parseNumber(m8[7]) || Number((taxableAmount * 0.05).toFixed(2));
+          const grossTotal = parseNumber(m8[8]) || Number((taxableAmount + vatAmt).toFixed(2));
+
+          items.push({
+            id: `item_pdf_${itemSeq}`,
+            itemNumber: itemSeq++,
+            description: lineDesc || `Item ${itemNo}`,
+            quantity: qty,
+            unit,
+            unitPrice: rate,
+            discount: 0,
+            vatRate: 5,
+            vatAmount: vatAmt,
+            taxableAmount,
+            total: grossTotal,
+            calculatedTotal: grossTotal,
+            difference: 0,
+            calculationStatus: "match",
+            source: { file: fileName, page: 1, row: i + 1, rawText: rawLine },
+          });
+          pendingDesc = [];
+        } else if (m6) {
+          const itemNo = m6[1] ? parseInt(m6[1]) : itemSeq;
+          const lineDesc = m6[2]?.trim() || "";
+          const qty = m6[3] === "-" ? 1 : parseNumber(m6[3]) || 1;
+          const unit = m6[4].trim();
+          const rate = parseNumber(m6[5]) || 0;
+          const amountCol = parseNumber(m6[6]) || 0;
+
+          let taxableAmount = amountCol || Number((qty * rate).toFixed(2));
+          let vatAmt = Number((taxableAmount * 0.05).toFixed(2));
+          let grossTotal = Number((taxableAmount + vatAmt).toFixed(2));
+
+          // Advance billing adjustment if invoice billed an advance amount
+          const advVal = fields.advance_billed?.value;
+          if (typeof advVal === "number" && advVal > 0 && taxableAmount > advVal) {
+            taxableAmount = advVal;
+            vatAmt = Number((taxableAmount * 0.05).toFixed(2));
+            grossTotal = Number((taxableAmount + vatAmt).toFixed(2));
+          }
+
+          items.push({
+            id: `item_pdf_${itemSeq}`,
+            itemNumber: itemSeq++,
+            description: lineDesc || `Item ${itemNo}`,
+            quantity: qty,
+            unit,
+            unitPrice: rate,
+            discount: 0,
+            vatRate: 5,
+            vatAmount: vatAmt,
+            taxableAmount,
+            total: grossTotal,
+            calculatedTotal: grossTotal,
+            difference: 0,
+            calculationStatus: "match",
+            source: { file: fileName, page: 1, row: i + 1, rawText: rawLine },
+          });
+          pendingDesc = [];
+        } else {
+          pendingDesc.push(rawLine);
+        }
       }
     }
   }
+
+
 
   // If invoice-level discount exists and items don't have discounts, apportion or assign discount to line items
   const invDiscount = typeof fields.discount?.value === "number" ? fields.discount.value : 0;
@@ -1715,7 +1821,7 @@ export function extractFromPdf(
   // Statement of Account (SOA) Totals derivation from items if summary boxes were absent
   if (docType === "customer_statement") {
     if (!fields.subtotal && items.length > 0) {
-      const totalCharges = Number(items.reduce((sum, it) => sum + (it.taxableAmount || 0), 0).toFixed(2));
+      const totalCharges = Number(items.reduce((sum, it) => sum + (it.debit || 0), 0).toFixed(2));
       fields.subtotal = {
         fieldKey: "subtotal",
         label: "New Charges",
@@ -1727,7 +1833,7 @@ export function extractFromPdf(
       };
     }
     if (!fields.total_credits && items.length > 0) {
-      const totalCreds = Number(items.reduce((sum, it) => sum + (it.taxableAmount === 0 && it.total > 0 ? it.total : 0), 0).toFixed(2));
+      const totalCreds = Number(items.reduce((sum, it) => sum + (it.credit || 0), 0).toFixed(2));
       fields.total_credits = {
         fieldKey: "total_credits",
         label: "Total Credits",
@@ -1740,26 +1846,45 @@ export function extractFromPdf(
     }
     if (!fields.closing_balance && items.length > 0) {
       const lastItem = items[items.length - 1];
-      const closingVal = lastItem.calculatedTotal || 0;
-      fields.closing_balance = {
-        fieldKey: "closing_balance",
-        label: "Closing Balance",
-        value: closingVal,
-        source: { file: fileName, rawText: "Statement Running Balance" },
-        confidence: 0.95,
-        validationStatus: "valid",
-        originalRawValue: closingVal.toFixed(2),
-      };
-      if (!fields.total_amount) {
-        fields.total_amount = {
-          fieldKey: "total_amount",
-          label: "Total Balance Due",
+      const closingVal = typeof lastItem.balance === "number" ? lastItem.balance : lastItem.calculatedTotal;
+      if (closingVal !== undefined && closingVal !== null) {
+        fields.closing_balance = {
+          fieldKey: "closing_balance",
+          label: "Closing Balance",
           value: closingVal,
           source: { file: fileName, rawText: "Statement Running Balance" },
           confidence: 0.95,
           validationStatus: "valid",
-          originalRawValue: closingVal.toFixed(2),
+          originalRawValue: typeof closingVal === "number" ? closingVal.toFixed(2) : String(closingVal),
         };
+        if (!fields.total_amount) {
+          fields.total_amount = {
+            fieldKey: "total_amount",
+            label: "Total Balance Due",
+            value: closingVal,
+            source: { file: fileName, rawText: "Statement Running Balance" },
+            confidence: 0.95,
+            validationStatus: "valid",
+            originalRawValue: typeof closingVal === "number" ? closingVal.toFixed(2) : String(closingVal),
+          };
+        }
+      }
+    }
+    if (!fields.statement_date && items.length > 0) {
+      const lastItem = items[items.length - 1];
+      if (lastItem.date) {
+        fields.statement_date = {
+          fieldKey: "statement_date",
+          label: "Statement Date",
+          value: lastItem.date,
+          source: { file: fileName, rawText: "Latest Transaction Date" },
+          confidence: 0.90,
+          validationStatus: "valid",
+          originalRawValue: String(lastItem.date),
+        };
+        if (!fields.document_date) {
+          fields.document_date = fields.statement_date;
+        }
       }
     }
   }

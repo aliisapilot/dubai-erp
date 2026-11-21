@@ -30,6 +30,7 @@ import {
   matchCustomerCandidates,
   detectSoaDuplicate,
   extractSoaRowsFromSpreadsheet,
+  parseSoaFilename,
 } from "@/lib/soaManager";
 import type { RawHistoricalEntry } from "@/lib/customerStatementEngine";
 
@@ -61,6 +62,8 @@ export interface StagedSoaItem {
   customerMatchReason: string;
   customerSuggestions: Array<{ id: string; name: string; score: number }>;
   soaNumber: string;
+  internalDocumentNumber?: string;
+  numberConflict?: string;
   statementDate: string | null;
   fromDate?: string;
   toDate?: string;
@@ -487,9 +490,12 @@ export default function BulkSoaImportModal({
 
       // 2. Extract SOA metadata
       stage = "Extraction";
-      let customerName = "";
-      let soaNumber = item.fileName.replace(/\.[^.]+$/, "");
-      let statementDate: string | null = null;
+      const fnParsed = parseSoaFilename(item.fileName);
+      let customerName = fnParsed.customerName || "";
+      let soaNumber = fnParsed.soaNumber || item.fileName.replace(/\.[^.]+$/, "");
+      let internalDocumentNumber: string | undefined = undefined;
+      let numberConflict: string | undefined = undefined;
+      let statementDate: string | null = fnParsed.statementDate || null;
       let openingBalance = 0;
       let charges = 0;
       let credits = 0;
@@ -500,9 +506,9 @@ export default function BulkSoaImportModal({
 
       if (item.ext === "xlsx" || item.ext === "xls" || item.ext === "csv") {
         const parsed = extractSoaRowsFromSpreadsheet(buffer, item.fileName);
-        customerName = parsed.customerName;
-        soaNumber = parsed.soaNumber;
-        statementDate = parsed.statementDate || null;
+        customerName = parsed.customerName || customerName;
+        soaNumber = parsed.soaNumber || soaNumber;
+        statementDate = parsed.statementDate || statementDate || null;
         openingBalance = parsed.openingBalance;
         charges = parsed.charges;
         credits = parsed.credits;
@@ -532,9 +538,21 @@ export default function BulkSoaImportModal({
           extractionUncertain = true;
         } else {
           const textLen = String(doc.rawTextPreview || "").trim().length;
-          customerName = doc.customerName || doc.partyName || "";
-          soaNumber = doc.documentNumber || soaNumber;
-          statementDate = doc.documentDate || null;
+          customerName = customerName || doc.customerName || doc.partyName || "";
+
+          // Cross-check SOA Number: Filename is authoritative for systematic naming
+          if (fnParsed.soaNumber) {
+            soaNumber = fnParsed.soaNumber;
+            if (doc.documentNumber && doc.documentNumber !== fnParsed.soaNumber) {
+              internalDocumentNumber = doc.documentNumber;
+              numberConflict = `Filename states '${fnParsed.soaNumber}' but internal text states '${doc.documentNumber}'. Filename preserved as primary document identifier.`;
+              extractionUncertain = true;
+            }
+          } else {
+            soaNumber = doc.documentNumber || soaNumber;
+          }
+
+          statementDate = doc.documentDate || statementDate || null;
           openingBalance = Number(doc.openingBalance || 0);
           charges = Number(doc.subtotal || doc.totalDebits || 0);
           credits = Number(doc.totalCredits || 0);
@@ -562,7 +580,7 @@ export default function BulkSoaImportModal({
           if (textLen < 30 && !customerName && (closingBalance === 0 || closingBalance === null)) {
             isScannedPdf = true;
             extractionUncertain = true;
-          } else if (!customerName || !doc.documentNumber || !statementDate || closingBalance === null) {
+          } else if (!customerName || !soaNumber || !statementDate || closingBalance === null) {
             extractionUncertain = true;
           }
 
@@ -593,6 +611,7 @@ export default function BulkSoaImportModal({
 
       const needsReview =
         extractionUncertain ||
+        Boolean(numberConflict) ||
         isScannedPdf ||
         matchOutcome.needsReview ||
         !matchOutcome.matchedCustomerId ||
@@ -617,9 +636,13 @@ export default function BulkSoaImportModal({
         confirmNewCustomer: false,
         customerMatchReason: isScannedPdf
           ? "Scanned PDF detected — OCR / manual review required."
+          : numberConflict
+          ? numberConflict
           : matchOutcome.reason,
         customerSuggestions: matchOutcome.suggestions,
         soaNumber,
+        internalDocumentNumber,
+        numberConflict,
         statementDate,
         openingBalance,
         charges,
@@ -1040,13 +1063,13 @@ export default function BulkSoaImportModal({
           customerId: it.createNewCustomer ? undefined : it.customerId,
           newCustomerName: it.createNewCustomer ? it.newCustomerName.trim() : undefined,
           soaNumber: it.soaNumber.trim() || it.fileName,
-          statementDate: it.statementDate || todayISO(),
+          statementDate: it.statementDate || null,
           fromDate: it.fromDate,
           toDate: it.toDate,
           openingBalance: it.openingBalance || 0,
           charges: it.charges || 0,
           credits: it.credits || 0,
-          closingBalance: it.closingBalance ?? 0,
+          closingBalance: it.closingBalance !== undefined && it.closingBalance !== null ? it.closingBalance : null,
           entries: it.entries,
           cutoverDate: it.cutoverDate,
           isCutoverApproved: it.isCutoverApproved,
@@ -1930,12 +1953,23 @@ export default function BulkSoaImportModal({
 
                                 {/* 4. SOA Number */}
                                 <td className="py-2 px-3">
-                                  <input
-                                    type="text"
-                                    value={it.soaNumber}
-                                    onChange={(e) => updateItem(it.localId, { soaNumber: e.target.value })}
-                                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-mono text-white focus:border-cyan-500 focus:outline-none"
-                                  />
+                                  <div className="space-y-1">
+                                    <input
+                                      type="text"
+                                      value={it.soaNumber}
+                                      onChange={(e) => updateItem(it.localId, { soaNumber: e.target.value })}
+                                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-mono text-white focus:border-cyan-500 focus:outline-none"
+                                    />
+                                    {it.numberConflict && (
+                                      <span
+                                        className="inline-flex items-center gap-1 text-[10px] text-amber-300 font-sans bg-amber-950/80 border border-amber-800 rounded px-1.5 py-0.5"
+                                        title={it.numberConflict}
+                                      >
+                                        <AlertTriangle size={10} className="shrink-0" />
+                                        <span>PDF text: {it.internalDocumentNumber}</span>
+                                      </span>
+                                    )}
+                                  </div>
                                 </td>
 
                                 {/* 5. Statement Date */}
@@ -2157,17 +2191,36 @@ export default function BulkSoaImportModal({
                 type="button"
                 onClick={handleImportAll}
                 disabled={processing || savingAll || totalCount === 0}
-                className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2 font-bold transition shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                className={`inline-flex items-center gap-2 rounded-xl px-5 py-2 font-bold transition shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${
+                  readyCount === totalCount
+                    ? "bg-cyan-600 hover:bg-cyan-500 text-white"
+                    : "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                }`}
+                title={
+                  readyCount === totalCount
+                    ? "Import all verified statements"
+                    : "Save unverified statements as Pending Review without marking them verified"
+                }
               >
                 {savingAll ? (
                   <>
                     <Loader2 size={14} className="animate-spin" />
-                    <span>Importing...</span>
+                    <span>Saving...</span>
+                  </>
+                ) : readyCount === totalCount ? (
+                  <>
+                    <CheckCircle2 size={14} />
+                    <span>Import All Verified ({totalCount})</span>
+                  </>
+                ) : readyCount > 0 ? (
+                  <>
+                    <AlertTriangle size={14} className="text-amber-400" />
+                    <span>Save Remaining as Pending Review ({totalCount - readyCount})</span>
                   </>
                 ) : (
                   <>
-                    <CheckCircle2 size={14} />
-                    <span>Import All SOAs ({totalCount})</span>
+                    <AlertTriangle size={14} className="text-amber-400" />
+                    <span>Save All as Pending Review ({totalCount})</span>
                   </>
                 )}
               </button>

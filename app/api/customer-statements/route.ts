@@ -222,7 +222,8 @@ export async function GET(req: NextRequest) {
       success: true,
       companyId,
       customers: customers || [],
-      statements: verifiedStatements,
+      statements: statements,
+      verifiedStatements,
       pendingDocuments,
       company: companyRecord || null,
       selectedCustomer,
@@ -514,9 +515,18 @@ export async function POST(req: NextRequest) {
 export interface UpdateSoaPayload {
   companyId?: string;
   attachmentId: string;
-  action: "edit_entry" | "add_entry" | "delete_entry" | "update_cutover";
+  action: "edit_entry" | "add_entry" | "delete_entry" | "update_cutover" | "update_statement";
   entryId?: string;
   entry?: Partial<RawHistoricalEntry>;
+  entries?: RawHistoricalEntry[];
+  customerId?: string;
+  soaNumber?: string;
+  statementDate?: string | null;
+  openingBalance?: number;
+  closingBalance?: number | null;
+  isVerified?: boolean;
+  status?: "verified" | "pending_verification" | "rejected";
+  needsReview?: boolean;
   cutoverDate?: string | null;
   isCutoverApproved?: boolean;
   reason?: string;
@@ -525,7 +535,25 @@ export interface UpdateSoaPayload {
 export async function PUT(req: NextRequest) {
   try {
     const body = (await req.json()) as UpdateSoaPayload;
-    const { attachmentId, action, entryId, entry, cutoverDate, isCutoverApproved, reason, companyId: requestedCompanyId } = body;
+    const {
+      attachmentId,
+      action,
+      entryId,
+      entry,
+      entries,
+      customerId: targetCustomerId,
+      soaNumber,
+      statementDate,
+      openingBalance: newOpeningBalance,
+      closingBalance: newClosingBalance,
+      isVerified: requestedVerified,
+      status: requestedStatus,
+      needsReview: requestedNeedsReview,
+      cutoverDate,
+      isCutoverApproved,
+      reason,
+      companyId: requestedCompanyId,
+    } = body;
 
     if (!attachmentId) {
       return NextResponse.json({ success: false, error: "attachmentId is required." }, { status: 400 });
@@ -648,6 +676,31 @@ export async function PUT(req: NextRequest) {
         updated: { cutoverDate: updatedCutoverDate, isCutoverApproved: updatedCutoverApproved },
         reason: reason || "User updated cutover settings",
       });
+    } else if (action === "update_statement") {
+      if (Array.isArray(entries)) {
+        existingEntries.length = 0;
+        existingEntries.push(...entries);
+      }
+      auditTrail.push({
+        timestamp: nowIso,
+        user: userIdentifier,
+        action: "edit",
+        reason: reason || "User updated statement via Excel-style editor",
+        original: {
+          soaNumber: stored.soa_number,
+          statementDate: stored.statement_date,
+          openingBalance: stored.opening_balance,
+          entriesCount: stored.entries.length,
+          isVerified: stored.is_verified,
+        },
+        updated: {
+          soaNumber: soaNumber || stored.soa_number,
+          statementDate: statementDate !== undefined ? statementDate : stored.statement_date,
+          openingBalance: newOpeningBalance !== undefined ? newOpeningBalance : stored.opening_balance,
+          entriesCount: existingEntries.length,
+          isVerified: requestedVerified !== undefined ? requestedVerified : stored.is_verified,
+        },
+      });
     }
 
     // Recompute charges, credits, and closing balance across historical entries
@@ -658,15 +711,22 @@ export async function PUT(req: NextRequest) {
       totalCredits += Number(e.credit) || 0;
     });
 
-    const openingBalance = stored.opening_balance;
-    const closingBalance = Math.round((openingBalance + totalDebits - totalCredits) * 100) / 100;
+    const finalSoaNumber = soaNumber?.trim() || stored.soa_number;
+    const finalStatementDate = statementDate !== undefined ? statementDate : stored.statement_date;
+    const openingBalance = newOpeningBalance !== undefined ? Math.round(Number(newOpeningBalance) * 100) / 100 : stored.opening_balance;
+    const closingBalance = newClosingBalance !== undefined && newClosingBalance !== null
+      ? Math.round(Number(newClosingBalance) * 100) / 100
+      : Math.round((openingBalance + totalDebits - totalCredits) * 100) / 100;
 
-    const isStillVerified = stored.is_verified && existingEntries.length > 0;
-    const putStatus = isStillVerified ? "verified" : stored.status === "rejected" ? "rejected" : "pending_verification";
+    const isStillVerified = requestedVerified !== undefined
+      ? Boolean(requestedVerified && existingEntries.length > 0)
+      : (stored.is_verified && existingEntries.length > 0);
+    const putStatus = requestedStatus || (isStillVerified ? "verified" : stored.status === "rejected" ? "rejected" : "pending_verification");
+    const finalNeedsReview = requestedNeedsReview !== undefined ? requestedNeedsReview : (!isStillVerified);
 
     const newDescription = buildSoaAttachmentDescription({
-      soaNumber: stored.soa_number,
-      statementDate: stored.statement_date,
+      soaNumber: finalSoaNumber,
+      statementDate: finalStatementDate || "",
       fromDate: stored.from_date,
       toDate: stored.to_date,
       openingBalance,
@@ -674,7 +734,7 @@ export async function PUT(req: NextRequest) {
       credits: Math.round(totalCredits * 100) / 100,
       closingBalance,
       checksumSha256: stored.checksum_sha256 || undefined,
-      needsReview: stored.needs_review,
+      needsReview: finalNeedsReview,
       isScannedPdf: stored.is_scanned_pdf,
       isVerified: isStillVerified,
       status: putStatus,
@@ -688,9 +748,14 @@ export async function PUT(req: NextRequest) {
       auditTrail,
     });
 
+    const updateFields: Record<string, unknown> = { description: newDescription };
+    if (targetCustomerId && targetCustomerId !== stored.customer_id) {
+      updateFields.entity_id = targetCustomerId;
+    }
+
     const { error: updErr } = await supabase
       .from("document_attachments")
-      .update({ description: newDescription })
+      .update(updateFields)
       .eq("id", attachmentId)
       .eq("company_id", companyId);
 

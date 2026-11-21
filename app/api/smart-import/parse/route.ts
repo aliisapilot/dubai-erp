@@ -514,23 +514,28 @@ export async function POST(req: NextRequest) {
 
       // Check for Filename vs Document Content Number Conflict (Task 3)
       const baseFn = fileItem.name.split(/[/\\]/).pop() || fileItem.name;
-      const fnNumMatch = baseFn.match(/^([A-Za-z0-9]+[-_][0-9]+)/i);
-      const fnDocNum = fnNumMatch ? fnNumMatch[1].toUpperCase() : null;
-      const extractedNum = fields.document_number?.value ? String(fields.document_number.value).trim() : null;
+      if (fields.number_conflict?.value) {
+        validationWarnings.push(String(fields.number_conflict.value));
+        validationErrors.push(`Identifier Conflict: ${String(fields.number_conflict.value)}`);
+      } else {
+        const fnNumMatch = baseFn.match(/^([A-Za-z0-9]+[-_][0-9]+)/i);
+        const fnDocNum = fnNumMatch ? fnNumMatch[1].toUpperCase() : null;
+        const extractedNum = fields.document_number?.value ? String(fields.document_number.value).trim() : null;
 
-      if (fnDocNum && extractedNum) {
-        const normFn = fnDocNum.replace(/[/_]/g, "-").toUpperCase();
-        const normExtracted = extractedNum.replace(/[/_]/g, "-").toUpperCase();
-        const fnBase = normFn.replace(/[^A-Z0-9]/g, "");
-        const extBase = normExtracted.replace(/[^A-Z0-9]/g, "");
+        if (fnDocNum && extractedNum) {
+          const normFn = fnDocNum.replace(/[/_]/g, "-").toUpperCase();
+          const normExtracted = extractedNum.replace(/[/_]/g, "-").toUpperCase();
+          const fnBase = normFn.replace(/[^A-Z0-9]/g, "");
+          const extBase = normExtracted.replace(/[^A-Z0-9]/g, "");
 
-        if (fnBase && extBase && fnBase !== extBase && !normExtracted.startsWith(normFn) && !normFn.startsWith(normExtracted)) {
-          validationWarnings.push(
-            `Filename identifier '${fnDocNum}' conflicts with internal document number '${extractedNum}'. Marked for review to prevent unintentional numbering collision.`
-          );
-          validationErrors.push(
-            `Identifier Conflict: Filename states '${fnDocNum}' but document content states '${extractedNum}'. Review required.`
-          );
+          if (fnBase && extBase && fnBase !== extBase && !normExtracted.startsWith(normFn) && !normFn.startsWith(normExtracted)) {
+            validationWarnings.push(
+              `Filename identifier '${fnDocNum}' conflicts with internal document number '${extractedNum}'. Marked for review to prevent unintentional numbering collision.`
+            );
+            validationErrors.push(
+              `Identifier Conflict: Filename states '${fnDocNum}' but document content states '${extractedNum}'. Review required.`
+            );
+          }
         }
       }
 

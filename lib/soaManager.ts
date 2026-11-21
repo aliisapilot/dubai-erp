@@ -396,66 +396,37 @@ export function validateSoaFile(file: { name: string; size: number }): {
 export function buildSoaAttachmentDescription(meta: SoaRecordMetadata): string {
   const isVerified = meta.isVerified !== undefined
     ? Boolean(meta.isVerified)
-    : (!meta.needsReview && Boolean(meta.entries && meta.entries.length > 0) && !meta.isScannedPdf);
+    : (!meta.needsReview && Boolean(meta.entries && meta.entries.length > 0) && meta.closingBalance !== null && !meta.isScannedPdf);
   const status: "verified" | "pending_verification" | "rejected" = meta.status
     ? meta.status
-    : (isVerified ? "verified" : meta.needsReview ? "pending_verification" : "pending_verification");
+    : (isVerified ? "verified" : "pending_verification");
 
-  if (meta.entries && meta.entries.length > 0 || meta.cutoverDate || meta.auditTrail) {
-    const payload = {
-      version: "soa_v2",
-      soaNumber: meta.soaNumber || "SOA",
-      statementDate: meta.statementDate || null,
-      fromDate: meta.fromDate || null,
-      toDate: meta.toDate || null,
-      openingBalance: meta.openingBalance || 0,
-      charges: meta.charges || 0,
-      credits: meta.credits || 0,
-      closingBalance: meta.closingBalance !== undefined && meta.closingBalance !== null ? meta.closingBalance : null,
-      checksumSha256: meta.checksumSha256 || null,
-      needsReview: meta.needsReview || false,
-      isScannedPdf: meta.isScannedPdf || false,
-      isVerified,
-      status,
-      storagePath: meta.storagePath || null,
-      storageBucket: meta.storageBucket || "smart-imports",
-      cutoverDate: meta.cutoverDate || null,
-      isCutoverApproved: meta.isCutoverApproved || false,
-      cutoverApprovedBy: meta.cutoverApprovedBy || null,
-      cutoverApprovedAt: meta.cutoverApprovedAt || null,
-      entries: meta.entries || [],
-      auditTrail: meta.auditTrail || [],
-    };
-    return JSON.stringify(payload);
-  }
-
-  const parts = [
-    `Statement of Account ${meta.soaNumber || "SOA"} (${meta.statementDate || "Undated"})`,
-  ];
-  if (meta.checksumSha256) {
-    parts.push(`[SHA256: ${meta.checksumSha256}]`);
-  }
-  const closingStr = meta.closingBalance !== undefined && meta.closingBalance !== null
-    ? `AED ${Number(meta.closingBalance).toFixed(2)}`
-    : "Not extracted";
-  parts.push(
-    `| Opening: AED ${(meta.openingBalance || 0).toFixed(2)}, Charges: AED ${(meta.charges || 0).toFixed(2)}, Credits: AED ${(meta.credits || 0).toFixed(2)}, Closing: ${closingStr}`
-  );
-  if (meta.isScannedPdf) {
-    parts.push("[Scanned PDF]");
-  }
-  if (meta.needsReview) {
-    parts.push("[Needs Review]");
-  }
-  if (isVerified) {
-    parts.push("[Verified]");
-  } else if (status === "rejected") {
-    parts.push("[Rejected]");
-  } else {
-    parts.push("[Pending Verification]");
-  }
-  parts.push("[Document-only archive; zero ledger mutations]");
-  return parts.join(" ");
+  // Always serialize structured SOA records as lossless `soa_v2` JSON
+  const payload = {
+    version: "soa_v2",
+    soaNumber: meta.soaNumber || "SOA",
+    statementDate: meta.statementDate || null,
+    fromDate: meta.fromDate || null,
+    toDate: meta.toDate || null,
+    openingBalance: meta.openingBalance || 0,
+    charges: meta.charges || 0,
+    credits: meta.credits || 0,
+    closingBalance: meta.closingBalance !== undefined && meta.closingBalance !== null ? meta.closingBalance : null,
+    checksumSha256: meta.checksumSha256 || null,
+    needsReview: meta.needsReview || false,
+    isScannedPdf: meta.isScannedPdf || false,
+    isVerified,
+    status,
+    storagePath: meta.storagePath || null,
+    storageBucket: meta.storageBucket || "smart-imports",
+    cutoverDate: meta.cutoverDate || null,
+    isCutoverApproved: meta.isCutoverApproved || false,
+    cutoverApprovedBy: meta.cutoverApprovedBy || null,
+    cutoverApprovedAt: meta.cutoverApprovedAt || null,
+    entries: meta.entries || [],
+    auditTrail: meta.auditTrail || [],
+  };
+  return JSON.stringify(payload);
 }
 
 /**
