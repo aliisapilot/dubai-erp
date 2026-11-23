@@ -15,12 +15,13 @@ import {
   Edit2,
   Trash2,
   Plus,
-  MoreVertical,
   Clock,
-  History,
   CheckCircle2,
   Layers,
   RotateCcw,
+  Wrench,
+  DollarSign,
+  Users,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { CustomerCandidate, StoredSoaRecord } from "@/lib/soaManager";
@@ -41,18 +42,50 @@ function formatDisplayDate(iso?: string | null): string {
   return iso;
 }
 
+interface CustomerSummaryItem {
+  customerId: string;
+  customerName: string;
+  customerCode: string | null;
+  trn: string | null;
+  invoiceCount: number;
+  totalInvoices: number;
+  paymentCount: number;
+  totalPayments: number;
+  openingBalance: number;
+  outstandingBalance: number;
+}
+
+interface RepairDetail {
+  id: string;
+  fileName: string;
+  status: "repaired" | "skipped_verified" | "missing_file" | "failed";
+  oldClosing: number | null;
+  newClosing: number | null;
+  oldRows: number;
+  newRows: number;
+  oldDate: string;
+  newDate: string;
+  isMathValid: boolean;
+  error?: string;
+}
+
 export default function CustomerStatementsPage() {
   const [companyId, setCompanyId] = useState<string>("");
   const [companyInfo, setCompanyInfo] = useState<CompanyDocInfo | null>(null);
   const [customers, setCustomers] = useState<CustomerCandidate[]>([]);
+  const [customerSummaries, setCustomerSummaries] = useState<CustomerSummaryItem[]>([]);
   const [statements, setStatements] = useState<StoredSoaRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  // View mode tab: "statements" (default) or "ledger" (live accounting statement)
-  const [viewTab, setViewTab] = useState<"statements" | "ledger">("statements");
+  // Two Main Tabs: "imported" | "live"
+  const [viewTab, setViewTab] = useState<"imported" | "live">("imported");
 
-  // Selected customer & filters for ledger view
+  // Live Tab Sub-view: "list" (all customers) vs "detail" (single customer ledger)
+  const [liveViewMode, setLiveViewMode] = useState<"list" | "detail">("list");
+  const [liveSearchQuery, setLiveSearchQuery] = useState("");
+
+  // Selected customer & filters for detail ledger view
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [statementData, setStatementData] = useState<StatementData | null>(null);
   const [customerSavedSoa, setCustomerSavedSoa] = useState<StoredSoaRecord | null>(null);
@@ -62,7 +95,7 @@ export default function CustomerStatementsPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
-  // Filters for statements table
+  // Filters for imported statements table
   const [statementSearch, setStatementSearch] = useState("");
   const [statementCustomerFilter, setStatementCustomerFilter] = useState("");
   const [statementStatusFilter, setStatementStatusFilter] = useState<string>("all");
@@ -77,12 +110,23 @@ export default function CustomerStatementsPage() {
   // Modals
   const [showImportModal, setShowImportModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showCutoverModal, setShowCutoverModal] = useState(false);
   const [showAddRowModal, setShowAddRowModal] = useState(false);
-  const [showUploadsModal, setShowUploadsModal] = useState(false);
   const [editingEntry, setEditingEntry] = useState<StatementEntry | null>(null);
   const [editingSoaRecord, setEditingSoaRecord] = useState<StoredSoaRecord | null>(null);
+
+  // Repair Modal State
+  const [showRepairModal, setShowRepairModal] = useState(false);
+  const [repairRunning, setRepairRunning] = useState(false);
+  const [repairResults, setRepairResults] = useState<{
+    dryRun: boolean;
+    totalAttachments: number;
+    repairedCount: number;
+    skippedCount: number;
+    missingFilesCount: number;
+    failedCount: number;
+    details: RepairDetail[];
+  } | null>(null);
 
   // Modals form state
   const [editForm, setEditForm] = useState<{
@@ -131,6 +175,7 @@ export default function CustomerStatementsPage() {
       setCompanyId(json.companyId || "");
       setCompanyInfo(json.company || null);
       setCustomers(json.customers || []);
+      setCustomerSummaries(json.customerSummaries || []);
       setStatements(json.statements || []);
       setStatementData(json.statement || null);
       setCustomerSavedSoa(json.customerSavedSoa || null);
@@ -159,16 +204,17 @@ export default function CustomerStatementsPage() {
     queueMicrotask(() => {
       if (active) {
         let initialCid = "";
-        let initialTab: "statements" | "ledger" | null = null;
+        let initialTab: "imported" | "live" | null = null;
         if (typeof window !== "undefined") {
           const sp = new URLSearchParams(window.location.search);
           initialCid = sp.get("customer_id") || "";
           const tab = sp.get("tab");
-          if (tab === "ledger" || tab === "statements") {
+          if (tab === "live" || tab === "imported") {
             initialTab = tab;
           }
         }
         if (initialTab) setViewTab(initialTab);
+        if (initialCid) setLiveViewMode("detail");
         void loadStatement(initialCid || undefined);
       }
     });
@@ -179,6 +225,7 @@ export default function CustomerStatementsPage() {
 
   const handleSelectCustomer = (cid: string) => {
     setSelectedCustomerId(cid);
+    setLiveViewMode("detail");
     void loadStatement(cid, fromDate || undefined, toDate || undefined);
   };
 
@@ -192,7 +239,7 @@ export default function CustomerStatementsPage() {
     void loadStatement(selectedCustomerId, undefined, undefined);
   };
 
-  // Filter statement entries by client search query (for ledger tab)
+  // Filter statement entries by client search query (for detail ledger tab)
   const filteredEntries = useMemo(() => {
     if (!statementData?.entries) return [];
     const q = searchQuery.trim().toLowerCase();
@@ -205,7 +252,7 @@ export default function CustomerStatementsPage() {
     });
   }, [statementData, searchQuery]);
 
-  // Filtered statements for Statements of Account table
+  // Filtered statements for Imported Statements table
   const filteredStatements = useMemo(() => {
     return statements.filter((s) => {
       if (statementSearch.trim()) {
@@ -233,6 +280,42 @@ export default function CustomerStatementsPage() {
       return true;
     });
   }, [statements, statementSearch, statementCustomerFilter, statementStatusFilter, statementFromDate, statementToDate]);
+
+  // Filtered customers for Live Statements tab
+  const filteredCustomerSummaries = useMemo(() => {
+    const q = liveSearchQuery.trim().toLowerCase();
+    if (!q) return customerSummaries;
+    return customerSummaries.filter(
+      (c) =>
+        c.customerName.toLowerCase().includes(q) ||
+        (c.customerCode || "").toLowerCase().includes(q) ||
+        (c.trn || "").includes(q)
+    );
+  }, [customerSummaries, liveSearchQuery]);
+
+  // Totals for Live Statements KPI chips
+  const liveTotals = useMemo(() => {
+    let totalOutstanding = 0;
+    let totalInvoices = 0;
+    let totalPayments = 0;
+    let activeReceivablesCount = 0;
+
+    customerSummaries.forEach((c) => {
+      totalOutstanding += c.outstandingBalance;
+      totalInvoices += c.totalInvoices;
+      totalPayments += c.totalPayments;
+      if (Math.abs(c.outstandingBalance) > 0.01) {
+        activeReceivablesCount++;
+      }
+    });
+
+    return {
+      totalOutstanding: Math.round(totalOutstanding * 100) / 100,
+      totalInvoices: Math.round(totalInvoices * 100) / 100,
+      totalPayments: Math.round(totalPayments * 100) / 100,
+      activeReceivablesCount,
+    };
+  }, [customerSummaries]);
 
   // Selected customer object
   const currentCustomer = useMemo(() => {
@@ -349,6 +432,38 @@ export default function CustomerStatementsPage() {
       alert(err instanceof Error ? err.message : "Failed to delete selected statements.");
     } finally {
       setIsApplyingBatch(false);
+    }
+  }
+
+  // Trigger Admin Repair / Re-extraction
+  async function handleRunRepair(dryRun = false) {
+    setRepairRunning(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token || "";
+
+      const res = await fetch("/api/customer-statements/repair", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ dryRun }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json?.error || "Repair operation failed.");
+      }
+
+      setRepairResults(json);
+      if (!dryRun) {
+        void loadStatement(selectedCustomerId, fromDate || undefined, toDate || undefined);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to repair statements.");
+    } finally {
+      setRepairRunning(false);
     }
   }
 
@@ -541,7 +656,7 @@ export default function CustomerStatementsPage() {
     document.body.removeChild(link);
   }
 
-  // Summary counts for statements
+  // Summary counts for imported statements
   const verifiedCount = useMemo(() => statements.filter((s) => s.is_verified && !s.needs_review).length, [statements]);
   const needsReviewCount = useMemo(() => statements.filter((s) => s.needs_review).length, [statements]);
   const pendingCount = useMemo(() => statements.filter((s) => !s.is_verified && !s.needs_review && s.status !== "rejected").length, [statements]);
@@ -549,7 +664,7 @@ export default function CustomerStatementsPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-        {/* Top Bar */}
+        {/* Top Header Bar */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <Link
@@ -564,7 +679,7 @@ export default function CustomerStatementsPage() {
                 Customer Statements
               </h1>
               <p className="text-xs text-slate-400">
-                Authoritative Statement of Account imports & automatic ERP financial ledger synchronization
+                Import, edit, and manage customer SOAs.
               </p>
             </div>
           </div>
@@ -573,109 +688,45 @@ export default function CustomerStatementsPage() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={() => {
+                setShowRepairModal(true);
+                void handleRunRepair(true);
+              }}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 px-3.5 py-2.5 text-xs font-semibold transition cursor-pointer"
+              title="Scan and repair previous statement imports from storage"
+            >
+              <Wrench size={14} className="text-amber-400" />
+              <span>Repair Existing SOAs</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setShowImportModal(true)}
               className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2.5 text-xs font-bold transition shadow-sm cursor-pointer"
             >
               <Upload size={14} />
-              <span>Import SOA</span>
+              <span>+ Import SOAs</span>
             </button>
-
-            <button
-              type="button"
-              onClick={() => setShowPrintModal(true)}
-              disabled={!statementData}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 text-xs font-semibold transition cursor-pointer disabled:opacity-40"
-            >
-              <Download size={14} />
-              <span>Download SOA</span>
-            </button>
-
-            {/* Small More Menu */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowMoreMenu(!showMoreMenu)}
-                className="rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 p-2.5 text-slate-400 hover:text-white transition cursor-pointer"
-                title="More options"
-              >
-                <MoreVertical size={16} />
-              </button>
-
-              {showMoreMenu && (
-                <div
-                  className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-700 bg-slate-900 shadow-xl py-1 text-xs z-30"
-                  onMouseLeave={() => setShowMoreMenu(false)}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMoreMenu(false);
-                      setShowAddRowModal(true);
-                    }}
-                    className="w-full text-left px-4 py-2 hover:bg-slate-800 text-slate-200 flex items-center gap-2 cursor-pointer"
-                  >
-                    <Plus size={13} className="text-cyan-400" />
-                    <span>Add Historical Row</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMoreMenu(false);
-                      setShowCutoverModal(true);
-                    }}
-                    className="w-full text-left px-4 py-2 hover:bg-slate-800 text-slate-200 flex items-center gap-2 cursor-pointer"
-                  >
-                    <Clock size={13} className="text-amber-400" />
-                    <span>Cutover Settings</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMoreMenu(false);
-                      setShowUploadsModal(true);
-                    }}
-                    className="w-full text-left px-4 py-2 hover:bg-slate-800 text-slate-200 flex items-center gap-2 cursor-pointer"
-                  >
-                    <History size={13} className="text-blue-400" />
-                    <span>View Original SOA Files</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMoreMenu(false);
-                      handleExportCsv();
-                    }}
-                    className="w-full text-left px-4 py-2 hover:bg-slate-800 text-slate-200 flex items-center gap-2 cursor-pointer border-t border-slate-800"
-                  >
-                    <FileText size={13} className="text-emerald-400" />
-                    <span>Export to CSV</span>
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         </div>
 
-        {/* View Mode Segmented Tabs */}
+        {/* Simple Navigation: Two Tabs */}
         <div className="flex border-b border-slate-800 pb-2">
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setViewTab("statements")}
+              onClick={() => setViewTab("imported")}
               className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
-                viewTab === "statements"
+                viewTab === "imported"
                   ? "bg-cyan-600 text-white shadow-sm"
                   : "bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800"
               }`}
             >
               <FileText size={15} />
-              <span>Statements of Account</span>
+              <span>Imported Statements</span>
               <span
                 className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
-                  viewTab === "statements" ? "bg-cyan-700/80 text-white" : "bg-slate-800 text-slate-400"
+                  viewTab === "imported" ? "bg-cyan-700/80 text-white" : "bg-slate-800 text-slate-400"
                 }`}
               >
                 {statements.length}
@@ -684,24 +735,25 @@ export default function CustomerStatementsPage() {
 
             <button
               type="button"
-              onClick={() => setViewTab("ledger")}
+              onClick={() => {
+                setViewTab("live");
+                setLiveViewMode("list");
+              }}
               className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
-                viewTab === "ledger"
+                viewTab === "live"
                   ? "bg-cyan-600 text-white shadow-sm"
                   : "bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800"
               }`}
             >
               <Layers size={15} />
-              <span>Live Customer Ledger</span>
-              {statementData && (
-                <span
-                  className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
-                    viewTab === "ledger" ? "bg-cyan-700/80 text-white" : "bg-slate-800 text-slate-400"
-                  }`}
-                >
-                  {filteredEntries.length}
-                </span>
-              )}
+              <span>Live Statements</span>
+              <span
+                className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
+                  viewTab === "live" ? "bg-cyan-700/80 text-white" : "bg-slate-800 text-slate-400"
+                }`}
+              >
+                {customerSummaries.length}
+              </span>
             </button>
           </div>
         </div>
@@ -714,8 +766,10 @@ export default function CustomerStatementsPage() {
           </div>
         )}
 
-        {/* TAB 1: STATEMENTS OF ACCOUNT (DEFAULT) */}
-        {viewTab === "statements" && (
+        {/* ========================================================================= */}
+        {/* TAB 1: IMPORTED STATEMENTS (DEFAULT)                                      */}
+        {/* ========================================================================= */}
+        {viewTab === "imported" && (
           <div className="space-y-4">
             {/* Quick Summary Chips */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -891,7 +945,7 @@ export default function CustomerStatementsPage() {
               )}
             </div>
 
-            {/* Statements Table */}
+            {/* Imported Statements Table */}
             {loading ? (
               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-12 flex flex-col items-center justify-center gap-3 text-slate-400 text-sm">
                 <Loader2 size={24} className="animate-spin text-cyan-400" />
@@ -903,7 +957,7 @@ export default function CustomerStatementsPage() {
                 <h2 className="text-base font-bold text-white">No Statements Found</h2>
                 <p className="text-xs text-slate-400 max-w-md mx-auto">
                   {statements.length === 0
-                    ? "No Statement of Account files have been uploaded yet. Click Import SOA to bulk import historical statements (PDF, Excel, CSV, ZIP)."
+                    ? "No Statement of Account files have been uploaded yet. Click + Import SOAs to upload historical statements."
                     : "No statements match your current search and filters. Try adjusting or clearing your filters."}
                 </p>
                 <button
@@ -912,7 +966,7 @@ export default function CustomerStatementsPage() {
                   className="mt-2 inline-flex items-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 text-xs font-bold transition cursor-pointer"
                 >
                   <Upload size={14} />
-                  <span>Import SOA</span>
+                  <span>+ Import SOAs</span>
                 </button>
               </div>
             ) : (
@@ -933,7 +987,7 @@ export default function CustomerStatementsPage() {
                       <th className="px-4 py-3.5 text-left font-semibold">Date</th>
                       <th className="px-4 py-3.5 text-right font-semibold">Closing Balance</th>
                       <th className="px-4 py-3.5 text-center font-semibold">Status</th>
-                      <th className="px-4 py-3.5 text-right font-semibold">Actions</th>
+                      <th className="px-4 py-3.5 text-right font-semibold">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
@@ -958,8 +1012,8 @@ export default function CustomerStatementsPage() {
                               <button
                                 type="button"
                                 onClick={() => setEditingSoaRecord(stmt)}
-                                className="hover:text-cyan-300 hover:underline cursor-pointer text-left"
-                                title="Click to view/edit in Excel-style editor"
+                                className="hover:text-cyan-300 hover:underline cursor-pointer text-left font-mono font-bold"
+                                title="Open Excel-style editor"
                               >
                                 {stmt.soa_number || "—"}
                               </button>
@@ -977,10 +1031,11 @@ export default function CustomerStatementsPage() {
                                 type="button"
                                 onClick={() => {
                                   setSelectedCustomerId(stmt.customer_id);
-                                  setViewTab("ledger");
+                                  setViewTab("live");
+                                  setLiveViewMode("detail");
                                   void loadStatement(stmt.customer_id);
                                 }}
-                                className="text-[10px] text-cyan-400 hover:underline hover:text-cyan-300"
+                                className="text-[10px] text-cyan-400 hover:underline hover:text-cyan-300 cursor-pointer"
                                 title="View live ledger for this customer"
                               >
                                 View Live Ledger →
@@ -991,7 +1046,7 @@ export default function CustomerStatementsPage() {
                             {stmt.statement_date ? (
                               formatDisplayDate(stmt.statement_date)
                             ) : (
-                              <span className="text-slate-500 italic">Unknown</span>
+                              <span className="text-amber-400 text-[11px] italic">Date required</span>
                             )}
                           </td>
                           <td className="px-4 py-3 text-right font-mono font-bold">
@@ -1037,27 +1092,12 @@ export default function CustomerStatementsPage() {
                               <button
                                 type="button"
                                 onClick={() => setEditingSoaRecord(stmt)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-cyan-800/60 bg-cyan-950/50 hover:bg-cyan-900/60 text-cyan-300 hover:text-white px-2.5 py-1 text-xs font-semibold transition cursor-pointer"
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 text-xs font-bold transition shadow-sm cursor-pointer"
                                 title="Open Excel-style editor with original PDF preview"
                               >
                                 <Edit2 size={12} />
-                                <span>View / Edit</span>
+                                <span>Open</span>
                               </button>
-
-                              {stmt.storage_path ? (
-                                <a
-                                  href={`/api/smart-import/storage?path=${encodeURIComponent(stmt.storage_path)}&bucket=${encodeURIComponent(stmt.storage_bucket || "smart-imports")}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1 text-xs font-semibold transition"
-                                  title="Download / View original PDF"
-                                >
-                                  <Download size={12} />
-                                  <span>PDF</span>
-                                </a>
-                              ) : (
-                                <span className="text-slate-600 text-xs px-2">—</span>
-                              )}
 
                               <button
                                 type="button"
@@ -1079,356 +1119,493 @@ export default function CustomerStatementsPage() {
           </div>
         )}
 
-        {/* TAB 2: LIVE CUSTOMER LEDGER STATEMENT */}
-        {viewTab === "ledger" && (
+        {/* ========================================================================= */}
+        {/* TAB 2: LIVE STATEMENTS (SYNCHRONIZED ERP LEDGER)                          */}
+        {/* ========================================================================= */}
+        {viewTab === "live" && (
           <div className="space-y-6">
-            {/* Customer Selector & Prominent Outstanding Balance */}
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-sm space-y-4">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
-                {/* Customer Selector */}
-                <div className="lg:col-span-5 space-y-1.5">
-                  <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-                    Select Customer
-                  </label>
-                  <select
-                    value={selectedCustomerId}
-                    onChange={(e) => handleSelectCustomer(e.target.value)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm font-semibold text-white focus:border-cyan-500 focus:outline-none"
-                  >
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} {c.customer_code ? `(${c.customer_code})` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  {currentCustomer?.trn && (
-                    <p className="text-[11px] text-slate-400 font-mono">
-                      TRN: <span className="text-slate-300">{currentCustomer.trn}</span>
-                    </p>
-                  )}
-                </div>
-
-                {/* Prominent Outstanding Balance Banner */}
-                <div className="lg:col-span-7 flex flex-col sm:flex-row sm:items-center sm:justify-end gap-5 border-t lg:border-t-0 lg:border-l border-slate-800/80 pt-4 lg:pt-0 lg:pl-6">
-                  <div className="space-y-1">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-                      Current Outstanding Balance
+            {liveViewMode === "list" ? (
+              /* All Customers Summary View */
+              <div className="space-y-4">
+                {/* Top Receivables KPI Summary Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/90 p-3.5 space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1.5">
+                      <DollarSign size={13} className="text-cyan-400" />
+                      Total Outstanding
                     </span>
-                    <div
-                      className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${
-                        (statementData?.closing_balance || 0) > 0 ? "text-cyan-400" : "text-emerald-400"
-                      }`}
-                    >
-                      AED {(statementData?.closing_balance || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 pt-0.5">
-                      <span>
-                        Opening: <strong className="text-slate-300">AED {(statementData?.opening_balance || 0).toFixed(2)}</strong>
-                      </span>
-                      <span>•</span>
-                      <span>
-                        Total Invoices: <strong className="text-slate-300">AED {(statementData?.total_debits || 0).toFixed(2)}</strong>
-                      </span>
-                      <span>•</span>
-                      <span>
-                        Total Payments: <strong className="text-emerald-300">AED {(statementData?.total_credits || 0).toFixed(2)}</strong>
-                      </span>
-                    </div>
+                    <span className="text-xl font-bold font-mono text-cyan-400 block">
+                      AED {liveTotals.totalOutstanding.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    </span>
                   </div>
-
-                  {statementData?.cutover_date && (
-                    <div className="rounded-xl border border-amber-800/50 bg-amber-950/20 px-3 py-2 text-right shrink-0">
-                      <span className="text-[10px] text-amber-300 font-semibold block uppercase">
-                        Cutover Date
-                      </span>
-                      <span className="text-xs text-white font-mono font-bold">
-                        {formatDisplayDate(statementData.cutover_date)}
-                      </span>
-                    </div>
-                  )}
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/90 p-3.5 space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1.5">
+                      <FileText size={13} className="text-blue-400" />
+                      Total Invoiced
+                    </span>
+                    <span className="text-xl font-bold font-mono text-white block">
+                      AED {liveTotals.totalInvoices.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/90 p-3.5 space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1.5">
+                      <CheckCircle2 size={13} className="text-emerald-400" />
+                      Total Collected
+                    </span>
+                    <span className="text-xl font-bold font-mono text-emerald-400 block">
+                      AED {liveTotals.totalPayments.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/90 p-3.5 space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1.5">
+                      <Users size={13} className="text-amber-400" />
+                      Active Customers
+                    </span>
+                    <span className="text-xl font-bold font-mono text-amber-300 block">
+                      {liveTotals.activeReceivablesCount}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Date Filters & Search Bar */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search reference or description..."
-                  className="w-full rounded-xl border border-slate-800 bg-slate-900 pl-10 pr-9 py-2.5 text-xs text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <input
-                    type="date"
-                    value={fromDate}
-                    onChange={(e) => setFromDate(e.target.value)}
-                    className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
-                    title="From date"
-                  />
+                {/* Customer Search Bar */}
+                <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3.5 flex items-center gap-3">
+                  <div className="relative flex-1">
+                    <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={liveSearchQuery}
+                      onChange={(e) => setLiveSearchQuery(e.target.value)}
+                      placeholder="Search customer name, customer code, or TRN..."
+                      className="w-full rounded-xl border border-slate-800 bg-slate-950 pl-10 pr-9 py-2 text-xs text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
+                    />
+                    {liveSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setLiveSearchQuery("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <span className="text-slate-500 text-xs">to</span>
-                <div className="relative">
-                  <input
-                    type="date"
-                    value={toDate}
-                    onChange={(e) => setToDate(e.target.value)}
-                    className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
-                    title="To date"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleApplyDateFilter}
-                  className="rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 transition cursor-pointer"
-                >
-                  Filter
-                </button>
-                {(fromDate || toDate) && (
-                  <button
-                    type="button"
-                    onClick={handleClearDateFilter}
-                    className="rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 px-2.5 py-2 text-xs text-slate-400 hover:text-white cursor-pointer"
-                    title="Clear date filter"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-            </div>
 
-            {/* Statement Transaction Table */}
-            {loading ? (
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-12 flex flex-col items-center justify-center gap-3 text-slate-400 text-sm">
-                <Loader2 size={24} className="animate-spin text-cyan-400" />
-                <span>Calculating customer statement & live ledger...</span>
-              </div>
-            ) : !statementData || filteredEntries.length === 0 ? (
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-10 text-center space-y-3">
-                <FileText size={36} className="mx-auto text-slate-600" />
-                <h2 className="text-base font-bold text-white">No Statement Transactions Found</h2>
-                <p className="text-xs text-slate-400 max-w-md mx-auto">
-                  No live invoices, payments, or imported historical entries found for this customer. Click <strong>Import SOA</strong> to upload historical records or create a Tax Invoice in the ERP.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowImportModal(true)}
-                  className="mt-2 inline-flex items-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 text-xs font-bold transition cursor-pointer"
-                >
-                  <Upload size={14} />
-                  <span>Import SOA</span>
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {/* Desktop Clean Table */}
-                <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-sm">
+                {/* Live Statements Customer Table */}
+                <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-sm">
                   <table className="w-full text-xs border-collapse">
                     <thead className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px] uppercase tracking-wider font-mono">
                       <tr>
-                        <th className="px-4 py-3.5 text-left font-semibold">Date</th>
-                        <th className="px-4 py-3.5 text-left font-semibold">Reference</th>
-                        <th className="px-4 py-3.5 text-left font-semibold">Description</th>
-                        <th className="px-4 py-3.5 text-right font-semibold">Debit (AED)</th>
-                        <th className="px-4 py-3.5 text-right font-semibold">Credit (AED)</th>
-                        <th className="px-4 py-3.5 text-right font-semibold">Balance (AED)</th>
-                        <th className="px-4 py-3.5 text-center font-semibold">Source</th>
-                        <th className="px-4 py-3.5 text-right font-semibold">Actions</th>
+                        <th className="px-4 py-3.5 text-left font-semibold">Customer</th>
+                        <th className="px-4 py-3.5 text-right font-semibold">Invoices (AED)</th>
+                        <th className="px-4 py-3.5 text-right font-semibold">Payments (AED)</th>
+                        <th className="px-4 py-3.5 text-right font-semibold">Outstanding (AED)</th>
+                        <th className="px-4 py-3.5 text-right font-semibold">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/80">
-                      {/* Opening Balance Row */}
-                      <tr className="bg-slate-950/40 text-slate-400 font-medium">
-                        <td className="px-4 py-3 font-mono">{formatDisplayDate(statementData.from_date || statementData.statement_date)}</td>
-                        <td className="px-4 py-3 font-mono">—</td>
-                        <td className="px-4 py-3 italic">Opening Balance Brought Forward</td>
-                        <td className="px-4 py-3 text-right font-mono">—</td>
-                        <td className="px-4 py-3 text-right font-mono">—</td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-slate-200">
-                          {statementData.opening_balance.toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="inline-flex rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">
-                            Opening
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">—</td>
-                      </tr>
+                      {filteredCustomerSummaries.map((c) => (
+                        <tr key={c.customerId} className="hover:bg-slate-800/40 transition">
+                          <td className="px-4 py-3">
+                            <span className="font-semibold text-white block text-sm">{c.customerName}</span>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono pt-0.5">
+                              {c.customerCode && <span>Code: {c.customerCode}</span>}
+                              {c.trn && <span>TRN: {c.trn}</span>}
+                              {c.openingBalance > 0 && <span>Cutover: AED {c.openingBalance.toFixed(2)}</span>}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-slate-200">
+                            {c.totalInvoices > 0 ? c.totalInvoices.toFixed(2) : "0.00"}
+                            <span className="text-[10px] text-slate-500 block">({c.invoiceCount} invoices)</span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-emerald-400">
+                            {c.totalPayments > 0 ? c.totalPayments.toFixed(2) : "0.00"}
+                            <span className="text-[10px] text-slate-500 block">({c.paymentCount} payments)</span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-sm">
+                            <span className={c.outstandingBalance > 0 ? "text-cyan-300" : "text-emerald-400"}>
+                              AED {c.outstandingBalance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleSelectCustomer(c.customerId);
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white px-3.5 py-1.5 text-xs font-bold transition shadow-sm cursor-pointer"
+                            >
+                              <span>View SOA</span>
+                              <ExternalLink size={12} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
 
-                      {/* Transaction Rows */}
-                      {filteredEntries.map((row, idx) => {
-                        const isHistorical = Boolean(row.is_historical);
-                        const isLive = !isHistorical || row.status === "live";
-                        const isEdited = Boolean(row.is_edited);
-
-                        return (
-                          <tr key={row.id || `entry_${idx}`} className="hover:bg-slate-800/40 transition">
-                            <td className="px-4 py-3 font-mono text-slate-300">
-                              {formatDisplayDate(row.date)}
-                            </td>
-                            <td className="px-4 py-3 font-mono font-semibold text-white">
-                              {row.invoice_id ? (
-                                <Link
-                                  href={`/tax-invoices?id=${row.invoice_id}`}
-                                  className="text-cyan-400 hover:text-cyan-300 inline-flex items-center gap-1 hover:underline"
-                                  target="_blank"
-                                >
-                                  <span>{row.reference_no}</span>
-                                  <ExternalLink size={11} className="opacity-60" />
-                                </Link>
-                              ) : row.voucher_id ? (
-                                <Link
-                                  href={`/receipt-vouchers?id=${row.voucher_id}`}
-                                  className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 hover:underline"
-                                  target="_blank"
-                                >
-                                  <span>{row.reference_no}</span>
-                                  <ExternalLink size={11} className="opacity-60" />
-                                </Link>
-                              ) : (
-                                <span>{row.reference_no}</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-slate-300">
-                              {row.description}
-                            </td>
-                            <td className="px-4 py-3 text-right font-mono text-white font-medium">
-                              {row.debit > 0 ? row.debit.toFixed(2) : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-right font-mono text-emerald-400 font-medium">
-                              {row.credit > 0 ? row.credit.toFixed(2) : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-right font-mono font-bold text-white">
-                              {row.balance.toFixed(2)}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              {row.status === "matched" ? (
-                                <span className="inline-flex rounded-full bg-cyan-950 border border-cyan-800 px-2 py-0.5 text-[10px] font-semibold text-cyan-300" title="Historical entry matched to live ERP record">
-                                  Matched
-                                </span>
-                              ) : isLive ? (
-                                <span className="inline-flex rounded-full bg-emerald-950 border border-emerald-800 px-2 py-0.5 text-[10px] font-semibold text-emerald-300" title="Live ERP record (updates automatically)">
-                                  Live
-                                </span>
-                              ) : (
-                                <span className="inline-flex rounded-full bg-slate-800 border border-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-300" title="Imported historical SOA entry">
-                                  Historical {isEdited ? "• Edited" : ""}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              {isLive && row.invoice_id ? (
-                                <Link
-                                  href={`/tax-invoices?id=${row.invoice_id}`}
-                                  target="_blank"
-                                  className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold"
-                                >
-                                  <span>Edit Source</span>
-                                  <ExternalLink size={11} />
-                                </Link>
-                              ) : isLive && row.voucher_id ? (
-                                <Link
-                                  href={`/receipt-vouchers?id=${row.voucher_id}`}
-                                  target="_blank"
-                                  className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold"
-                                >
-                                  <span>Edit Source</span>
-                                  <ExternalLink size={11} />
-                                </Link>
-                              ) : isHistorical && customerSavedSoa ? (
-                                <div className="flex items-center justify-end gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setEditingEntry(row);
-                                      setEditForm({
-                                        date: row.date?.slice(0, 10) || "",
-                                        reference: row.reference_no,
-                                        description: row.description,
-                                        debit: row.debit,
-                                        credit: row.credit,
-                                        reason: "",
-                                      });
-                                    }}
-                                    className="p-1 rounded text-slate-400 hover:text-cyan-300 hover:bg-slate-800 transition cursor-pointer"
-                                    title="Edit historical row"
-                                  >
-                                    <Edit2 size={13} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteHistoricalEntry(row)}
-                                    className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
-                                    title="Delete historical row"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className="text-slate-600">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {filteredCustomerSummaries.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="py-10 text-center text-slate-500">
+                            No customers found.
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
+              </div>
+            ) : (
+              /* Single Customer Live Statement Ledger View */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setLiveViewMode("list")}
+                    className="inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 font-semibold cursor-pointer"
+                  >
+                    <ArrowLeft size={14} />
+                    <span>← Back to All Customers</span>
+                  </button>
 
-                {/* Mobile Cards (Visible only on small screens) */}
-                <div className="md:hidden space-y-2.5">
-                  {filteredEntries.map((row, idx) => (
-                    <div key={`m_${row.id || idx}`} className="rounded-xl border border-slate-800 bg-slate-900 p-3.5 space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-slate-400">{formatDisplayDate(row.date)}</span>
-                        <span className="font-mono font-bold text-white text-sm">
-                          AED {row.balance.toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono font-semibold text-cyan-400">{row.reference_no}</span>
-                        <span className="text-slate-300">{row.description}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/80">
-                        <span className="text-slate-400">
-                          Debit: <strong className="text-white">{row.debit > 0 ? row.debit.toFixed(2) : "0.00"}</strong>
-                        </span>
-                        <span className="text-slate-400">
-                          Credit: <strong className="text-emerald-400">{row.credit > 0 ? row.credit.toFixed(2) : "0.00"}</strong>
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Quick Add Row Action at bottom */}
-                {customerSavedSoa && (
-                  <div className="flex justify-end pt-1">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setShowAddRowModal(true)}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white transition cursor-pointer"
+                      onClick={() => setShowPrintModal(true)}
+                      disabled={!statementData}
+                      className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 text-xs font-bold transition cursor-pointer disabled:opacity-40"
                     >
-                      <Plus size={13} />
-                      <span>Add Historical Entry</span>
+                      <Download size={14} />
+                      <span>Download SOA PDF</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExportCsv}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-2 text-xs font-semibold cursor-pointer"
+                    >
+                      <FileText size={13} className="text-emerald-400" />
+                      <span>Export CSV</span>
                     </button>
                   </div>
-                )}
+                </div>
+
+                {/* Customer Selector & Prominent Outstanding Balance */}
+                <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-sm space-y-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
+                    <div className="lg:col-span-5 space-y-1.5">
+                      <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                        Select Customer
+                      </label>
+                      <select
+                        value={selectedCustomerId}
+                        onChange={(e) => handleSelectCustomer(e.target.value)}
+                        className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm font-semibold text-white focus:border-cyan-500 focus:outline-none"
+                      >
+                        {customers.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.customer_code ? `(${c.customer_code})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {currentCustomer?.trn && (
+                        <p className="text-[11px] text-slate-400 font-mono">
+                          TRN: <span className="text-slate-300">{currentCustomer.trn}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="lg:col-span-7 flex flex-col sm:flex-row sm:items-center sm:justify-end gap-5 border-t lg:border-t-0 lg:border-l border-slate-800/80 pt-4 lg:pt-0 lg:pl-6">
+                      <div className="space-y-1">
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                          Current Outstanding Balance
+                        </span>
+                        <div
+                          className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${
+                            (statementData?.closing_balance || 0) > 0 ? "text-cyan-400" : "text-emerald-400"
+                          }`}
+                        >
+                          AED {(statementData?.closing_balance || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 pt-0.5">
+                          <span>
+                            Opening: <strong className="text-slate-300">AED {(statementData?.opening_balance || 0).toFixed(2)}</strong>
+                          </span>
+                          <span>•</span>
+                          <span>
+                            Total Invoices: <strong className="text-slate-300">AED {(statementData?.total_debits || 0).toFixed(2)}</strong>
+                          </span>
+                          <span>•</span>
+                          <span>
+                            Total Payments: <strong className="text-emerald-300">AED {(statementData?.total_credits || 0).toFixed(2)}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      {statementData?.cutover_date && (
+                        <div className="rounded-xl border border-amber-800/50 bg-amber-950/20 px-3 py-2 text-right shrink-0">
+                          <span className="text-[10px] text-amber-300 font-semibold block uppercase">
+                            Cutover Date
+                          </span>
+                          <span className="text-xs text-white font-mono font-bold">
+                            {formatDisplayDate(statementData.cutover_date)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Filters */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="relative flex-1">
+                    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search reference or description..."
+                      className="w-full rounded-xl border border-slate-800 bg-slate-900 pl-10 pr-9 py-2.5 text-xs text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                      className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                      title="From date"
+                    />
+                    <span className="text-slate-500 text-xs">to</span>
+                    <input
+                      type="date"
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                      className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                      title="To date"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyDateFilter}
+                      className="rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 transition cursor-pointer"
+                    >
+                      Filter
+                    </button>
+                    {(fromDate || toDate) && (
+                      <button
+                        type="button"
+                        onClick={handleClearDateFilter}
+                        className="rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 px-2.5 py-2 text-xs text-slate-400 hover:text-white cursor-pointer"
+                        title="Clear date filter"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Ledger Transactions Table */}
+                {loading ? (
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-12 flex flex-col items-center justify-center gap-3 text-slate-400 text-sm">
+                    <Loader2 size={24} className="animate-spin text-cyan-400" />
+                    <span>Calculating customer statement & live ledger...</span>
+                  </div>
+                ) : !statementData || filteredEntries.length === 0 ? (
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-10 text-center space-y-3">
+                    <FileText size={36} className="mx-auto text-slate-600" />
+                    <h2 className="text-base font-bold text-white">No Statement Transactions Found</h2>
+                    <p className="text-xs text-slate-400 max-w-md mx-auto">
+                      No live invoices, payments, or imported historical entries found for this customer.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-sm">
+                      <table className="w-full text-xs border-collapse">
+                      <thead className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px] uppercase tracking-wider font-mono">
+                        <tr>
+                          <th className="px-4 py-3.5 text-left font-semibold">Date</th>
+                          <th className="px-4 py-3.5 text-left font-semibold">Reference</th>
+                          <th className="px-4 py-3.5 text-left font-semibold">Description</th>
+                          <th className="px-4 py-3.5 text-right font-semibold">Debit (AED)</th>
+                          <th className="px-4 py-3.5 text-right font-semibold">Credit (AED)</th>
+                          <th className="px-4 py-3.5 text-right font-semibold">Balance (AED)</th>
+                          <th className="px-4 py-3.5 text-center font-semibold">Source</th>
+                          <th className="px-4 py-3.5 text-right font-semibold">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/80">
+                        {/* Opening Balance Row */}
+                        <tr className="bg-slate-950/40 text-slate-400 font-medium">
+                          <td className="px-4 py-3 font-mono">{formatDisplayDate(statementData.from_date || statementData.statement_date)}</td>
+                          <td className="px-4 py-3 font-mono">—</td>
+                          <td className="px-4 py-3 italic">Opening Balance Brought Forward</td>
+                          <td className="px-4 py-3 text-right font-mono">—</td>
+                          <td className="px-4 py-3 text-right font-mono">—</td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-slate-200">
+                            {statementData.opening_balance.toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="inline-flex rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">
+                              Opening
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">—</td>
+                        </tr>
+
+                        {/* Transaction Rows */}
+                        {filteredEntries.map((row, idx) => {
+                          const isHistorical = Boolean(row.is_historical);
+                          const isLive = !isHistorical || row.status === "live";
+                          const isEdited = Boolean(row.is_edited);
+
+                          return (
+                            <tr key={row.id || `entry_${idx}`} className="hover:bg-slate-800/40 transition">
+                              <td className="px-4 py-3 font-mono text-slate-300">
+                                {formatDisplayDate(row.date)}
+                              </td>
+                              <td className="px-4 py-3 font-mono font-semibold text-white">
+                                {row.invoice_id ? (
+                                  <Link
+                                    href={`/tax-invoices?id=${row.invoice_id}`}
+                                    className="text-cyan-400 hover:text-cyan-300 inline-flex items-center gap-1 hover:underline"
+                                    target="_blank"
+                                  >
+                                    <span>{row.reference_no}</span>
+                                    <ExternalLink size={11} className="opacity-60" />
+                                  </Link>
+                                ) : row.voucher_id ? (
+                                  <Link
+                                    href={`/receipt-vouchers?id=${row.voucher_id}`}
+                                    className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 hover:underline"
+                                    target="_blank"
+                                  >
+                                    <span>{row.reference_no}</span>
+                                    <ExternalLink size={11} className="opacity-60" />
+                                  </Link>
+                                ) : (
+                                  <span>{row.reference_no}</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-slate-300">
+                                {row.description}
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono text-white font-medium">
+                                {row.debit > 0 ? row.debit.toFixed(2) : "—"}
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono text-emerald-400 font-medium">
+                                {row.credit > 0 ? row.credit.toFixed(2) : "—"}
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono font-bold text-white">
+                                {row.balance.toFixed(2)}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                {row.status === "matched" ? (
+                                  <span className="inline-flex rounded-full bg-cyan-950 border border-cyan-800 px-2 py-0.5 text-[10px] font-semibold text-cyan-300">
+                                    Matched
+                                  </span>
+                                ) : isLive ? (
+                                  <span className="inline-flex rounded-full bg-emerald-950 border border-emerald-800 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                                    Live
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex rounded-full bg-slate-800 border border-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                                    Historical {isEdited ? "• Edited" : ""}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                {isLive && row.invoice_id ? (
+                                  <Link
+                                    href={`/tax-invoices?id=${row.invoice_id}`}
+                                    target="_blank"
+                                    className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold"
+                                  >
+                                    <span>Source</span>
+                                    <ExternalLink size={11} />
+                                  </Link>
+                                ) : isLive && row.voucher_id ? (
+                                  <Link
+                                    href={`/receipt-vouchers?id=${row.voucher_id}`}
+                                    target="_blank"
+                                    className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold"
+                                  >
+                                    <span>Source</span>
+                                    <ExternalLink size={11} />
+                                  </Link>
+                                ) : isHistorical && customerSavedSoa ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingEntry(row);
+                                        setEditForm({
+                                          date: row.date?.slice(0, 10) || "",
+                                          reference: row.reference_no,
+                                          description: row.description,
+                                          debit: row.debit,
+                                          credit: row.credit,
+                                          reason: "",
+                                        });
+                                      }}
+                                      className="p-1 rounded text-slate-400 hover:text-cyan-300 hover:bg-slate-800 transition cursor-pointer"
+                                      title="Edit historical row"
+                                    >
+                                      <Edit2 size={13} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteHistoricalEntry(row)}
+                                      className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
+                                      title="Delete historical row"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-600">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile Cards (Visible only on small screens) */}
+                  <div className="md:hidden space-y-2.5">
+                    {filteredEntries.map((row, idx) => (
+                      <div key={`m_${row.id || idx}`} className="rounded-xl border border-slate-800 bg-slate-900 p-3.5 space-y-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-slate-400">{formatDisplayDate(row.date)}</span>
+                          <span className="font-mono font-bold text-white text-sm">
+                            AED {row.balance.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-semibold text-cyan-400">{row.reference_no}</span>
+                          <span className="text-slate-300">{row.description}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/80">
+                          <span className="text-slate-400">
+                            Debit: <strong className="text-white">{row.debit > 0 ? row.debit.toFixed(2) : "0.00"}</strong>
+                          </span>
+                          <span className="text-slate-400">
+                            Credit: <strong className="text-emerald-400">{row.credit > 0 ? row.credit.toFixed(2) : "0.00"}</strong>
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
               </div>
             )}
           </div>
@@ -1450,7 +1627,7 @@ export default function CustomerStatementsPage() {
         />
       )}
 
-      {/* Full-Screen Excel-Style SOA Editor Modal */}
+      {/* Excel-Style Full-Screen SOA Editor Modal */}
       {editingSoaRecord && (
         <ExcelSoaEditorModal
           isOpen={Boolean(editingSoaRecord)}
@@ -1462,6 +1639,135 @@ export default function CustomerStatementsPage() {
             void loadStatement(selectedCustomerId, fromDate || undefined, toDate || undefined);
           }}
         />
+      )}
+
+      {/* Repair Existing SOAs Modal */}
+      {showRepairModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl rounded-2xl bg-slate-900 border border-slate-700 p-6 space-y-4 text-xs max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+              <div className="flex items-center gap-2">
+                <Wrench size={18} className="text-amber-400" />
+                <h3 className="text-sm font-bold text-white">Repair &amp; Re-extract Stored SOAs</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRepairModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-slate-300 text-xs">
+              This admin utility locates every previously uploaded statement file in private storage and re-runs the updated multi-page parser. It recovers genuine transaction rows, dates, and closing balances while strictly preserving existing manual user edits.
+            </p>
+
+            {repairRunning ? (
+              <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-400">
+                <Loader2 size={28} className="animate-spin text-amber-400" />
+                <span>Scanning private storage and re-extracting statements...</span>
+              </div>
+            ) : repairResults ? (
+              <div className="space-y-4 overflow-y-auto flex-1">
+                {/* Summary chips */}
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold block">Total Scanned</span>
+                    <span className="text-lg font-bold font-mono text-white">{repairResults.totalAttachments}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-950 border border-emerald-900/60">
+                    <span className="text-[10px] text-emerald-400 uppercase font-semibold block">Repaired</span>
+                    <span className="text-lg font-bold font-mono text-emerald-300">{repairResults.repairedCount}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold block">Skipped Verified</span>
+                    <span className="text-lg font-bold font-mono text-slate-300">{repairResults.skippedCount}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-950 border border-rose-900/60">
+                    <span className="text-[10px] text-rose-400 uppercase font-semibold block">Missing Source Files</span>
+                    <span className="text-lg font-bold font-mono text-rose-300">{repairResults.missingFilesCount}</span>
+                  </div>
+                </div>
+
+                {/* Details Table */}
+                <div className="rounded-xl border border-slate-800 overflow-hidden">
+                  <table className="w-full text-xs border-collapse">
+                    <thead className="bg-slate-950 text-slate-400 font-mono text-[10px] uppercase border-b border-slate-800">
+                      <tr>
+                        <th className="py-2 px-3 text-left">Document</th>
+                        <th className="py-2 px-3 text-left">Status</th>
+                        <th className="py-2 px-3 text-right">Old Balance</th>
+                        <th className="py-2 px-3 text-right">New Balance</th>
+                        <th className="py-2 px-3 text-right">Rows</th>
+                        <th className="py-2 px-3 text-center">Math Valid</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-mono">
+                      {repairResults.details.map((d) => (
+                        <tr key={d.id} className="hover:bg-slate-950/40">
+                          <td className="py-2 px-3 truncate max-w-xs text-white" title={d.fileName}>
+                            {d.fileName}
+                          </td>
+                          <td className="py-2 px-3">
+                            {d.status === "repaired" ? (
+                              <span className="text-emerald-400 font-semibold">Repaired</span>
+                            ) : d.status === "skipped_verified" ? (
+                              <span className="text-slate-400">Preserved</span>
+                            ) : (
+                              <span className="text-rose-400">{d.error || "Missing"}</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-400">
+                            {d.oldClosing != null ? `AED ${d.oldClosing.toFixed(2)}` : "—"}
+                          </td>
+                          <td className="py-2 px-3 text-right text-cyan-300 font-bold">
+                            {d.newClosing != null ? `AED ${d.newClosing.toFixed(2)}` : "Not extracted"}
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-200">
+                            {d.newRows} rows
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            {d.isMathValid ? (
+                              <CheckCircle2 size={13} className="text-emerald-400 inline" />
+                            ) : (
+                              <AlertTriangle size={13} className="text-amber-400 inline" />
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800 shrink-0">
+              <span className="text-[11px] text-slate-400">
+                {repairResults?.dryRun
+                  ? "Scan complete. Click 'Apply Repairs' to update records in database."
+                  : "Repairs update metadata without touching financial ledgers."}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRepairModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleRunRepair(false)}
+                  disabled={repairRunning}
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition cursor-pointer disabled:opacity-50"
+                >
+                  Apply Repairs
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Print / Download SOA Modal */}
@@ -1758,68 +2064,6 @@ export default function CustomerStatementsPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Uploads Archive Modal */}
-      {showUploadsModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4 text-xs max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <History size={14} className="text-cyan-400" />
-                <span>Original Imported SOA Files</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowUploadsModal(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="space-y-2 overflow-y-auto flex-1">
-              {statements
-                .filter((s) => s.customer_id === selectedCustomerId)
-                .map((s) => (
-                  <div key={s.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3 flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-white">{s.file_name}</p>
-                      <p className="text-[11px] text-slate-400">
-                        SOA: {s.soa_number} • Date: {s.statement_date} • Closing: {s.closing_balance != null ? `AED ${s.closing_balance.toFixed(2)}` : "Not extracted"}
-                      </p>
-                    </div>
-                    {s.storage_path && (
-                      <a
-                        href={`/api/smart-import/storage?path=${encodeURIComponent(s.storage_path)}&bucket=${encodeURIComponent(s.storage_bucket || "smart-imports")}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-cyan-400 hover:text-cyan-300 font-semibold text-xs"
-                      >
-                        <Download size={13} />
-                        <span>Download</span>
-                      </a>
-                    )}
-                  </div>
-                ))}
-              {statements.filter((s) => s.customer_id === selectedCustomerId).length === 0 && (
-                <p className="text-center text-slate-500 py-6">
-                  No uploaded SOA files archived for this customer.
-                </p>
-              )}
-            </div>
-
-            <div className="flex justify-end pt-2 border-t border-slate-800 shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowUploadsModal(false)}
-                className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
-              >
-                Close
-              </button>
-            </div>
           </div>
         </div>
       )}

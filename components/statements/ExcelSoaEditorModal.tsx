@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   X,
   Plus,
@@ -16,10 +16,15 @@ import {
   Download,
   Save,
   ShieldCheck,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Upload,
+  GitCompare,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { CustomerCandidate, StoredSoaRecord } from "@/lib/soaManager";
-import type { RawHistoricalEntry } from "@/lib/customerStatementEngine";
+import type { RawHistoricalEntry, RawInvoice, RawReceiptVoucher } from "@/lib/customerStatementEngine";
 import { getExportSoaPdfFilename } from "@/lib/soaManager";
 
 interface ExcelSoaEditorModalProps {
@@ -68,20 +73,188 @@ function ExcelSoaEditorModalContent({
   const [entries, setEntries] = useState<RawHistoricalEntry[]>(
     record.entries ? JSON.parse(JSON.stringify(record.entries)) : []
   );
+
+  // Layout & View toggles
   const [showPdfPreview, setShowPdfPreview] = useState(true);
+  const [isFullScreenTable, setIsFullScreenTable] = useState(false);
+  const [pdfZoom, setPdfZoom] = useState(100);
+
+  // PDF Loading & Signed URL state
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string>("");
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+  const [replacingFile, setReplacingFile] = useState(false);
+
+  // Undo / Redo & Excel Paste
   const [undoStack, setUndoStack] = useState<RawHistoricalEntry[][]>([]);
   const [redoStack, setRedoStack] = useState<RawHistoricalEntry[][]>([]);
   const [pastePromptOpen, setPastePromptOpen] = useState(false);
   const [rawPasteText, setRawPasteText] = useState("");
+
+  // Validation & Discrepancies
   const [validationAlert, setValidationAlert] = useState<{
     valid: boolean;
     difference: number;
     message: string;
   } | null>(null);
+  const [confirmZeroTransactions, setConfirmZeroTransactions] = useState(false);
+
+  // Save states
   const [saving, setSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // Live Ledger Comparison Modal state
+  const [showReconcileDrawer, setShowReconcileDrawer] = useState(false);
+  const [loadingReconcile, setLoadingReconcile] = useState(false);
+  const [reconcileReport, setReconcileReport] = useState<{
+    matched: Array<{ soaRef: string; erpRef: string; amount: number; date: string }>;
+    missingInErp: Array<{ soaRef: string; amount: number; date: string }>;
+    missingInSoa: Array<{ erpRef: string; amount: number; date: string; type: string }>;
+    amountMismatch: Array<{ ref: string; soaAmount: number; erpAmount: number; diff: number }>;
+  } | null>(null);
+
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load PDF Blob safely using session authentication
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+
+    async function loadPdfBlob() {
+      setPdfLoading(true);
+      setPdfError("");
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token || "";
+
+        let fetchPath = record.storage_path;
+        let bucket = record.storage_bucket || "smart-imports";
+
+        if (!fetchPath && record.file_url) {
+          const mPath = record.file_url.match(/[?&]path=([^&]+)/);
+          const mBucket = record.file_url.match(/[?&]bucket=([^&]+)/);
+          if (mPath) fetchPath = decodeURIComponent(mPath[1]);
+          if (mBucket) bucket = decodeURIComponent(mBucket[1]);
+        }
+
+        if (!fetchPath) {
+          throw new Error("Original file storage reference is missing for this statement.");
+        }
+
+        // Try getting short-lived signed URL or direct download
+        const url = `/api/smart-import/storage?path=${encodeURIComponent(fetchPath)}&bucket=${encodeURIComponent(bucket)}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
+        const res = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Original file not found in storage (${res.status}): ${errText}`);
+        }
+
+        const buf = await res.arrayBuffer();
+        if (!active) return;
+
+        const blob = new Blob([buf], { type: record.file_type || "application/pdf" });
+        objectUrl = URL.createObjectURL(blob);
+        setPdfBlobUrl(objectUrl);
+      } catch (err) {
+        if (active) {
+          setPdfError(err instanceof Error ? err.message : "Failed to load original document preview.");
+        }
+      } finally {
+        if (active) setPdfLoading(false);
+      }
+    }
+
+    void loadPdfBlob();
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [record]);
+
+  // Handle Replacement File Upload
+  async function handleReplaceFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setReplacingFile(true);
+    setErrorMsg("");
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token || "";
+
+      // 1. Initialize upload via storage route
+      const initRes = await fetch("/api/smart-import/storage", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileType: file.type || "application/pdf",
+          fileSize: file.size,
+          companyId: record.company_id,
+          batchId: `replace_${Date.now()}`,
+        }),
+      });
+
+      const initJson = await initRes.json();
+      if (!initJson.success && initJson.fallback !== "direct_upload") {
+        throw new Error(initJson.error || "Failed to initialize replacement upload.");
+      }
+
+      // 2. Upload file to Supabase storage
+      let uploadedPath = initJson.path;
+      if (initJson.signedUrl) {
+        const uploadRes = await fetch(initJson.signedUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "application/pdf" },
+          body: file,
+        });
+        if (!uploadRes.ok) throw new Error("Failed to upload replacement file.");
+      } else {
+        uploadedPath = `${record.company_id}/replace/${Date.now()}_${file.name}`;
+        const { error: upErr } = await supabase.storage.from("smart-imports").upload(uploadedPath, file, { upsert: true });
+        if (upErr) throw upErr;
+      }
+
+      // 3. Update record in database
+      const newFileUrl = `/api/smart-import/storage?path=${encodeURIComponent(uploadedPath)}&bucket=smart-imports`;
+      const updateRes = await fetch("/api/customer-statements", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          attachmentId: record.id,
+          action: "update_statement",
+          storagePath: uploadedPath,
+          fileUrl: newFileUrl,
+          reason: `User replaced missing source document with ${file.name}`,
+        }),
+      });
+
+      if (!updateRes.ok) throw new Error("Failed to link replaced document.");
+
+      // Refresh local blob
+      const localUrl = URL.createObjectURL(file);
+      setPdfBlobUrl(localUrl);
+      setPdfError("");
+      alert("Replacement file uploaded successfully!");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to replace file.");
+    } finally {
+      setReplacingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   // Decimal-safe recalculation of running balances across all rows
   function recalc(openBal: number, list: RawHistoricalEntry[]) {
@@ -117,6 +290,7 @@ function ExcelSoaEditorModalContent({
   function pushUndo() {
     setUndoStack((prev) => [...prev, entries]);
     setRedoStack([]);
+    setHasUnsavedChanges(true);
   }
 
   function handleRowChange(rowId: string, field: keyof RawHistoricalEntry, val: unknown) {
@@ -159,73 +333,110 @@ function ExcelSoaEditorModalContent({
     setEntries(res);
   }
 
+  function handleDuplicateRow(rowId: string) {
+    const row = entries.find((e) => e.id === rowId);
+    if (!row) return;
+    pushUndo();
+    const duplicated: RawHistoricalEntry = {
+      ...row,
+      id: createRowId("dup"),
+      is_edited: true,
+    };
+    const idx = entries.findIndex((e) => e.id === rowId);
+    const next = [...entries];
+    next.splice(idx + 1, 0, duplicated);
+    const { computedEntries: res } = recalc(openingBalance, next);
+    setEntries(res);
+  }
+
   function handleUndo() {
     if (undoStack.length === 0) return;
     const prev = undoStack[undoStack.length - 1];
-    setUndoStack((s) => s.slice(0, s.length - 1));
-    setRedoStack((s) => [...s, entries]);
+    setRedoStack((r) => [...r, entries]);
+    setUndoStack((u) => u.slice(0, -1));
     const { computedEntries: res } = recalc(openingBalance, prev);
     setEntries(res);
+    setHasUnsavedChanges(true);
   }
 
   function handleRedo() {
     if (redoStack.length === 0) return;
     const next = redoStack[redoStack.length - 1];
-    setRedoStack((s) => s.slice(0, s.length - 1));
-    setUndoStack((s) => [...s, entries]);
+    setUndoStack((u) => [...u, entries]);
+    setRedoStack((r) => r.slice(0, -1));
+    const { computedEntries: res } = recalc(openingBalance, next);
+    setEntries(res);
+    setHasUnsavedChanges(true);
+  }
+
+  function handleClipboardPaste(rawText: string) {
+    if (!rawText.trim()) return;
+    pushUndo();
+    const lines = rawText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+    const pastedRows: RawHistoricalEntry[] = [];
+
+    for (const line of lines) {
+      const cols = line.split("\t");
+      if (cols.length === 1 && line.includes(",")) {
+        // Fallback to comma if pasted as CSV
+        cols.length = 0;
+        cols.push(...line.split(","));
+      }
+
+      let date = "";
+      let ref = "";
+      let desc = "";
+      let debit = 0;
+      let credit = 0;
+
+      if (cols.length >= 5) {
+        date = cols[0].trim();
+        ref = cols[1].trim();
+        desc = cols[2].trim();
+        debit = parseNum(cols[3]);
+        credit = parseNum(cols[4]);
+      } else if (cols.length === 4) {
+        date = cols[0].trim();
+        ref = cols[1].trim();
+        desc = cols[2].trim();
+        debit = parseNum(cols[3]);
+      } else if (cols.length === 3) {
+        date = cols[0].trim();
+        desc = cols[1].trim();
+        debit = parseNum(cols[2]);
+      } else {
+        desc = cols[0].trim();
+      }
+
+      pastedRows.push({
+        id: createRowId("paste"),
+        date: date || statementDate || new Date().toISOString().slice(0, 10),
+        reference_no: ref || `INV-P${pastedRows.length + 1}`,
+        description: desc || "Pasted Transaction",
+        debit,
+        credit,
+        status: "historical",
+        is_edited: true,
+        source_filename: record.file_name,
+      });
+    }
+
+    const next = [...entries, ...pastedRows];
     const { computedEntries: res } = recalc(openingBalance, next);
     setEntries(res);
   }
 
-  function handleClipboardPaste(text: string) {
-    const lines = text.trim().split(/\r?\n/);
-    if (lines.length === 0) return;
-
-    pushUndo();
-    const pastedRows: RawHistoricalEntry[] = [];
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      const parts = line.split("\t");
-      if (parts.length >= 2) {
-        const pDate = parts[0]?.trim();
-        const pRef = parts[1]?.trim();
-        const pDesc = parts[2]?.trim() || "";
-        const pDebit = parseNum(parts[3] || 0);
-        const pCredit = parseNum(parts[4] || 0);
-        pastedRows.push({
-          id: createRowId("pasted"),
-          date: pDate || statementDate || new Date().toISOString().slice(0, 10),
-          reference_no: pRef || (pDebit > 0 ? "INV" : "REC"),
-          original_reference: pRef,
-          description: pDesc || (pDebit > 0 ? "Invoice Charge" : "Payment"),
-          debit: pDebit,
-          credit: pCredit,
-          status: "historical",
-          is_edited: true,
-          source_filename: record?.file_name,
-        });
-      }
-    }
-
-    if (pastedRows.length > 0) {
-      const combined = [...entries, ...pastedRows];
-      const { computedEntries: res } = recalc(openingBalance, combined);
-      setEntries(res);
-    }
-  }
-
+  // Validate Math Balance
   function handleValidateStatement() {
     const expected = Math.round((openingBalance + totalDebits - totalCredits) * 100) / 100;
-    const targetClosing = record?.closing_balance !== null && record?.closing_balance !== undefined
-      ? record.closing_balance
-      : closingBal;
-    const diff = Math.abs(targetClosing - expected);
+    const targetClosing = record.closing_balance != null ? Number(record.closing_balance) : closingBal;
+    const diff = Math.round(Math.abs(expected - targetClosing) * 100) / 100;
 
-    if (diff < 0.05) {
+    if (diff <= 0.05) {
       setValidationAlert({
         valid: true,
         difference: 0,
-        message: `Statement is arithmetically balanced! Opening (AED ${openingBalance.toFixed(2)}) + Debits (AED ${totalDebits.toFixed(2)}) - Credits (AED ${totalCredits.toFixed(2)}) = Closing (AED ${closingBal.toFixed(2)}).`,
+        message: `Statement math reconciles accurately. Opening (AED ${openingBalance.toFixed(2)}) + Debits (AED ${totalDebits.toFixed(2)}) - Credits (AED ${totalCredits.toFixed(2)}) = Closing Balance (AED ${expected.toFixed(2)}).`,
       });
     } else {
       setValidationAlert({
@@ -236,6 +447,113 @@ function ExcelSoaEditorModalContent({
     }
   }
 
+  // Reconcile Historical SOA with Live ERP Transactions
+  async function handleCompareWithLiveLedger() {
+    if (!customerId) {
+      alert("Please select a customer first to compare with live ERP records.");
+      return;
+    }
+
+    setLoadingReconcile(true);
+    setShowReconcileDrawer(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token || "";
+
+      const res = await fetch(`/api/customer-statements?customerId=${encodeURIComponent(customerId)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Failed to load live ERP records.");
+      }
+
+      const rawInvoices = (json.invoices || json.statement?.invoices || []) as RawInvoice[];
+      const rawReceipts = (json.receipts || json.statement?.receipts || []) as RawReceiptVoucher[];
+
+      // Comparison algorithm
+      const matched: Array<{ soaRef: string; erpRef: string; amount: number; date: string }> = [];
+      const missingInErp: Array<{ soaRef: string; amount: number; date: string }> = [];
+      const amountMismatch: Array<{ ref: string; soaAmount: number; erpAmount: number; diff: number }> = [];
+
+      const erpMatchedIds = new Set<string>();
+
+      for (const entry of computedEntries) {
+        const entryRef = (entry.reference_no || "").toLowerCase().trim();
+        const entryAmount = entry.debit > 0 ? entry.debit : entry.credit;
+
+        let found = false;
+        // Check invoices
+        for (const inv of rawInvoices) {
+          const invNum = (inv.invoice_number || "").toLowerCase().trim();
+          const invTotal = Number(inv.total_amount ?? 0);
+          if (entryRef && (invNum.includes(entryRef) || entryRef.includes(invNum))) {
+            found = true;
+            erpMatchedIds.add(inv.id);
+            if (Math.abs(invTotal - entryAmount) <= 0.05) {
+              matched.push({ soaRef: entry.reference_no, erpRef: inv.invoice_number || "Invoice", amount: entryAmount, date: entry.date });
+            } else {
+              amountMismatch.push({ ref: entry.reference_no, soaAmount: entryAmount, erpAmount: invTotal, diff: Math.abs(invTotal - entryAmount) });
+            }
+            break;
+          }
+        }
+
+        // Check receipts / payments
+        if (!found) {
+          for (const rv of rawReceipts) {
+            const rvNum = (rv.voucher_number || "").toLowerCase().trim();
+            const rvAmount = Number(rv.amount ?? 0);
+            if (entryRef && (rvNum.includes(entryRef) || entryRef.includes(rvNum))) {
+              found = true;
+              erpMatchedIds.add(rv.id);
+              if (Math.abs(rvAmount - entryAmount) <= 0.05) {
+                matched.push({ soaRef: entry.reference_no, erpRef: rv.voucher_number || "Receipt", amount: entryAmount, date: entry.date });
+              } else {
+                amountMismatch.push({ ref: entry.reference_no, soaAmount: entryAmount, erpAmount: rvAmount, diff: Math.abs(rvAmount - entryAmount) });
+              }
+              break;
+            }
+          }
+        }
+
+        if (!found) {
+          missingInErp.push({ soaRef: entry.reference_no || entry.description, amount: entryAmount, date: entry.date });
+        }
+      }
+
+      // Live ERP records missing in SOA
+      const missingInSoa: Array<{ erpRef: string; amount: number; date: string; type: string }> = [];
+      for (const inv of rawInvoices) {
+        if (!erpMatchedIds.has(inv.id)) {
+          missingInSoa.push({
+            erpRef: inv.invoice_number || "Invoice",
+            amount: Number(inv.total_amount ?? 0),
+            date: inv.invoice_date || "",
+            type: "Invoice",
+          });
+        }
+      }
+      for (const rv of rawReceipts) {
+        if (!erpMatchedIds.has(rv.id)) {
+          missingInSoa.push({
+            erpRef: rv.voucher_number || "Receipt",
+            amount: Number(rv.amount ?? 0),
+            date: rv.voucher_date || "",
+            type: "Receipt",
+          });
+        }
+      }
+
+      setReconcileReport({ matched, missingInErp, missingInSoa, amountMismatch });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to compare with live ERP.");
+    } finally {
+      setLoadingReconcile(false);
+    }
+  }
+
+  // Save changes
   async function handleSave(options: { verify: boolean }) {
     setErrorMsg("");
     setSaving(true);
@@ -272,14 +590,23 @@ function ExcelSoaEditorModalContent({
         throw new Error(json?.error || "Failed to save statement.");
       }
 
+      setHasUnsavedChanges(false);
       onSaved();
-      onClose();
+      if (options.verify) onClose();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Failed to save statement.");
     } finally {
       setSaving(false);
     }
   }
+
+  // Verification requirements: strict guardrails
+  const isCustomerConfirmed = Boolean(customerId);
+  const isDateConfirmed = Boolean(statementDate);
+  const hasRows = computedEntries.length > 0;
+  const targetClosing = record.closing_balance != null ? Number(record.closing_balance) : closingBal;
+  const isMathReconciled = Math.abs(closingBal - targetClosing) <= 0.05;
+  const canVerify = isCustomerConfirmed && isDateConfirmed && isMathReconciled && (hasRows || confirmZeroTransactions);
 
   const exportPdfFilename = getExportSoaPdfFilename(
     soaNumber || record.soa_number,
@@ -290,16 +617,27 @@ function ExcelSoaEditorModalContent({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4">
       <div className="flex flex-col w-full h-[95vh] max-w-[98vw] rounded-2xl border border-slate-800 bg-slate-950 shadow-2xl overflow-hidden">
-        {/* Header Toolbar */}
+        {/* Top Header Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 bg-slate-900 border-b border-slate-800 text-xs shrink-0">
           <div className="flex items-center gap-3">
             <div>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <span>Excel-Style SOA Editor:</span>
-                <span className="text-cyan-400 font-mono">{soaNumber || record.soa_number}</span>
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>Excel-Style SOA Editor:</span>
+                  <span className="text-cyan-400 font-mono">{soaNumber || record.soa_number}</span>
+                </h2>
+                {hasUnsavedChanges ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-950 border border-amber-800 text-amber-300">
+                    Unsaved Edits
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950 border border-emerald-800 text-emerald-300">
+                    Saved
+                  </span>
+                )}
+              </div>
               <p className="text-[11px] text-slate-400">
-                Original file: <strong className="text-slate-300">{record.file_name}</strong> (immutable original preserved)
+                Original file: <strong className="text-slate-300">{record.file_name}</strong> (immutable source)
               </p>
             </div>
           </div>
@@ -307,16 +645,46 @@ function ExcelSoaEditorModalContent({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setShowPdfPreview(!showPdfPreview)}
+              onClick={() => handleCompareWithLiveLedger()}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-purple-800/80 bg-purple-950/60 hover:bg-purple-900 text-purple-200 px-3 py-1.5 font-semibold transition cursor-pointer"
+              title="Compare statement rows with live ERP invoices & payments"
+            >
+              <GitCompare size={13} />
+              <span>Compare Live ERP</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (isFullScreenTable) {
+                  setIsFullScreenTable(false);
+                  setShowPdfPreview(true);
+                } else {
+                  setShowPdfPreview(!showPdfPreview);
+                }
+              }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 font-semibold transition cursor-pointer"
             >
               {showPdfPreview ? <EyeOff size={13} /> : <Eye size={13} />}
               <span>{showPdfPreview ? "Hide Original" : "Show Original"}</span>
             </button>
 
-            {record.file_url && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsFullScreenTable(!isFullScreenTable);
+                if (!isFullScreenTable) setShowPdfPreview(false);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 font-semibold transition cursor-pointer"
+              title="Expand table to full screen"
+            >
+              <Maximize2 size={13} />
+              <span>{isFullScreenTable ? "Split View" : "Full Spreadsheet"}</span>
+            </button>
+
+            {pdfBlobUrl && (
               <a
-                href={record.file_url}
+                href={pdfBlobUrl}
                 target="_blank"
                 rel="noreferrer"
                 download={exportPdfFilename}
@@ -324,7 +692,7 @@ function ExcelSoaEditorModalContent({
                 title="Download original document"
               >
                 <Download size={13} />
-                <span>Original PDF</span>
+                <span>Download PDF</span>
               </a>
             )}
 
@@ -344,13 +712,16 @@ function ExcelSoaEditorModalContent({
             <label className="text-[10px] text-slate-400 uppercase font-semibold">Customer</label>
             <select
               value={customerId}
-              onChange={(e) => setCustomerId(e.target.value)}
+              onChange={(e) => {
+                setCustomerId(e.target.value);
+                setHasUnsavedChanges(true);
+              }}
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-white focus:border-cyan-500 focus:outline-none"
             >
               <option value="">-- Select Customer --</option>
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name}
+                  {c.name} {c.customer_code ? `(${c.customer_code})` : ""}
                 </option>
               ))}
             </select>
@@ -361,7 +732,10 @@ function ExcelSoaEditorModalContent({
             <input
               type="text"
               value={soaNumber}
-              onChange={(e) => setSoaNumber(e.target.value)}
+              onChange={(e) => {
+                setSoaNumber(e.target.value);
+                setHasUnsavedChanges(true);
+              }}
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-mono text-cyan-300 focus:border-cyan-500 focus:outline-none"
             />
           </div>
@@ -371,7 +745,10 @@ function ExcelSoaEditorModalContent({
             <input
               type="date"
               value={statementDate ? statementDate.slice(0, 10) : ""}
-              onChange={(e) => setStatementDate(e.target.value)}
+              onChange={(e) => {
+                setStatementDate(e.target.value);
+                setHasUnsavedChanges(true);
+              }}
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-white focus:border-cyan-500 focus:outline-none"
             />
           </div>
@@ -382,15 +759,20 @@ function ExcelSoaEditorModalContent({
               type="number"
               step="0.01"
               value={openingBalance}
-              onChange={(e) => setOpeningBalance(parseNum(e.target.value))}
+              onChange={(e) => {
+                setOpeningBalance(parseNum(e.target.value));
+                setHasUnsavedChanges(true);
+              }}
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-right font-mono text-white focus:border-cyan-500 focus:outline-none"
             />
           </div>
 
           <div className="sm:col-span-3 space-y-1">
-            <label className="text-[10px] text-slate-400 uppercase font-semibold">Closing Balance</label>
+            <label className="text-[10px] text-slate-400 uppercase font-semibold">Calculated Closing</label>
             <div className="rounded-lg bg-slate-900 border border-slate-800 px-3 py-1.5 text-xs font-mono font-bold text-white flex items-center justify-between">
-              <span>AED {closingBal.toFixed(2)}</span>
+              <span className={closingBal < 0 ? "text-emerald-400" : "text-cyan-300"}>
+                AED {closingBal.toFixed(2)}
+              </span>
               <span className="text-[10px] text-slate-400 font-normal font-sans">
                 ({computedEntries.length} rows)
               </span>
@@ -501,7 +883,7 @@ function ExcelSoaEditorModalContent({
               </button>
             </div>
             <p className="text-[11px] text-slate-400">
-              Copy 5 columns from Excel (Date | Reference | Description | Debit | Credit) and paste below:
+              Copy columns from Excel (Date | Reference | Description | Debit | Credit) and paste below:
             </p>
             <textarea
               rows={3}
@@ -533,27 +915,99 @@ function ExcelSoaEditorModalContent({
           </div>
         )}
 
-        {/* Main Two-Panel Layout */}
-        <div className={`grid gap-3 flex-1 overflow-hidden p-4 ${showPdfPreview ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+        {/* Main Layout: Split View or Full Screen */}
+        <div className={`grid gap-3 flex-1 overflow-hidden p-4 ${showPdfPreview && !isFullScreenTable ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
           {/* Left Panel: Original PDF Preview */}
-          {showPdfPreview && (
+          {showPdfPreview && !isFullScreenTable && (
             <div className="rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden flex flex-col h-full">
+              {/* PDF Preview Top Toolbar */}
               <div className="bg-slate-900 px-3 py-2 border-b border-slate-800 text-[11px] text-slate-400 flex items-center justify-between shrink-0">
-                <span>Original Document: <strong className="text-white">{record.file_name}</strong></span>
-                <span className="font-mono text-[10px]">
-                  {record.file_size ? `${Math.round(record.file_size / 1024)} KB` : "PDF"}
+                <span className="truncate max-w-[200px]" title={record.file_name}>
+                  Original: <strong className="text-white">{record.file_name}</strong>
                 </span>
-              </div>
-              <div className="flex-1 bg-slate-950 p-2 overflow-hidden flex items-center justify-center">
-                {record.file_url ? (
-                  <iframe
-                    src={record.file_url}
-                    title="Original PDF Document"
-                    className="w-full h-full min-h-[400px] rounded border border-slate-800 bg-white"
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPdfZoom((z) => Math.max(50, z - 15))}
+                    className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+                    title="Zoom Out"
+                  >
+                    <ZoomOut size={12} />
+                  </button>
+                  <span className="font-mono text-[10px] w-10 text-center">{pdfZoom}%</span>
+                  <button
+                    type="button"
+                    onClick={() => setPdfZoom((z) => Math.min(200, z + 15))}
+                    className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+                    title="Zoom In"
+                  >
+                    <ZoomIn size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPdfZoom(100)}
+                    className="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300"
+                    title="Reset Zoom"
+                  >
+                    Fit
+                  </button>
+
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleReplaceFile}
+                    accept=".pdf,.xlsx,.xls,.csv"
+                    className="hidden"
                   />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={replacingFile}
+                    className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-cyan-950 border border-cyan-800 text-cyan-300 hover:bg-cyan-900 cursor-pointer"
+                    title="Replace with source PDF file"
+                  >
+                    {replacingFile ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
+                    <span>Replace PDF</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* PDF Viewer Content */}
+              <div className="flex-1 bg-slate-950 p-2 overflow-auto flex items-center justify-center">
+                {pdfLoading ? (
+                  <div className="flex flex-col items-center justify-center gap-2 text-slate-400 text-xs">
+                    <Loader2 size={24} className="animate-spin text-cyan-400" />
+                    <span>Loading authentic document preview...</span>
+                  </div>
+                ) : pdfError ? (
+                  <div className="p-6 text-center space-y-3 max-w-sm">
+                    <AlertTriangle size={32} className="mx-auto text-amber-400" />
+                    <p className="text-xs text-slate-300 font-semibold">Original file missing in storage</p>
+                    <p className="text-[11px] text-slate-500">{pdfError}</p>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs cursor-pointer"
+                    >
+                      <Upload size={13} />
+                      <span>Upload Replacement PDF</span>
+                    </button>
+                  </div>
+                ) : pdfBlobUrl ? (
+                  <div
+                    className="w-full h-full overflow-auto flex justify-center"
+                    style={{ transform: pdfZoom !== 100 ? `scale(${pdfZoom / 100})` : undefined, transformOrigin: "top center" }}
+                  >
+                    <iframe
+                      src={pdfBlobUrl}
+                      title="Original PDF Document"
+                      className="w-full h-full min-h-[500px] rounded border border-slate-800 bg-white"
+                    />
+                  </div>
                 ) : (
                   <div className="text-center p-6 text-slate-500 text-xs">
-                    Original document URL not available.
+                    No preview available.
                   </div>
                 )}
               </div>
@@ -582,7 +1036,7 @@ function ExcelSoaEditorModalContent({
                   <th className="py-2.5 px-2 text-right w-24">Debit</th>
                   <th className="py-2.5 px-2 text-right w-24">Credit</th>
                   <th className="py-2.5 px-2 text-right w-28">Balance</th>
-                  <th className="py-2.5 px-1 text-center w-10"></th>
+                  <th className="py-2.5 px-1 text-center w-16">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-mono">
@@ -637,14 +1091,24 @@ function ExcelSoaEditorModalContent({
                       {row.balance !== undefined ? Number(row.balance).toFixed(2) : "—"}
                     </td>
                     <td className="py-1 px-1 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteRow(row.id)}
-                        className="text-slate-500 hover:text-rose-400 p-1 cursor-pointer transition"
-                        title="Delete row"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleDuplicateRow(row.id)}
+                          className="text-slate-500 hover:text-cyan-400 p-1 cursor-pointer transition"
+                          title="Duplicate row"
+                        >
+                          <Plus size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRow(row.id)}
+                          className="text-slate-500 hover:text-rose-400 p-1 cursor-pointer transition"
+                          title="Delete row"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -652,7 +1116,23 @@ function ExcelSoaEditorModalContent({
                 {computedEntries.length === 0 && (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-slate-500 font-sans">
-                      No transaction rows found. Click <strong>Add Row</strong> or <strong>Paste Excel Rows</strong> to enter entries.
+                      <div className="max-w-md mx-auto space-y-2">
+                        <p className="font-semibold text-slate-400">No transaction rows extracted</p>
+                        <p className="text-[11px] text-slate-500">
+                          Click <strong>Add Row</strong> or <strong>Paste Excel Rows</strong> to insert historical entries.
+                        </p>
+                        <label className="flex items-center justify-center gap-2 pt-2 text-slate-400 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={confirmZeroTransactions}
+                            onChange={(e) => setConfirmZeroTransactions(e.target.checked)}
+                            className="rounded border-slate-700 bg-slate-900"
+                          />
+                          <span className="text-[11px] text-slate-300">
+                            Confirm genuine 0-transaction SOA (Opening = Closing balance)
+                          </span>
+                        </label>
+                      </div>
                     </td>
                   </tr>
                 )}
@@ -661,23 +1141,121 @@ function ExcelSoaEditorModalContent({
           </div>
         </div>
 
-        {/* Footer with Save Draft & Approve / Verify */}
+        {/* Live ERP Reconciliation Drawer / Panel */}
+        {showReconcileDrawer && (
+          <div className="border-t border-purple-800/80 bg-slate-900/95 p-4 text-xs space-y-3 shrink-0 max-h-[40vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <GitCompare size={16} className="text-purple-400" />
+                <h3 className="font-bold text-white text-sm">
+                  Live ERP Ledger Comparison — {customers.find((c) => c.id === customerId)?.name || "Customer"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReconcileDrawer(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {loadingReconcile ? (
+              <div className="flex items-center gap-2 py-4 text-slate-400">
+                <Loader2 size={16} className="animate-spin text-purple-400" />
+                <span>Comparing statement transactions against authoritative ERP invoices & payments...</span>
+              </div>
+            ) : reconcileReport ? (
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-1">
+                {/* Matched */}
+                <div className="rounded-xl border border-emerald-800 bg-emerald-950/40 p-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-emerald-300">Matched in ERP</span>
+                    <span className="font-mono font-bold text-emerald-400">{reconcileReport.matched.length}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">Reference & amount match existing live transactions.</p>
+                  <div className="max-h-24 overflow-y-auto space-y-1 pt-1 font-mono text-[10px]">
+                    {reconcileReport.matched.map((m, i) => (
+                      <div key={i} className="flex justify-between text-slate-300">
+                        <span>{m.soaRef}</span>
+                        <span>AED {m.amount.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Missing in ERP */}
+                <div className="rounded-xl border border-cyan-800 bg-cyan-950/40 p-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-cyan-300">Historical Only (Missing in ERP)</span>
+                    <span className="font-mono font-bold text-cyan-400">{reconcileReport.missingInErp.length}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">Document records that exist only in historical archive.</p>
+                  <div className="max-h-24 overflow-y-auto space-y-1 pt-1 font-mono text-[10px]">
+                    {reconcileReport.missingInErp.map((m, i) => (
+                      <div key={i} className="flex justify-between text-slate-300">
+                        <span>{m.soaRef}</span>
+                        <span>AED {m.amount.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Missing in SOA */}
+                <div className="rounded-xl border border-purple-800 bg-purple-950/40 p-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-purple-300">Live Only (Missing in SOA)</span>
+                    <span className="font-mono font-bold text-purple-400">{reconcileReport.missingInSoa.length}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">New ERP transactions posted after statement period.</p>
+                  <div className="max-h-24 overflow-y-auto space-y-1 pt-1 font-mono text-[10px]">
+                    {reconcileReport.missingInSoa.map((m, i) => (
+                      <div key={i} className="flex justify-between text-slate-300">
+                        <span>{m.erpRef}</span>
+                        <span>AED {m.amount.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Amount Mismatch */}
+                <div className="rounded-xl border border-amber-800 bg-amber-950/40 p-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-amber-300">Amount Mismatch</span>
+                    <span className="font-mono font-bold text-amber-400">{reconcileReport.amountMismatch.length}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">Same reference found with differing amounts.</p>
+                  <div className="max-h-24 overflow-y-auto space-y-1 pt-1 font-mono text-[10px]">
+                    {reconcileReport.amountMismatch.map((m, i) => (
+                      <div key={i} className="flex justify-between text-amber-300">
+                        <span>{m.ref}</span>
+                        <span>Diff: AED {m.diff.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {/* Footer with Calculations & Save / Verify Controls */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 bg-slate-900 border-t border-slate-800 text-xs shrink-0">
-          <div className="flex items-center gap-3 text-slate-400">
+          <div className="flex items-center gap-3 text-slate-400 font-mono">
             <span>
-              Opening: <strong className="text-white font-mono">AED {openingBalance.toFixed(2)}</strong>
+              Opening: <strong className="text-white">AED {openingBalance.toFixed(2)}</strong>
             </span>
             <span>•</span>
             <span>
-              Debits: <strong className="text-cyan-300 font-mono">AED {totalDebits.toFixed(2)}</strong>
+              Debits: <strong className="text-cyan-300">AED {totalDebits.toFixed(2)}</strong>
             </span>
             <span>•</span>
             <span>
-              Credits: <strong className="text-emerald-300 font-mono">AED {totalCredits.toFixed(2)}</strong>
+              Credits: <strong className="text-emerald-300">AED {totalCredits.toFixed(2)}</strong>
             </span>
             <span>•</span>
             <span>
-              Closing: <strong className="text-white font-mono font-bold">AED {closingBal.toFixed(2)}</strong>
+              Closing: <strong className="text-white font-bold">AED {closingBal.toFixed(2)}</strong>
             </span>
           </div>
 
@@ -703,8 +1281,17 @@ function ExcelSoaEditorModalContent({
             <button
               type="button"
               onClick={() => void handleSave({ verify: true })}
-              disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2 font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
+              disabled={!canVerify || saving}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-5 py-2 font-bold transition shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                canVerify
+                  ? "bg-cyan-600 hover:bg-cyan-500 text-white"
+                  : "bg-slate-800 text-slate-500 border border-slate-700"
+              }`}
+              title={
+                !canVerify
+                  ? `Cannot verify: ${!isCustomerConfirmed ? "Select customer. " : ""}${!isDateConfirmed ? "Set statement date. " : ""}${!isMathReconciled ? "Reconcile closing balance. " : ""}${!hasRows && !confirmZeroTransactions ? "Requires transaction rows or genuine zero confirmation." : ""}`
+                  : "Approve and verify Statement of Account"
+              }
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
               <span>Approve &amp; Verify</span>

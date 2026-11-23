@@ -68,7 +68,7 @@ function extractToken(req: NextRequest): string | null {
   return null;
 }
 
-async function resolveCompanyContext(req: NextRequest, requestedCompanyId?: string) {
+export async function resolveCompanyContext(req: NextRequest, requestedCompanyId?: string) {
   const token = extractToken(req);
   if (!token) {
     return { ok: false as const, status: 401, error: "Unauthorized: Missing session token." };
@@ -218,10 +218,79 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // Precompute company-wide customer financial summaries for Live Statements tab
+    const [allInvRes, allRecRes, allPayRes] = await Promise.all([
+      supabase
+        .from("tax_invoices")
+        .select("customer_id, total_amount")
+        .eq("company_id", companyId)
+        .not("status", "in", '("cancelled","void")'),
+      supabase
+        .from("receipt_vouchers")
+        .select("customer_id, amount")
+        .eq("company_id", companyId)
+        .not("status", "in", '("cancelled","void")'),
+      supabase
+        .from("payments")
+        .select("customer_id, amount")
+        .eq("company_id", companyId)
+        .not("status", "in", '("cancelled","void")'),
+    ]);
+
+    const custInvoicesMap = new Map<string, { total: number; count: number }>();
+    (allInvRes.data || []).forEach((row) => {
+      if (row.customer_id) {
+        const curr = custInvoicesMap.get(row.customer_id) || { total: 0, count: 0 };
+        curr.total += Number(row.total_amount) || 0;
+        curr.count += 1;
+        custInvoicesMap.set(row.customer_id, curr);
+      }
+    });
+
+    const custPaymentsMap = new Map<string, { total: number; count: number }>();
+    (allRecRes.data || []).forEach((row) => {
+      if (row.customer_id) {
+        const curr = custPaymentsMap.get(row.customer_id) || { total: 0, count: 0 };
+        curr.total += Number(row.amount) || 0;
+        curr.count += 1;
+        custPaymentsMap.set(row.customer_id, curr);
+      }
+    });
+    (allPayRes.data || []).forEach((row) => {
+      if (row.customer_id) {
+        const curr = custPaymentsMap.get(row.customer_id) || { total: 0, count: 0 };
+        curr.total += Number(row.amount) || 0;
+        curr.count += 1;
+        custPaymentsMap.set(row.customer_id, curr);
+      }
+    });
+
+    const customerSummaries = (customers || []).map((c) => {
+      const invData = custInvoicesMap.get(c.id) || { total: 0, count: 0 };
+      const payData = custPaymentsMap.get(c.id) || { total: 0, count: 0 };
+      const verifiedSoa = verifiedStatements.find((s) => s.customer_id === c.id);
+      const openBal = verifiedSoa?.opening_balance || 0;
+      const outstanding = Math.round((openBal + invData.total - payData.total) * 100) / 100;
+
+      return {
+        customerId: c.id,
+        customerName: c.name,
+        customerCode: c.customer_code || null,
+        trn: c.trn || null,
+        invoiceCount: invData.count,
+        totalInvoices: Math.round(invData.total * 100) / 100,
+        paymentCount: payData.count,
+        totalPayments: Math.round(payData.total * 100) / 100,
+        openingBalance: openBal,
+        outstandingBalance: outstanding,
+      };
+    });
+
     return NextResponse.json({
       success: true,
       companyId,
       customers: customers || [],
+      customerSummaries,
       statements: statements,
       verifiedStatements,
       pendingDocuments,
@@ -529,6 +598,8 @@ export interface UpdateSoaPayload {
   needsReview?: boolean;
   cutoverDate?: string | null;
   isCutoverApproved?: boolean;
+  fileUrl?: string;
+  storagePath?: string;
   reason?: string;
 }
 
@@ -551,6 +622,8 @@ export async function PUT(req: NextRequest) {
       needsReview: requestedNeedsReview,
       cutoverDate,
       isCutoverApproved,
+      fileUrl,
+      storagePath,
       reason,
       companyId: requestedCompanyId,
     } = body;
@@ -724,6 +797,8 @@ export async function PUT(req: NextRequest) {
     const putStatus = requestedStatus || (isStillVerified ? "verified" : stored.status === "rejected" ? "rejected" : "pending_verification");
     const finalNeedsReview = requestedNeedsReview !== undefined ? requestedNeedsReview : (!isStillVerified);
 
+    const finalStoragePath = storagePath || stored.storage_path || undefined;
+
     const newDescription = buildSoaAttachmentDescription({
       soaNumber: finalSoaNumber,
       statementDate: finalStatementDate || "",
@@ -738,7 +813,7 @@ export async function PUT(req: NextRequest) {
       isScannedPdf: stored.is_scanned_pdf,
       isVerified: isStillVerified,
       status: putStatus,
-      storagePath: stored.storage_path || undefined,
+      storagePath: finalStoragePath,
       storageBucket: stored.storage_bucket,
       cutoverDate: updatedCutoverDate,
       isCutoverApproved: updatedCutoverApproved,
@@ -749,6 +824,9 @@ export async function PUT(req: NextRequest) {
     });
 
     const updateFields: Record<string, unknown> = { description: newDescription };
+    if (fileUrl) {
+      updateFields.file_url = fileUrl;
+    }
     if (targetCustomerId && targetCustomerId !== stored.customer_id) {
       updateFields.entity_id = targetCustomerId;
     }

@@ -270,6 +270,16 @@ export async function GET(req: NextRequest) {
     }
 
     const supabase = authResult.client;
+
+    if (searchParams.get("action") === "signed_url") {
+      const expiresIn = parseInt(searchParams.get("expiresIn") || "3600", 10);
+      const { data: signedData, error: signErr } = await supabase.storage.from(bucket).createSignedUrl(storagePath, expiresIn);
+      if (signErr || !signedData?.signedUrl) {
+        return NextResponse.json({ error: signErr?.message || "Could not generate signed URL." }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, signedUrl: signedData.signedUrl });
+    }
+
     const { data: fileBlob, error: dlErr } = await supabase.storage.from(bucket).download(storagePath);
 
     if (dlErr || !fileBlob) {

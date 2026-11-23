@@ -47,7 +47,7 @@ export interface SoaRecordMetadata {
   openingBalance: number;
   charges: number;
   credits: number;
-  closingBalance: number;
+  closingBalance?: number | null;
   checksumSha256?: string;
   needsReview?: boolean;
   isScannedPdf?: boolean;
