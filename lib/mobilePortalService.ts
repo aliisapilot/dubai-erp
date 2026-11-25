@@ -554,7 +554,8 @@ export async function fetchDocumentForPdf(category: MobileDocumentCategory, id: 
       supabase.from("supplier_bills").select("*, supplier:suppliers(*)").eq("id", id).single(),
       supabase.from("supplier_bill_items").select("*").eq("supplier_bill_id", id).order("sort_order"),
     ]);
-    return { ...bill, items: items || [] };
+    const withParty = withSupplierDocumentDetails({ ...bill, items: items || [] });
+    return attachProjectInfo(withParty as Record<string, unknown>);
   }
 
   if (category === "cheque") {
