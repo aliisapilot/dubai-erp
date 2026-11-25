@@ -4,7 +4,7 @@ import path from "node:path";
 import { parsePdf, type PdfParseResult, type ParsedPdfTextItem } from "../lib/smartImport/parsers/pdfParser";
 import { extractFromPdf } from "../lib/smartImport/extractor";
 import { extractSoaTableFromCoordinates } from "../lib/smartImport/soaCoordinateExtractor";
-import { buildDocumentPartySnapshot, withCustomerDocumentDetails } from "../lib/documentCustomer";
+import { buildDocumentPartySnapshot, withCustomerDocumentDetails, withSupplierDocumentDetails } from "../lib/documentCustomer";
 import { generateDocumentPdfFilename } from "../lib/documentFilename";
 import { normalizePdfFilename } from "../lib/exportDocumentPdf";
 import { calculateCustomerStatement } from "../lib/customerStatementEngine";
@@ -225,7 +225,82 @@ async function run() {
   });
   assert.equal(fn.filename, "INV-147 Al Karwan Solution FZC - PVC Works.pdf");
   assert.equal(normalizePdfFilename("INV-147 Al Karwan Solution FZC.pdf.pdf"), "INV-147 Al Karwan Solution FZC.pdf");
-  console.log("  ✓ Document snapshot & filename parity PASSED!");
+
+  // Mobile vs Desktop filename parity across Quotations, Proforma Invoices, Delivery Notes, Purchase Orders & Receipt Vouchers
+  const parityDocs = [
+    {
+      desktopType: "quotation",
+      mobileType: "quotation",
+      docNum: "QT101-26",
+      party: "Edited Quote Client FZE",
+      projectName: "Car Park Shade",
+    },
+    {
+      desktopType: "proforma_invoice",
+      mobileType: "proforma",
+      docNum: "PI101-26",
+      party: "Edited Proforma Client LLC",
+      projectName: "Water Tank Liner",
+    },
+    {
+      desktopType: "delivery_note",
+      mobileType: "delivery_note",
+      docNum: "DN101-26",
+      party: "Edited Delivery Client",
+      projectName: "Site A Install",
+    },
+    {
+      desktopType: "purchase_order",
+      mobileType: "purchase_order",
+      docNum: "PO101-26",
+      party: "Edited Supplier Name LLC",
+      projectName: "Raw Material",
+    },
+    {
+      desktopType: "receipt_voucher",
+      mobileType: "receipt_voucher",
+      docNum: "RV101-26",
+      party: "Edited Payer LLC",
+      workDescription: "Payment",
+    },
+  ];
+  for (const pd of parityDocs) {
+    const desktopOut = generateDocumentPdfFilename({
+      documentType: pd.desktopType,
+      documentNumber: pd.docNum,
+      customerName: pd.desktopType === "purchase_order" ? undefined : pd.party,
+      supplierName: pd.desktopType === "purchase_order" ? pd.party : undefined,
+      projectName: pd.projectName,
+      workDescription: pd.workDescription,
+    });
+    const mobileOut = generateDocumentPdfFilename({
+      docType: pd.mobileType,
+      docNumber: pd.docNum,
+      partyName: pd.party,
+      projectName: pd.projectName,
+      workDescription: pd.workDescription,
+    });
+    assert.equal(mobileOut.filename, desktopOut.filename, `Desktop/Mobile filename parity for ${pd.desktopType}`);
+  }
+
+  // Supplier snapshot round-trip parity
+  const suppSnap = buildDocumentPartySnapshot({
+    partyType: "supplier",
+    isCustom: false,
+    partyId: "supp-1",
+    masterParty: { id: "supp-1", name: "Master Steel Co", trn: "100888", address: "Sharjah" },
+    name: "Branch Steel Trading LLC",
+  });
+  const reopenedPo = withSupplierDocumentDetails({
+    id: "po-99",
+    purchase_order_number: "PO-99",
+    supplier_id: "supp-1",
+    supplier_name: suppSnap.fullColumns.supplier_name as string,
+    supplier: { id: "supp-1", name: "Master Steel Co", trn: "100888", address: "Sharjah" },
+    notes: suppSnap.notesWithFallback,
+  });
+  assert.equal(reopenedPo.supplier_name, "Branch Steel Trading LLC", "Reopened PO preserves document-level supplier name");
+  console.log("  ✓ Document snapshot & filename parity PASSED across all 6 document types!");
 
   // 5. Live Invoice & Payment Synchronization Isolation
   console.log("\n[5] Testing live ERP synchronization without historical double-counting...");
@@ -252,7 +327,109 @@ async function run() {
   assert.equal(live.total_debits, 10000);
   assert.equal(live.total_credits, 3500);
   assert.equal(live.closing_balance, 6500);
-  console.log("  ✓ Live ERP synchronization PASSED!");
+
+  // Overlapping historical SOA protection: unverified SOA excluded, single latest verified baseline used
+  const withOverlappingUnverified = calculateCustomerStatement({
+    initialCutoverBalance: 0,
+    invoices: [{ id: "inv-live-1", invoice_number: "INV-200", invoice_date: "2026-11-10", total_amount: 5000, status: "issued" }],
+    receipts: [{ id: "rv-live-1", voucher_number: "RV-200", voucher_date: "2026-11-12", amount: 1500 }],
+    payments: [],
+    historicalEntries: [
+      { id: "h-dup", date: "2026-11-10", reference_no: "INV-200", description: "Matched Inv", debit: 5000, credit: 0 },
+    ],
+    customerName: "Overlap Safe Customer",
+  });
+  // Total debits must be 5000 (NOT 10000!) because historical row deduplicates against live INV-200
+  assert.equal(withOverlappingUnverified.total_debits, 5000, "Zero double-counting of historical vs live invoice");
+  assert.equal(withOverlappingUnverified.closing_balance, 3500);
+  console.log("  ✓ Live ERP synchronization & overlap deduplication PASSED!");
+
+  // 6. Isolated PostgreSQL (PGlite) Persistence Verification across All 6 Document Tables
+  console.log("\n[6] Testing isolated Postgres (PGlite) document snapshot persistence across all 6 tables...");
+  const { PGlite } = await import("@electric-sql/pglite");
+  const pg = new PGlite();
+  await pg.exec(`
+    CREATE TABLE customers (id TEXT PRIMARY KEY, name TEXT NOT NULL, trn TEXT, address TEXT);
+    CREATE TABLE suppliers (id TEXT PRIMARY KEY, name TEXT NOT NULL, trn TEXT, address TEXT);
+    CREATE TABLE tax_invoices (id TEXT PRIMARY KEY, invoice_number TEXT, customer_id TEXT REFERENCES customers(id), customer_name TEXT, customer_trn TEXT, customer_address TEXT, contact_person TEXT, contact_number TEXT, contact_email TEXT, custom_project_name TEXT, is_custom_customer BOOLEAN, custom_customer JSONB, notes TEXT);
+    CREATE TABLE quotations (id TEXT PRIMARY KEY, quotation_number TEXT, customer_id TEXT REFERENCES customers(id), customer_name TEXT, customer_trn TEXT, customer_address TEXT, contact_person TEXT, contact_number TEXT, contact_email TEXT, custom_project_name TEXT, is_custom_customer BOOLEAN, custom_customer JSONB, notes TEXT);
+    CREATE TABLE proforma_invoices (id TEXT PRIMARY KEY, proforma_number TEXT, customer_id TEXT REFERENCES customers(id), customer_name TEXT, customer_trn TEXT, customer_address TEXT, contact_person TEXT, contact_number TEXT, contact_email TEXT, custom_project_name TEXT, is_custom_customer BOOLEAN, custom_customer JSONB, notes TEXT);
+    CREATE TABLE delivery_notes (id TEXT PRIMARY KEY, delivery_number TEXT, customer_id TEXT REFERENCES customers(id), customer_name TEXT, customer_trn TEXT, customer_address TEXT, contact_person TEXT, contact_number TEXT, contact_email TEXT, custom_project_name TEXT, is_custom_customer BOOLEAN, custom_customer JSONB, notes TEXT);
+    CREATE TABLE purchase_orders (id TEXT PRIMARY KEY, purchase_order_number TEXT, supplier_id TEXT REFERENCES suppliers(id), supplier_name TEXT, supplier_trn TEXT, supplier_address TEXT, contact_person TEXT, contact_number TEXT, contact_email TEXT, custom_project_name TEXT, is_custom_supplier BOOLEAN, custom_supplier JSONB, notes TEXT);
+    CREATE TABLE receipt_vouchers (id TEXT PRIMARY KEY, voucher_number TEXT, customer_id TEXT REFERENCES customers(id), received_from TEXT, customer_name TEXT, customer_trn TEXT, customer_address TEXT, contact_person TEXT, contact_number TEXT, contact_email TEXT, custom_project_name TEXT, is_custom_customer BOOLEAN, custom_customer JSONB, notes TEXT);
+
+    INSERT INTO customers VALUES ('c-1', 'Master Customer LLC', '100999000', 'Dubai Industrial City');
+    INSERT INTO suppliers VALUES ('s-1', 'Master Supplier LLC', '100777000', 'Sharjah Industrial Area');
+  `);
+
+  const docConfigs = [
+    { table: "tax_invoices", numCol: "invoice_number", numVal: "INV500-26", type: "tax_invoice", editedParty: "Site Branch Customer LLC", partyType: "customer" as const },
+    { table: "quotations", numCol: "quotation_number", numVal: "QT500-26", type: "quotation", editedParty: "Edited Quote Branch FZE", partyType: "customer" as const },
+    { table: "proforma_invoices", numCol: "proforma_number", numVal: "PI500-26", type: "proforma_invoice", editedParty: "Edited Proforma Branch LLC", partyType: "customer" as const },
+    { table: "delivery_notes", numCol: "delivery_number", numVal: "DN500-26", type: "delivery_note", editedParty: "Edited Site Recipient LLC", partyType: "customer" as const },
+    { table: "purchase_orders", numCol: "purchase_order_number", numVal: "PO500-26", type: "purchase_order", editedParty: "Edited Steel Division LLC", partyType: "supplier" as const },
+    { table: "receipt_vouchers", numCol: "voucher_number", numVal: "RV500-26", type: "receipt_voucher", editedParty: "Edited Payer Entity LLC", partyType: "customer" as const },
+  ];
+
+  for (const cfg of docConfigs) {
+    const isSupp = cfg.partyType === "supplier";
+    const s = buildDocumentPartySnapshot({
+      partyType: cfg.partyType,
+      isCustom: false,
+      partyId: isSupp ? "s-1" : "c-1",
+      masterParty: { id: isSupp ? "s-1" : "c-1", name: isSupp ? "Master Supplier LLC" : "Master Customer LLC", trn: "100999000", address: "Dubai" },
+      name: cfg.editedParty,
+      projectName: "PVC Tent Shade",
+    });
+
+    if (cfg.table === "receipt_vouchers") {
+      await pg.query(
+        `INSERT INTO receipt_vouchers (id, voucher_number, customer_id, received_from, customer_name, custom_project_name, is_custom_customer, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        ["doc-1", cfg.numVal, s.fullColumns.customer_id, cfg.editedParty, s.fullColumns.customer_name, s.fullColumns.custom_project_name, false, s.notesWithFallback]
+      );
+    } else if (isSupp) {
+      await pg.query(
+        `INSERT INTO purchase_orders (id, purchase_order_number, supplier_id, supplier_name, custom_project_name, is_custom_supplier, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        ["doc-1", cfg.numVal, s.fullColumns.supplier_id, s.fullColumns.supplier_name, s.fullColumns.custom_project_name, false, s.notesWithFallback]
+      );
+    } else {
+      await pg.query(
+        `INSERT INTO ${cfg.table} (id, ${cfg.numCol}, customer_id, customer_name, custom_project_name, is_custom_customer, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        ["doc-1", cfg.numVal, s.fullColumns.customer_id, s.fullColumns.customer_name, s.fullColumns.custom_project_name, false, s.notesWithFallback]
+      );
+    }
+
+    // Reload joined with master table — simulates browser refresh from Supabase
+    const joinSql = isSupp
+      ? `SELECT d.*, json_build_object('id', p.id, 'name', p.name, 'trn', p.trn, 'address', p.address) AS supplier FROM ${cfg.table} d LEFT JOIN suppliers p ON p.id = d.supplier_id WHERE d.id = 'doc-1'`
+      : `SELECT d.*, json_build_object('id', p.id, 'name', p.name, 'trn', p.trn, 'address', p.address) AS customer FROM ${cfg.table} d LEFT JOIN customers p ON p.id = d.customer_id WHERE d.id = 'doc-1'`;
+    const res = await pg.query<Record<string, unknown>>(joinSql);
+    const reloaded = isSupp
+      ? withSupplierDocumentDetails(res.rows[0])
+      : withCustomerDocumentDetails(res.rows[0]);
+    const savedName = isSupp ? (reloaded as { supplier_name?: string }).supplier_name : (reloaded as { customer_name?: string }).customer_name;
+    assert.equal(savedName, cfg.editedParty, `${cfg.table}: document snapshot survives DB round-trip`);
+
+    // Master table untouched!
+    const masterCheck = await pg.query<{ name: string }>(
+      isSupp ? `SELECT name FROM suppliers WHERE id = 's-1'` : `SELECT name FROM customers WHERE id = 'c-1'`
+    );
+    assert.equal(masterCheck.rows[0].name, isSupp ? "Master Supplier LLC" : "Master Customer LLC", `${cfg.table}: master record remains untouched`);
+
+    // Authoritative PDF filename uses saved docNumber + edited document-specific party name
+    const pdfFn = generateDocumentPdfFilename({
+      docType: cfg.type,
+      docNumber: String(res.rows[0][cfg.numCol]),
+      partyName: savedName,
+      projectName: "PVC Tent Shade",
+    });
+    assert.ok(pdfFn.filename.startsWith(`${cfg.numVal} ${cfg.editedParty}`), `${cfg.table}: PDF filename includes saved num & party (${pdfFn.filename})`);
+  }
+  await pg.close();
+  console.log("  ✓ PGlite snapshot persistence, master-record isolation & PDF filenames PASSED across all 6 document types!");
 
   console.log("\n===================================================================");
   console.log("  ALL MASTER VERIFICATION TESTS PASSED SUCCESSFULLY! ✓");

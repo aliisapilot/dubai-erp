@@ -25,7 +25,14 @@ import {
   extractSoaRowsFromSpreadsheet,
   type CustomerCandidate,
 } from "@/lib/soaManager";
-import type { RawHistoricalEntry } from "@/lib/customerStatementEngine";
+import {
+  matchSingleHistoricalEntry,
+  normalizeDocRef,
+  type RawHistoricalEntry,
+  type RawInvoice,
+  type RawPayment,
+  type RawReceiptVoucher,
+} from "@/lib/customerStatementEngine";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120; // Allow 2 minutes for bulk re-extraction batches
@@ -60,14 +67,30 @@ export async function POST(req: NextRequest) {
       query = query.in("id", attachmentIds);
     }
 
-    const [{ data: attachments, error: attErr }, { data: rawCustomers, error: custErr }] = await Promise.all([
-      query.order("created_at", { ascending: false }),
-      supabase
-        .from("customers")
-        .select("id, name, customer_code, trn, phone, email, address")
-        .eq("company_id", companyId)
-        .eq("active", true),
-    ]);
+    const [{ data: attachments, error: attErr }, { data: rawCustomers, error: custErr }, invRes, recRes, payRes] =
+      await Promise.all([
+        query.order("created_at", { ascending: false }),
+        supabase
+          .from("customers")
+          .select("id, name, customer_code, trn, phone, email, address")
+          .eq("company_id", companyId)
+          .eq("active", true),
+        supabase
+          .from("tax_invoices")
+          .select("id, customer_id, invoice_number, invoice_date, total_amount, status")
+          .eq("company_id", companyId)
+          .not("status", "in", '("cancelled","void")'),
+        supabase
+          .from("receipt_vouchers")
+          .select("id, customer_id, voucher_number, voucher_date, amount, status, payment_method, cheque_number")
+          .eq("company_id", companyId)
+          .not("status", "in", '("cancelled","void")'),
+        supabase
+          .from("payments")
+          .select("id, customer_id, payment_number, reference_number, payment_date, amount, status, payment_method")
+          .eq("company_id", companyId)
+          .not("status", "in", '("cancelled","void")'),
+      ]);
 
     if (custErr) {
       console.warn("Failed to load customers for repair:", custErr.message);
@@ -81,29 +104,58 @@ export async function POST(req: NextRequest) {
     const custMap = new Map<string, string>();
     customers.forEach((c) => custMap.set(c.id, c.name));
 
-    // 2. Pre-index storage objects in company's smart-imports folder to resolve missing paths
-    const storageFileIndex = new Map<string, string>(); // lowercase cleanFileName -> storagePath
-    try {
-      const { data: batches } = await supabase.storage.from("smart-imports").list(companyId, { limit: 100 });
-      if (Array.isArray(batches)) {
-        for (const b of batches) {
-          if (b.name) {
-            const { data: batchFiles } = await supabase.storage
-              .from("smart-imports")
-              .list(`${companyId}/${b.name}`, { limit: 100 });
-            if (Array.isArray(batchFiles)) {
-              for (const f of batchFiles) {
-                if (f.name) {
-                  const fullPath = `${companyId}/${b.name}/${f.name}`;
-                  const cleanName = f.name.replace(/^[0-9]+_[a-f0-9]+_/, "").toLowerCase();
-                  storageFileIndex.set(cleanName, fullPath);
-                  storageFileIndex.set(f.name.toLowerCase(), fullPath);
-                }
-              }
-            }
-          }
+    const invByCust = new Map<string, RawInvoice[]>();
+    (invRes.data || []).forEach((row) => {
+      if (!row.customer_id) return;
+      const list = invByCust.get(row.customer_id) || [];
+      list.push(row as RawInvoice);
+      invByCust.set(row.customer_id, list);
+    });
+    const recByCust = new Map<string, RawReceiptVoucher[]>();
+    (recRes.data || []).forEach((row) => {
+      if (!row.customer_id) return;
+      const list = recByCust.get(row.customer_id) || [];
+      list.push(row as RawReceiptVoucher);
+      recByCust.set(row.customer_id, list);
+    });
+    const payByCust = new Map<string, RawPayment[]>();
+    (payRes.data || []).forEach((row) => {
+      if (!row.customer_id) return;
+      const list = payByCust.get(row.customer_id) || [];
+      list.push(row as RawPayment);
+      payByCust.set(row.customer_id, list);
+    });
+
+    // 2. Pre-index storage objects recursively (up to depth 3) in company's smart-imports folder
+    const storageFileIndex = new Map<string, string>(); // normalized file key -> storagePath
+    const normalizeKey = (name: string) =>
+      name
+        .replace(/^[0-9]+_[a-f0-9]+_/i, "")
+        .replace(/^[0-9a-f-]{36}[-_]/i, "")
+        .trim()
+        .toLowerCase();
+
+    async function indexStoragePrefix(prefix: string, depth = 0) {
+      if (depth > 3) return;
+      const { data: items } = await supabase.storage.from("smart-imports").list(prefix, { limit: 200 });
+      if (!Array.isArray(items)) return;
+      for (const item of items) {
+        if (!item.name) continue;
+        const fullPath = prefix ? `${prefix}/${item.name}` : item.name;
+        const isFolder = item.id === null && (!item.metadata || Object.keys(item.metadata).length === 0);
+        if (isFolder) {
+          await indexStoragePrefix(fullPath, depth + 1);
+        } else {
+          const exactLower = item.name.toLowerCase();
+          const stripped = normalizeKey(item.name);
+          if (!storageFileIndex.has(stripped)) storageFileIndex.set(stripped, fullPath);
+          if (!storageFileIndex.has(exactLower)) storageFileIndex.set(exactLower, fullPath);
         }
       }
+    }
+
+    try {
+      await indexStoragePrefix(companyId, 0);
     } catch (storageScanErr) {
       console.warn("Storage index scan warning:", storageScanErr);
     }
@@ -111,6 +163,7 @@ export async function POST(req: NextRequest) {
     let repairedCount = 0;
     let skippedCount = 0;
     let missingFilesCount = 0;
+    const customerSeenTxMap = new Map<string, Map<string, string>>(); // customerId -> (txSig -> firstSoaNumber)
     const details: Array<{
       id: string;
       fileName: string;
@@ -128,8 +181,81 @@ export async function POST(req: NextRequest) {
       oldDate: string;
       newDate: string;
       isMathValid: boolean;
+      duplicateRowsCount?: number;
+      overlappingSoaRowsCount?: number;
+      matchedErpRowsCount?: number;
+      conflictErpRowsCount?: number;
+      overlapNote?: string;
       error?: string;
     }> = [];
+
+    const analyzeEntries = (
+      customerId: string | null | undefined,
+      soaNumber: string,
+      entries: RawHistoricalEntry[]
+    ) => {
+      let duplicateRowsCount = 0;
+      let overlappingSoaRowsCount = 0;
+      let matchedErpRowsCount = 0;
+      let conflictErpRowsCount = 0;
+      const overlapSources = new Set<string>();
+      const localSeen = new Set<string>();
+      const siblingMap = customerId
+        ? customerSeenTxMap.get(customerId) || new Map<string, string>()
+        : new Map<string, string>();
+      if (customerId && !customerSeenTxMap.has(customerId)) {
+        customerSeenTxMap.set(customerId, siblingMap);
+      }
+
+      const custInvs = customerId ? invByCust.get(customerId) || [] : [];
+      const custRecs = customerId ? recByCust.get(customerId) || [] : [];
+      const custPays = customerId ? payByCust.get(customerId) || [] : [];
+
+      for (const e of entries) {
+        const dAmt = Number(e.debit) || 0;
+        const cAmt = Number(e.credit) || 0;
+        if (dAmt === 0 && cAmt === 0) continue;
+        const normRef = normalizeDocRef(e.reference_no || e.original_reference);
+        const day = (e.date || "").slice(0, 10);
+        const sig = `${day}|${normRef}|${dAmt.toFixed(2)}|${cAmt.toFixed(2)}`;
+
+        if (localSeen.has(sig)) {
+          duplicateRowsCount++;
+        } else {
+          localSeen.add(sig);
+        }
+
+        if (customerId) {
+          const prevSoa = siblingMap.get(sig);
+          if (prevSoa && prevSoa !== soaNumber) {
+            overlappingSoaRowsCount++;
+            overlapSources.add(prevSoa);
+          } else if (!prevSoa) {
+            siblingMap.set(sig, soaNumber || "Previous SOA");
+          }
+
+          const erpMatch = matchSingleHistoricalEntry(e, custInvs, custRecs, custPays);
+          if (erpMatch.status === "matched") matchedErpRowsCount++;
+          else if (erpMatch.status === "conflict") conflictErpRowsCount++;
+        }
+      }
+
+      const notes: string[] = [];
+      if (duplicateRowsCount > 0) notes.push(`${duplicateRowsCount} intra-SOA dup`);
+      if (overlappingSoaRowsCount > 0) {
+        notes.push(`${overlappingSoaRowsCount} overlap (${Array.from(overlapSources).slice(0, 2).join(", ")})`);
+      }
+      if (conflictErpRowsCount > 0) notes.push(`${conflictErpRowsCount} ERP amount conflict`);
+      if (matchedErpRowsCount > 0) notes.push(`${matchedErpRowsCount} linked to live ERP`);
+
+      return {
+        duplicateRowsCount,
+        overlappingSoaRowsCount,
+        matchedErpRowsCount,
+        conflictErpRowsCount,
+        overlapNote: notes.join("; ") || undefined,
+      };
+    };
 
     const nowIso = new Date().toISOString();
 
@@ -143,6 +269,7 @@ export async function POST(req: NextRequest) {
       const hasManualEdits = stored.audit_trail?.some((a) => a.action === "edit");
       if (stored.is_verified && hasManualEdits && !forceReextract) {
         skippedCount++;
+        const analysis = analyzeEntries(stored.customer_id, stored.soa_number, stored.entries);
         details.push({
           id: stored.id,
           fileName: stored.file_name,
@@ -160,15 +287,27 @@ export async function POST(req: NextRequest) {
           oldDate: stored.statement_date,
           newDate: stored.statement_date,
           isMathValid: true,
+          ...analysis,
         });
         continue;
       }
 
-      // Resolve storage path
+      // Resolve storage path from metadata, file_url query (?path=), or recursive storage index
       let resolvedPath = stored.storage_path;
+      if ((!resolvedPath || resolvedPath.startsWith("http") || resolvedPath.startsWith("/")) && stored.file_url) {
+        try {
+          const parsedUrl = new URL(stored.file_url, "http://localhost");
+          const qPath = parsedUrl.searchParams.get("path");
+          if (qPath && qPath.startsWith(`${companyId}/`)) {
+            resolvedPath = qPath;
+          }
+        } catch {
+          // ignore malformed URL
+        }
+      }
       if (!resolvedPath || resolvedPath.startsWith("http") || resolvedPath.startsWith("/")) {
         const cleanLower = stored.file_name.toLowerCase();
-        resolvedPath = storageFileIndex.get(cleanLower) || null;
+        resolvedPath = storageFileIndex.get(normalizeKey(stored.file_name)) || storageFileIndex.get(cleanLower) || null;
       }
 
       if (!resolvedPath) {
@@ -373,6 +512,7 @@ export async function POST(req: NextRequest) {
           newClosingBalance !== null
             ? Math.round((newClosingBalance - expectedClosing) * 100) / 100
             : null;
+        const analysis = analyzeEntries(resolvedCustomerId, newSoaNumber, newEntries);
         details.push({
           id: stored.id,
           fileName: stored.file_name,
@@ -390,11 +530,14 @@ export async function POST(req: NextRequest) {
           oldDate: stored.statement_date,
           newDate: newStatementDate || "Date required",
           isMathValid,
+          ...analysis,
         });
       } catch (procErr) {
         details.push({
           id: stored.id,
           fileName: stored.file_name,
+          soaNumber: stored.soa_number,
+          customerName: stored.customer_name,
           status: "failed",
           oldClosing: stored.closing_balance,
           newClosing: null,
@@ -408,6 +551,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const failedCount = details.filter((d) => d.status === "failed").length;
+    const discrepanciesCount = details.filter(
+      (d) => d.status === "repaired" && (!d.isMathValid || d.newClosing === null || d.newRows === 0)
+    ).length;
+    const duplicatesCount = details.reduce((s, d) => s + (d.duplicateRowsCount || 0), 0);
+    const overlapsCount = details.reduce((s, d) => s + (d.overlappingSoaRowsCount || 0), 0);
+
     return NextResponse.json({
       success: true,
       dryRun,
@@ -415,7 +565,10 @@ export async function POST(req: NextRequest) {
       repairedCount,
       skippedCount,
       missingFilesCount,
-      failedCount: details.filter((d) => d.status === "failed").length,
+      failedCount,
+      discrepanciesCount,
+      duplicatesCount,
+      overlapsCount,
       details,
     });
   } catch (err: unknown) {

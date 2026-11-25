@@ -72,6 +72,11 @@ interface RepairDetail {
   oldDate: string;
   newDate: string;
   isMathValid: boolean;
+  duplicateRowsCount?: number;
+  overlappingSoaRowsCount?: number;
+  matchedErpRowsCount?: number;
+  conflictErpRowsCount?: number;
+  overlapNote?: string;
   error?: string;
 }
 
@@ -131,6 +136,9 @@ export default function CustomerStatementsPage() {
     skippedCount: number;
     missingFilesCount: number;
     failedCount: number;
+    discrepanciesCount?: number;
+    duplicatesCount?: number;
+    overlapsCount?: number;
     details: RepairDetail[];
   } | null>(null);
 
@@ -1672,28 +1680,38 @@ export default function CustomerStatementsPage() {
             ) : repairResults ? (
               <div className="space-y-4 overflow-y-auto flex-1">
                 {/* Summary chips */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
                   <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                     <span className="text-[10px] text-slate-400 uppercase font-semibold block">Total Scanned</span>
                     <span className="text-lg font-bold font-mono text-white">{repairResults.totalAttachments}</span>
                   </div>
                   <div className="p-3 rounded-xl bg-slate-950 border border-emerald-900/60">
-                    <span className="text-[10px] text-emerald-400 uppercase font-semibold block">Repaired</span>
+                    <span className="text-[10px] text-emerald-400 uppercase font-semibold block">Recovered / Re-extracted</span>
                     <span className="text-lg font-bold font-mono text-emerald-300">{repairResults.repairedCount}</span>
                   </div>
                   <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-[10px] text-slate-400 uppercase font-semibold block">Skipped Verified</span>
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold block">Preserved Verified</span>
                     <span className="text-lg font-bold font-mono text-slate-300">{repairResults.skippedCount}</span>
                   </div>
+                  <div className="p-3 rounded-xl bg-slate-950 border border-amber-900/60">
+                    <span className="text-[10px] text-amber-400 uppercase font-semibold block">Discrepancies / Unresolved</span>
+                    <span className="text-lg font-bold font-mono text-amber-300">{repairResults.discrepanciesCount ?? 0}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-950 border border-sky-900/60">
+                    <span className="text-[10px] text-sky-400 uppercase font-semibold block">Duplicates / Overlaps</span>
+                    <span className="text-lg font-bold font-mono text-sky-300">
+                      {(repairResults.duplicatesCount ?? 0) + (repairResults.overlapsCount ?? 0)}
+                    </span>
+                  </div>
                   <div className="p-3 rounded-xl bg-slate-950 border border-rose-900/60">
-                    <span className="text-[10px] text-rose-400 uppercase font-semibold block">Missing Source Files</span>
+                    <span className="text-[10px] text-rose-400 uppercase font-semibold block">Missing Originals</span>
                     <span className="text-lg font-bold font-mono text-rose-300">{repairResults.missingFilesCount}</span>
                   </div>
                 </div>
 
                 {/* Details Table */}
                 <div className="rounded-xl border border-slate-800 overflow-x-auto">
-                  <table className="w-full min-w-[760px] text-xs border-collapse">
+                  <table className="w-full min-w-[880px] text-xs border-collapse">
                     <thead className="bg-slate-950 text-slate-400 font-mono text-[10px] uppercase border-b border-slate-800">
                       <tr>
                         <th className="py-2 px-3 text-left">SOA</th>
@@ -1704,6 +1722,7 @@ export default function CustomerStatementsPage() {
                         <th className="py-2 px-3 text-right">PDF Closing</th>
                         <th className="py-2 px-3 text-right">Calculated</th>
                         <th className="py-2 px-3 text-right">Diff</th>
+                        <th className="py-2 px-3 text-left">Duplicates / Overlaps</th>
                         <th className="py-2 px-3 text-center">Status</th>
                       </tr>
                     </thead>
@@ -1733,6 +1752,9 @@ export default function CustomerStatementsPage() {
                           </td>
                           <td className="py-2 px-3 text-right text-amber-300">
                             {d.difference != null ? d.difference.toFixed(2) : "—"}
+                          </td>
+                          <td className="py-2 px-3 text-left text-[11px] text-slate-300 max-w-[180px] truncate" title={d.overlapNote || "None"}>
+                            {d.overlapNote || "Clean"}
                           </td>
                           <td className="py-2 px-3 text-center whitespace-nowrap">
                             {d.status === "repaired" ? (

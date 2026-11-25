@@ -2033,6 +2033,8 @@ function DocumentSplitScreenEditorWorkspace({
           customerName: previewData.customer_name,
           supplierName: previewData.supplier_name,
           projectName: previewData.project_name,
+          scopeOfWork: previewData.scope_of_work,
+          subject: (previewData as { subject?: string }).subject,
           notes: previewData.notes,
           items: previewData.items,
           date: previewData.document_date,

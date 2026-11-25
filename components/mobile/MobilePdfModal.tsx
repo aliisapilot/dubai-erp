@@ -58,7 +58,9 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
       (rec.invoice_number as string | undefined) ||
       (rec.quotation_number as string | undefined) ||
       (rec.proforma_number as string | undefined) ||
+      (rec.delivery_number as string | undefined) ||
       (rec.delivery_note_number as string | undefined) ||
+      (rec.po_number as string | undefined) ||
       (rec.purchase_order_number as string | undefined) ||
       (rec.bill_number as string | undefined) ||
       document.documentNumber;
@@ -70,9 +72,20 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
       customerName: rec.customer_name as string | undefined,
       supplierName: rec.supplier_name as string | undefined,
       projectName: (rec.custom_project_name || rec.project_name) as string | undefined,
+      scopeOfWork: rec.scope_of_work as string | undefined,
+      subject: rec.subject as string | undefined,
+      workDescription: rec.work_description as string | undefined,
       notes: (rec.notes as string | undefined) || document.notes,
       items: Array.isArray(rec.items) ? (rec.items as Array<{ description?: string | null }>) : undefined,
-      date: document.date,
+      date:
+        (rec.invoice_date as string | undefined) ||
+        (rec.quotation_date as string | undefined) ||
+        (rec.proforma_date as string | undefined) ||
+        (rec.delivery_date as string | undefined) ||
+        (rec.po_date as string | undefined) ||
+        (rec.order_date as string | undefined) ||
+        (rec.bill_date as string | undefined) ||
+        document.date,
     });
   }, [fullDoc, document]);
 

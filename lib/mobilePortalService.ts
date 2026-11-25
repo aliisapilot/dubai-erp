@@ -456,6 +456,41 @@ export async function getAuthorizedMobileDocumentUrl(
   return payload.download_url;
 }
 
+async function attachProjectInfo<
+  T extends {
+    project_id?: string | null;
+    custom_project_name?: string | null;
+    project_name?: string | null;
+    project_number?: string | null;
+  }
+>(row: T): Promise<T> {
+  if (!row) return row;
+  if (!row.project_id) {
+    return row.custom_project_name && !row.project_name
+      ? { ...row, project_name: row.custom_project_name }
+      : row;
+  }
+  try {
+    const { data: proj } = await supabase
+      .from("projects")
+      .select("id, name, project_number")
+      .eq("id", row.project_id)
+      .maybeSingle();
+    if (proj) {
+      return {
+        ...row,
+        project_name: row.custom_project_name || row.project_name || proj.name || undefined,
+        project_number: row.project_number || proj.project_number || undefined,
+      };
+    }
+  } catch {
+    // Non-blocking fallback when project metadata is inaccessible
+  }
+  return row.custom_project_name && !row.project_name
+    ? { ...row, project_name: row.custom_project_name }
+    : row;
+}
+
 /**
  * Loads full document with line items for responsive PDF preview.
  */
@@ -465,7 +500,8 @@ export async function fetchDocumentForPdf(category: MobileDocumentCategory, id: 
       supabase.from("tax_invoices").select("*, customer:customers(*)").eq("id", id).single(),
       supabase.from("tax_invoice_items").select("*").eq("tax_invoice_id", id).order("sort_order"),
     ]);
-    return withCustomerDocumentDetails({ ...inv, items: items || [] });
+    const withParty = withCustomerDocumentDetails({ ...inv, items: items || [] });
+    return attachProjectInfo(withParty as Record<string, unknown>);
   }
 
   if (category === "quotation") {
@@ -473,7 +509,8 @@ export async function fetchDocumentForPdf(category: MobileDocumentCategory, id: 
       supabase.from("quotations").select("*, customer:customers(*)").eq("id", id).single(),
       supabase.from("quotation_items").select("*").eq("quotation_id", id).order("sort_order"),
     ]);
-    return withCustomerDocumentDetails({ ...quo, items: items || [] });
+    const withParty = withCustomerDocumentDetails({ ...quo, items: items || [] });
+    return attachProjectInfo(withParty as Record<string, unknown>);
   }
 
   if (category === "proforma") {
@@ -481,7 +518,8 @@ export async function fetchDocumentForPdf(category: MobileDocumentCategory, id: 
       supabase.from("proforma_invoices").select("*, customer:customers(*)").eq("id", id).single(),
       supabase.from("proforma_invoice_items").select("*").eq("proforma_invoice_id", id).order("sort_order"),
     ]);
-    return withCustomerDocumentDetails({ ...pro, items: items || [] });
+    const withParty = withCustomerDocumentDetails({ ...pro, items: items || [] });
+    return attachProjectInfo(withParty as Record<string, unknown>);
   }
 
   if (category === "delivery_note") {
@@ -489,11 +527,12 @@ export async function fetchDocumentForPdf(category: MobileDocumentCategory, id: 
       supabase.from("delivery_notes").select("*, customer:customers(*)").eq("id", id).single(),
       supabase.from("delivery_note_items").select("*").eq("delivery_note_id", id).order("sort_order"),
     ]);
-    return withCustomerDocumentDetails({
+    const withParty = withCustomerDocumentDetails({
       ...dn,
       delivery_number: dn?.delivery_number || dn?.delivery_note_number,
       items: items || [],
     });
+    return attachProjectInfo(withParty as Record<string, unknown>);
   }
 
   if (category === "purchase_order") {
@@ -501,7 +540,13 @@ export async function fetchDocumentForPdf(category: MobileDocumentCategory, id: 
       supabase.from("purchase_orders").select("*, supplier:suppliers(*)").eq("id", id).single(),
       supabase.from("purchase_order_items").select("*").eq("purchase_order_id", id).order("sort_order"),
     ]);
-    return withSupplierDocumentDetails({ ...po, items: items || [] });
+    const withParty = withSupplierDocumentDetails({
+      ...po,
+      po_number: po?.po_number || po?.purchase_order_number,
+      po_date: po?.po_date || po?.order_date,
+      items: items || [],
+    });
+    return attachProjectInfo(withParty as Record<string, unknown>);
   }
 
   if (category === "supplier_bill") {
