@@ -748,13 +748,13 @@ export default function DynamicDocumentRenderer({
         const justifyClass = textAlign === "left" ? "justify-start" : textAlign === "right" ? "justify-end" : "justify-center";
         return (
           <div
-            className={`w-full h-full flex items-center ${justifyClass} uppercase tracking-wider select-text overflow-hidden`}
+            className={`w-full min-h-full flex items-center ${justifyClass} uppercase tracking-wider select-text overflow-visible`}
             style={{
               fontWeight: elem.fontWeight === "extrabold" ? 800 : elem.fontWeight === "bold" ? 700 : 600,
               fontStyle: elem.fontStyle || "normal",
               fontFamily: elem.fontFamily || "inherit",
               letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : "0.04em",
-              lineHeight: elem.lineHeight ? elem.lineHeight : 1.25,
+              lineHeight: elem.lineHeight ? elem.lineHeight : 1.18,
               color: elem.color || colors.companyHeader,
               backgroundColor: elem.backgroundColor,
               border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
@@ -780,17 +780,17 @@ export default function DynamicDocumentRenderer({
         const justifyClass = textAlign === "left" ? "justify-start" : textAlign === "right" ? "justify-end" : "justify-center";
         return (
           <div
-            className={`w-full h-full flex items-center ${justifyClass} font-arabic select-text overflow-hidden`}
+            className={`w-full min-h-full flex items-center ${justifyClass} font-arabic select-text overflow-visible`}
             dir="rtl"
             style={{
               fontWeight: elem.fontWeight === "bold" ? 700 : elem.fontWeight === "semibold" ? 600 : 700,
               fontStyle: elem.fontStyle || "normal",
               color: elem.color || colors.accent,
               letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : "0.01em",
-              lineHeight: elem.lineHeight ? elem.lineHeight : 1.3,
+              lineHeight: elem.lineHeight ? elem.lineHeight : 1.25,
               fontFamily:
                 elem.fontFamily ||
-                "'Segoe UI Arabic', 'Amiri', 'Scheherazade New', 'Traditional Arabic', 'Noto Naskh Arabic', Arial, sans-serif",
+                "'Noto Sans Arabic', 'Segoe UI Arabic', 'Amiri', 'Scheherazade New', 'Traditional Arabic', 'Noto Naskh Arabic', Arial, sans-serif",
               backgroundColor: elem.backgroundColor,
               border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
               borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
@@ -810,19 +810,19 @@ export default function DynamicDocumentRenderer({
       }
 
       case "company_address": {
-        const addrPt = resolvePt(elem.fontSize, 7.8);
+        const addrPt = resolvePt(elem.fontSize, 7.6);
         const textAlign = elem.textAlign || "center";
         const alignClass = textAlign === "left" ? "items-start text-left" : textAlign === "right" ? "items-end text-right" : "items-center text-center";
         return (
           <div
-            className={`w-full h-full flex flex-col justify-center leading-snug select-text overflow-hidden ${alignClass}`}
+            className={`w-full min-h-full flex flex-col justify-start leading-tight select-text overflow-visible ${alignClass}`}
             style={{
               textAlign,
               color: elem.color || colors.muted,
               fontStyle: elem.fontStyle || "normal",
               fontFamily: elem.fontFamily || "inherit",
               letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
-              lineHeight: elem.lineHeight ? elem.lineHeight : 1.3,
+              lineHeight: elem.lineHeight ? elem.lineHeight : 1.2,
               backgroundColor: elem.backgroundColor,
               border: elem.borderWidth ? `${elem.borderWidth}px solid ${elem.borderColor || colors.border}` : undefined,
               borderRadius: elem.borderRadius ? `${elem.borderRadius}px` : undefined,
@@ -966,7 +966,7 @@ export default function DynamicDocumentRenderer({
         if (layout.documentType === "customer_statement") {
           return (
             <div
-              className="w-full h-full min-h-0 overflow-hidden flex flex-col justify-start select-text"
+              className="w-full min-h-full flex flex-col justify-start select-text overflow-visible"
               style={{
                 boxSizing: "border-box",
                 backgroundColor: elem.backgroundColor || "#FFFFFF",
@@ -989,7 +989,7 @@ export default function DynamicDocumentRenderer({
               >
                 <span>Bill To:</span>
               </div>
-              <div className="p-2 space-y-0.5 leading-tight select-text overflow-hidden">
+              <div className="p-2 space-y-0.5 leading-tight select-text overflow-visible">
                 <div className="font-bold text-slate-900 break-words" style={{ fontSize: `${cardPt * 1.05}pt` }}>
                   {data.customer_name}
                 </div>
@@ -1015,7 +1015,7 @@ export default function DynamicDocumentRenderer({
 
         return (
           <div
-            className="w-full h-full min-h-0 overflow-hidden flex flex-col justify-start select-text"
+            className="w-full min-h-full flex flex-col justify-start select-text overflow-visible"
             style={{
               boxSizing: "border-box",
               backgroundColor: elem.backgroundColor || "#F8FAFC",
@@ -1041,7 +1041,7 @@ export default function DynamicDocumentRenderer({
             </div>
             {elem.customText ? (
               <div
-                className="min-h-0 overflow-auto whitespace-pre-line select-text"
+                className="whitespace-pre-line select-text overflow-visible"
                 style={{
                   marginTop: isUltraCompact ? "2px" : isCompactPartyCard ? "3px" : "6px",
                   fontSize: `${cardPt}pt`,
@@ -1052,11 +1052,11 @@ export default function DynamicDocumentRenderer({
               </div>
             ) : (
               <div
-                className="min-h-0 overflow-hidden select-text"
+                className="select-text overflow-visible"
                 style={{
-                  marginTop: isUltraCompact ? "2px" : isCompactPartyCard ? "3px" : "6px",
+                  marginTop: isUltraCompact ? "2px" : isCompactPartyCard ? "3px" : "5px",
                   fontSize: `${cardPt}pt`,
-                  lineHeight: isUltraCompact ? 1.1 : isCompactPartyCard ? 1.15 : 1.25,
+                  lineHeight: isUltraCompact ? 1.1 : isCompactPartyCard ? 1.14 : 1.2,
                 }}
               >
                 {layout.documentType === "measurement_sheet" ? (
@@ -1120,7 +1120,7 @@ export default function DynamicDocumentRenderer({
         const suppPt = resolvePt(elem.fontSize, 8.5);
         return (
           <div
-            className="w-full h-full flex flex-col justify-start select-text overflow-hidden"
+            className="w-full min-h-full flex flex-col justify-start select-text overflow-visible"
             style={{
               backgroundColor: elem.backgroundColor || "#F8FAFC",
               border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
@@ -2643,8 +2643,16 @@ export default function DynamicDocumentRenderer({
                 left: `${posX}mm`,
                 top: `${posY}mm`,
                 width: `${width}mm`,
-                minHeight: undefined,
-                height: elem.type === "line_items" ? "auto" : `${height}mm`,
+                height:
+                  elem.type === "line_items"
+                    ? "auto"
+                    : ["company_name_en", "company_name_ar", "company_address", "customer_info", "supplier_info"].includes(elem.type)
+                    ? "auto"
+                    : `${height}mm`,
+                minHeight:
+                  ["company_name_en", "company_name_ar", "company_address", "customer_info", "supplier_info"].includes(elem.type)
+                    ? `${height}mm`
+                    : undefined,
                 zIndex: elem.zIndex,
               }}
             >

@@ -261,7 +261,7 @@ export async function renderHtmlToServerPdf(params: {
         });
 
         if (!res.ok) {
-          let errMsg = `PDF generation failed (${res.status}).`;
+          let errMsg = `Server PDF engine failed (${res.status}).`;
           try {
             const errJson = (await res.json()) as { error?: string };
             if (errJson?.error) errMsg = errJson.error;
@@ -271,7 +271,23 @@ export async function renderHtmlToServerPdf(params: {
           throw new Error(errMsg);
         }
 
+        const contentType = (res.headers.get("content-type") || "").toLowerCase();
         const buf = await res.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        const hasPdfMagic =
+          bytes.length >= 5 &&
+          bytes[0] === 0x25 &&
+          bytes[1] === 0x50 &&
+          bytes[2] === 0x44 &&
+          bytes[3] === 0x46 &&
+          bytes[4] === 0x2d;
+
+        if (!contentType.includes("application/pdf") || !hasPdfMagic) {
+          throw new Error(
+            "Server returned a non-PDF response (session expired or deployment protection active). Please refresh/sign in and retry."
+          );
+        }
+
         const blob = new Blob([buf], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
 

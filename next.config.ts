@@ -6,7 +6,13 @@ const nextConfig: NextConfig = {
     position: "bottom-right",
   },
   env: {
-    NEXT_PUBLIC_ERP_BUILD_ID: process.env.ERP_BUILD_ID || process.env.GITHUB_SHA || "unidentified-local-build",
+    NEXT_PUBLIC_ERP_BUILD_ID:
+      process.env.ERP_BUILD_ID ||
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      process.env.GITHUB_SHA ||
+      "unidentified-local-build",
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV || "",
+    NEXT_PUBLIC_VERCEL_GIT_REF: process.env.VERCEL_GIT_COMMIT_REF || "",
   },
   // Prevent Next.js from bundling pdfjs-dist, Chromium binaries, or puppeteer-core into server chunks
   serverExternalPackages: ["pdfjs-dist", "@sparticuz/chromium", "puppeteer-core"],

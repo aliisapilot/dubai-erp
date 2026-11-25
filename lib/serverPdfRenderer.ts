@@ -109,7 +109,7 @@ function getBundledFontFaceCss(): string {
     const ar700 = readBase64DataUrl(
       path.join(process.cwd(), "node_modules/@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-700-normal.woff2")
     );
-    for (const alias of ["Segoe UI Arabic", "Amiri", "Traditional Arabic", "Noto Naskh Arabic"]) {
+    for (const alias of ["Segoe UI Arabic", "Amiri", "Scheherazade New", "Traditional Arabic", "Noto Naskh Arabic"]) {
       if (ar400) {
         rules.push(`@font-face { font-family: '${alias}'; font-weight: 400; src: url('${ar400}') format('woff2'); }`);
       }

@@ -9,6 +9,8 @@ import {
   sanitizeCssForPdf,
   sanitizeDocumentHtmlForPdf,
 } from "../lib/serverPdfRenderer";
+import { generateDocumentPdfFilename } from "../lib/documentFilename";
+import { createDefaultLayout } from "../lib/documentDesigner";
 
 const ROOT = process.cwd();
 const OUT_DIR = path.join(ROOT, "test-output");
@@ -470,6 +472,14 @@ async function auditGeneratedPdf(
   const doc = await pdfjsLib.getDocument({ data: uint8, verbosity: 0 }).promise;
   const numPages = doc.numPages;
 
+  const meta = await doc.getMetadata().catch(() => null);
+  const producer = String((meta?.info as Record<string, unknown> | undefined)?.Producer || "");
+  assert(
+    producer.length > 0 && !/jspdf/i.test(producer) && /skia|chromium/i.test(producer),
+    `PDF Producer uses Chromium/Skia engine and NOT jsPDF`,
+    `Producer="${producer}"`
+  );
+
   assert(numPages === expectedPages, `Exact A4 page count == ${expectedPages}`, `got ${numPages}`);
 
   let fullText = "";
@@ -513,7 +523,11 @@ async function auditGeneratedPdf(
     }
 
     fullText += pageText + "\n";
-    assert(pageText.trim().length > 80, `Page ${p} contains extracted vector text`, `chars=${pageText.trim().length}`);
+    assert(
+      pageText.trim().length > 80 && boxes.length >= 10,
+      `Page ${p} contains selectable vector text runs (not a full-page raster image)`,
+      `chars=${pageText.trim().length}, textItems=${boxes.length}`
+    );
 
     // Detect 2D text bounding-box collisions (>5pt horizontal and >4pt vertical overlap between distinct items)
     for (let i = 0; i < boxes.length; i++) {
@@ -615,8 +629,184 @@ async function renderPdfPagesToPng(pdfFiles: Array<{ pdfPath: string; pngPath: s
   }
 }
 
+function verifyLegacyJsPdfRemovalAndRetryUi() {
+  console.log("\n[Regression Guard] Checking zero legacy jsPDF/html2canvas paths & explicit Retry UI...");
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  assert(!pkg.dependencies?.jspdf && !pkg.devDependencies?.jspdf, "package.json does NOT depend on jspdf");
+  assert(
+    !pkg.dependencies?.html2canvas && !pkg.devDependencies?.html2canvas,
+    "package.json does NOT depend on html2canvas"
+  );
+
+  const scanDirs = ["app", "components", "lib"];
+  const forbiddenImportRegex = /(?:from\s+["'](?:jspdf|html2canvas)["']|import\s*\(\s*["'](?:jspdf|html2canvas)["']\s*\)|require\s*\(\s*["'](?:jspdf|html2canvas)["']\s*\)|new\s+jsPDF\b)/;
+  const legacyHits: string[] = [];
+
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (/\.(ts|tsx|js|jsx|mjs)$/.test(entry.name)) {
+        const content = fs.readFileSync(full, "utf8");
+        if (forbiddenImportRegex.test(content)) {
+          legacyHits.push(path.relative(ROOT, full));
+        }
+      }
+    }
+  };
+  for (const d of scanDirs) walk(path.join(ROOT, d));
+  assert(legacyHits.length === 0, "Zero jsPDF/html2canvas imports across app/, components/, lib/", legacyHits.join(", "));
+
+  const exportDocSrc = fs.readFileSync(path.join(ROOT, "lib/exportDocumentPdf.ts"), "utf8");
+  assert(
+    exportDocSrc.includes('fetch("/api/pdf/render"') &&
+      exportDocSrc.includes("hasPdfMagic") &&
+      !exportDocSrc.includes("html2canvas") &&
+      !exportDocSrc.includes("jsPDF"),
+    "lib/exportDocumentPdf.ts requires /api/pdf/render + %PDF- signature with zero fallback"
+  );
+
+  const retryUiFiles = [
+    "components/documents/PrintModal.tsx",
+    "components/mobile/MobilePdfModal.tsx",
+    "components/documents/DocumentContainer.tsx",
+    "components/designer/DocumentPreviewModal.tsx",
+    "components/statements/SoaPreviewModal.tsx",
+  ];
+  for (const rel of retryUiFiles) {
+    const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
+    assert(/Retry/i.test(src), `${rel} renders explicit Retry option on PDF render error`);
+  }
+}
+
+function buildQtn157DesignerSheetHtml(): { html: string; expectedFilename: string } {
+  const filenameResult = generateDocumentPdfFilename({
+    docType: "quotation",
+    docNumber: "QTN-157",
+    partyName: "Al Karwan Solution FZC",
+    customerName: "Al Karwan Solution FZC",
+    items: [{ description: "PVC Water Tank Liner Fabrication & Installation 5700x7750mm" }],
+    date: "2026-11-25",
+  });
+  assert(
+    filenameResult.filename === "QTN-157 Al Karwan Solution FZC - PVC Water Tank Liner.pdf",
+    "QTN-157 authoritative desktop & mobile PDF filename matches convention",
+    `got "${filenameResult.filename}"`
+  );
+
+  const qtnLayout = createDefaultLayout("quotation");
+  const getBox = (id: string) => qtnLayout.elements.find((e) => e.id === id);
+  const nameEn = getBox("company_name_en")!;
+  const nameAr = getBox("company_name_ar")!;
+  const addr = getBox("company_address")!;
+  const cust = getBox("customer_info")!;
+
+  assert(
+    addr.height >= 7 && cust.height >= 38,
+    "Default quotation layout allocates non-clipped heights for company_address (>=7mm) & customer_info (>=38mm)",
+    `addr=${addr.height}mm, cust=${cust.height}mm`
+  );
+
+  const html = `
+    <div class="dynamic-document-page print-a4-sheet" data-orientation="portrait" style="position:relative;width:210mm;min-height:297mm;height:297mm;background:#ffffff;color:#0f172a;font-family:'Inter',Arial,sans-serif;box-sizing:border-box;">
+      <img src="__PDF_ASSET_1__" alt="Logo" style="position:absolute;left:85mm;top:10mm;width:40mm;height:16mm;object-fit:contain;" />
+      <div style="position:absolute;left:${nameEn.x}mm;top:${nameEn.y}mm;width:${nameEn.width}mm;min-height:${nameEn.height}mm;height:auto;overflow:visible;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11.5pt;line-height:1.18;color:#1e3a5f;text-transform:uppercase;">
+        <span style="width:100%;display:block;text-align:center;">AL SAFWAH AL QABDHA TENTS IND L.L.C SP</span>
+      </div>
+      <div class="font-arabic" dir="rtl" style="position:absolute;left:${nameAr.x}mm;top:${nameAr.y}mm;width:${nameAr.width}mm;min-height:${nameAr.height}mm;height:auto;overflow:visible;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13.5pt;line-height:1.25;color:#b58a2a;">
+        <span style="width:100%;display:block;text-align:center;">الصفوه الذهبيه لصناعه الخيام ذ.م.م.ش.و</span>
+      </div>
+      <div style="position:absolute;left:${addr.x}mm;top:${addr.y}mm;width:${addr.width}mm;min-height:${addr.height}mm;height:auto;overflow:visible;display:flex;flex-direction:column;justify-content:flex-start;align-items:center;text-align:center;font-size:7.6pt;line-height:1.2;color:#475569;">
+        <div>P.O. Box 124588, Industrial Area 13, Sharjah, United Arab Emirates</div>
+        <div><strong>TRN: 100451829300003</strong> | Tel: +971 6 534 9912 | Email: info@alsafwahtents.ae</div>
+      </div>
+
+      <div style="position:absolute;left:12mm;top:51mm;width:186mm;height:11mm;background:#1e3a5f;color:#ffffff;border-radius:4px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;">
+        <span style="font-size:12pt;font-weight:800;letter-spacing:0.04em;">QUOTATION — <span class="font-arabic" dir="rtl">عرض أسعار</span></span>
+        <span style="font-family:monospace;font-weight:700;color:#e0ac23;font-size:9pt;">REF: QTN-157</span>
+      </div>
+
+      <div style="position:absolute;left:${cust.x}mm;top:${cust.y}mm;width:${cust.width}mm;min-height:${cust.height}mm;height:auto;overflow:visible;box-sizing:border-box;background:#f8fafc;border:1px solid #cbd5e1;border-radius:4px;padding:2.5mm;font-size:8pt;line-height:1.2;">
+        <div style="display:flex;justify-content:space-between;border-bottom:1px solid #cbd5e1;padding-bottom:3px;font-weight:700;text-transform:uppercase;color:#1e3a5f;font-size:7.6pt;">
+          <span>Customer / Client Details (<span class="font-arabic" dir="rtl">بيانات العميل</span>):</span>
+          <span>Buyer</span>
+        </div>
+        <div style="margin-top:4px;">
+          <div style="font-weight:700;color:#0f172a;">Al Karwan Solution FZC</div>
+          <div>TRN: <strong>104337393300003</strong></div>
+          <div>Warehouse P6-091, SAIF Zone, Sharjah, United Arab Emirates</div>
+          <div>Attn: Mr. Mohammed Ayaz</div>
+          <div>Tel/Mob: +971 50 123 4567</div>
+          <div>Email: ayaz@alkarwan.example</div>
+        </div>
+      </div>
+
+      <div style="position:absolute;left:107mm;top:64mm;width:91mm;min-height:38mm;height:auto;box-sizing:border-box;background:#f8fafc;border:1px solid #cbd5e1;border-radius:4px;padding:2.5mm;font-size:8pt;line-height:1.25;">
+        <div style="display:flex;justify-content:space-between;border-bottom:1px solid #cbd5e1;padding-bottom:3px;font-weight:700;text-transform:uppercase;color:#1e3a5f;font-size:7.6pt;">
+          <span>Quotation Reference</span>
+          <span>QTN-157</span>
+        </div>
+        <div style="margin-top:4px;">
+          <div><strong>Date:</strong> 25 Nov 2026</div>
+          <div><strong>Validity:</strong> 30 Days</div>
+          <div><strong>Payment Terms:</strong> 50% Advance, 50% Delivery</div>
+          <div><strong>Subject:</strong> PVC Water Tank Liner Supply</div>
+        </div>
+      </div>
+
+      <div style="position:absolute;left:12mm;top:106mm;width:186mm;box-sizing:border-box;">
+        <table class="erp-table" style="width:100%;table-layout:fixed;box-sizing:border-box;">
+          <colgroup>
+            <col style="width:6%;" />
+            <col style="width:44%;" />
+            <col style="width:8%;" />
+            <col style="width:8%;" />
+            <col style="width:11%;" />
+            <col style="width:11%;" />
+            <col style="width:12%;" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Item &amp; Specification</th>
+              <th class="num">Qty</th>
+              <th>Unit</th>
+              <th class="num">Rate (AED)</th>
+              <th class="num">VAT (5%)</th>
+              <th class="num">Total (AED)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>Fabrication &amp; Installation of PVC Water Tank Liner (5700x7750mm) — Korean 900 GSM</td>
+              <td class="num">720</td>
+              <td>Mtr</td>
+              <td class="num">8.00</td>
+              <td class="num">288.00</td>
+              <td class="num">6,048.00</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="erp-footer" style="position:absolute;left:12mm;top:276mm;width:186mm;">
+        <span>AL SAFWAH AL QABDHA TENTS IND L.L.C SP</span>
+        <span>Page 1 of 1</span>
+      </div>
+    </div>
+  `;
+
+  return { html, expectedFilename: filenameResult.filename };
+}
+
 async function main() {
   console.log("=== Step 2: Server Chromium PDF Renderer & Visual Audit ===");
+  verifyLegacyJsPdfRemovalAndRetryUi();
 
   // 1. Sanitization & anti-injection tests
   const dirtyHtml = `<div onclick="alert(1)"><script>fetch("http://evil")</script><iframe src="x"></iframe><a href="javascript:alert(1)">Link</a><img src="__PDF_ASSET_1__" /><img src="__PDF_ASSET_BAD__" />OK</div>`;
@@ -709,8 +899,32 @@ async function main() {
     "4,850.00",
   ]);
 
+  console.log("\n[Case] Quotation QTN-157 Al Karwan Solution FZC - PVC Water Tank Liner.pdf");
+  const qtn157 = buildQtn157DesignerSheetHtml();
+  const qtn157Pdf = await renderPdfFromHtmlSheets({
+    sheetsHtml: [qtn157.html],
+    cssText,
+    assets,
+    landscape: false,
+    title: qtn157.expectedFilename.replace(/\.pdf$/i, ""),
+  });
+  const qtn157Path = path.join(OUT_DIR, qtn157.expectedFilename);
+  fs.writeFileSync(qtn157Path, qtn157Pdf);
+  await auditGeneratedPdf(qtn157Pdf, 1, false, [
+    "AL SAFWAH AL QABDHA TENTS IND L.L.C SP",
+    "TRN: 100451829300003",
+    "info@alsafwahtents.ae",
+    "Al Karwan Solution FZC",
+    "104337393300003",
+    "ayaz@alkarwan.example",
+    "QTN-157",
+    "PVC Water Tank Liner",
+    "6,048.00",
+  ]);
+
   console.log("\n[Visual Render] Rendering PDFs via pdfjs-dist to PNG for visual inspection...");
   await renderPdfPagesToPng([
+    { pdfPath: qtn157Path, pngPath: path.join(OUT_DIR, "preview_qtn_157_p1.png"), label: "QTN-157 quotation" },
     { pdfPath: path.join(OUT_DIR, "sample_pdf_1_item.pdf"), pngPath: path.join(OUT_DIR, "preview_1_item_p1.png"), label: "1-item invoice" },
     { pdfPath: path.join(OUT_DIR, "sample_pdf_15_items.pdf"), pngPath: path.join(OUT_DIR, "preview_15_items_p1.png"), label: "15-item invoice" },
     { pdfPath: path.join(OUT_DIR, "sample_soa_server.pdf"), pngPath: path.join(OUT_DIR, "preview_soa_p1.png"), label: "SOA statement" },

@@ -28,6 +28,7 @@ export default function SoaPreviewModal({
   record,
 }: SoaPreviewModalProps) {
   const [loading, setLoading] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [error, setError] = useState("");
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string>("");
   const [sheets, setSheets] = useState<Array<{ name: string; rows: string[][] }>>([]);
@@ -178,6 +179,8 @@ export default function SoaPreviewModal({
         }
       </div>`;
 
+    setExportingPdf(true);
+    setError("");
     try {
       await renderHtmlToServerPdf({
         sheetsHtml: [sheetHtml],
@@ -188,6 +191,8 @@ export default function SoaPreviewModal({
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate PDF.");
+    } finally {
+      setExportingPdf(false);
     }
   }
 
@@ -234,10 +239,11 @@ export default function SoaPreviewModal({
             {!isPdf && sheets.length > 0 && (
               <button
                 type="button"
+                disabled={exportingPdf}
                 onClick={handleDownloadGeneratedPdf}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-emerald-300 px-3 py-1.5 text-xs font-semibold transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-emerald-300 px-3 py-1.5 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
               >
-                <Download size={13} />
+                {exportingPdf ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
                 <span>PDF</span>
               </button>
             )}
@@ -251,20 +257,39 @@ export default function SoaPreviewModal({
           </div>
         </div>
 
+        {error && !loading && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-500/40 bg-rose-950/90 px-5 py-2 text-xs text-rose-100 shrink-0">
+            <span className="flex items-center gap-2">
+              <AlertTriangle size={14} className="text-rose-400 shrink-0" />
+              <span>{error}</span>
+            </span>
+            <div className="flex items-center gap-2">
+              {!isPdf && sheets.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void handleDownloadGeneratedPdf()}
+                  className="rounded-lg bg-rose-600 px-3 py-1 font-bold text-white hover:bg-rose-500 cursor-pointer"
+                >
+                  Retry PDF
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setError("")}
+                className="p-1 text-rose-300 hover:text-white"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Preview Body */}
         <div className="flex-1 overflow-auto bg-slate-950/60 p-4">
           {loading ? (
             <div className="h-full flex flex-col items-center justify-center gap-2 text-slate-400 text-xs">
               <Loader2 size={24} className="animate-spin text-cyan-400" />
               <span>Loading original statement...</span>
-            </div>
-          ) : error ? (
-            <div className="max-w-lg mx-auto mt-12 rounded-xl border border-rose-800 bg-rose-950/40 p-4 flex items-start gap-3 text-xs text-rose-200">
-              <AlertTriangle size={18} className="text-rose-400 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold mb-1">Preview Unavailable</p>
-                <p>{error}</p>
-              </div>
             </div>
           ) : isPdf && pdfBlobUrl ? (
             <iframe

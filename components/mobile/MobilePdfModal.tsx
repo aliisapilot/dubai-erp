@@ -44,6 +44,10 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
   const [sharedNotice, setSharedNotice] = useState(false);
   const [exportingAction, setExportingAction] = useState<"download" | "share" | "print" | null>(null);
   const [iosFallbackUrl, setIosFallbackUrl] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<{
+    message: string;
+    action: "download" | "share" | "print";
+  } | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
 
@@ -187,33 +191,49 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
     };
   }, [fullDoc, document.category, computedFile.filename]);
 
-  async function handleNativeShare() {
-    if (document.category !== "company_file" && pageRef.current) {
-      setExportingAction("share");
-      setIosFallbackUrl(null);
-      try {
-        const res = await exportDocumentToPdf({
-          filename: computedFile.filename,
-          scopeElement: pageRef.current,
-          action: "share",
-        });
-        if (res.method === "ios-fallback" && res.fallbackUrl) {
-          setIosFallbackUrl(res.fallbackUrl);
-        }
+  async function runServerPdfAction(action: "download" | "share" | "print") {
+    if (!pageRef.current) return;
+    setExportingAction(action);
+    setIosFallbackUrl(null);
+    setExportError(null);
+    try {
+      const res = await exportDocumentToPdf({
+        filename: computedFile.filename,
+        scopeElement: pageRef.current,
+        action,
+      });
+      if (res.method === "ios-fallback" && res.fallbackUrl) {
+        setIosFallbackUrl(res.fallbackUrl);
+      } else if (action === "print" && res.fallbackUrl) {
+        setIosFallbackUrl(res.fallbackUrl);
+      }
+      if (action === "share") {
         setSharedNotice(true);
         setTimeout(() => setSharedNotice(false), 2500);
+      }
+      if (action !== "print") {
         void logDocumentAccess({
           documentType: document.category,
           documentId: document.id,
           documentRef: document.documentNumber,
-          action: "share",
+          action,
         });
-        return;
-      } catch (err) {
-        console.warn("PDF File Share failed, falling back to URL share:", err);
-      } finally {
-        setExportingAction(null);
       }
+    } catch (err) {
+      console.error(`Mobile PDF ${action} failed:`, err);
+      setExportError({
+        message: err instanceof Error ? err.message : "Failed to generate PDF from server renderer.",
+        action,
+      });
+    } finally {
+      setExportingAction(null);
+    }
+  }
+
+  async function handleNativeShare() {
+    if (document.category !== "company_file") {
+      await runServerPdfAction("share");
+      return;
     }
 
     const res = await shareDocument({
@@ -243,30 +263,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
       a.click();
       return;
     }
-    if (!pageRef.current) return;
-    setExportingAction("download");
-    setIosFallbackUrl(null);
-    try {
-      const res = await exportDocumentToPdf({
-        filename: computedFile.filename,
-        scopeElement: pageRef.current,
-        action: "download",
-      });
-      if (res.method === "ios-fallback" && res.fallbackUrl) {
-        setIosFallbackUrl(res.fallbackUrl);
-      }
-      void logDocumentAccess({
-        documentType: document.category,
-        documentId: document.id,
-        documentRef: document.documentNumber,
-        action: "download",
-      });
-    } catch (err) {
-      console.error("Mobile PDF download failed:", err);
-      setError(err instanceof Error ? err.message : "Failed to generate PDF.");
-    } finally {
-      setExportingAction(null);
-    }
+    await runServerPdfAction("download");
   }
 
   function renderDocumentTemplate() {
@@ -419,24 +416,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
                 });
                 return;
               }
-              if (!pageRef.current) return;
-              setExportingAction("print");
-              setIosFallbackUrl(null);
-              try {
-                const res = await exportDocumentToPdf({
-                  filename: computedFile.filename,
-                  scopeElement: pageRef.current,
-                  action: "print",
-                });
-                if (res.fallbackUrl) {
-                  setIosFallbackUrl(res.fallbackUrl);
-                }
-              } catch (err) {
-                console.error("Mobile PDF print failed:", err);
-                setError(err instanceof Error ? err.message : "Failed to prepare PDF for printing.");
-              } finally {
-                setExportingAction(null);
-              }
+              await runServerPdfAction("print");
             }}
             className="flex h-11 w-10 sm:w-11 items-center justify-center rounded-xl text-slate-200 hover:bg-slate-800 hover:text-white disabled:opacity-50"
             aria-label="Print or save as PDF"
@@ -446,6 +426,28 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
           </button>
         </div>
       </header>
+      {exportError && (
+        <div className="flex items-center justify-between gap-2 border-b border-rose-500/40 bg-rose-950/95 px-3 py-2 text-xs text-rose-100">
+          <span className="min-w-0 flex-1">{exportError.message}</span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void runServerPdfAction(exportError.action)}
+              className="rounded-lg bg-rose-600 px-3 py-1 font-bold text-white hover:bg-rose-500"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => setExportError(null)}
+              className="p-1 text-rose-300 hover:text-white"
+              aria-label="Dismiss error"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
       {iosFallbackUrl && (
         <div className="flex items-center justify-between gap-2 border-b border-blue-500/40 bg-blue-950/90 px-3 py-2 text-xs text-blue-100">
           <span className="truncate">Tap Open PDF, then Share → Save to Files ({computedFile.filename})</span>

@@ -19,7 +19,7 @@ interface PrintModalProps {
   onSaveBeforeExport?: () => Promise<void> | void;
 }
 
-const emptySubscribe = () => () => {};
+const emptySubscribe = () => () => { };
 
 export default function PrintModal({
   isOpen,
@@ -41,7 +41,12 @@ export default function PrintModal({
   );
   const [isFit, setIsFit] = useState(true);
   const [exportingAction, setExportingAction] = useState<"download" | "share" | "print" | null>(null);
-  const [exportNotice, setExportNotice] = useState<{ text: string; url?: string; isError?: boolean } | null>(null);
+  const [exportNotice, setExportNotice] = useState<{
+    text: string;
+    url?: string;
+    isError?: boolean;
+    retryAction?: "download" | "share" | "print";
+  } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -115,6 +120,47 @@ export default function PrintModal({
 
   if (!isOpen) return null;
 
+  const runPdfAction = async (action: "download" | "share" | "print") => {
+    if (action === "print" && !isMobileBrowser()) {
+      await printCurrentDocument({ documentFilename, documentTitle: displayTitle });
+      return;
+    }
+    setExportingAction(action);
+    setExportNotice(null);
+    try {
+      const res = await exportDocumentToPdf({
+        filename: documentFilename,
+        scopeElement: previewRef.current,
+        action,
+      });
+      if (action === "share" && res.method === "ios-fallback" && res.fallbackUrl) {
+        setExportNotice({
+          text: `Tap "Open PDF" below, then tap Share → Save to Files (${res.filename}).`,
+          url: res.fallbackUrl,
+        });
+      } else if (action === "download" && res.method === "ios-fallback" && res.fallbackUrl) {
+        setExportNotice({
+          text: `iOS Safari: Use "Share" (Save to Files) or tap Open PDF to view "${res.filename}".`,
+          url: res.fallbackUrl,
+        });
+      } else if (action === "print" && res.fallbackUrl) {
+        setExportNotice({
+          text: `Tap "Open PDF" to open the A4 PDF and print via iOS Share → Print (${res.filename}).`,
+          url: res.fallbackUrl,
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      setExportNotice({
+        text: e instanceof Error ? e.message : "Failed to generate PDF from server renderer.",
+        isError: true,
+        retryAction: action,
+      });
+    } finally {
+      setExportingAction(null);
+    }
+  };
+
   const displayTitle = documentTitle || documentFilename?.replace(/\.pdf$/i, "") || "Document preview";
 
   const modalElement = (
@@ -153,31 +199,7 @@ export default function PrintModal({
           <button
             type="button"
             disabled={exportingAction !== null}
-            onClick={async () => {
-              setExportingAction("share");
-              setExportNotice(null);
-              try {
-                const res = await exportDocumentToPdf({
-                  filename: documentFilename,
-                  scopeElement: previewRef.current,
-                  action: "share",
-                });
-                if (res.method === "ios-fallback" && res.fallbackUrl) {
-                  setExportNotice({
-                    text: `Tap "Open PDF" below, then tap Share → Save to Files (${res.filename}).`,
-                    url: res.fallbackUrl,
-                  });
-                }
-              } catch (e) {
-                console.error(e);
-                setExportNotice({
-                  text: e instanceof Error ? e.message : "Failed to generate PDF for sharing.",
-                  isError: true,
-                });
-              } finally {
-                setExportingAction(null);
-              }
-            }}
+            onClick={() => void runPdfAction("share")}
             className="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-2.5 sm:px-3 text-xs font-semibold text-slate-100 hover:bg-slate-700 cursor-pointer disabled:opacity-50"
             aria-label="Share or Save to Files"
             title="Share or Save PDF to Files"
@@ -188,31 +210,7 @@ export default function PrintModal({
           <button
             type="button"
             disabled={exportingAction !== null}
-            onClick={async () => {
-              setExportingAction("download");
-              setExportNotice(null);
-              try {
-                const res = await exportDocumentToPdf({
-                  filename: documentFilename,
-                  scopeElement: previewRef.current,
-                  action: "download",
-                });
-                if (res.method === "ios-fallback" && res.fallbackUrl) {
-                  setExportNotice({
-                    text: `iOS Safari: Use "Share" (Save to Files) or tap Open PDF to view "${res.filename}".`,
-                    url: res.fallbackUrl,
-                  });
-                }
-              } catch (e) {
-                console.error(e);
-                setExportNotice({
-                  text: e instanceof Error ? e.message : "Failed to download PDF.",
-                  isError: true,
-                });
-              } finally {
-                setExportingAction(null);
-              }
-            }}
+            onClick={() => void runPdfAction("download")}
             className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-2.5 sm:px-3 text-xs font-bold text-white hover:bg-blue-500 cursor-pointer disabled:opacity-50"
             aria-label="Download A4 PDF"
             title="Download clean A4 PDF directly"
@@ -223,35 +221,7 @@ export default function PrintModal({
           <button
             type="button"
             disabled={exportingAction !== null}
-            onClick={async () => {
-              if (!isMobileBrowser()) {
-                await printCurrentDocument({ documentFilename, documentTitle: displayTitle });
-                return;
-              }
-              setExportingAction("print");
-              setExportNotice(null);
-              try {
-                const res = await exportDocumentToPdf({
-                  filename: documentFilename,
-                  scopeElement: previewRef.current,
-                  action: "print",
-                });
-                if (res.fallbackUrl) {
-                  setExportNotice({
-                    text: `Tap "Open PDF" to open the A4 PDF and print via iOS Share → Print (${res.filename}).`,
-                    url: res.fallbackUrl,
-                  });
-                }
-              } catch (e) {
-                console.error(e);
-                setExportNotice({
-                  text: e instanceof Error ? e.message : "Failed to prepare PDF for printing.",
-                  isError: true,
-                });
-              } finally {
-                setExportingAction(null);
-              }
-            }}
+            onClick={() => void runPdfAction("print")}
             className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 sm:px-3 text-xs font-bold text-white hover:bg-emerald-500 cursor-pointer disabled:opacity-50"
             aria-label="Print or save as PDF"
             title="Print or save as PDF"
@@ -281,14 +251,22 @@ export default function PrintModal({
       )}
       {exportNotice && (
         <div
-          className={`no-print flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2 text-xs ${
-            exportNotice.isError
-              ? "border-rose-500/40 bg-rose-950/95 text-rose-100"
-              : "border-blue-500/40 bg-blue-950/90 text-blue-100"
-          }`}
+          className={`no-print flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2 text-xs ${exportNotice.isError
+            ? "border-rose-500/40 bg-rose-950/95 text-rose-100"
+            : "border-blue-500/40 bg-blue-950/90 text-blue-100"
+            }`}
         >
           <span>{exportNotice.text}</span>
           <div className="flex items-center gap-2">
+            {exportNotice.retryAction && (
+              <button
+                type="button"
+                onClick={() => void runPdfAction(exportNotice.retryAction!)}
+                className="rounded-lg bg-rose-600 px-3 py-1 text-xs font-bold text-white hover:bg-rose-500 cursor-pointer"
+              >
+                Retry
+              </button>
+            )}
             {exportNotice.url && (
               <a
                 href={exportNotice.url}
