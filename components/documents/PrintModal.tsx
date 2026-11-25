@@ -5,7 +5,7 @@ import React, { ReactNode, useEffect, useRef, useState, useSyncExternalStore } f
 import { createPortal } from "react-dom";
 import { Download, Loader2, Maximize, Printer, Save, Share2, Sliders, X, ZoomIn, ZoomOut } from "lucide-react";
 import { getDocumentPreviewScale } from "@/lib/documentPreview";
-import { exportDocumentToPdf } from "@/lib/exportDocumentPdf";
+import { exportDocumentToPdf, isMobileBrowser, prefetchDocumentPdf } from "@/lib/exportDocumentPdf";
 
 interface PrintModalProps {
   isOpen: boolean;
@@ -40,8 +40,22 @@ export default function PrintModal({
     typeof window === "undefined" ? 1 : getDocumentPreviewScale(window.innerWidth - 32, 794)
   );
   const [isFit, setIsFit] = useState(true);
-  const [exportingAction, setExportingAction] = useState<"download" | "share" | null>(null);
-  const [exportNotice, setExportNotice] = useState<{ text: string; url?: string } | null>(null);
+  const [exportingAction, setExportingAction] = useState<"download" | "share" | "print" | null>(null);
+  const [exportNotice, setExportNotice] = useState<{ text: string; url?: string; isError?: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      setExportNotice(null);
+      if (previewRef.current) {
+        void prefetchDocumentPdf({
+          filename: documentFilename,
+          scopeElement: previewRef.current,
+        });
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [isOpen, documentFilename, children]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -149,10 +163,17 @@ export default function PrintModal({
                   action: "share",
                 });
                 if (res.method === "ios-fallback" && res.fallbackUrl) {
-                  setExportNotice({ text: `Tap "Open PDF" below, then tap Share → Save to Files (${res.filename}).`, url: res.fallbackUrl });
+                  setExportNotice({
+                    text: `Tap "Open PDF" below, then tap Share → Save to Files (${res.filename}).`,
+                    url: res.fallbackUrl,
+                  });
                 }
               } catch (e) {
                 console.error(e);
+                setExportNotice({
+                  text: e instanceof Error ? e.message : "Failed to generate PDF for sharing.",
+                  isError: true,
+                });
               } finally {
                 setExportingAction(null);
               }
@@ -184,6 +205,10 @@ export default function PrintModal({
                 }
               } catch (e) {
                 console.error(e);
+                setExportNotice({
+                  text: e instanceof Error ? e.message : "Failed to download PDF.",
+                  isError: true,
+                });
               } finally {
                 setExportingAction(null);
               }
@@ -195,8 +220,44 @@ export default function PrintModal({
             {exportingAction === "download" ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
             <span className="hidden min-[380px]:inline">Download PDF</span>
           </button>
-          <button type="button" onClick={() => void printCurrentDocument({ documentFilename, documentTitle: displayTitle })} className="hidden sm:flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-500 cursor-pointer" aria-label="Print or save as PDF" title="Print or save as PDF">
-            <Printer size={16} /><span className="hidden md:inline">Print / Save</span>
+          <button
+            type="button"
+            disabled={exportingAction !== null}
+            onClick={async () => {
+              if (!isMobileBrowser()) {
+                await printCurrentDocument({ documentFilename, documentTitle: displayTitle });
+                return;
+              }
+              setExportingAction("print");
+              setExportNotice(null);
+              try {
+                const res = await exportDocumentToPdf({
+                  filename: documentFilename,
+                  scopeElement: previewRef.current,
+                  action: "print",
+                });
+                if (res.fallbackUrl) {
+                  setExportNotice({
+                    text: `Tap "Open PDF" to open the A4 PDF and print via iOS Share → Print (${res.filename}).`,
+                    url: res.fallbackUrl,
+                  });
+                }
+              } catch (e) {
+                console.error(e);
+                setExportNotice({
+                  text: e instanceof Error ? e.message : "Failed to prepare PDF for printing.",
+                  isError: true,
+                });
+              } finally {
+                setExportingAction(null);
+              }
+            }}
+            className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 sm:px-3 text-xs font-bold text-white hover:bg-emerald-500 cursor-pointer disabled:opacity-50"
+            aria-label="Print or save as PDF"
+            title="Print or save as PDF"
+          >
+            {exportingAction === "print" ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+            <span className="hidden md:inline">Print / Save</span>
           </button>
           <button type="button" onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-slate-800" aria-label="Close document preview" title="Close preview">
             <X size={18} />
@@ -219,7 +280,13 @@ export default function PrintModal({
         </div>
       )}
       {exportNotice && (
-        <div className="no-print flex flex-wrap items-center justify-between gap-2 border-b border-blue-500/40 bg-blue-950/90 px-3 py-2 text-xs text-blue-100">
+        <div
+          className={`no-print flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2 text-xs ${
+            exportNotice.isError
+              ? "border-rose-500/40 bg-rose-950/95 text-rose-100"
+              : "border-blue-500/40 bg-blue-950/90 text-blue-100"
+          }`}
+        >
           <span>{exportNotice.text}</span>
           <div className="flex items-center gap-2">
             {exportNotice.url && (

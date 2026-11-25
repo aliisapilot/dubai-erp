@@ -11,10 +11,10 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { jsPDF } from "jspdf";
 import { supabase } from "@/lib/supabase";
 import { fmtAED } from "@/lib/helpers";
 import { type StoredSoaRecord, getExportSoaPdfFilename } from "@/lib/soaManager";
+import { renderHtmlToServerPdf } from "@/lib/exportDocumentPdf";
 
 interface SoaPreviewModalProps {
   isOpen: boolean;
@@ -136,7 +136,7 @@ export default function SoaPreviewModal({
     }
   }
 
-  function handleDownloadGeneratedPdf() {
+  async function handleDownloadGeneratedPdf() {
     if (!record) return;
     const filename = getExportSoaPdfFilename(
       record.soa_number,
@@ -144,34 +144,51 @@ export default function SoaPreviewModal({
       record.statement_date
     );
 
-    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-    doc.setFontSize(16);
-    doc.text("Statement of Account", 40, 48);
-    doc.setFontSize(10);
-    doc.text(`Customer: ${record.customer_name}`, 40, 72);
-    doc.text(`SOA Number: ${record.soa_number}`, 40, 88);
-    doc.text(`Statement Date: ${record.statement_date}`, 40, 104);
-    doc.text(`Closing Balance: ${fmtAED(record.closing_balance)}`, 40, 120);
-    doc.text(`Original File: ${record.file_name}`, 40, 136);
+    const escapeHtml = (val: string) =>
+      val.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-    let y = 168;
     const activeSheet = sheets[activeSheetIdx];
-    if (activeSheet && activeSheet.rows.length > 0) {
-      doc.setFontSize(8);
-      for (const row of activeSheet.rows.slice(0, 60)) {
-        const line = row.filter((c) => c.trim() !== "").join("  |  ").slice(0, 110);
-        if (line) {
-          doc.text(line, 40, y);
-          y += 13;
-          if (y > 780) {
-            doc.addPage();
-            y = 48;
-          }
-        }
-      }
-    }
+    const rowsHtml = (activeSheet?.rows || [])
+      .slice(0, 200)
+      .map(
+        (r) =>
+          `<tr>${r
+            .map(
+              (c) =>
+                `<td style="border:1px solid #cbd5e1;padding:4px 6px;font-size:8.5pt;white-space:pre-wrap;word-break:break-word;">${escapeHtml(c || "")}</td>`
+            )
+            .join("")}</tr>`
+      )
+      .join("");
 
-    doc.save(filename);
+    const sheetHtml = `
+      <div class="print-document" style="width:210mm;min-height:297mm;padding:12mm;background:#fff;color:#0f172a;font-family:Arial,sans-serif;box-sizing:border-box;">
+        <h1 style="font-size:15pt;font-weight:700;margin:0 0 8px 0;">Statement of Account</h1>
+        <div style="font-size:9.5pt;line-height:1.45;margin-bottom:12px;">
+          <div><strong>Customer:</strong> ${escapeHtml(record.customer_name || "")}</div>
+          <div><strong>SOA Number:</strong> ${escapeHtml(record.soa_number || "")}</div>
+          <div><strong>Statement Date:</strong> ${escapeHtml(record.statement_date || "")}</div>
+          <div><strong>Closing Balance:</strong> ${escapeHtml(fmtAED(record.closing_balance))}</div>
+          <div><strong>Original File:</strong> ${escapeHtml(record.file_name || "")}</div>
+        </div>
+        ${
+          rowsHtml
+            ? `<table style="width:100%;border-collapse:collapse;"><tbody>${rowsHtml}</tbody></table>`
+            : ""
+        }
+      </div>`;
+
+    try {
+      await renderHtmlToServerPdf({
+        sheetsHtml: [sheetHtml],
+        cssText: "",
+        filename,
+        title: filename.replace(/\.pdf$/i, ""),
+        action: "download",
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate PDF.");
+    }
   }
 
   const activeSheet = sheets[activeSheetIdx];

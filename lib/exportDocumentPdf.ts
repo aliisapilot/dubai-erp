@@ -1,22 +1,30 @@
-import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
 import { waitForDocumentImages } from "./printAssets";
 import { sanitizeFilenamePart } from "./documentFilename";
 
 export interface DocumentPdfExportOptions {
   filename?: string;
   scopeElement?: HTMLElement | null;
-  action?: "download" | "share" | "blob";
+  action?: "download" | "share" | "blob" | "print";
+  sheetsOverride?: HTMLElement[];
+  landscape?: boolean;
 }
 
 export interface PdfDeliveryResult {
   filename: string;
   blob: Blob;
-  method: "download" | "share" | "ios-fallback" | "blob";
+  method: "download" | "share" | "ios-fallback" | "blob" | "print";
   fallbackUrl?: string;
 }
 
+interface CachedPdfEntry {
+  filename: string;
+  blob: Blob;
+  url: string;
+}
+
 let activeDownloadLock = false;
+const inFlightPdfRequests = new Map<string, Promise<CachedPdfEntry>>();
+const completedPdfCache = new Map<string, CachedPdfEntry>();
 
 export function normalizePdfFilename(rawFilename?: string | null): string {
   const base = sanitizeFilenamePart((rawFilename || "Document").replace(/(\.pdf)+$/i, ""));
@@ -31,12 +39,278 @@ export function isIosDevice(): boolean {
   );
 }
 
+export function isMobileBrowser(): boolean {
+  if (typeof navigator === "undefined" || typeof window === "undefined") return false;
+  if (isIosDevice()) return true;
+  return /Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
 export function isStandalonePwa(): boolean {
   if (typeof window === "undefined") return false;
   return (
     window.matchMedia?.("(display-mode: standalone)").matches ||
     Boolean((navigator as unknown as { standalone?: boolean }).standalone)
   );
+}
+
+function fastStringHash(str: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * Collects active CSS stylesheets from the current document, stripping `<768px` mobile screen
+ * overrides so the server Chromium engine always renders desktop A4 geometry cleanly.
+ */
+export function collectDocumentCssText(): string {
+  if (typeof document === "undefined") return "";
+  const chunks: string[] = [];
+
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      const rules = sheet.cssRules;
+      if (!rules) continue;
+      for (const rule of Array.from(rules)) {
+        if (typeof CSSMediaRule !== "undefined" && rule instanceof CSSMediaRule) {
+          const cond = (rule.conditionText || rule.media?.mediaText || "").toLowerCase();
+          if (cond.includes("max-width: 767px") || cond.includes("max-width:767px")) {
+            continue;
+          }
+        }
+        chunks.push(rule.cssText);
+      }
+    } catch {
+      // Skip cross-origin sheets without CORS access
+      if (sheet.ownerNode instanceof HTMLStyleElement && sheet.ownerNode.textContent) {
+        chunks.push(sheet.ownerNode.textContent);
+      }
+    }
+  }
+
+  return chunks.join("\n");
+}
+
+function resolveRelativePublicSrc(rawSrc: string): string | null {
+  try {
+    if (typeof window === "undefined") return rawSrc;
+    const parsed = new URL(rawSrc, window.location.origin);
+    if (
+      parsed.origin === window.location.origin &&
+      !parsed.pathname.startsWith("/_next/") &&
+      !parsed.pathname.startsWith("/api/")
+    ) {
+      return `${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    // ignore malformed
+  }
+  return null;
+}
+
+async function fetchImageAsDataUrl(url: string): Promise<string | null> {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Serializes rendered A4 sheet DOM elements without any live preview scale transforms,
+ * deduplicating image binary payloads cleanly for fast Vercel serverless transmission.
+ */
+async function serializeSheetsForServerPdf(sheets: HTMLElement[]): Promise<{
+  sheetsHtml: string[];
+  assets: Record<string, string>;
+  landscape: boolean;
+}> {
+  const assets: Record<string, string> = {};
+  const assetKeyBySrc = new Map<string, string>();
+  let assetCounter = 0;
+
+  const landscape = sheets.some(
+    (s) =>
+      s.getAttribute("data-orientation") === "landscape" ||
+      s.classList.contains("print-attendance-sheet") ||
+      Boolean(s.querySelector('[data-orientation="landscape"]'))
+  );
+
+  // Deduplicate and inline non-public image sources (e.g. signed Supabase logos/stamps) once
+  const uniqueExternalUrls = new Set<string>();
+  for (const sheet of sheets) {
+    for (const img of Array.from(sheet.querySelectorAll<HTMLImageElement>("img"))) {
+      const rawSrc = img.getAttribute("src") || img.src || "";
+      if (!rawSrc || rawSrc.startsWith("data:")) continue;
+      if (resolveRelativePublicSrc(rawSrc)) continue;
+      uniqueExternalUrls.add(rawSrc);
+    }
+  }
+
+  await Promise.all(
+    Array.from(uniqueExternalUrls).map(async (src) => {
+      const dataUrl = await fetchImageAsDataUrl(src);
+      if (dataUrl) {
+        const token = `__PDF_ASSET_${assetCounter++}__`;
+        assets[token] = dataUrl;
+        assetKeyBySrc.set(src, token);
+      }
+    })
+  );
+
+  const sheetsHtml = sheets.map((sheet) => {
+    const clone = sheet.cloneNode(true) as HTMLElement;
+    clone.style.transform = "none";
+    clone.style.boxShadow = "none";
+    clone.style.margin = "0 auto";
+
+    // Deduplicate embedded images via __PDF_ASSET_n__ or compact relative /public path
+    for (const img of Array.from(clone.querySelectorAll<HTMLImageElement>("img"))) {
+      const rawAttr = img.getAttribute("src") || "";
+      const fullSrc = img.src || rawAttr;
+      const publicRel = resolveRelativePublicSrc(rawAttr || fullSrc);
+      if (publicRel) {
+        img.setAttribute("src", publicRel);
+      } else if (fullSrc.startsWith("data:") || rawAttr.startsWith("data:")) {
+        const dataVal = rawAttr.startsWith("data:") ? rawAttr : fullSrc;
+        let token = assetKeyBySrc.get(dataVal);
+        if (!token) {
+          token = `__PDF_ASSET_${assetCounter++}__`;
+          assets[token] = dataVal;
+          assetKeyBySrc.set(dataVal, token);
+        }
+        img.setAttribute("src", token);
+      } else if (assetKeyBySrc.has(rawAttr) || assetKeyBySrc.has(fullSrc)) {
+        const tok = assetKeyBySrc.get(rawAttr) || assetKeyBySrc.get(fullSrc)!;
+        img.setAttribute("src", tok);
+      }
+    }
+
+    // Never keep hidden screen-only controls inside server PDF pages
+    for (const hidden of Array.from(clone.querySelectorAll<HTMLElement>(".no-print"))) {
+      hidden.remove();
+    }
+
+    return clone.outerHTML;
+  });
+
+  return { sheetsHtml, assets, landscape };
+}
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  try {
+    const { supabase } = await import("./supabase");
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  } catch {
+    // cookie fallback handled on server
+  }
+  return headers;
+}
+
+/**
+ * Generates an authoritative server-side Chromium A4 PDF from arbitrary HTML sheets + CSS.
+ * Used by both DOM document exports and spreadsheet-to-PDF reports (`SoaPreviewModal`).
+ */
+export async function renderHtmlToServerPdf(params: {
+  sheetsHtml: string[];
+  cssText?: string;
+  assets?: Record<string, string>;
+  filename: string;
+  title?: string;
+  landscape?: boolean;
+  action?: "download" | "share" | "blob" | "print";
+}): Promise<PdfDeliveryResult> {
+  const filename = normalizePdfFilename(params.filename);
+  const fingerprint = fastStringHash(
+    `${filename}|${params.landscape ? "L" : "P"}|${params.sheetsHtml.join("\n")}`
+  );
+
+  let entry = completedPdfCache.get(fingerprint);
+  if (!entry) {
+    let promise = inFlightPdfRequests.get(fingerprint);
+    if (!promise) {
+      promise = (async () => {
+        const headers = await getAuthHeaders();
+        const res = await fetch("/api/pdf/render", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            sheetsHtml: params.sheetsHtml,
+            cssText: params.cssText ?? collectDocumentCssText(),
+            assets: params.assets || {},
+            filename,
+            title: params.title || filename.replace(/\.pdf$/i, ""),
+            landscape: Boolean(params.landscape),
+          }),
+        });
+
+        if (!res.ok) {
+          let errMsg = `PDF generation failed (${res.status}).`;
+          try {
+            const errJson = (await res.json()) as { error?: string };
+            if (errJson?.error) errMsg = errJson.error;
+          } catch {
+            // ignore non-JSON body
+          }
+          throw new Error(errMsg);
+        }
+
+        const buf = await res.arrayBuffer();
+        const blob = new Blob([buf], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+
+        // Keep max 8 cached PDFs to bound client memory
+        if (completedPdfCache.size >= 8) {
+          const oldestKey = completedPdfCache.keys().next().value;
+          if (oldestKey) {
+            const old = completedPdfCache.get(oldestKey);
+            if (old) {
+              setTimeout(() => {
+                try {
+                  URL.revokeObjectURL(old.url);
+                } catch {}
+              }, 60_000);
+            }
+            completedPdfCache.delete(oldestKey);
+          }
+        }
+
+        const cached: CachedPdfEntry = { filename, blob, url };
+        completedPdfCache.set(fingerprint, cached);
+        return cached;
+      })();
+      inFlightPdfRequests.set(fingerprint, promise);
+    }
+
+    try {
+      entry = await promise;
+    } finally {
+      inFlightPdfRequests.delete(fingerprint);
+    }
+  }
+
+  return await deliverPdfBlob({
+    blob: entry.blob,
+    filename,
+    action: params.action || "download",
+    existingBlobUrl: entry.url,
+  });
 }
 
 /**
@@ -46,7 +320,8 @@ export function isStandalonePwa(): boolean {
 export async function deliverPdfBlob(params: {
   blob: Blob;
   filename: string;
-  action?: "download" | "share" | "blob";
+  action?: "download" | "share" | "blob" | "print";
+  existingBlobUrl?: string;
 }): Promise<PdfDeliveryResult> {
   const filename = normalizePdfFilename(params.filename);
   const pdfBlob =
@@ -57,6 +332,24 @@ export async function deliverPdfBlob(params: {
   const action = params.action || "download";
   if (action === "blob") {
     return { filename, blob: pdfBlob, method: "blob" };
+  }
+
+  const blobUrl = params.existingBlobUrl || URL.createObjectURL(pdfBlob);
+  if (!params.existingBlobUrl) {
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(blobUrl);
+      } catch {}
+    }, 60_000);
+  }
+
+  // Mobile/iOS Print: Open authoritative server-generated PDF directly in native PDF viewer for AirPrint / Print
+  if (action === "print") {
+    const win = window.open(blobUrl, "_blank", "noopener");
+    if (!win) {
+      return { filename, blob: pdfBlob, method: "ios-fallback", fallbackUrl: blobUrl };
+    }
+    return { filename, blob: pdfBlob, method: "print", fallbackUrl: blobUrl };
   }
 
   // Native File Sharing (iOS Safari "Save to Files" / AirDrop / WhatsApp & Android Share)
@@ -74,26 +367,21 @@ export async function deliverPdfBlob(params: {
       if (shareErr instanceof Error && shareErr.name === "AbortError") {
         return { filename, blob: pdfBlob, method: "share" };
       }
-      // Fall through to standard download / fallback if Web Share fails
+      // Fall through to ios-fallback / standard download so the user always retains 1-tap access
+      if (isIosDevice()) {
+        return { filename, blob: pdfBlob, method: "ios-fallback", fallbackUrl: blobUrl };
+      }
     }
   }
 
   if (activeDownloadLock) {
-    return { filename, blob: pdfBlob, method: "blob" };
+    return { filename, blob: pdfBlob, method: "blob", fallbackUrl: blobUrl };
   }
 
   activeDownloadLock = true;
   try {
-    const blobUrl = URL.createObjectURL(pdfBlob);
-    // Keep object URL alive for 60s so slower mobile browsers/PWAs never truncate reads
-    setTimeout(() => {
-      try {
-        URL.revokeObjectURL(blobUrl);
-      } catch {}
-    }, 60_000);
-
-    // On iOS standalone PWA, `<a download>` can fail or open a headless PDF without Back button.
-    // Attempt native share sheet first when installed as an iOS PWA so "Save to Files" preserves filename!
+    // On iOS standalone PWA, `<a download>` often navigates inside the webview without a back bar.
+    // Invoke native Share Sheet first so "Save to Files" saves with the exact filename.
     if (isIosDevice() && isStandalonePwa() && typeof File !== "undefined") {
       try {
         const pdfFile = new File([pdfBlob], filename, { type: "application/pdf" });
@@ -135,101 +423,95 @@ export async function deliverPdfBlob(params: {
   }
 }
 
-function createColorConverter() {
-  if (typeof document === "undefined") return (s: string) => s;
-  const canvas = document.createElement("canvas");
-  canvas.width = 1;
-  canvas.height = 1;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  const cache = new Map<string, string>();
+function resolveDocumentFilenameFromDom(
+  explicitFilename: string | undefined,
+  scopeElement?: HTMLElement | null
+): string {
+  let defaultFilename = explicitFilename;
+  if (!defaultFilename) {
+    const scopeEl = scopeElement instanceof HTMLElement ? scopeElement : null;
+    const attrFilename =
+      scopeEl?.getAttribute("data-document-filename") ||
+      (scopeEl
+        ? scopeEl.querySelector("[data-document-filename]")?.getAttribute("data-document-filename")
+        : document.querySelector("[data-document-filename]")?.getAttribute("data-document-filename")) ||
+      scopeEl?.getAttribute("data-document-title") ||
+      (scopeEl
+        ? scopeEl.querySelector("[data-document-title]")?.getAttribute("data-document-title")
+        : document.querySelector("[data-document-title]")?.getAttribute("data-document-title"));
 
-  return function sanitizeColor(colorStr: string): string {
-    if (!colorStr || typeof colorStr !== "string") return colorStr;
-    if (
-      !colorStr.includes("lab(") &&
-      !colorStr.includes("oklch(") &&
-      !colorStr.includes("color(") &&
-      !colorStr.includes("color-mix(")
-    ) {
-      return colorStr;
+    if (attrFilename) {
+      defaultFilename = attrFilename.endsWith(".pdf") ? attrFilename : `${attrFilename}.pdf`;
+    } else {
+      const docMeta = document.querySelector(
+        "#print-preview-title, .title-ref, [data-element-id='doc_title'], [data-element-id='doc_meta']"
+      );
+      const text = docMeta?.textContent?.replace(/[\r\n\t]/g, " ").trim() || "";
+      const match = text.match(/(INV|QUO|PRO|DN|PO|RCV|SOA|BILL|SLIP|HO|WMS|EPV|MS)[-\w]+/i);
+      const docNumber = match ? match[0] : "Document";
+      defaultFilename = `${docNumber}.pdf`;
     }
-    if (cache.has(colorStr)) return cache.get(colorStr)!;
+  }
+  return normalizePdfFilename(defaultFilename);
+}
+
+async function resolveActiveSheets(options: DocumentPdfExportOptions): Promise<HTMLElement[]> {
+  if (Array.isArray(options.sheetsOverride) && options.sheetsOverride.length > 0) {
+    return options.sheetsOverride;
+  }
+  const root =
+    options.scopeElement ||
+    document.querySelector(".print-modal-container, .mobile-pdf-modal, .dynamic-document-pages, .print-template-wrapper") ||
+    document;
+
+  if (root.querySelector("[data-design-print-blocked]")) {
+    throw new Error("Wait for the saved cloud design to finish loading before exporting this PDF.");
+  }
+  if (root.querySelector("[data-report-print-blocked]")) {
+    throw new Error("Report data must finish loading before exporting this PDF.");
+  }
+
+  const sheets = Array.from(
+    root.querySelectorAll<HTMLElement>(
+      ".dynamic-document-page, .print-document, .document-sheet, .print-attendance-sheet"
+    )
+  ).filter((sheet) => sheet.offsetParent !== null || sheet.offsetWidth > 0 || sheet.offsetHeight > 0);
+
+  if (!sheets.length) {
+    throw new Error("No document sheet found to export. Please wait for the preview to load.");
+  }
+
+  const images = [...new Set(sheets.flatMap((sheet) => Array.from(sheet.querySelectorAll<HTMLImageElement>("img"))))];
+  await waitForDocumentImages(images);
+
+  if (document.fonts?.ready) {
     try {
-      if (!ctx) return colorStr;
-      ctx.clearRect(0, 0, 1, 1);
-      ctx.fillStyle = colorStr;
-      ctx.fillRect(0, 0, 1, 1);
-      const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
-      const res = a === 255 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
-      cache.set(colorStr, res);
-      return res;
+      await document.fonts.ready;
     } catch {
-      return colorStr;
+      // ignore
     }
-  };
-}
+  }
 
-function getSafeCssFallback(propName: string): string {
-  const p = propName.toLowerCase();
-  if (p.includes("color")) return "rgba(0, 0, 0, 0)";
-  if (p.includes("radius")) return "0px 0px";
-  if (
-    p.includes("width") ||
-    p.includes("height") ||
-    p.includes("margin") ||
-    p.includes("padding") ||
-    p.includes("spacing")
-  )
-    return "0px";
-  if (p.includes("style")) return "none";
-  if (p.includes("image") || p.includes("shadow") || p.includes("transform")) return "none";
-  if (p.includes("position")) return p.includes("background") ? "0% 0%" : "static";
-  if (p.includes("origin")) return p.includes("transform") ? "50% 50%" : "border-box";
-  if (p.includes("opacity")) return "1";
-  if (p.includes("size")) return p.includes("font") ? "12px" : "auto";
-  if (p.includes("display")) return "inline-block";
-  if (p.includes("family")) return "sans-serif";
-  if (p.includes("duration")) return "0s";
-  if (p.includes("zindex") || p.includes("z-index")) return "auto";
-  return "0px";
-}
-
-async function inlineImagesAsDataUrls(images: HTMLImageElement[]): Promise<void> {
-  await Promise.all(
-    images.map(async (img) => {
-      if (!img.src || img.src.startsWith("data:")) return;
-      try {
-        const resp = await fetch(img.src);
-        const blob = await resp.blob();
-        const reader = new FileReader();
-        const dataUrl = await new Promise<string>((resolve) => {
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(blob);
-        });
-        img.src = dataUrl;
-      } catch {
-        try {
-          const c = document.createElement("canvas");
-          c.width = img.naturalWidth || img.width || 100;
-          c.height = img.naturalHeight || img.height || 100;
-          const ctx = c.getContext("2d");
-          if (ctx) {
-            ctx.drawImage(img, 0, 0);
-            img.src = c.toDataURL("image/png");
-          }
-        } catch {
-          // ignore
-        }
-      }
-    })
-  );
+  return sheets;
 }
 
 /**
- * Exports the active document (Invoice, Quotation, Delivery Note, etc.) directly
- * to a genuine A4 Portrait PDF (210 mm x 297 mm) with zero browser headers, footers, URLs, or dates.
- *
- * Captures the exact rendered DOM with 100% visual fidelity.
+ * Background pre-warms the server Chromium PDF Blob as soon as a preview modal opens
+ * so iOS Safari `Share` and `Download` can immediately reuse the already-built PDF file
+ * within WebKit's synchronous user activation window.
+ */
+export async function prefetchDocumentPdf(options: DocumentPdfExportOptions = {}): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    await exportDocumentToPdf({ ...options, action: "blob" });
+  } catch {
+    // Non-blocking background warm-up; explicit button click surfaces actionable errors
+  }
+}
+
+/**
+ * Generates and delivers an authoritative server-rendered A4 PDF identical across
+ * desktop PC, iPhone Safari, Android, and iOS installed PWAs.
  */
 export async function exportDocumentToPdf(
   options: DocumentPdfExportOptions = {}
@@ -238,211 +520,18 @@ export async function exportDocumentToPdf(
     throw new Error("PDF export is only available in browser environments.");
   }
 
-  const root = options.scopeElement ||
-    document.querySelector(".print-modal-container, .dynamic-document-pages, .print-template-wrapper") ||
-    document;
+  const sheets = await resolveActiveSheets(options);
+  const filename = resolveDocumentFilenameFromDom(options.filename, options.scopeElement);
+  const { sheetsHtml, assets, landscape } = await serializeSheetsForServerPdf(sheets);
+  const cssText = collectDocumentCssText();
 
-  const sheets = Array.from(root.querySelectorAll<HTMLElement>(".dynamic-document-page, .print-document, .document-sheet"))
-    .filter((sheet) => sheet.offsetParent !== null || sheet.offsetWidth > 0 || sheet.offsetHeight > 0);
-
-  if (!sheets.length) {
-    throw new Error("No document sheet found to export. Please ensure the preview is open.");
-  }
-
-  // Ensure all document images and fonts are fully settled before rasterizing
-  const images = [...new Set(sheets.flatMap((sheet) => Array.from(sheet.querySelectorAll<HTMLImageElement>("img"))))];
-  await waitForDocumentImages(images);
-  await inlineImagesAsDataUrls(images);
-
-  if (document.fonts?.ready) {
-    try {
-      await document.fonts.ready;
-    } catch {
-      // Font readiness fallback
-    }
-  }
-
-  const sanitizeColor = createColorConverter();
-  const origGetComputedStyle = window.getComputedStyle.bind(window);
-
-  try {
-    window.getComputedStyle = function (el: Element, pseudo?: string | null) {
-      const style = origGetComputedStyle(el, pseudo);
-      return new Proxy(style, {
-        get(target, prop: string | symbol) {
-          const propStr = typeof prop === "string" ? prop : String(prop);
-          const val = Reflect.get(target, prop);
-
-          if (propStr === "backgroundImage" || propStr === "listStyleImage") {
-            if (typeof val === "string" && !val.includes("url(") && !val.includes("gradient(")) {
-              return "none";
-            }
-          }
-          if (typeof val === "string") {
-            const trimmed = val.trim();
-            if (trimmed === "") {
-              return getSafeCssFallback(propStr);
-            }
-            if (
-              val.includes("lab(") ||
-              val.includes("oklch(") ||
-              val.includes("color(") ||
-              val.includes("color-mix(")
-            ) {
-              return sanitizeColor(val);
-            }
-          }
-          if (typeof val === "function") {
-            if (prop === "getPropertyValue") {
-              return function (p: string) {
-                if (p === "background-image" || p === "list-style-image") {
-                  const v = target.getPropertyValue(p);
-                  if (typeof v === "string" && !v.includes("url(") && !v.includes("gradient(")) {
-                    return "none";
-                  }
-                }
-                const v = target.getPropertyValue(p);
-                if (typeof v === "string") {
-                  if (v.trim() === "") {
-                    return getSafeCssFallback(p);
-                  }
-                  return sanitizeColor(v);
-                }
-                return v;
-              };
-            }
-            return val.bind(target);
-          }
-          return val;
-        },
-      });
-    };
-
-    // A4 Portrait dimensions in mm
-    const a4WidthMm = 210;
-    const a4HeightMm = 297;
-
-    // Initialize jsPDF with genuine A4 portrait
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "a4",
-      compress: true,
-    });
-
-    for (let i = 0; i < sheets.length; i++) {
-      const sheet = sheets[i];
-
-      if (i > 0) {
-        pdf.addPage("a4", "portrait");
-      }
-
-      // Render sheet to high-resolution canvas with full container isolation
-      const canvas = await html2canvas(sheet, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: false,
-        logging: false,
-        backgroundColor: "#ffffff",
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: 794,
-        windowHeight: 1123,
-        onclone: (clonedDoc) => {
-          const win = clonedDoc.defaultView || window;
-          if (win && win !== window) {
-            win.getComputedStyle = window.getComputedStyle;
-          }
-
-          // Reset preview viewport scale transforms on BOTH parent wrappers and cloned sheet
-          // so mobile previews render full unscaled 794x1123 A4 dimensions identical to desktop.
-          clonedDoc
-            .querySelectorAll<HTMLElement>(
-              ".print-preview-scale-content, .mobile-pdf-print-content, .print-preview-scale-shell, .mobile-pdf-scale-shell"
-            )
-            .forEach((wrapper) => {
-              wrapper.style.transform = "none";
-              wrapper.style.position = "static";
-              wrapper.style.width = "auto";
-              wrapper.style.height = "auto";
-              wrapper.style.margin = "0";
-            });
-
-          const clonedSheets = clonedDoc.querySelectorAll<HTMLElement>(
-            ".dynamic-document-page, .print-document, .document-sheet"
-          );
-          const clonedSheet = clonedSheets[i] || clonedSheets[0];
-          if (clonedSheet) {
-            clonedSheet.style.transform = "none";
-            clonedSheet.style.position = "relative";
-            clonedSheet.style.boxShadow = "none";
-            clonedSheet.style.margin = "0";
-          }
-
-          // Ensure Arabic elements retain cursive ligatures and zero letter-spacing
-          clonedDoc.querySelectorAll<HTMLElement>("[dir='rtl'], .font-arabic").forEach((el) => {
-            el.style.letterSpacing = "0px";
-            el.style.fontFeatureSettings = '"liga" 1, "dlig" 1';
-          });
-        },
-      });
-
-      const imgData = canvas.toDataURL("image/png");
-      const canvasAspect = canvas.width / canvas.height;
-      const targetAspect = a4WidthMm / a4HeightMm;
-
-      let renderW = a4WidthMm;
-      let renderH = a4HeightMm;
-      let offsetX = 0;
-      let offsetY = 0;
-
-      // Preserve true aspect ratio without optical distortion
-      if (Math.abs(canvasAspect - targetAspect) > 0.01) {
-        if (canvasAspect > targetAspect) {
-          renderH = a4WidthMm / canvasAspect;
-          offsetY = Math.max(0, (a4HeightMm - renderH) / 2);
-        } else {
-          renderW = a4HeightMm * canvasAspect;
-          offsetX = Math.max(0, (a4WidthMm - renderW) / 2);
-        }
-      }
-
-      pdf.addImage(imgData, "PNG", offsetX, offsetY, renderW, renderH, undefined, "FAST");
-    }
-
-    // Derive meaningful document filename
-    let defaultFilename = options.filename;
-    if (!defaultFilename) {
-      const scopeEl = options.scopeElement instanceof HTMLElement ? options.scopeElement : null;
-      const attrFilename = scopeEl?.getAttribute("data-document-filename") ||
-        (scopeEl ? scopeEl.querySelector("[data-document-filename]")?.getAttribute("data-document-filename") : document.querySelector("[data-document-filename]")?.getAttribute("data-document-filename")) ||
-        scopeEl?.getAttribute("data-document-title") ||
-        (scopeEl ? scopeEl.querySelector("[data-document-title]")?.getAttribute("data-document-title") : document.querySelector("[data-document-title]")?.getAttribute("data-document-title"));
-
-      if (attrFilename) {
-        defaultFilename = attrFilename.endsWith(".pdf") ? attrFilename : `${attrFilename}.pdf`;
-      } else {
-        const docMeta = document.querySelector(
-          "#print-preview-title, .title-ref, [data-element-id='doc_title'], [data-element-id='doc_meta']"
-        );
-        const text = docMeta?.textContent?.replace(/[\r\n\t]/g, " ").trim() || "";
-        const match = text.match(/(INV|QUO|PRO|DN|PO|RCV|SOA|BILL|SLIP|HO|WMS|EPV|MS)[-\w]+/i);
-        const docNumber = match ? match[0] : "Document";
-        defaultFilename = `${docNumber}.pdf`;
-      }
-    }
-
-    // Ensure valid characters and single .pdf extension
-    defaultFilename = normalizePdfFilename(defaultFilename);
-
-    const rawBlob = pdf.output("blob");
-    const pdfBlob = new Blob([rawBlob], { type: "application/pdf" });
-    return await deliverPdfBlob({
-      blob: pdfBlob,
-      filename: defaultFilename,
-      action: options.action || "download",
-    });
-  } finally {
-    window.getComputedStyle = origGetComputedStyle;
-  }
+  return await renderHtmlToServerPdf({
+    sheetsHtml,
+    cssText,
+    assets,
+    filename,
+    title: filename.replace(/\.pdf$/i, ""),
+    landscape: options.landscape ?? landscape,
+    action: options.action || "download",
+  });
 }

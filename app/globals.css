@@ -967,6 +967,22 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     page-break-after: avoid !important;
   }
 
+  .dynamic-document-page[data-orientation="landscape"] {
+    width: 297mm !important;
+    min-width: 297mm !important;
+    max-width: 297mm !important;
+    height: 210mm !important;
+    min-height: 210mm !important;
+    max-height: 210mm !important;
+  }
+
+  .dynamic-document-page[data-orientation="landscape"] .page-decorative-borders-container {
+    width: 297mm !important;
+    height: 210mm !important;
+    min-height: 210mm !important;
+    max-height: 210mm !important;
+  }
+
   /* 6. Dedicated Print Background Image Layer (Prints even if Background Graphics is OFF) */
   .print-background-container {
     display: block !important;

@@ -4,7 +4,7 @@ import React, { ReactNode, useState } from "react";
 import { Download, Printer } from "lucide-react";
 import { getBrandConfig, BrandColors, CompanyBrandInput } from "@/lib/brandConfig";
 import { printCurrentDocument } from "@/lib/print";
-import { exportDocumentToPdf } from "@/lib/exportDocumentPdf";
+import { exportDocumentToPdf, isMobileBrowser } from "@/lib/exportDocumentPdf";
 import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import PageDecorativeBorders from "./PageDecorativeBorders";
 import { DEFAULT_PAGE_BORDERS, PageBorderSettings, DocumentLayout } from "@/lib/documentDesigner";
@@ -85,6 +85,11 @@ export default function DocumentContainer({
   const handlePrint = async () => {
     if (onPrint) {
       onPrint();
+    } else if (isMobileBrowser()) {
+      await exportDocumentToPdf({
+        filename: defaultPdfFilename,
+        action: "print",
+      });
     } else {
       await printCurrentDocument({
         documentFilename: defaultPdfFilename,

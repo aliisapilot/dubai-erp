@@ -16,7 +16,7 @@ import {
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { getDocumentPreviewScale } from "@/lib/documentPreview";
 import { generateDocumentPdfFilename } from "@/lib/documentFilename";
-import { exportDocumentToPdf } from "@/lib/exportDocumentPdf";
+import { exportDocumentToPdf, isMobileBrowser, prefetchDocumentPdf } from "@/lib/exportDocumentPdf";
 
 // Template imports
 import TaxInvoiceTemplate, { TaxInvoiceData } from "@/components/documents/TaxInvoiceTemplate";
@@ -42,7 +42,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [sharedNotice, setSharedNotice] = useState(false);
-  const [exportingAction, setExportingAction] = useState<"download" | "share" | null>(null);
+  const [exportingAction, setExportingAction] = useState<"download" | "share" | "print" | null>(null);
   const [iosFallbackUrl, setIosFallbackUrl] = useState<string | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
@@ -173,8 +173,19 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
     updateHeight();
     const observer = new ResizeObserver(updateHeight);
     observer.observe(page);
-    return () => observer.disconnect();
-  }, [fullDoc]);
+    const warmTimer = setTimeout(() => {
+      if (document.category !== "company_file" && fullDoc && pageRef.current) {
+        void prefetchDocumentPdf({
+          filename: computedFile.filename,
+          scopeElement: pageRef.current,
+        });
+      }
+    }, 150);
+    return () => {
+      clearTimeout(warmTimer);
+      observer.disconnect();
+    };
+  }, [fullDoc, document.category, computedFile.filename]);
 
   async function handleNativeShare() {
     if (document.category !== "company_file" && pageRef.current) {
@@ -395,12 +406,43 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
           {/* Print */}
           <button
             type="button"
-            onClick={() => void printCurrentDocument({ documentFilename: computedFile.filename, documentTitle: computedFile.title })}
-            className="hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white"
+            disabled={loading || exportingAction !== null}
+            onClick={async () => {
+              if (document.category === "company_file" && fileUrl) {
+                window.open(fileUrl, "_blank", "noopener");
+                return;
+              }
+              if (!isMobileBrowser()) {
+                await printCurrentDocument({
+                  documentFilename: computedFile.filename,
+                  documentTitle: computedFile.title,
+                });
+                return;
+              }
+              if (!pageRef.current) return;
+              setExportingAction("print");
+              setIosFallbackUrl(null);
+              try {
+                const res = await exportDocumentToPdf({
+                  filename: computedFile.filename,
+                  scopeElement: pageRef.current,
+                  action: "print",
+                });
+                if (res.fallbackUrl) {
+                  setIosFallbackUrl(res.fallbackUrl);
+                }
+              } catch (err) {
+                console.error("Mobile PDF print failed:", err);
+                setError(err instanceof Error ? err.message : "Failed to prepare PDF for printing.");
+              } finally {
+                setExportingAction(null);
+              }
+            }}
+            className="flex h-11 w-10 sm:w-11 items-center justify-center rounded-xl text-slate-200 hover:bg-slate-800 hover:text-white disabled:opacity-50"
             aria-label="Print or save as PDF"
-            title="Print or save as PDF"
+            title="Print or open PDF"
           >
-            <Printer size={16} />
+            {exportingAction === "print" ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
           </button>
         </div>
       </header>
