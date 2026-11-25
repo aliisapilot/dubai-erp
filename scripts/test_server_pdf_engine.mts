@@ -724,6 +724,24 @@ function verifyLegacyJsPdfRemovalAndRetryUi() {
       `${rel} routes Print PDF through unified server Chromium PDF engine (no browser print bypass)`
     );
   }
+
+  assert(
+    fs.existsSync(path.join(ROOT, "public/pdf.worker.min.mjs")),
+    "public/pdf.worker.min.mjs exists for cross-platform CanonicalPdfPreview"
+  );
+  const wysiwygPreviewFiles = [
+    "components/documents/PrintModal.tsx",
+    "components/mobile/MobilePdfModal.tsx",
+    "components/designer/DocumentPreviewModal.tsx",
+    "components/documents/DocumentSplitScreenEditor.tsx",
+  ];
+  for (const rel of wysiwygPreviewFiles) {
+    const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
+    assert(
+      src.includes("CanonicalPdfPreview"),
+      `${rel} renders Live Preview from CanonicalPdfPreview (exact server Chromium PDF)`
+    );
+  }
 }
 
 function buildQtn157DesignerSheetHtml(): { html: string; expectedFilename: string } {

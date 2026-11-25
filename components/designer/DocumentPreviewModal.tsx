@@ -14,6 +14,7 @@ import DynamicDocumentRenderer, {
   MockDocumentData,
 } from "../documents/DynamicDocumentRenderer";
 import { CompanyDocInfo } from "../documents/DocHeader";
+import CanonicalPdfPreview from "../documents/CanonicalPdfPreview";
 
 const TEST_DATASETS: Record<string, { label: string; count: number; data: MockDocumentData }> = {
   short_1: {
@@ -217,6 +218,7 @@ export default function DocumentPreviewModal({
   const [exportingAction, setExportingAction] = useState<"download" | "print" | null>(null);
   const [exportError, setExportError] = useState<{ message: string; action: "download" | "print" } | null>(null);
   const previewAreaRef = useRef<HTMLDivElement>(null);
+  const canonicalScopeRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState<number>(() => {
     if (typeof window !== "undefined") {
       const vh = window.innerHeight;
@@ -257,7 +259,7 @@ export default function DocumentPreviewModal({
         });
         void exportDocumentToPdf({
           filename: previewFile.filename,
-          scopeElement: previewAreaRef.current,
+          scopeElement: canonicalScopeRef.current || previewAreaRef.current,
           action: "print",
         });
       }
@@ -385,7 +387,7 @@ export default function DocumentPreviewModal({
               try {
                 await exportDocumentToPdf({
                   filename: previewFile.filename,
-                  scopeElement: previewAreaRef.current,
+                  scopeElement: canonicalScopeRef.current || previewAreaRef.current,
                   action: "download",
                 });
               } catch (e) {
@@ -423,7 +425,7 @@ export default function DocumentPreviewModal({
               try {
                 await exportDocumentToPdf({
                   filename: previewFile.filename,
-                  scopeElement: previewAreaRef.current,
+                  scopeElement: canonicalScopeRef.current || previewAreaRef.current,
                   action: "print",
                 });
               } catch (e) {
@@ -475,7 +477,7 @@ export default function DocumentPreviewModal({
                 try {
                   await exportDocumentToPdf({
                     filename: previewFile.filename,
-                    scopeElement: previewAreaRef.current,
+                    scopeElement: canonicalScopeRef.current || previewAreaRef.current,
                     action,
                   });
                 } catch (e) {
@@ -504,44 +506,42 @@ export default function DocumentPreviewModal({
       )}
 
       {/* ── Document Scroll Area ──────────────────────────────────────────────── */}
-      <div ref={previewAreaRef} className="designer-scrollbar min-h-0 flex-1 overflow-auto overscroll-contain p-8 flex flex-col items-center gap-8 print:p-0 print:m-0 print:overflow-visible print:block print:w-[210mm] print:bg-white">
-        {Array.from({ length: computedTotalPages }, (_, index) => {
-          const pageNum = index + 1;
-          return (
-            <div
-              key={pageNum}
-              className="flex flex-col items-center print:block print:m-0 print:p-0"
-            >
-              {/* Page Number Badge (Screen only) */}
-              <div className="no-print print-hide mb-2 text-xs font-medium text-slate-400 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-400" />
-                <span>
-                  Page {pageNum} of {computedTotalPages}
-                </span>
-              </div>
-
-              {/* A4 Sheet Container */}
-              <div
-                className="designer-preview-sheet-container print:!transform-none print:!m-0 print:!mb-0"
-                style={{
-                  transform: scale !== 1 ? `scale(${scale})` : undefined,
-                  transformOrigin: "top center",
-                  marginBottom: scale < 1 ? `-${Math.round((1 - scale) * 297 * 3.7795)}px` : undefined,
-                }}
-              >
-                <DynamicDocumentRenderer
-                  layout={layout}
-                  company={company}
-                  data={activeDataset}
-                  isDesignerPreview={false}
-                  scale={1}
-                  pageNumber={pageNum}
-                  totalPages={computedTotalPages}
-                />
-              </div>
-            </div>
-          );
-        })}
+      <div ref={previewAreaRef} className="designer-scrollbar min-h-0 flex-1 overflow-auto overscroll-contain p-4 sm:p-8 flex flex-col items-center">
+        <CanonicalPdfPreview
+          filename={
+            generateDocumentPdfFilename({
+              docType: layout.documentType,
+              docNumber: activeDataset.document_number,
+              partyName: activeDataset.customer_name || activeDataset.supplier_name,
+              customerName: activeDataset.customer_name,
+              supplierName: activeDataset.supplier_name,
+              items: activeDataset.items,
+              date: activeDataset.document_date,
+            }).filename
+          }
+          revisionKey={JSON.stringify({ selectedDatasetKey, layout, docNum: activeDataset.document_number })}
+          scale={scale}
+          debounceMs={120}
+          onScopeElement={(el) => {
+            canonicalScopeRef.current = el;
+          }}
+        >
+          {Array.from({ length: computedTotalPages }, (_, index) => {
+            const pageNum = index + 1;
+            return (
+              <DynamicDocumentRenderer
+                key={pageNum}
+                layout={layout}
+                company={company}
+                data={activeDataset}
+                isDesignerPreview={false}
+                scale={1}
+                pageNumber={pageNum}
+                totalPages={computedTotalPages}
+              />
+            );
+          })}
+        </CanonicalPdfPreview>
       </div>
     </div>
     </DesignerPortal>

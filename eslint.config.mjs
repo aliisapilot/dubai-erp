@@ -21,6 +21,7 @@ const eslintConfig = defineConfig([
     ".chrome-test-profile*/**",
     ".chrome-verify-profile*/**",
     ".chrome-reset-verify-profile*/**",
+    "public/pdf.worker.min.mjs",
   ]),
 ]);
 
