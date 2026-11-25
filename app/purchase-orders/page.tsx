@@ -12,7 +12,7 @@ import DocumentSplitScreenEditor, {
   DocumentEditorFormState,
   EditorLineItem,
 } from "@/components/documents/DocumentSplitScreenEditor";
-import { withSupplierDocumentDetails, serializeCustomPartyNotes } from "@/lib/documentCustomer";
+import { withSupplierDocumentDetails, buildDocumentPartySnapshot } from "@/lib/documentCustomer";
 import {
   PurchaseOrderStatus,
   PURCHASE_ORDER_STATUS_OPTIONS,
@@ -97,10 +97,20 @@ export default function PurchaseOrdersPage() {
   const [showRenameModal, setShowRenameModal] = useState(false);
 
   useEffect(() => { loadAll(); }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || orders.length === 0 || showForm || editing) return;
+    const editId = new URLSearchParams(window.location.search).get("edit");
+    if (editId) {
+      const target = orders.find((po) => po.id === editId);
+      if (target) void openEdit(target);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders]);
   async function loadAll() {
     setLoading(true);
     const [{ data: po }, { data: s }, { data: pr }, { data: p }, comp] = await Promise.all([
-      supabase.from("purchase_orders").select("*").order("created_at", { ascending: false }),
+      supabase.from("purchase_orders").select("*, supplier:suppliers(*)").order("created_at", { ascending: false }),
       supabase.from("suppliers").select("id, name, supplier_code, trn, address, phone, email").eq("active", true).order("name"),
       supabase.from("projects").select("id, project_number, name").order("project_number"),
       supabase.from("products").select("id, name, sku, cost_price, vat_rate, unit, description").eq("active", true).order("name"),
@@ -165,7 +175,8 @@ export default function PurchaseOrdersPage() {
   function openAdd() { setError(""); setSuccess(""); setEditing(null); setForm(emptyForm); setLines([emptyLine()]); setShowForm(true); }
   async function openEdit(po: PO) {
     setError(""); setSuccess("");
-    const enriched = withSupplierDocumentDetails(po) as PO;
+    const supplier = suppliers.find((s) => s.id === po.supplier_id);
+    const enriched = withSupplierDocumentDetails({ ...po, supplier }) as PO;
     setEditing(enriched);
     setForm({
       supplier_id: enriched.supplier_id||"",
@@ -269,6 +280,7 @@ export default function PurchaseOrdersPage() {
     subtotal: number;
     vat_amount: number;
     total_amount: number;
+    exportAfterSave?: boolean;
   }) {
     setError("");
     setSuccess("");
@@ -286,32 +298,27 @@ export default function PurchaseOrdersPage() {
     setSaving(true);
     try {
       const normStatus = normalizePurchaseOrderStatus(payload.form.status);
-      const customPayload = isCustom
-        ? {
-            name: payload.form.customer_name?.trim() || "",
-            address: payload.form.customer_address || "",
-            contact_person: payload.form.contact_person || "",
-            phone: payload.form.contact_number || "",
-            email: payload.form.contact_email || "",
-            trn: payload.form.customer_trn || "",
-            project_name: payload.form.custom_project_name || "",
-          }
+      const masterSupplier = !isCustom && payload.form.customer_id
+        ? suppliers.find((s) => s.id === payload.form.customer_id) || null
         : null;
 
-      const rawNotes = payload.form.notes?.trim() || "";
-      const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
+      const snapshot = buildDocumentPartySnapshot({
+        partyType: "supplier",
+        isCustom,
+        partyId: payload.form.customer_id,
+        masterParty: masterSupplier,
+        name: payload.form.supplier_name || payload.form.customer_name,
+        address: payload.form.supplier_address || payload.form.customer_address,
+        trn: payload.form.supplier_trn || payload.form.customer_trn,
+        contactPerson: payload.form.contact_person,
+        phone: payload.form.contact_number,
+        email: payload.form.contact_email,
+        projectName: payload.form.custom_project_name,
+        rawNotes: payload.form.notes,
+      });
 
       const dataPayload: Record<string, unknown> = {
-        supplier_id: isCustom ? null : payload.form.customer_id || null,
-        supplier_name: isCustom ? payload.form.customer_name?.trim() : null,
-        supplier_address: isCustom ? payload.form.customer_address || null : null,
-        supplier_trn: isCustom ? payload.form.customer_trn || null : null,
-        contact_person: isCustom ? payload.form.contact_person || null : null,
-        contact_number: isCustom ? payload.form.contact_number || null : null,
-        contact_email: isCustom ? payload.form.contact_email || null : null,
-        custom_project_name: isCustom ? payload.form.custom_project_name || null : null,
-        is_custom_supplier: isCustom,
-        custom_supplier: customPayload,
+        ...snapshot.fullColumns,
         project_id: payload.form.project_id || null,
         order_date: payload.form.invoice_date || null,
         expected_date: payload.form.supply_date || null,
@@ -320,7 +327,7 @@ export default function PurchaseOrdersPage() {
         vat_amount: payload.vat_amount,
         total_amount: payload.total_amount,
         payment_terms: payload.form.payment_terms || null,
-        notes: serializedNotes || null,
+        notes: snapshot.notesWithFallback,
         updated_at: new Date().toISOString(),
       };
 
@@ -360,7 +367,7 @@ export default function PurchaseOrdersPage() {
             vat_amount: payload.vat_amount,
             total_amount: payload.total_amount,
             payment_terms: payload.form.payment_terms || null,
-            notes: serializedNotes || null,
+            notes: snapshot.notesWithFallback || snapshot.cleanNotes,
             updated_at: new Date().toISOString(),
           };
           saveRes = await executeSave(minimalPayload);
@@ -414,6 +421,16 @@ export default function PurchaseOrdersPage() {
       setSuccess(`Purchase order ${saveRes.poNumber} ${editing ? "updated" : "saved"} successfully.`);
       closeForm();
       await loadAll();
+      if (payload.exportAfterSave && saveRes.id) {
+        const { data: freshPo } = await supabase
+          .from("purchase_orders")
+          .select("*, supplier:suppliers(*)")
+          .eq("id", saveRes.id)
+          .maybeSingle();
+        if (freshPo) {
+          await handlePrintPO(withSupplierDocumentDetails(freshPo as PO) as PO);
+        }
+      }
     } catch (err: unknown) {
       const msg = parsePurchaseOrderError(err);
       setError(msg);
@@ -458,14 +475,14 @@ export default function PurchaseOrdersPage() {
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="app-screen-content no-print">
-        <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-          <div className="flex items-center gap-3"><div className="rounded-xl bg-slate-900 p-2.5 text-white"><FileSignature size={22}/></div><div><h1 className="text-2xl font-bold text-slate-900">Purchase Orders</h1><p className="text-sm text-slate-500">Manage supplier purchase orders</p></div></div>
-          <button onClick={openAdd} className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"><Plus size={18}/>New PO</button>
+        <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5">
+          <div className="flex items-center gap-3"><div className="rounded-xl bg-slate-900 p-2.5 text-white shrink-0"><FileSignature size={22}/></div><div><h1 className="text-xl sm:text-2xl font-bold text-slate-900">Purchase Orders</h1><p className="text-xs sm:text-sm text-slate-500">Manage supplier purchase orders</p></div></div>
+          <button onClick={openAdd} className="flex min-h-10 items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-slate-800"><Plus size={18}/>New PO</button>
         </div></header>
-        <div className="mx-auto max-w-7xl px-6 py-8">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-5 sm:py-8">
           {success && <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
           {error && !showForm && <div className="mb-5 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button onClick={()=>setError("")}><X size={16}/></button></div>}
-          <div className="mb-6 flex gap-3">
+          <div className="mb-6 flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
               <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search POs…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/>

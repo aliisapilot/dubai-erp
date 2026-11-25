@@ -35,6 +35,7 @@ import type { PvcTankLinerResult } from "@/lib/measurementTypes";
 import type { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { useRouter } from "next/navigation";
 import { serializeCustomPartyNotes, CustomPartyData } from "@/lib/documentCustomer";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 
 export interface CustomerSummary {
   id: string;
@@ -1521,19 +1522,31 @@ export default function PvcTankLinerQuotationModal({
       </div>
 
       {/* CUSTOMER PDF PRINT / PREVIEW MODAL (Strictly Customer Data Only) */}
-      {showPdfModal && savedSuccess && (
-        <PrintModal
-          isOpen={showPdfModal}
-          onClose={() => setShowPdfModal(false)}
-          editorHref="/settings/designer?type=quotation"
-        >
-          <QuotationTemplate
-            company={activeCompany}
-            quotation={savedSuccess.quotationData}
+      {showPdfModal && savedSuccess && (() => {
+        const qtnFile = generateDocumentPdfFilename({
+          docType: "quotation",
+          docNumber: savedSuccess.quotationData.quotation_number,
+          partyName: savedSuccess.quotationData.customer_name,
+          customerName: savedSuccess.quotationData.customer_name,
+          items: savedSuccess.quotationData.items,
+          date: savedSuccess.quotationData.quotation_date,
+        });
+        return (
+          <PrintModal
+            isOpen={showPdfModal}
             onClose={() => setShowPdfModal(false)}
-          />
-        </PrintModal>
-      )}
+            editorHref="/settings/designer?type=quotation"
+            documentFilename={qtnFile.filename}
+            documentTitle={qtnFile.title}
+          >
+            <QuotationTemplate
+              company={activeCompany}
+              quotation={savedSuccess.quotationData}
+              onClose={() => setShowPdfModal(false)}
+            />
+          </PrintModal>
+        );
+      })()}
     </div>
   );
 }

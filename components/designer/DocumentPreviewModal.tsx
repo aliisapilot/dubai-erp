@@ -2,10 +2,11 @@
 
 import DesignerPortal from "./DesignerPortal";
 
-import React, { useEffect, useState } from "react";
-import { Download, Printer, X, ZoomIn, ZoomOut, Maximize2, FileText, ChevronLeft } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Download, Loader2, Printer, X, ZoomIn, ZoomOut, Maximize2, FileText, ChevronLeft } from "lucide-react";
 import { DocumentLayout, formatDocNumber } from "@/lib/documentDesigner";
-import { exportDocumentToPdf } from "@/lib/exportDocumentPdf";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
+import { exportDocumentToPdf, isMobileBrowser } from "@/lib/exportDocumentPdf";
 import DynamicDocumentRenderer, {
   SAMPLE_DOCUMENT_DATA,
   getDocumentPageCount,
@@ -214,6 +215,9 @@ export default function DocumentPreviewModal({
   docTitle,
 }: DocumentPreviewModalProps) {
   const [selectedDatasetKey, setSelectedDatasetKey] = useState<string>("inv_008");
+  const [exportingAction, setExportingAction] = useState<"download" | "print" | null>(null);
+  const [exportError, setExportError] = useState<{ message: string; action: "download" | "print" } | null>(null);
+  const previewAreaRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState<number>(() => {
     if (typeof window !== "undefined") {
       const vh = window.innerHeight;
@@ -353,26 +357,83 @@ export default function DocumentPreviewModal({
 
           <button
             type="button"
+            disabled={exportingAction !== null}
             onClick={async () => {
+              const previewFile = generateDocumentPdfFilename({
+                docType: layout.documentType,
+                docNumber: activeDataset.document_number,
+                partyName: activeDataset.customer_name || activeDataset.supplier_name,
+                customerName: activeDataset.customer_name,
+                supplierName: activeDataset.supplier_name,
+                items: activeDataset.items,
+                date: activeDataset.document_date,
+              });
+              setExportingAction("download");
+              setExportError(null);
               try {
-                await exportDocumentToPdf();
+                await exportDocumentToPdf({
+                  filename: previewFile.filename,
+                  scopeElement: previewAreaRef.current,
+                  action: "download",
+                });
               } catch (e) {
                 console.error(e);
+                setExportError({
+                  message: e instanceof Error ? e.message : "Failed to generate PDF from server renderer.",
+                  action: "download",
+                });
+              } finally {
+                setExportingAction(null);
               }
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow cursor-pointer disabled:opacity-50"
             title="Download clean A4 PDF directly without browser print dialog"
           >
-            <Download size={15} />
+            {exportingAction === "download" ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
             <span>Download PDF</span>
           </button>
 
           <button
             type="button"
-            onClick={() => void printCurrentDocument()}
-            className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow cursor-pointer"
+            disabled={exportingAction !== null}
+            onClick={async () => {
+              const previewFile = generateDocumentPdfFilename({
+                docType: layout.documentType,
+                docNumber: activeDataset.document_number,
+                partyName: activeDataset.customer_name || activeDataset.supplier_name,
+                customerName: activeDataset.customer_name,
+                supplierName: activeDataset.supplier_name,
+                items: activeDataset.items,
+                date: activeDataset.document_date,
+              });
+              if (!isMobileBrowser()) {
+                await printCurrentDocument({
+                  documentFilename: previewFile.filename,
+                  documentTitle: previewFile.title,
+                });
+                return;
+              }
+              setExportingAction("print");
+              setExportError(null);
+              try {
+                await exportDocumentToPdf({
+                  filename: previewFile.filename,
+                  scopeElement: previewAreaRef.current,
+                  action: "print",
+                });
+              } catch (e) {
+                console.error(e);
+                setExportError({
+                  message: e instanceof Error ? e.message : "Failed to prepare PDF for printing.",
+                  action: "print",
+                });
+              } finally {
+                setExportingAction(null);
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow cursor-pointer disabled:opacity-50"
           >
-            <Printer size={15} />
+            {exportingAction === "print" ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
             <span>Print Document</span>
           </button>
 
@@ -387,8 +448,58 @@ export default function DocumentPreviewModal({
         </div>
       </header>
 
+      {exportError && (
+        <div className="no-print flex flex-wrap items-center justify-between gap-2 border-b border-rose-500/40 bg-rose-950/95 px-4 py-2 text-xs text-rose-100">
+          <span>{exportError.message}</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                const action = exportError.action;
+                const previewFile = generateDocumentPdfFilename({
+                  docType: layout.documentType,
+                  docNumber: activeDataset.document_number,
+                  partyName: activeDataset.customer_name || activeDataset.supplier_name,
+                  customerName: activeDataset.customer_name,
+                  supplierName: activeDataset.supplier_name,
+                  items: activeDataset.items,
+                  date: activeDataset.document_date,
+                });
+                setExportingAction(action);
+                setExportError(null);
+                try {
+                  await exportDocumentToPdf({
+                    filename: previewFile.filename,
+                    scopeElement: previewAreaRef.current,
+                    action,
+                  });
+                } catch (e) {
+                  setExportError({
+                    message: e instanceof Error ? e.message : "Retry failed.",
+                    action,
+                  });
+                } finally {
+                  setExportingAction(null);
+                }
+              }}
+              className="rounded-lg bg-rose-600 px-3 py-1 text-xs font-bold text-white hover:bg-rose-500 cursor-pointer"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => setExportError(null)}
+              className="p-1 text-rose-300 hover:text-white"
+              aria-label="Dismiss error"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Document Scroll Area ──────────────────────────────────────────────── */}
-      <div className="designer-scrollbar min-h-0 flex-1 overflow-auto overscroll-contain p-8 flex flex-col items-center gap-8 print:p-0 print:m-0 print:overflow-visible print:block print:w-[210mm] print:bg-white">
+      <div ref={previewAreaRef} className="designer-scrollbar min-h-0 flex-1 overflow-auto overscroll-contain p-8 flex flex-col items-center gap-8 print:p-0 print:m-0 print:overflow-visible print:block print:w-[210mm] print:bg-white">
         {Array.from({ length: computedTotalPages }, (_, index) => {
           const pageNum = index + 1;
           return (

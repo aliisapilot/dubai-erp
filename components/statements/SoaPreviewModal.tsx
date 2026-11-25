@@ -11,10 +11,10 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { jsPDF } from "jspdf";
 import { supabase } from "@/lib/supabase";
 import { fmtAED } from "@/lib/helpers";
 import { type StoredSoaRecord, getExportSoaPdfFilename } from "@/lib/soaManager";
+import { renderHtmlToServerPdf } from "@/lib/exportDocumentPdf";
 
 interface SoaPreviewModalProps {
   isOpen: boolean;
@@ -28,6 +28,7 @@ export default function SoaPreviewModal({
   record,
 }: SoaPreviewModalProps) {
   const [loading, setLoading] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [error, setError] = useState("");
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string>("");
   const [sheets, setSheets] = useState<Array<{ name: string; rows: string[][] }>>([]);
@@ -136,7 +137,7 @@ export default function SoaPreviewModal({
     }
   }
 
-  function handleDownloadGeneratedPdf() {
+  async function handleDownloadGeneratedPdf() {
     if (!record) return;
     const filename = getExportSoaPdfFilename(
       record.soa_number,
@@ -144,34 +145,55 @@ export default function SoaPreviewModal({
       record.statement_date
     );
 
-    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-    doc.setFontSize(16);
-    doc.text("Statement of Account", 40, 48);
-    doc.setFontSize(10);
-    doc.text(`Customer: ${record.customer_name}`, 40, 72);
-    doc.text(`SOA Number: ${record.soa_number}`, 40, 88);
-    doc.text(`Statement Date: ${record.statement_date}`, 40, 104);
-    doc.text(`Closing Balance: ${fmtAED(record.closing_balance)}`, 40, 120);
-    doc.text(`Original File: ${record.file_name}`, 40, 136);
+    const escapeHtml = (val: string) =>
+      val.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-    let y = 168;
     const activeSheet = sheets[activeSheetIdx];
-    if (activeSheet && activeSheet.rows.length > 0) {
-      doc.setFontSize(8);
-      for (const row of activeSheet.rows.slice(0, 60)) {
-        const line = row.filter((c) => c.trim() !== "").join("  |  ").slice(0, 110);
-        if (line) {
-          doc.text(line, 40, y);
-          y += 13;
-          if (y > 780) {
-            doc.addPage();
-            y = 48;
-          }
-        }
-      }
-    }
+    const rowsHtml = (activeSheet?.rows || [])
+      .slice(0, 200)
+      .map(
+        (r) =>
+          `<tr>${r
+            .map(
+              (c) =>
+                `<td style="border:1px solid #cbd5e1;padding:4px 6px;font-size:8.5pt;white-space:pre-wrap;word-break:break-word;">${escapeHtml(c || "")}</td>`
+            )
+            .join("")}</tr>`
+      )
+      .join("");
 
-    doc.save(filename);
+    const sheetHtml = `
+      <div class="print-document" style="width:210mm;min-height:297mm;padding:12mm;background:#fff;color:#0f172a;font-family:Arial,sans-serif;box-sizing:border-box;">
+        <h1 style="font-size:15pt;font-weight:700;margin:0 0 8px 0;">Statement of Account</h1>
+        <div style="font-size:9.5pt;line-height:1.45;margin-bottom:12px;">
+          <div><strong>Customer:</strong> ${escapeHtml(record.customer_name || "")}</div>
+          <div><strong>SOA Number:</strong> ${escapeHtml(record.soa_number || "")}</div>
+          <div><strong>Statement Date:</strong> ${escapeHtml(record.statement_date || "")}</div>
+          <div><strong>Closing Balance:</strong> ${escapeHtml(fmtAED(record.closing_balance))}</div>
+          <div><strong>Original File:</strong> ${escapeHtml(record.file_name || "")}</div>
+        </div>
+        ${
+          rowsHtml
+            ? `<table style="width:100%;border-collapse:collapse;"><tbody>${rowsHtml}</tbody></table>`
+            : ""
+        }
+      </div>`;
+
+    setExportingPdf(true);
+    setError("");
+    try {
+      await renderHtmlToServerPdf({
+        sheetsHtml: [sheetHtml],
+        cssText: "",
+        filename,
+        title: filename.replace(/\.pdf$/i, ""),
+        action: "download",
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate PDF.");
+    } finally {
+      setExportingPdf(false);
+    }
   }
 
   const activeSheet = sheets[activeSheetIdx];
@@ -217,10 +239,11 @@ export default function SoaPreviewModal({
             {!isPdf && sheets.length > 0 && (
               <button
                 type="button"
+                disabled={exportingPdf}
                 onClick={handleDownloadGeneratedPdf}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-emerald-300 px-3 py-1.5 text-xs font-semibold transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-emerald-300 px-3 py-1.5 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
               >
-                <Download size={13} />
+                {exportingPdf ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
                 <span>PDF</span>
               </button>
             )}
@@ -234,20 +257,39 @@ export default function SoaPreviewModal({
           </div>
         </div>
 
+        {error && !loading && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-500/40 bg-rose-950/90 px-5 py-2 text-xs text-rose-100 shrink-0">
+            <span className="flex items-center gap-2">
+              <AlertTriangle size={14} className="text-rose-400 shrink-0" />
+              <span>{error}</span>
+            </span>
+            <div className="flex items-center gap-2">
+              {!isPdf && sheets.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void handleDownloadGeneratedPdf()}
+                  className="rounded-lg bg-rose-600 px-3 py-1 font-bold text-white hover:bg-rose-500 cursor-pointer"
+                >
+                  Retry PDF
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setError("")}
+                className="p-1 text-rose-300 hover:text-white"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Preview Body */}
         <div className="flex-1 overflow-auto bg-slate-950/60 p-4">
           {loading ? (
             <div className="h-full flex flex-col items-center justify-center gap-2 text-slate-400 text-xs">
               <Loader2 size={24} className="animate-spin text-cyan-400" />
               <span>Loading original statement...</span>
-            </div>
-          ) : error ? (
-            <div className="max-w-lg mx-auto mt-12 rounded-xl border border-rose-800 bg-rose-950/40 p-4 flex items-start gap-3 text-xs text-rose-200">
-              <AlertTriangle size={18} className="text-rose-400 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold mb-1">Preview Unavailable</p>
-                <p>{error}</p>
-              </div>
             </div>
           ) : isPdf && pdfBlobUrl ? (
             <iframe

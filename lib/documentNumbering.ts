@@ -694,13 +694,18 @@ export function formatDisplayDocNumber(
   let prefix = "";
   const upper = trimmed.toUpperCase();
 
-  // Recognize known prefixes
-  if (upper.startsWith("INV") || upper.startsWith("TAX")) prefix = "INV";
-  else if (upper.startsWith("QUO") || upper.startsWith("QTN") || upper.startsWith("QT")) prefix = "QUO";
-  else if (upper.startsWith("PI") || upper.startsWith("PRO")) prefix = "PI";
-  else if (upper.startsWith("DN") || upper.startsWith("DLV")) prefix = "DN";
+  // Recognize known prefixes while preserving the authoritative saved prefix (e.g. QTN stays QTN)
+  if (upper.startsWith("QTN")) prefix = "QTN";
+  else if (upper.startsWith("QUO") || upper.startsWith("QT")) prefix = "QUO";
+  else if (upper.startsWith("TAX")) prefix = "TAX";
+  else if (upper.startsWith("INV")) prefix = "INV";
+  else if (upper.startsWith("PRO")) prefix = "PRO";
+  else if (upper.startsWith("PI")) prefix = "PI";
+  else if (upper.startsWith("DLV")) prefix = "DLV";
+  else if (upper.startsWith("DN")) prefix = "DN";
   else if (upper.startsWith("PO")) prefix = "PO";
-  else if (upper.startsWith("RV") || upper.startsWith("RCV")) prefix = "RV";
+  else if (upper.startsWith("RCV")) prefix = "RCV";
+  else if (upper.startsWith("RV")) prefix = "RV";
   else if (upper.startsWith("BILL")) prefix = "BILL";
   else if (upper.startsWith("SOA")) prefix = "SOA";
   else if (upper.startsWith("SLIP")) prefix = "SLIP";
@@ -713,7 +718,7 @@ export function formatDisplayDocNumber(
 
   // Remove prefix portion
   const remainder = trimmed.replace(
-    new RegExp(`^(?:${prefix}|TAX|QTN|QT|PRO|DLV|RCV)[-_/\\s]*`, "i"),
+    new RegExp(`^(?:${prefix}|QTN|QUO|QT|TAX|INV|PRO|PI|DLV|DN|RCV|RV)[-_/\\s]*`, "i"),
     ""
   );
 

@@ -135,7 +135,7 @@ export default function DocHeader({
             color: accent,
             lineHeight: 1.25,
             letterSpacing: "0.01em",
-            fontFamily: "'Segoe UI Arabic', 'Amiri', 'Scheherazade New', 'Traditional Arabic', 'Noto Naskh Arabic', Arial, sans-serif",
+            fontFamily: "'Noto Sans Arabic', 'Segoe UI Arabic', 'Amiri', 'Scheherazade New', 'Traditional Arabic', 'Noto Naskh Arabic', Arial, sans-serif",
           }}
         >
           {brand.arabic_name || "الصفوه الذهبيه لصناعه الخيام ذ.م.م.ش.ش.و"}

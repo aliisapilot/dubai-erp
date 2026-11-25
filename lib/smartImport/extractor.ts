@@ -14,6 +14,7 @@ import type {
 import type { DocxParseResult } from "./parsers/docxParser";
 import type { XlsxParseResult } from "./parsers/xlsxParser";
 import type { PdfParseResult } from "./parsers/pdfParser";
+import { extractSoaTableFromCoordinates } from "./soaCoordinateExtractor";
 
 declare module "./types" {
   interface ExtractedLineItem {
@@ -23,6 +24,8 @@ declare module "./types" {
     debit?: number;
     credit?: number;
     balance?: number;
+    needsCellReview?: boolean;
+    reviewReason?: string;
   }
 }
 
@@ -1570,10 +1573,29 @@ export function extractFromPdf(
   }
 
   if (docType === "customer_statement") {
-    let itemSeq = 1;
+    const knownOpening =
+      typeof fields.opening_balance?.value === "number" ? fields.opening_balance.value : null;
+    const coordResult = extractSoaTableFromCoordinates(parsed.pages, fileName, knownOpening);
 
-    // Scan all lines of the document across all pages without prematurely terminating
-    for (let i = 0; i < lines.length; i++) {
+    if (coordResult.usedCoordinates && coordResult.items.length > 0) {
+      items.push(...coordResult.items);
+
+      if (!fields.opening_balance && coordResult.openingBalanceFromRow !== null) {
+        fields.opening_balance = {
+          fieldKey: "opening_balance",
+          label: "Opening Balance",
+          value: coordResult.openingBalanceFromRow,
+          source: { file: fileName, rawText: "Opening Balance Row" },
+          confidence: 0.96,
+          validationStatus: "valid",
+          originalRawValue: coordResult.openingBalanceFromRow.toFixed(2),
+        };
+      }
+    } else {
+      let itemSeq = 1;
+
+      // Fallback for coordinate-less plain-text unit mocks (where parsed.pages[p].items is empty)
+      for (let i = 0; i < lines.length; i++) {
       const rawLine = lines[i].trim();
       if (!rawLine || /^[0-9]\s*\.?$/.test(rawLine)) continue;
 
@@ -1668,6 +1690,7 @@ export function extractFromPdf(
           });
           continue;
         }
+      }
       }
     }
   } else {

@@ -58,14 +58,25 @@ interface CustomerSummaryItem {
 interface RepairDetail {
   id: string;
   fileName: string;
+  soaNumber?: string;
+  customerName?: string;
   status: "repaired" | "skipped_verified" | "missing_file" | "failed";
   oldClosing: number | null;
   newClosing: number | null;
+  calculatedClosing?: number | null;
+  debits?: number;
+  credits?: number;
+  difference?: number | null;
   oldRows: number;
   newRows: number;
   oldDate: string;
   newDate: string;
   isMathValid: boolean;
+  duplicateRowsCount?: number;
+  overlappingSoaRowsCount?: number;
+  matchedErpRowsCount?: number;
+  conflictErpRowsCount?: number;
+  overlapNote?: string;
   error?: string;
 }
 
@@ -125,6 +136,9 @@ export default function CustomerStatementsPage() {
     skippedCount: number;
     missingFilesCount: number;
     failedCount: number;
+    discrepanciesCount?: number;
+    duplicatesCount?: number;
+    overlapsCount?: number;
     details: RepairDetail[];
   } | null>(null);
 
@@ -716,18 +730,16 @@ export default function CustomerStatementsPage() {
             <button
               type="button"
               onClick={() => setViewTab("imported")}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
-                viewTab === "imported"
-                  ? "bg-cyan-600 text-white shadow-sm"
-                  : "bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800"
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${viewTab === "imported"
+                ? "bg-cyan-600 text-white shadow-sm"
+                : "bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800"
+                }`}
             >
               <FileText size={15} />
               <span>Imported Statements</span>
               <span
-                className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
-                  viewTab === "imported" ? "bg-cyan-700/80 text-white" : "bg-slate-800 text-slate-400"
-                }`}
+                className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono ${viewTab === "imported" ? "bg-cyan-700/80 text-white" : "bg-slate-800 text-slate-400"
+                  }`}
               >
                 {statements.length}
               </span>
@@ -739,18 +751,16 @@ export default function CustomerStatementsPage() {
                 setViewTab("live");
                 setLiveViewMode("list");
               }}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
-                viewTab === "live"
-                  ? "bg-cyan-600 text-white shadow-sm"
-                  : "bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800"
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition cursor-pointer ${viewTab === "live"
+                ? "bg-cyan-600 text-white shadow-sm"
+                : "bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800"
+                }`}
             >
               <Layers size={15} />
               <span>Live Statements</span>
               <span
-                className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
-                  viewTab === "live" ? "bg-cyan-700/80 text-white" : "bg-slate-800 text-slate-400"
-                }`}
+                className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono ${viewTab === "live" ? "bg-cyan-700/80 text-white" : "bg-slate-800 text-slate-400"
+                  }`}
               >
                 {customerSummaries.length}
               </span>
@@ -1317,9 +1327,8 @@ export default function CustomerStatementsPage() {
                           Current Outstanding Balance
                         </span>
                         <div
-                          className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${
-                            (statementData?.closing_balance || 0) > 0 ? "text-cyan-400" : "text-emerald-400"
-                          }`}
+                          className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${(statementData?.closing_balance || 0) > 0 ? "text-cyan-400" : "text-emerald-400"
+                            }`}
                         >
                           AED {(statementData?.closing_balance || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                         </div>
@@ -1428,184 +1437,184 @@ export default function CustomerStatementsPage() {
                   <>
                     <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-sm">
                       <table className="w-full text-xs border-collapse">
-                      <thead className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px] uppercase tracking-wider font-mono">
-                        <tr>
-                          <th className="px-4 py-3.5 text-left font-semibold">Date</th>
-                          <th className="px-4 py-3.5 text-left font-semibold">Reference</th>
-                          <th className="px-4 py-3.5 text-left font-semibold">Description</th>
-                          <th className="px-4 py-3.5 text-right font-semibold">Debit (AED)</th>
-                          <th className="px-4 py-3.5 text-right font-semibold">Credit (AED)</th>
-                          <th className="px-4 py-3.5 text-right font-semibold">Balance (AED)</th>
-                          <th className="px-4 py-3.5 text-center font-semibold">Source</th>
-                          <th className="px-4 py-3.5 text-right font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800/80">
-                        {/* Opening Balance Row */}
-                        <tr className="bg-slate-950/40 text-slate-400 font-medium">
-                          <td className="px-4 py-3 font-mono">{formatDisplayDate(statementData.from_date || statementData.statement_date)}</td>
-                          <td className="px-4 py-3 font-mono">—</td>
-                          <td className="px-4 py-3 italic">Opening Balance Brought Forward</td>
-                          <td className="px-4 py-3 text-right font-mono">—</td>
-                          <td className="px-4 py-3 text-right font-mono">—</td>
-                          <td className="px-4 py-3 text-right font-mono font-bold text-slate-200">
-                            {statementData.opening_balance.toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="inline-flex rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">
-                              Opening
+                        <thead className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px] uppercase tracking-wider font-mono">
+                          <tr>
+                            <th className="px-4 py-3.5 text-left font-semibold">Date</th>
+                            <th className="px-4 py-3.5 text-left font-semibold">Reference</th>
+                            <th className="px-4 py-3.5 text-left font-semibold">Description</th>
+                            <th className="px-4 py-3.5 text-right font-semibold">Debit (AED)</th>
+                            <th className="px-4 py-3.5 text-right font-semibold">Credit (AED)</th>
+                            <th className="px-4 py-3.5 text-right font-semibold">Balance (AED)</th>
+                            <th className="px-4 py-3.5 text-center font-semibold">Source</th>
+                            <th className="px-4 py-3.5 text-right font-semibold">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/80">
+                          {/* Opening Balance Row */}
+                          <tr className="bg-slate-950/40 text-slate-400 font-medium">
+                            <td className="px-4 py-3 font-mono">{formatDisplayDate(statementData.from_date || statementData.statement_date)}</td>
+                            <td className="px-4 py-3 font-mono">—</td>
+                            <td className="px-4 py-3 italic">Opening Balance Brought Forward</td>
+                            <td className="px-4 py-3 text-right font-mono">—</td>
+                            <td className="px-4 py-3 text-right font-mono">—</td>
+                            <td className="px-4 py-3 text-right font-mono font-bold text-slate-200">
+                              {statementData.opening_balance.toFixed(2)}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className="inline-flex rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">
+                                Opening
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right">—</td>
+                          </tr>
+
+                          {/* Transaction Rows */}
+                          {filteredEntries.map((row, idx) => {
+                            const isHistorical = Boolean(row.is_historical);
+                            const isLive = !isHistorical || row.status === "live";
+                            const isEdited = Boolean(row.is_edited);
+
+                            return (
+                              <tr key={row.id || `entry_${idx}`} className="hover:bg-slate-800/40 transition">
+                                <td className="px-4 py-3 font-mono text-slate-300">
+                                  {formatDisplayDate(row.date)}
+                                </td>
+                                <td className="px-4 py-3 font-mono font-semibold text-white">
+                                  {row.invoice_id ? (
+                                    <Link
+                                      href={`/tax-invoices?id=${row.invoice_id}`}
+                                      className="text-cyan-400 hover:text-cyan-300 inline-flex items-center gap-1 hover:underline"
+                                      target="_blank"
+                                    >
+                                      <span>{row.reference_no}</span>
+                                      <ExternalLink size={11} className="opacity-60" />
+                                    </Link>
+                                  ) : row.voucher_id ? (
+                                    <Link
+                                      href={`/receipt-vouchers?id=${row.voucher_id}`}
+                                      className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 hover:underline"
+                                      target="_blank"
+                                    >
+                                      <span>{row.reference_no}</span>
+                                      <ExternalLink size={11} className="opacity-60" />
+                                    </Link>
+                                  ) : (
+                                    <span>{row.reference_no}</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-slate-300">
+                                  {row.description}
+                                </td>
+                                <td className="px-4 py-3 text-right font-mono text-white font-medium">
+                                  {row.debit > 0 ? row.debit.toFixed(2) : "—"}
+                                </td>
+                                <td className="px-4 py-3 text-right font-mono text-emerald-400 font-medium">
+                                  {row.credit > 0 ? row.credit.toFixed(2) : "—"}
+                                </td>
+                                <td className="px-4 py-3 text-right font-mono font-bold text-white">
+                                  {row.balance.toFixed(2)}
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  {row.status === "matched" ? (
+                                    <span className="inline-flex rounded-full bg-cyan-950 border border-cyan-800 px-2 py-0.5 text-[10px] font-semibold text-cyan-300">
+                                      Matched
+                                    </span>
+                                  ) : isLive ? (
+                                    <span className="inline-flex rounded-full bg-emerald-950 border border-emerald-800 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                                      Live
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex rounded-full bg-slate-800 border border-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                                      Historical {isEdited ? "• Edited" : ""}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  {isLive && row.invoice_id ? (
+                                    <Link
+                                      href={`/tax-invoices?id=${row.invoice_id}`}
+                                      target="_blank"
+                                      className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold"
+                                    >
+                                      <span>Source</span>
+                                      <ExternalLink size={11} />
+                                    </Link>
+                                  ) : isLive && row.voucher_id ? (
+                                    <Link
+                                      href={`/receipt-vouchers?id=${row.voucher_id}`}
+                                      target="_blank"
+                                      className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold"
+                                    >
+                                      <span>Source</span>
+                                      <ExternalLink size={11} />
+                                    </Link>
+                                  ) : isHistorical && customerSavedSoa ? (
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingEntry(row);
+                                          setEditForm({
+                                            date: row.date?.slice(0, 10) || "",
+                                            reference: row.reference_no,
+                                            description: row.description,
+                                            debit: row.debit,
+                                            credit: row.credit,
+                                            reason: "",
+                                          });
+                                        }}
+                                        className="p-1 rounded text-slate-400 hover:text-cyan-300 hover:bg-slate-800 transition cursor-pointer"
+                                        title="Edit historical row"
+                                      >
+                                        <Edit2 size={13} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteHistoricalEntry(row)}
+                                        className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
+                                        title="Delete historical row"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-600">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Mobile Cards (Visible only on small screens) */}
+                    <div className="md:hidden space-y-2.5">
+                      {filteredEntries.map((row, idx) => (
+                        <div key={`m_${row.id || idx}`} className="rounded-xl border border-slate-800 bg-slate-900 p-3.5 space-y-2 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-slate-400">{formatDisplayDate(row.date)}</span>
+                            <span className="font-mono font-bold text-white text-sm">
+                              AED {row.balance.toFixed(2)}
                             </span>
-                          </td>
-                          <td className="px-4 py-3 text-right">—</td>
-                        </tr>
-
-                        {/* Transaction Rows */}
-                        {filteredEntries.map((row, idx) => {
-                          const isHistorical = Boolean(row.is_historical);
-                          const isLive = !isHistorical || row.status === "live";
-                          const isEdited = Boolean(row.is_edited);
-
-                          return (
-                            <tr key={row.id || `entry_${idx}`} className="hover:bg-slate-800/40 transition">
-                              <td className="px-4 py-3 font-mono text-slate-300">
-                                {formatDisplayDate(row.date)}
-                              </td>
-                              <td className="px-4 py-3 font-mono font-semibold text-white">
-                                {row.invoice_id ? (
-                                  <Link
-                                    href={`/tax-invoices?id=${row.invoice_id}`}
-                                    className="text-cyan-400 hover:text-cyan-300 inline-flex items-center gap-1 hover:underline"
-                                    target="_blank"
-                                  >
-                                    <span>{row.reference_no}</span>
-                                    <ExternalLink size={11} className="opacity-60" />
-                                  </Link>
-                                ) : row.voucher_id ? (
-                                  <Link
-                                    href={`/receipt-vouchers?id=${row.voucher_id}`}
-                                    className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 hover:underline"
-                                    target="_blank"
-                                  >
-                                    <span>{row.reference_no}</span>
-                                    <ExternalLink size={11} className="opacity-60" />
-                                  </Link>
-                                ) : (
-                                  <span>{row.reference_no}</span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-slate-300">
-                                {row.description}
-                              </td>
-                              <td className="px-4 py-3 text-right font-mono text-white font-medium">
-                                {row.debit > 0 ? row.debit.toFixed(2) : "—"}
-                              </td>
-                              <td className="px-4 py-3 text-right font-mono text-emerald-400 font-medium">
-                                {row.credit > 0 ? row.credit.toFixed(2) : "—"}
-                              </td>
-                              <td className="px-4 py-3 text-right font-mono font-bold text-white">
-                                {row.balance.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                {row.status === "matched" ? (
-                                  <span className="inline-flex rounded-full bg-cyan-950 border border-cyan-800 px-2 py-0.5 text-[10px] font-semibold text-cyan-300">
-                                    Matched
-                                  </span>
-                                ) : isLive ? (
-                                  <span className="inline-flex rounded-full bg-emerald-950 border border-emerald-800 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                                    Live
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex rounded-full bg-slate-800 border border-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
-                                    Historical {isEdited ? "• Edited" : ""}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                {isLive && row.invoice_id ? (
-                                  <Link
-                                    href={`/tax-invoices?id=${row.invoice_id}`}
-                                    target="_blank"
-                                    className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold"
-                                  >
-                                    <span>Source</span>
-                                    <ExternalLink size={11} />
-                                  </Link>
-                                ) : isLive && row.voucher_id ? (
-                                  <Link
-                                    href={`/receipt-vouchers?id=${row.voucher_id}`}
-                                    target="_blank"
-                                    className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold"
-                                  >
-                                    <span>Source</span>
-                                    <ExternalLink size={11} />
-                                  </Link>
-                                ) : isHistorical && customerSavedSoa ? (
-                                  <div className="flex items-center justify-end gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setEditingEntry(row);
-                                        setEditForm({
-                                          date: row.date?.slice(0, 10) || "",
-                                          reference: row.reference_no,
-                                          description: row.description,
-                                          debit: row.debit,
-                                          credit: row.credit,
-                                          reason: "",
-                                        });
-                                      }}
-                                      className="p-1 rounded text-slate-400 hover:text-cyan-300 hover:bg-slate-800 transition cursor-pointer"
-                                      title="Edit historical row"
-                                    >
-                                      <Edit2 size={13} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteHistoricalEntry(row)}
-                                      className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
-                                      title="Delete historical row"
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <span className="text-slate-600">—</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Mobile Cards (Visible only on small screens) */}
-                  <div className="md:hidden space-y-2.5">
-                    {filteredEntries.map((row, idx) => (
-                      <div key={`m_${row.id || idx}`} className="rounded-xl border border-slate-800 bg-slate-900 p-3.5 space-y-2 text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono text-slate-400">{formatDisplayDate(row.date)}</span>
-                          <span className="font-mono font-bold text-white text-sm">
-                            AED {row.balance.toFixed(2)}
-                          </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono font-semibold text-cyan-400">{row.reference_no}</span>
+                            <span className="text-slate-300">{row.description}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/80">
+                            <span className="text-slate-400">
+                              Debit: <strong className="text-white">{row.debit > 0 ? row.debit.toFixed(2) : "0.00"}</strong>
+                            </span>
+                            <span className="text-slate-400">
+                              Credit: <strong className="text-emerald-400">{row.credit > 0 ? row.credit.toFixed(2) : "0.00"}</strong>
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono font-semibold text-cyan-400">{row.reference_no}</span>
-                          <span className="text-slate-300">{row.description}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/80">
-                          <span className="text-slate-400">
-                            Debit: <strong className="text-white">{row.debit > 0 ? row.debit.toFixed(2) : "0.00"}</strong>
-                          </span>
-                          <span className="text-slate-400">
-                            Credit: <strong className="text-emerald-400">{row.credit > 0 ? row.credit.toFixed(2) : "0.00"}</strong>
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -1671,67 +1680,97 @@ export default function CustomerStatementsPage() {
             ) : repairResults ? (
               <div className="space-y-4 overflow-y-auto flex-1">
                 {/* Summary chips */}
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
                   <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                     <span className="text-[10px] text-slate-400 uppercase font-semibold block">Total Scanned</span>
                     <span className="text-lg font-bold font-mono text-white">{repairResults.totalAttachments}</span>
                   </div>
                   <div className="p-3 rounded-xl bg-slate-950 border border-emerald-900/60">
-                    <span className="text-[10px] text-emerald-400 uppercase font-semibold block">Repaired</span>
+                    <span className="text-[10px] text-emerald-400 uppercase font-semibold block">Recovered / Re-extracted</span>
                     <span className="text-lg font-bold font-mono text-emerald-300">{repairResults.repairedCount}</span>
                   </div>
                   <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-[10px] text-slate-400 uppercase font-semibold block">Skipped Verified</span>
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold block">Preserved Verified</span>
                     <span className="text-lg font-bold font-mono text-slate-300">{repairResults.skippedCount}</span>
                   </div>
+                  <div className="p-3 rounded-xl bg-slate-950 border border-amber-900/60">
+                    <span className="text-[10px] text-amber-400 uppercase font-semibold block">Discrepancies / Unresolved</span>
+                    <span className="text-lg font-bold font-mono text-amber-300">{repairResults.discrepanciesCount ?? 0}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-950 border border-sky-900/60">
+                    <span className="text-[10px] text-sky-400 uppercase font-semibold block">Duplicates / Overlaps</span>
+                    <span className="text-lg font-bold font-mono text-sky-300">
+                      {(repairResults.duplicatesCount ?? 0) + (repairResults.overlapsCount ?? 0)}
+                    </span>
+                  </div>
                   <div className="p-3 rounded-xl bg-slate-950 border border-rose-900/60">
-                    <span className="text-[10px] text-rose-400 uppercase font-semibold block">Missing Source Files</span>
+                    <span className="text-[10px] text-rose-400 uppercase font-semibold block">Missing Originals</span>
                     <span className="text-lg font-bold font-mono text-rose-300">{repairResults.missingFilesCount}</span>
                   </div>
                 </div>
 
                 {/* Details Table */}
-                <div className="rounded-xl border border-slate-800 overflow-hidden">
-                  <table className="w-full text-xs border-collapse">
+                <div className="rounded-xl border border-slate-800 overflow-x-auto">
+                  <table className="w-full min-w-[880px] text-xs border-collapse">
                     <thead className="bg-slate-950 text-slate-400 font-mono text-[10px] uppercase border-b border-slate-800">
                       <tr>
-                        <th className="py-2 px-3 text-left">Document</th>
-                        <th className="py-2 px-3 text-left">Status</th>
-                        <th className="py-2 px-3 text-right">Old Balance</th>
-                        <th className="py-2 px-3 text-right">New Balance</th>
+                        <th className="py-2 px-3 text-left">SOA</th>
+                        <th className="py-2 px-3 text-left">Customer</th>
                         <th className="py-2 px-3 text-right">Rows</th>
-                        <th className="py-2 px-3 text-center">Math Valid</th>
+                        <th className="py-2 px-3 text-right">Debits</th>
+                        <th className="py-2 px-3 text-right">Credits</th>
+                        <th className="py-2 px-3 text-right">PDF Closing</th>
+                        <th className="py-2 px-3 text-right">Calculated</th>
+                        <th className="py-2 px-3 text-right">Diff</th>
+                        <th className="py-2 px-3 text-left">Duplicates / Overlaps</th>
+                        <th className="py-2 px-3 text-center">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60 font-mono">
                       {repairResults.details.map((d) => (
                         <tr key={d.id} className="hover:bg-slate-950/40">
-                          <td className="py-2 px-3 truncate max-w-xs text-white" title={d.fileName}>
-                            {d.fileName}
+                          <td className="py-2 px-3 truncate max-w-[160px] text-white" title={d.fileName}>
+                            {d.soaNumber || d.fileName}
                           </td>
-                          <td className="py-2 px-3">
+                          <td className="py-2 px-3 truncate max-w-[170px] text-slate-300" title={d.customerName || d.fileName}>
+                            {d.customerName || "—"}
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-200">
+                            {d.newRows}
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-200">
+                            {d.debits != null ? d.debits.toFixed(2) : "—"}
+                          </td>
+                          <td className="py-2 px-3 text-right text-emerald-300">
+                            {d.credits != null ? d.credits.toFixed(2) : "—"}
+                          </td>
+                          <td className="py-2 px-3 text-right text-cyan-300 font-bold">
+                            {d.newClosing != null ? d.newClosing.toFixed(2) : "Not extracted"}
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-300">
+                            {d.calculatedClosing != null ? d.calculatedClosing.toFixed(2) : "—"}
+                          </td>
+                          <td className="py-2 px-3 text-right text-amber-300">
+                            {d.difference != null ? d.difference.toFixed(2) : "—"}
+                          </td>
+                          <td className="py-2 px-3 text-left text-[11px] text-slate-300 max-w-[180px] truncate" title={d.overlapNote || "None"}>
+                            {d.overlapNote || "Clean"}
+                          </td>
+                          <td className="py-2 px-3 text-center whitespace-nowrap">
                             {d.status === "repaired" ? (
-                              <span className="text-emerald-400 font-semibold">Repaired</span>
+                              d.isMathValid ? (
+                                <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold">
+                                  <CheckCircle2 size={12} /> Matched
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-amber-400 font-semibold">
+                                  <AlertTriangle size={12} /> Review
+                                </span>
+                              )
                             ) : d.status === "skipped_verified" ? (
                               <span className="text-slate-400">Preserved</span>
                             ) : (
                               <span className="text-rose-400">{d.error || "Missing"}</span>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-right text-slate-400">
-                            {d.oldClosing != null ? `AED ${d.oldClosing.toFixed(2)}` : "—"}
-                          </td>
-                          <td className="py-2 px-3 text-right text-cyan-300 font-bold">
-                            {d.newClosing != null ? `AED ${d.newClosing.toFixed(2)}` : "Not extracted"}
-                          </td>
-                          <td className="py-2 px-3 text-right text-slate-200">
-                            {d.newRows} rows
-                          </td>
-                          <td className="py-2 px-3 text-center">
-                            {d.isMathValid ? (
-                              <CheckCircle2 size={13} className="text-emerald-400 inline" />
-                            ) : (
-                              <AlertTriangle size={13} className="text-amber-400 inline" />
                             )}
                           </td>
                         </tr>

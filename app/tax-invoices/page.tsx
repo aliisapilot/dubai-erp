@@ -12,7 +12,7 @@ import PrintModal from "@/components/documents/PrintModal";
 import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { withCustomerDocumentDetails, stripCustomPartyTags } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails, stripCustomPartyTags, buildDocumentPartySnapshot } from "@/lib/documentCustomer";
 import { parseDatabaseError } from "@/lib/paymentTypes";
 import DocumentSplitScreenEditor, {
   EditorLineItem,
@@ -146,6 +146,18 @@ function TIContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Support deep linking via ?edit=<invoiceId> (e.g. from Mobile Portal)
+  useEffect(() => {
+    const editId = searchParams.get("edit");
+    if (editId && invoices.length > 0 && !showForm && !editing) {
+      const target = invoices.find((inv) => inv.id === editId);
+      if (target) {
+        void openEdit(target);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, invoices]);
+
   /**
    * Loads the invoice list plus the dropdown lookups.
    *
@@ -182,7 +194,7 @@ function TIContent() {
       //    (RLS still applies on top of this filter).
       const co = await getCurrentCompany();
 
-      let tiQuery = supabase.from("tax_invoices").select("*");
+      let tiQuery = supabase.from("tax_invoices").select("*, customer:customers(*)");
       if (co?.id) tiQuery = tiQuery.eq("company_id", co.id);
 
       const [{ data: ti, error: tiErr }, { data: c }, { data: pr }, { data: p }] = await Promise.all([
@@ -254,10 +266,19 @@ function TIContent() {
   async function openEdit(ti: TI) {
     setError("");
     setSuccess("");
-    const enriched = withCustomerDocumentDetails(ti) as TI;
+    const customer = customers.find((item) => item.id === ti.customer_id);
+    const enriched = withCustomerDocumentDetails({ ...ti, customer }) as TI;
     setEditing(enriched);
     setForm({
       customer_id: enriched.customer_id || "",
+      customer_name: enriched.customer_name,
+      customer_trn: enriched.customer_trn,
+      customer_address: enriched.customer_address,
+      contact_person: enriched.contact_person || undefined,
+      contact_number: enriched.contact_number,
+      contact_email: enriched.contact_email || undefined,
+      custom_project_name: enriched.custom_project_name || undefined,
+      is_custom_customer: enriched.is_custom_customer || false,
       project_id: enriched.project_id || "",
       invoice_date: enriched.invoice_date || todayISO(),
       supply_date: enriched.supply_date || todayISO(),
@@ -346,6 +367,7 @@ function TIContent() {
     subtotal: number;
     vat_amount: number;
     total_amount: number;
+    exportAfterSave?: boolean;
   }) {
     setError("");
     setSuccess("");
@@ -362,31 +384,27 @@ function TIContent() {
     }
     setSaving(true);
     try {
-      const customPayload = isCustom
-        ? {
-            name: payload.form.customer_name?.trim() || "",
-            address: payload.form.customer_address || "",
-            contact_person: payload.form.contact_person || "",
-            phone: payload.form.contact_number || "",
-            email: payload.form.contact_email || "",
-            trn: payload.form.customer_trn || "",
-            project_name: payload.form.custom_project_name || "",
-          }
+      const masterCustomer = !isCustom && payload.form.customer_id
+        ? customers.find((c) => c.id === payload.form.customer_id) || null
         : null;
 
-      const rawNotes = (payload.form.notes || "").trim();
+      const snapshot = buildDocumentPartySnapshot({
+        partyType: "customer",
+        isCustom,
+        partyId: payload.form.customer_id,
+        masterParty: masterCustomer,
+        name: payload.form.customer_name,
+        address: payload.form.customer_address,
+        trn: payload.form.customer_trn,
+        contactPerson: payload.form.contact_person,
+        phone: payload.form.contact_number,
+        email: payload.form.contact_email,
+        projectName: payload.form.custom_project_name,
+        rawNotes: payload.form.notes,
+      });
 
       const dataPayload: Record<string, unknown> = {
-        customer_id: isCustom ? null : payload.form.customer_id || null,
-        customer_name: isCustom ? payload.form.customer_name?.trim() : null,
-        customer_address: isCustom ? payload.form.customer_address || null : null,
-        customer_trn: isCustom ? payload.form.customer_trn || null : null,
-        contact_person: isCustom ? payload.form.contact_person || null : null,
-        contact_number: isCustom ? payload.form.contact_number || null : null,
-        contact_email: isCustom ? payload.form.contact_email || null : null,
-        custom_project_name: isCustom ? payload.form.custom_project_name || null : null,
-        is_custom_customer: isCustom,
-        custom_customer: customPayload,
+        ...snapshot.fullColumns,
         project_id: payload.form.project_id || null,
         invoice_date: payload.form.invoice_date || null,
         supply_date: payload.form.supply_date || null,
@@ -395,7 +413,7 @@ function TIContent() {
         vat_amount: payload.vat_amount,
         total_amount: payload.total_amount,
         payment_terms: payload.form.payment_terms || null,
-        notes: rawNotes || null,
+        notes: snapshot.notesWithFallback,
         updated_at: new Date().toISOString(),
       };
 
@@ -447,6 +465,21 @@ function TIContent() {
         const isNotNullCustomer = errObj?.code === "23502" && (errObj?.message?.includes("customer_id") || JSON.stringify(errObj).includes("customer_id"));
 
         if (isColErr) {
+          const notesGuaranteed = snapshot.notesWithFallback || (snapshot.customPayload
+            ? buildDocumentPartySnapshot({
+                partyType: "customer",
+                isCustom: true,
+                name: snapshot.resolvedName,
+                address: snapshot.resolvedAddress,
+                trn: snapshot.resolvedTrn,
+                contactPerson: snapshot.resolvedContact,
+                phone: snapshot.resolvedPhone,
+                email: snapshot.resolvedEmail,
+                projectName: snapshot.resolvedProjectName,
+                rawNotes: payload.form.notes,
+              }).notesWithFallback
+            : snapshot.cleanNotes);
+
           const minimalPayload: Record<string, unknown> = {
             customer_id: isCustom ? null : payload.form.customer_id || null,
             project_id: payload.form.project_id || null,
@@ -457,7 +490,7 @@ function TIContent() {
             vat_amount: payload.vat_amount,
             total_amount: payload.total_amount,
             payment_terms: payload.form.payment_terms || null,
-            notes: rawNotes || null,
+            notes: notesGuaranteed,
             updated_at: new Date().toISOString(),
           };
           try {
@@ -583,6 +616,16 @@ function TIContent() {
       setEditing(null);
       setSuccess(`Tax invoice ${saveRes.invoiceNumber} ${editing ? "updated" : "saved"} successfully.`);
       await loadAll();
+      if (payload.exportAfterSave && saveRes.id) {
+        const { data: freshTi } = await supabase
+          .from("tax_invoices")
+          .select("*, customer:customers(*)")
+          .eq("id", saveRes.id)
+          .maybeSingle();
+        if (freshTi) {
+          await openPrint(withCustomerDocumentDetails(freshTi as TI) as TI);
+        }
+      }
     } catch (err: unknown) {
       const msg = parseDatabaseError(err, "Failed to save tax invoice. Please check required fields and network.");
       setError(msg);
@@ -605,13 +648,13 @@ function TIContent() {
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="app-screen-content no-print">
-        <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-        <div className="flex items-center gap-3"><div className="rounded-xl bg-slate-900 p-2.5 text-white"><FileCheck2 size={22}/></div><div><h1 className="text-2xl font-bold text-slate-900">Tax Invoices</h1><p className="text-sm text-slate-500">UAE VAT-compliant tax invoices</p></div></div>
-        <div className="flex items-center gap-2">
+        <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 sm:px-6 py-4 sm:py-5">
+        <div className="flex items-center gap-3"><div className="rounded-xl bg-slate-900 p-2.5 text-white shrink-0"><FileCheck2 size={22}/></div><div><h1 className="text-xl sm:text-2xl font-bold text-slate-900">Tax Invoices</h1><p className="text-xs sm:text-sm text-slate-500">UAE VAT-compliant tax invoices</p></div></div>
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setShowMappingModal(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm"
+            className="flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm"
             title="Preview numbering simplification and check for collisions"
           >
             Numbering Preview
@@ -619,29 +662,29 @@ function TIContent() {
           <button
             type="button"
             onClick={() => setShowImportModal(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm"
+            className="flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm"
             title="Import Invoices from Excel, CSV, or PDF"
           >
             <Upload size={16} className="text-cyan-600" />
-            Import Invoices
+            <span className="hidden xs:inline sm:inline">Import</span>
           </button>
           <button
             type="button"
             onClick={handleExportInvoices}
             disabled={filtered.length === 0}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm disabled:opacity-50"
+            className="flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm disabled:opacity-50"
             title="Export filtered invoices to CSV"
           >
             <Download size={16} className="text-emerald-600" />
-            Export
+            <span>Export</span>
           </button>
-          <button onClick={openAdd} className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"><Plus size={18}/>New Invoice</button>
+          <button onClick={openAdd} className="flex min-h-10 flex-1 sm:flex-none justify-center items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-slate-800"><Plus size={18}/>New Invoice</button>
         </div>
       </div></header>
-      <div className="mx-auto max-w-7xl px-6 py-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-5 sm:py-8">
         {success && <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
         {error && !showForm && <div className="mb-5 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button onClick={()=>setError("")}><X size={16}/></button></div>}
-        <div className="mb-6 flex gap-3"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search invoices…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/></div><select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm appearance-none focus:outline-none"><option value="">All Status</option><option value="draft">Draft</option><option value="issued">Final</option><option value="cancelled">Cancelled</option><option value="partially_paid">Partially Paid</option><option value="paid">Paid</option><option value="overdue">Overdue</option></select></div>
+        <div className="mb-6 flex flex-col sm:flex-row gap-3"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search invoices…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/></div><select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm appearance-none focus:outline-none"><option value="">All Status</option><option value="draft">Draft</option><option value="issued">Final</option><option value="cancelled">Cancelled</option><option value="partially_paid">Partially Paid</option><option value="paid">Paid</option><option value="overdue">Overdue</option></select></div>
         {loading ? <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-slate-400"/></div> : loadError ? (
           <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-16 text-center">
             <p className="text-sm font-semibold text-red-700">Could not load tax invoices.</p>
@@ -651,7 +694,7 @@ function TIContent() {
         ) : filtered.length===0 ? (
           <div className="rounded-xl border border-slate-200 bg-white py-20 text-center"><FileCheck2 size={40} className="mx-auto mb-3 text-slate-300"/><p className="text-sm text-slate-500">No tax invoices.</p></div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><th className="px-4 py-3">Invoice No.</th><th className="px-4 py-3">Customer / Project</th><th className="px-4 py-3">Date</th><th className="px-4 py-3 text-right">Taxable</th><th className="px-4 py-3 text-right">VAT</th><th className="px-4 py-3 text-right">Total (AED)</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Actions</th></tr></thead>
               <tbody className="divide-y divide-slate-100">{filtered.map(ti=>(
@@ -733,6 +776,41 @@ function TIContent() {
                 </tr>
               ))}</tbody>
             </table>
+          </div>
+        )}
+        {!loading && !loadError && filtered.length > 0 && (
+          <div className="md:hidden space-y-3">
+            {filtered.map((ti) => (
+              <div key={`m_${ti.id}`} className="rounded-xl border border-slate-200 bg-white p-4 space-y-2.5 text-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="font-mono text-xs font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                      {formatDisplayDocNumber(ti.invoice_number, "tax_invoice") || "—"}
+                    </span>
+                    <div className="font-semibold text-slate-900 mt-1">
+                      {ti.customer_name || custMap[ti.customer_id || ""]?.name || "—"}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="font-mono font-bold text-slate-900 block">{fmtAED(ti.total_amount)}</span>
+                    <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusClass(ti.status || "Draft")}`}>
+                      {ti.status || "Draft"}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs text-slate-500 border-t border-slate-100 pt-2">
+                  <span>{fmtDate(ti.invoice_date)}</span>
+                  <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={() => openPrint(ti)} className="min-h-10 px-2.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 inline-flex items-center gap-1">
+                      <Printer size={13} /> PDF
+                    </button>
+                    <button type="button" onClick={() => openEdit(ti)} className="min-h-10 px-2.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700 inline-flex items-center gap-1">
+                      <Pencil size={13} /> Edit
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

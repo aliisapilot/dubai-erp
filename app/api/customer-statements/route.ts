@@ -158,7 +158,15 @@ export async function GET(req: NextRequest) {
 
     // Segregate attachments: Only statements where s.is_verified && !s.needs_review
     // can populate customerSavedSoa. Unverified/pending statements are segregated as pendingDocuments.
-    const verifiedStatements = statements.filter((s) => s.is_verified && !s.needs_review);
+    // Sort verified statements newest-first by statement_date/to_date so overlapping older SOAs
+    // are never combined with newer cutover statements.
+    const verifiedStatements = statements
+      .filter((s) => s.is_verified && !s.needs_review)
+      .sort((a, b) =>
+        (b.to_date || b.statement_date || b.created_at || "").localeCompare(
+          a.to_date || a.statement_date || a.created_at || ""
+        )
+      );
     const pendingDocuments = statements.filter((s) => !s.is_verified || s.needs_review);
 
     let statementData = null;
@@ -169,30 +177,30 @@ export async function GET(req: NextRequest) {
     if (targetCustomerId) {
       selectedCustomer = customers?.find((c) => c.id === targetCustomerId) || null;
 
-      // Find newest verified SOA for this customer
+      // Pick single latest verified SOA for this customer (never sum overlapping historical SOAs)
       customerSavedSoa = verifiedStatements.find((s) => s.customer_id === targetCustomerId) || null;
 
-      // Fetch live invoices & receipts & payments
+      // Fetch live invoices & receipts & payments (filter cancelled/void in JS so NULL status rows are never dropped)
       const [invRes, recRes, payRes] = await Promise.all([
         supabase
           .from("tax_invoices")
           .select("id, invoice_number, invoice_date, total_amount, status, company_id, customer_id, customer_name, customer_trn, notes")
           .eq("company_id", companyId)
-          .eq("customer_id", targetCustomerId)
-          .not("status", "in", '("cancelled","void")'),
+          .eq("customer_id", targetCustomerId),
         supabase
           .from("receipt_vouchers")
-          .select("id, voucher_number, voucher_date, amount, status, invoice_id, payment_method, reference_number, notes")
+          .select("id, voucher_number, voucher_date, amount, status, payment_method, cheque_number, tax_invoice_id, notes")
           .eq("company_id", companyId)
-          .eq("customer_id", targetCustomerId)
-          .not("status", "in", '("cancelled","void")'),
+          .eq("customer_id", targetCustomerId),
         supabase
           .from("payments")
-          .select("id, payment_number, payment_date, amount, status, invoice_id, reference_number, notes")
+          .select("id, payment_number, payment_date, amount, status, payment_method, reference_number, notes")
           .eq("company_id", companyId)
-          .eq("customer_id", targetCustomerId)
-          .not("status", "in", '("cancelled","void")'),
+          .eq("customer_id", targetCustomerId),
       ]);
+      if (invRes.error) console.warn("[CustomerStatements] tax_invoices query error:", invRes.error.message);
+      if (recRes.error) console.warn("[CustomerStatements] receipt_vouchers query error:", recRes.error.message);
+      if (payRes.error) console.warn("[CustomerStatements] payments query error:", payRes.error.message);
 
       const rawInvoices = (invRes.data || []) as RawInvoice[];
       const rawReceipts = (recRes.data || []) as RawReceiptVoucher[];
@@ -218,71 +226,87 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Precompute company-wide customer financial summaries for Live Statements tab
+    // Precompute company-wide customer financial summaries via calculateCustomerStatement
+    // (Single Source of Truth: handles verified historical entries + live ERP deduplication identically to detail view).
     const [allInvRes, allRecRes, allPayRes] = await Promise.all([
       supabase
         .from("tax_invoices")
-        .select("customer_id, total_amount")
-        .eq("company_id", companyId)
-        .not("status", "in", '("cancelled","void")'),
+        .select("id, customer_id, invoice_number, invoice_date, total_amount, status")
+        .eq("company_id", companyId),
       supabase
         .from("receipt_vouchers")
-        .select("customer_id, amount")
-        .eq("company_id", companyId)
-        .not("status", "in", '("cancelled","void")'),
+        .select("id, customer_id, voucher_number, voucher_date, amount, status, payment_method, cheque_number")
+        .eq("company_id", companyId),
       supabase
         .from("payments")
-        .select("customer_id, amount")
-        .eq("company_id", companyId)
-        .not("status", "in", '("cancelled","void")'),
+        .select("id, customer_id, payment_number, reference_number, payment_date, amount, status, payment_method")
+        .eq("company_id", companyId),
     ]);
+    if (allInvRes.error) console.warn("[CustomerStatements] all tax_invoices error:", allInvRes.error.message);
+    if (allRecRes.error) console.warn("[CustomerStatements] all receipt_vouchers error:", allRecRes.error.message);
+    if (allPayRes.error) console.warn("[CustomerStatements] all payments error:", allPayRes.error.message);
 
-    const custInvoicesMap = new Map<string, { total: number; count: number }>();
+    const invByCust = new Map<string, RawInvoice[]>();
     (allInvRes.data || []).forEach((row) => {
-      if (row.customer_id) {
-        const curr = custInvoicesMap.get(row.customer_id) || { total: 0, count: 0 };
-        curr.total += Number(row.total_amount) || 0;
-        curr.count += 1;
-        custInvoicesMap.set(row.customer_id, curr);
-      }
+      if (!row.customer_id) return;
+      const list = invByCust.get(row.customer_id) || [];
+      list.push(row as RawInvoice);
+      invByCust.set(row.customer_id, list);
     });
 
-    const custPaymentsMap = new Map<string, { total: number; count: number }>();
+    const recByCust = new Map<string, RawReceiptVoucher[]>();
     (allRecRes.data || []).forEach((row) => {
-      if (row.customer_id) {
-        const curr = custPaymentsMap.get(row.customer_id) || { total: 0, count: 0 };
-        curr.total += Number(row.amount) || 0;
-        curr.count += 1;
-        custPaymentsMap.set(row.customer_id, curr);
-      }
+      if (!row.customer_id) return;
+      const list = recByCust.get(row.customer_id) || [];
+      list.push(row as RawReceiptVoucher);
+      recByCust.set(row.customer_id, list);
     });
+
+    const payByCust = new Map<string, RawPayment[]>();
     (allPayRes.data || []).forEach((row) => {
-      if (row.customer_id) {
-        const curr = custPaymentsMap.get(row.customer_id) || { total: 0, count: 0 };
-        curr.total += Number(row.amount) || 0;
-        curr.count += 1;
-        custPaymentsMap.set(row.customer_id, curr);
-      }
+      if (!row.customer_id) return;
+      const list = payByCust.get(row.customer_id) || [];
+      list.push(row as RawPayment);
+      payByCust.set(row.customer_id, list);
     });
 
     const customerSummaries = (customers || []).map((c) => {
-      const invData = custInvoicesMap.get(c.id) || { total: 0, count: 0 };
-      const payData = custPaymentsMap.get(c.id) || { total: 0, count: 0 };
+      const custInvoices = invByCust.get(c.id) || [];
+      const custReceipts = recByCust.get(c.id) || [];
+      const custPayments = payByCust.get(c.id) || [];
       const verifiedSoa = verifiedStatements.find((s) => s.customer_id === c.id);
-      const openBal = verifiedSoa?.opening_balance || 0;
-      const outstanding = Math.round((openBal + invData.total - payData.total) * 100) / 100;
+
+      const calc = calculateCustomerStatement({
+        customerId: c.id,
+        customerName: c.name,
+        customerCode: c.customer_code || null,
+        customerTrn: c.trn || null,
+        initialCutoverBalance: verifiedSoa?.opening_balance || 0,
+        cutoverDate: verifiedSoa?.cutover_date || null,
+        fromDate: verifiedSoa?.from_date || null,
+        toDate: verifiedSoa?.to_date || null,
+        invoices: custInvoices,
+        receipts: custReceipts,
+        payments: custPayments,
+        historicalEntries: verifiedSoa?.entries || [],
+        statementNumber: verifiedSoa?.soa_number || undefined,
+        statementDate: verifiedSoa?.statement_date || undefined,
+      });
+
+      const invoiceEntries = calc.entries.filter((e) => e.debit > 0);
+      const paymentEntries = calc.entries.filter((e) => e.credit > 0);
 
       return {
         customerId: c.id,
         customerName: c.name,
         customerCode: c.customer_code || null,
         trn: c.trn || null,
-        invoiceCount: invData.count,
-        totalInvoices: Math.round(invData.total * 100) / 100,
-        paymentCount: payData.count,
-        totalPayments: Math.round(payData.total * 100) / 100,
-        openingBalance: openBal,
-        outstandingBalance: outstanding,
+        invoiceCount: invoiceEntries.length,
+        totalInvoices: Math.round((calc.total_debits || 0) * 100) / 100,
+        paymentCount: paymentEntries.length,
+        totalPayments: Math.round((calc.total_credits || 0) * 100) / 100,
+        openingBalance: calc.opening_balance,
+        outstandingBalance: calc.closing_balance,
       };
     });
 
@@ -787,9 +811,12 @@ export async function PUT(req: NextRequest) {
     const finalSoaNumber = soaNumber?.trim() || stored.soa_number;
     const finalStatementDate = statementDate !== undefined ? statementDate : stored.statement_date;
     const openingBalance = newOpeningBalance !== undefined ? Math.round(Number(newOpeningBalance) * 100) / 100 : stored.opening_balance;
-    const closingBalance = newClosingBalance !== undefined && newClosingBalance !== null
-      ? Math.round(Number(newClosingBalance) * 100) / 100
-      : Math.round((openingBalance + totalDebits - totalCredits) * 100) / 100;
+    const closingBalance =
+      newClosingBalance === null
+        ? null
+        : newClosingBalance !== undefined
+        ? Math.round(Number(newClosingBalance) * 100) / 100
+        : stored.closing_balance;
 
     const isStillVerified = requestedVerified !== undefined
       ? Boolean(requestedVerified && existingEntries.length > 0)

@@ -74,6 +74,7 @@ export interface RawHistoricalEntry {
   matched_payment_id?: string;
   matched_voucher_id?: string;
   is_edited?: boolean;
+  needs_review?: boolean;
   source_doc_id?: string;
   source_filename?: string;
   created_at?: string;

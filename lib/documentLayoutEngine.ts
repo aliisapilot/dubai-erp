@@ -334,21 +334,21 @@ export function estimatePartyInfoHeight(layout: DocumentLayout, text?: DocumentF
       : party.type === "project_info"
       ? [text.project_name, text.location, text.scope_of_work]
       : [text.customer_name, text.customer_trn, text.customer_address, text.contact_person, text.contact_number, text.contact_email, text.project_name];
-    const fontSize = Math.max(9.5, party.fontSize || 10.5);
+    const fontSize = Math.max(7.2, Math.min(party.fontSize || 8.0, 9.5));
     const textLines = fields.filter((value): value is string => Boolean(value?.trim())).reduce(
-      (count, value) => count + estimateWrappedLines(value, party.width - (party.padding || 3) * 2, fontSize),
+      (count, value) => count + estimateWrappedLines(value, party.width - Math.min(party.padding || 2.5, 2.5) * 2, fontSize),
       1
     );
-    const headingHeightMm = 4.5;
-    const lineHeightMm = (fontSize * 1.35) / 3.7795;
-    partyHeight = headingHeightMm + textLines * lineHeightMm + (party.padding || 3) * 2 + 2;
+    const headingHeightMm = 4.2;
+    const lineHeightMm = (fontSize * 1.2) / 3.7795;
+    partyHeight = headingHeightMm + textLines * lineHeightMm + Math.min(party.padding || 2.5, 2.5) * 2 + 1.5;
   }
 
   let metaHeight = 0;
   if (meta) {
-    const metaFontSize = Math.max(8.0, meta.fontSize || 8.5);
-    const metaLineHeightMm = (metaFontSize * 1.35) / 3.7795;
-    const innerWidth = meta.width - (meta.padding || 3.2) * 2;
+    const metaFontSize = Math.max(7.2, Math.min(meta.fontSize || 8.0, 9.5));
+    const metaLineHeightMm = (metaFontSize * 1.2) / 3.7795;
+    const innerWidth = meta.width - Math.min(meta.padding || 2.5, 2.5) * 2;
     // Heading line
     let lines = 1;
     // Dates line (Date & Supply)
@@ -367,13 +367,14 @@ export function estimatePartyInfoHeight(layout: DocumentLayout, text?: DocumentF
     if (text.project_name) {
       lines += estimateWrappedLines(text.project_name, innerWidth, metaFontSize);
     }
-    const headingMm = 5.0;
-    metaHeight = headingMm + lines * metaLineHeightMm + (meta.padding || 3.2) * 2 + 2;
+    const headingMm = 4.5;
+    metaHeight = headingMm + lines * metaLineHeightMm + Math.min(meta.padding || 2.5, 2.5) * 2 + 1.5;
   }
 
   const maxEstimated = Math.max(partyHeight, metaHeight);
   const maxDesigned = Math.max(party?.height || 0, meta?.height || 0);
-  return Math.max(maxDesigned, maxEstimated);
+  // Allow shrinking excess vertical box padding when actual content is compact while never clipping long info
+  return Math.max(22, Math.min(maxDesigned, maxEstimated + 3.5), maxEstimated);
 }
 
 /**
@@ -771,9 +772,13 @@ export function computeIntelligentFitProfile(
     }
 
     const minTableYAllowed = maxAboveBottom + tier.gap;
+    const compactGapSlide =
+      isSmartFitEnabled && smartFit.automaticSpacing !== false && table.y - minTableYAllowed > 4.0;
     const tableY = isSmartFitEnabled && smartFit.automaticSpacing !== false
       ? (tier.allowSlideTableUp
           ? (minTableYAllowed > table.y ? minTableYAllowed : Math.min(table.y, effectiveAbove + tier.gap))
+          : compactGapSlide
+          ? minTableYAllowed
           : Math.max(table.y, minTableYAllowed))
       : Math.max(table.y, minTableYAllowed);
 
@@ -1050,13 +1055,26 @@ export function computeEffectiveLayout(
 
   const headerLayoutMap = new Map<string, { y: number; height: number }>();
   if (isManualMode) {
-    // In MANUAL DESIGN mode: strictly preserve exact user positions and heights, but expand party/meta cards when needed for readability
+    // In MANUAL DESIGN mode: strictly preserve exact user positions and heights, while keeping paired
+    // Customer Info & Document Reference boxes aligned and large enough for readable content.
+    const partyEl = elementsAbove.find((el) => ["customer_info", "supplier_info", "project_info"].includes(el.type));
+    const metaEl = elementsAbove.find((el) => el.type === "doc_meta");
+    const pairedZone2 = Boolean(partyEl && metaEl && Math.abs(partyEl.y - metaEl.y) <= 6);
+    const sharedZone2Y = pairedZone2 ? Math.min(partyEl!.y, metaEl!.y) : undefined;
+    const sharedZone2H = pairedZone2
+      ? Math.max(partyEl!.height, metaEl!.height, fitProfile.partyInfoHeight || 0)
+      : undefined;
+
     for (const el of elementsAbove) {
       const isParty = ["customer_info", "supplier_info", "project_info", "doc_meta"].includes(el.type);
-      const height = isParty && fitProfile.partyInfoHeight
-        ? Math.max(el.height, fitProfile.partyInfoHeight)
-        : el.height;
-      headerLayoutMap.set(el.id, { y: el.y, height });
+      if (isParty && sharedZone2Y !== undefined && sharedZone2H !== undefined) {
+        headerLayoutMap.set(el.id, { y: sharedZone2Y, height: sharedZone2H });
+      } else {
+        const height = isParty && fitProfile.partyInfoHeight
+          ? Math.max(el.height, fitProfile.partyInfoHeight)
+          : el.height;
+        headerLayoutMap.set(el.id, { y: el.y, height });
+      }
     }
 
     // Clearance guard: guarantee table strictly clears all elements above it without overlapping
@@ -1128,19 +1146,20 @@ export function computeEffectiveLayout(
         }))
       : minHeaderY;
 
-    const minZone2Y = zone1Bottom + (tableShift > 0 && fitProfile.level !== "standard" ? 1.5 : 2.5);
+    const minZone2Y = zone1Bottom + (tableShift > 0 && fitProfile.level !== "standard" ? 1.5 : 2.0);
 
     if (partyElement || metaElement) {
       const rawPartyY = Math.min(partyElement?.y ?? 60, metaElement?.y ?? 60);
-      const targetPartyY = Math.max(minZone2Y, rawPartyY);
+      const targetPartyY = rawPartyY - minZone2Y > 4.0 && layout.page.smartFit?.automaticSpacing !== false
+        ? minZone2Y
+        : Math.max(minZone2Y, rawPartyY);
 
       const estPartyH = fitProfile.partyInfoHeight || estimatePartyInfoHeight(layout, documentText) || 24;
-      let targetPartyHeight = Math.max(
-        estPartyH,
-        partyElement?.height ?? 0,
-        metaElement?.height ?? 0,
-        22.0
-      );
+      const designedZone2H = Math.max(partyElement?.height ?? 0, metaElement?.height ?? 0);
+      let targetPartyHeight =
+        layout.page.smartFit?.automaticSpacing !== false && designedZone2H - estPartyH > 5.0
+          ? Math.max(estPartyH + 1.5, 22.0)
+          : Math.max(estPartyH, designedZone2H, 22.0);
 
       if (tableShift > 0 && fitProfile.level !== "standard" && !fitProfile.partyInfoHeight) {
         if (fitProfile.level === "ultra_dense") {
@@ -1195,13 +1214,21 @@ export function computeEffectiveLayout(
 
   if (followers.length > 0 && isLastPage) {
     if (isManualMode) {
-      if ((isCompactEmptySpace || layout.documentType === "measurement_sheet") && table) {
-        // "Compact Empty Space" enabled in manual mode:
+      const firstFollowerManualY = Math.min(...followers.map((f) => f.y));
+      const excessTableVoid = firstFollowerManualY - actualTableBottom;
+      const shouldCompactVoid =
+        (isCompactEmptySpace ||
+          layout.documentType === "measurement_sheet" ||
+          (layout.documentType !== "customer_statement" &&
+            layout.page?.compactEmptySpace !== false &&
+            excessTableVoid > 10.0)) &&
+        table;
+
+      if (shouldCompactVoid && table) {
         // Move Amount in Words, Totals, Bank Details, Terms, Signature upward based on actual line-item rows,
-        // maintaining consistent relative spacing and alignment, preventing collisions, and keeping baseline manual coordinates untouched.
-        const firstFollowerManualY = Math.min(...followers.map((f) => f.y));
+        // maintaining consistent relative spacing and alignment without artificial dead whitespace.
         const tableDesignedBottom = table.y + table.height;
-        const baselineGap = Math.max(2.5, firstFollowerManualY - tableDesignedBottom);
+        const baselineGap = Math.max(2.5, Math.min(6.0, firstFollowerManualY - tableDesignedBottom));
         const targetFirstFollowerY = actualTableBottom + baselineGap;
         const emptySpaceShift = targetFirstFollowerY - firstFollowerManualY;
 

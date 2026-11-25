@@ -4,7 +4,7 @@ import React, { ReactNode, useState } from "react";
 import { Download, Printer } from "lucide-react";
 import { getBrandConfig, BrandColors, CompanyBrandInput } from "@/lib/brandConfig";
 import { printCurrentDocument } from "@/lib/print";
-import { exportDocumentToPdf } from "@/lib/exportDocumentPdf";
+import { exportDocumentToPdf, isMobileBrowser } from "@/lib/exportDocumentPdf";
 import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import PageDecorativeBorders from "./PageDecorativeBorders";
 import { DEFAULT_PAGE_BORDERS, PageBorderSettings, DocumentLayout } from "@/lib/documentDesigner";
@@ -71,6 +71,7 @@ export default function DocumentContainer({
   projectName,
 }: DocumentContainerProps) {
   const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<{ message: string; action: "download" | "print" } | null>(null);
 
   const { filename: defaultPdfFilename, title: defaultDocTitle } = generateDocumentPdfFilename({
     docType: docTypeLabel || layout?.documentType,
@@ -83,8 +84,25 @@ export default function DocumentContainer({
   });
 
   const handlePrint = async () => {
+    setExportError(null);
     if (onPrint) {
       onPrint();
+    } else if (isMobileBrowser()) {
+      setIsExporting(true);
+      try {
+        await exportDocumentToPdf({
+          filename: defaultPdfFilename,
+          action: "print",
+        });
+      } catch (err) {
+        console.error("Mobile PDF print error:", err);
+        setExportError({
+          message: err instanceof Error ? err.message : "Failed to generate PDF for printing.",
+          action: "print",
+        });
+      } finally {
+        setIsExporting(false);
+      }
     } else {
       await printCurrentDocument({
         documentFilename: defaultPdfFilename,
@@ -95,12 +113,17 @@ export default function DocumentContainer({
 
   const handleDownloadPdf = async () => {
     setIsExporting(true);
+    setExportError(null);
     try {
       await exportDocumentToPdf({
         filename: defaultPdfFilename,
       });
     } catch (err) {
       console.error("PDF Export error:", err);
+      setExportError({
+        message: err instanceof Error ? err.message : "Failed to generate PDF from server renderer.",
+        action: "download",
+      });
     } finally {
       setIsExporting(false);
     }
@@ -191,6 +214,28 @@ export default function DocumentContainer({
                 Close
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {!hideControls && exportError && (
+        <div className="no-print w-[210mm] max-w-full mx-auto mb-3 flex items-center justify-between gap-3 rounded-lg border border-rose-300 bg-rose-50 px-4 py-2.5 text-xs text-rose-800 shadow-sm">
+          <span>{exportError.message}</span>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void (exportError.action === "print" ? handlePrint() : handleDownloadPdf())}
+              className="rounded bg-rose-600 px-3 py-1 font-bold text-white hover:bg-rose-500 cursor-pointer"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => setExportError(null)}
+              className="rounded px-2 py-1 font-semibold text-rose-600 hover:bg-rose-100 cursor-pointer"
+            >
+              Dismiss
+            </button>
           </div>
         </div>
       )}

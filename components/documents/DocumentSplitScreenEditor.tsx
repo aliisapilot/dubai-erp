@@ -34,6 +34,7 @@ import { calcLineItem, fmtAED, todayISO } from "@/lib/helpers";
 import { parseDatabaseError } from "@/lib/paymentTypes";
 import { NumericCellInput } from "@/components/ui/NumericCellInput";
 import { stripCustomPartyTags } from "@/lib/documentCustomer";
+import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import PrintModal from "./PrintModal";
 
 export interface EditorLineItem {
@@ -198,6 +199,7 @@ export interface DocumentSplitScreenEditorProps {
     subtotal: number;
     vat_amount: number;
     total_amount: number;
+    exportAfterSave?: boolean;
   }) => Promise<void>;
   saving?: boolean;
   onRename?: () => void;
@@ -310,6 +312,10 @@ function DocumentSplitScreenEditorWorkspace({
     initiallyCustom ? "custom" : "existing"
   );
 
+  const initialMasterParty = isSupplierParty
+    ? suppliers.find((s) => s.id === (initialInvoice?.supplier_id || initialInvoice?.customer_id))
+    : customers.find((c) => c.id === initialInvoice?.customer_id);
+
   const [customParty, setCustomParty] = useState<{
     name: string;
     address: string;
@@ -319,14 +325,26 @@ function DocumentSplitScreenEditorWorkspace({
     trn: string;
     project_name: string;
   }>(() => ({
-    name: initialInvoice?.customer_name || initialInvoice?.supplier_name || "",
-    address: initialInvoice?.customer_address || initialInvoice?.supplier_address || "",
-    contact_person: initialInvoice?.contact_person || (initialInvoice as Record<string, unknown>)?.vendor_contact as string || "",
-    phone: initialInvoice?.contact_number || (initialInvoice as Record<string, unknown>)?.contact_mobile as string || (initialInvoice as Record<string, unknown>)?.vendor_mobile as string || "",
-    email: initialInvoice?.contact_email || (initialInvoice as Record<string, unknown>)?.vendor_email as string || "",
-    trn: initialInvoice?.customer_trn || initialInvoice?.supplier_trn || (initialInvoice as Record<string, unknown>)?.vendor_trn as string || "",
+    name: initialInvoice?.customer_name || initialInvoice?.supplier_name || initialMasterParty?.name || "",
+    address: initialInvoice?.customer_address || initialInvoice?.supplier_address || initialMasterParty?.address || "",
+    contact_person: initialInvoice?.contact_person || (initialInvoice as Record<string, unknown>)?.vendor_contact as string || initialMasterParty?.contact_person || "",
+    phone:
+      initialInvoice?.contact_number ||
+      (initialInvoice as Record<string, unknown>)?.contact_mobile as string ||
+      (initialInvoice as Record<string, unknown>)?.vendor_mobile as string ||
+      (initialMasterParty as { mobile?: string | null; phone?: string | null } | undefined)?.mobile ||
+      initialMasterParty?.phone ||
+      "",
+    email: initialInvoice?.contact_email || (initialInvoice as Record<string, unknown>)?.vendor_email as string || initialMasterParty?.email || "",
+    trn: initialInvoice?.customer_trn || initialInvoice?.supplier_trn || (initialInvoice as Record<string, unknown>)?.vendor_trn as string || initialMasterParty?.trn || "",
     project_name: (initialInvoice as Record<string, unknown>)?.custom_project_name as string || "",
   }));
+
+  const [showSnapshotOverride, setShowSnapshotOverride] = useState<boolean>(() => {
+    const savedName = (initialInvoice?.customer_name || initialInvoice?.supplier_name || "").trim();
+    const masterName = (initialMasterParty?.name || "").trim();
+    return Boolean(savedName && masterName && savedName !== masterName);
+  });
 
   // Editable bullet terms state
   const [termsList, setTermsList] = useState<string[]>(() => {
@@ -465,6 +483,25 @@ function DocumentSplitScreenEditorWorkspace({
     setDirty(true);
   };
 
+  const handleSelectExistingParty = (newId: string) => {
+    setForm((prev) => ({ ...prev, customer_id: newId }));
+    if (newId) {
+      const found = isSupplierParty ? suppMap[newId] : custMap[newId];
+      if (found) {
+        setCustomParty((prev) => ({
+          ...prev,
+          name: found.name || "",
+          address: found.address || "",
+          contact_person: found.contact_person || "",
+          phone: (found as { mobile?: string | null; phone?: string | null }).mobile || found.phone || "",
+          email: found.email || "",
+          trn: found.trn || "",
+        }));
+      }
+    }
+    setDirty(true);
+  };
+
   // Payment terms bullet manipulation handlers
   const syncTerms = (newList: string[]) => {
     setTermsList(newList);
@@ -507,44 +544,57 @@ function DocumentSplitScreenEditorWorkspace({
     const effectiveNumber = isNew ? "[DRAFT - Assigned on Save]" : effectiveDocNumber;
 
     const isCustom = partyMode === "custom";
+    const fallbackName = isSupplierParty ? "Supplier / Vendor Name" : "Customer / Client Name";
 
-    const partyName = isCustom
-      ? customParty.name.trim() || (isSupplierParty ? "Supplier / Vendor Name" : "Customer / Client Name")
-      : isSupplierParty
-      ? selectedSupplier?.name || "Supplier / Vendor Name"
-      : selectedCustomer?.name || "Customer / Client Name";
+    const partyName =
+      customParty.name.trim() ||
+      (isCustom
+        ? fallbackName
+        : isSupplierParty
+        ? selectedSupplier?.name || fallbackName
+        : selectedCustomer?.name || fallbackName);
 
-    const partyTrn = isCustom
-      ? customParty.trn.trim() || undefined
-      : isSupplierParty
-      ? selectedSupplier?.trn || undefined
-      : selectedCustomer?.trn || undefined;
+    const partyTrn =
+      customParty.trn.trim() ||
+      (!isCustom
+        ? isSupplierParty
+          ? selectedSupplier?.trn || undefined
+          : selectedCustomer?.trn || undefined
+        : undefined);
 
-    const partyAddress = isCustom
-      ? customParty.address.trim() || undefined
-      : isSupplierParty
-      ? selectedSupplier?.address || undefined
-      : selectedCustomer?.address || undefined;
+    const partyAddress =
+      customParty.address.trim() ||
+      (!isCustom
+        ? isSupplierParty
+          ? selectedSupplier?.address || undefined
+          : selectedCustomer?.address || undefined
+        : undefined);
 
-    const partyContact = isCustom
-      ? customParty.contact_person.trim() || undefined
-      : isSupplierParty
-      ? selectedSupplier?.contact_person || undefined
-      : selectedCustomer?.contact_person || undefined;
+    const partyContact =
+      customParty.contact_person.trim() ||
+      (!isCustom
+        ? isSupplierParty
+          ? selectedSupplier?.contact_person || undefined
+          : selectedCustomer?.contact_person || undefined
+        : undefined);
 
-    const partyPhone = isCustom
-      ? customParty.phone.trim() || undefined
-      : isSupplierParty
-      ? selectedSupplier?.phone || undefined
-      : selectedCustomer?.phone || selectedCustomer?.mobile || undefined;
+    const partyPhone =
+      customParty.phone.trim() ||
+      (!isCustom
+        ? isSupplierParty
+          ? selectedSupplier?.phone || undefined
+          : selectedCustomer?.phone || selectedCustomer?.mobile || undefined
+        : undefined);
 
-    const partyEmail = isCustom
-      ? customParty.email.trim() || undefined
-      : isSupplierParty
-      ? selectedSupplier?.email || undefined
-      : selectedCustomer?.email || undefined;
+    const partyEmail =
+      customParty.email.trim() ||
+      (!isCustom
+        ? isSupplierParty
+          ? selectedSupplier?.email || undefined
+          : selectedCustomer?.email || undefined
+        : undefined);
 
-    const effectiveProjectName = isCustom && customParty.project_name.trim()
+    const effectiveProjectName = customParty.project_name.trim()
       ? customParty.project_name.trim()
       : selectedProject?.name || undefined;
 
@@ -656,7 +706,7 @@ function DocumentSplitScreenEditorWorkspace({
     ];
   }, [documentType]);
 
-  const handleSaveDocument = async (targetStatus?: string) => {
+  const handleSaveDocument = async (targetStatus?: string, options?: { exportAfterSave?: boolean }) => {
     if (isSubmitting || saving) return;
 
     let effectivePartyMode = partyMode;
@@ -689,39 +739,51 @@ function DocumentSplitScreenEditorWorkspace({
     setIsSubmitting(true);
     try {
       const finalStatus = targetStatus || form.status;
-      const finalCustomerName = isCustom
-        ? customParty.name.trim()
-        : isSupplierParty
-        ? selectedSupplier?.name || ""
-        : selectedCustomer?.name || "";
-      const finalTrn = isCustom
-        ? customParty.trn.trim() || null
-        : isSupplierParty
-        ? selectedSupplier?.trn || null
-        : selectedCustomer?.trn || null;
-      const finalAddress = isCustom
-        ? customParty.address.trim() || null
-        : isSupplierParty
-        ? selectedSupplier?.address || null
-        : selectedCustomer?.address || null;
-      const finalContact = isCustom
-        ? customParty.contact_person.trim() || null
-        : isSupplierParty
-        ? selectedSupplier?.contact_person || null
-        : selectedCustomer?.contact_person || null;
-      const finalPhone = isCustom
-        ? customParty.phone.trim() || null
-        : isSupplierParty
-        ? selectedSupplier?.phone || null
-        : selectedCustomer?.phone || selectedCustomer?.mobile || null;
-      const finalEmail = isCustom
-        ? customParty.email.trim() || null
-        : isSupplierParty
-        ? selectedSupplier?.email || null
-        : selectedCustomer?.email || null;
-      const finalProjectName = isCustom
-        ? customParty.project_name.trim() || null
-        : selectedProject?.name || null;
+      // Document snapshot ALWAYS preserves the entered/edited party name & details,
+      // falling back to the selected master party only if snapshot field is blank.
+      const finalCustomerName =
+        customParty.name.trim() ||
+        (!isCustom
+          ? isSupplierParty
+            ? selectedSupplier?.name || ""
+            : selectedCustomer?.name || ""
+          : "");
+      const finalTrn =
+        customParty.trn.trim() ||
+        (!isCustom
+          ? isSupplierParty
+            ? selectedSupplier?.trn || null
+            : selectedCustomer?.trn || null
+          : null);
+      const finalAddress =
+        customParty.address.trim() ||
+        (!isCustom
+          ? isSupplierParty
+            ? selectedSupplier?.address || null
+            : selectedCustomer?.address || null
+          : null);
+      const finalContact =
+        customParty.contact_person.trim() ||
+        (!isCustom
+          ? isSupplierParty
+            ? selectedSupplier?.contact_person || null
+            : selectedCustomer?.contact_person || null
+          : null);
+      const finalPhone =
+        customParty.phone.trim() ||
+        (!isCustom
+          ? isSupplierParty
+            ? selectedSupplier?.phone || null
+            : selectedCustomer?.phone || selectedCustomer?.mobile || null
+          : null);
+      const finalEmail =
+        customParty.email.trim() ||
+        (!isCustom
+          ? isSupplierParty
+            ? selectedSupplier?.email || null
+            : selectedCustomer?.email || null
+          : null);
+      const finalProjectName = customParty.project_name.trim() || selectedProject?.name || null;
 
       await onSave({
         form: {
@@ -745,6 +807,7 @@ function DocumentSplitScreenEditorWorkspace({
         subtotal: totals.sub,
         vat_amount: totals.vat,
         total_amount: totals.total,
+        exportAfterSave: options?.exportAfterSave,
       });
       setDirty(false);
     } catch (err: unknown) {
@@ -783,26 +846,26 @@ function DocumentSplitScreenEditorWorkspace({
       : "Date of Supply";
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex h-[100dvh] flex-col bg-slate-950/95 backdrop-blur-md pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] animate-in fade-in duration-150">
       {/* ── Top Header Bar ────────────────────────────────────────────────────────── */}
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900 px-4 text-white">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">
+      <header className="flex flex-wrap lg:flex-nowrap min-h-14 shrink-0 items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-3 py-2 pt-[calc(0.5rem+env(safe-area-inset-top))] sm:px-4 text-white">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="hidden sm:flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">
             <FileCheck2 size={18} />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold tracking-wide">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <h2 className="text-xs sm:text-sm font-bold tracking-wide truncate">
                 {effectiveDocNumber ? `Edit ${documentTitle}` : `New ${documentTitle}`}
               </h2>
-              <span className="font-mono text-xs rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-slate-300">
-                {effectiveDocNumber || "[Draft Preview]"}
+              <span className="font-mono text-[11px] sm:text-xs rounded border border-slate-700 bg-slate-800 px-1.5 sm:px-2 py-0.5 text-slate-300 truncate max-w-[140px] sm:max-w-none">
+                {effectiveDocNumber || "[Draft]"}
               </span>
               {effectiveDocNumber && onRename && (
                 <button
                   type="button"
                   onClick={onRename}
-                  className="flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 px-2.5 py-0.5 text-xs font-bold text-amber-300 transition cursor-pointer"
+                  className="hidden sm:flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 px-2.5 py-0.5 text-xs font-bold text-amber-300 transition cursor-pointer"
                   title="Edit document reference number independently"
                 >
                   <Pencil size={11} />
@@ -813,19 +876,19 @@ function DocumentSplitScreenEditorWorkspace({
                 <button
                   type="button"
                   onClick={() => scrollToTopError()}
-                  className="flex items-center gap-1.5 rounded border border-rose-500/50 bg-rose-500/20 px-2.5 py-0.5 text-[11px] font-bold text-rose-300 hover:bg-rose-500/30 transition cursor-pointer"
+                  className="flex items-center gap-1 rounded border border-rose-500/50 bg-rose-500/20 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold text-rose-300 hover:bg-rose-500/30 transition cursor-pointer"
                   title="Click to view error"
                 >
                   <AlertTriangle size={12} className="text-rose-400 shrink-0" />
                   <span>Action Needed</span>
                 </button>
               ) : dirty ? (
-                <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-400">
+                <span className="flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold text-amber-400">
                   <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-                  Unsaved Changes
+                  <span className="hidden xs:inline sm:inline">Unsaved</span>
                 </span>
               ) : (
-                <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="hidden sm:flex items-center gap-1 text-[11px] text-slate-400">
                   <CheckCircle2 size={12} className="text-emerald-400" />
                   Live Sync
                 </span>
@@ -835,55 +898,55 @@ function DocumentSplitScreenEditorWorkspace({
         </div>
 
         {/* Mobile Tab Switcher */}
-        <div className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 p-0.5 lg:hidden">
+        <div className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 p-0.5 lg:hidden shrink-0">
           <button
             type="button"
             onClick={() => setActiveTabMobile("form")}
-            className={`px-3 py-1 text-xs font-semibold rounded-md ${
+            className={`min-h-9 px-2.5 py-1 text-xs font-semibold rounded-md cursor-pointer ${
               activeTabMobile === "form" ? "bg-amber-500 text-slate-950 font-bold" : "text-slate-300"
             }`}
           >
-            Editor Form
+            Edit
           </button>
           <button
             type="button"
             onClick={() => setActiveTabMobile("preview")}
-            className={`px-3 py-1 text-xs font-semibold rounded-md ${
+            className={`min-h-9 px-2.5 py-1 text-xs font-semibold rounded-md cursor-pointer ${
               activeTabMobile === "preview" ? "bg-blue-600 text-white font-bold" : "text-slate-300"
             }`}
           >
-            Live PDF
+            PDF
           </button>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-2">
+        {/* Desktop Action Controls (Mobile actions are also pinned in sticky bottom footer) */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             type="button"
             onClick={handlePrint}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white cursor-pointer"
+            className="hidden sm:flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white cursor-pointer"
             title="Print or Export PDF"
           >
             <Printer size={14} className="text-indigo-400" />
-            <span className="hidden sm:inline">Print / Export</span>
+            <span>Print / Export</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleSaveDocument("draft")}
             disabled={saving || isSubmitting || isFormDisabled}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white cursor-pointer disabled:opacity-50"
+            className="hidden lg:flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white cursor-pointer disabled:opacity-50"
             title="Save as Draft"
           >
             <Save size={14} className="text-slate-400" />
-            <span className="hidden sm:inline">Save Draft</span>
+            <span>Save Draft</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleSaveDocument()}
             disabled={saving || isSubmitting || isFormDisabled}
-            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 text-xs font-bold text-white shadow-md transition cursor-pointer disabled:opacity-50"
+            className="hidden sm:flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 text-xs font-bold text-white shadow-md transition cursor-pointer disabled:opacity-50"
           >
             {saving || isSubmitting ? (
               <Loader2 size={14} className="animate-spin" />
@@ -902,7 +965,8 @@ function DocumentSplitScreenEditorWorkspace({
           <button
             type="button"
             onClick={handleClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition cursor-pointer"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition cursor-pointer"
+            aria-label="Close editor"
             title="Close editor (Esc)"
           >
             <X size={18} />
@@ -1055,10 +1119,10 @@ function DocumentSplitScreenEditorWorkspace({
                   </div>
 
                   {partyMode === "existing" ? (
-                    <div>
+                    <div className="space-y-2.5">
                       <select
                         value={form.customer_id}
-                        onChange={(e) => handleFormChange("customer_id", e.target.value)}
+                        onChange={(e) => handleSelectExistingParty(e.target.value)}
                         disabled={isFormDisabled}
                         className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-white focus:border-amber-400 focus:outline-none"
                       >
@@ -1077,18 +1141,79 @@ function DocumentSplitScreenEditorWorkspace({
                               </option>
                             ))}
                       </select>
-                      {partyType === "supplier" && selectedSupplier && (
-                        <div className="mt-1.5 flex flex-wrap gap-2 text-[10px] text-slate-400">
-                          {selectedSupplier.trn && <span>TRN: <strong className="text-slate-200">{selectedSupplier.trn}</strong></span>}
-                          {selectedSupplier.phone && <span>Tel: {selectedSupplier.phone}</span>}
-                          {selectedSupplier.address && <span className="truncate max-w-xs">{selectedSupplier.address}</span>}
-                        </div>
-                      )}
-                      {partyType === "customer" && selectedCustomer && (
-                        <div className="mt-1.5 flex flex-wrap gap-2 text-[10px] text-slate-400">
-                          {selectedCustomer.trn && <span>TRN: <strong className="text-slate-200">{selectedCustomer.trn}</strong></span>}
-                          {selectedCustomer.phone && <span>Tel: {selectedCustomer.phone}</span>}
-                          {selectedCustomer.address && <span className="truncate max-w-xs">{selectedCustomer.address}</span>}
+
+                      {(form.customer_id || customParty.name) && (
+                        <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="text-[11px] font-semibold text-slate-300">
+                              {partyLabelSingle} Name on Document &amp; PDF
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setShowSnapshotOverride((v) => !v)}
+                              className="text-[10px] font-semibold text-amber-400 hover:text-amber-300 cursor-pointer"
+                            >
+                              {showSnapshotOverride ? "Hide TRN/Address" : "Edit TRN / Address"}
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={customParty.name}
+                            onChange={(e) => {
+                              setCustomParty((prev) => ({ ...prev, name: e.target.value }));
+                              setDirty(true);
+                            }}
+                            disabled={isFormDisabled}
+                            placeholder={`Document ${partyLabelSingle.toLowerCase()} name`}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+                          />
+                          <p className="text-[10px] text-slate-400">
+                            Saved on this document only (does not alter master {partyLabelSingle.toLowerCase()} profile).
+                          </p>
+
+                          {showSnapshotOverride && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-800">
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-0.5">TRN</label>
+                                <input
+                                  type="text"
+                                  value={customParty.trn}
+                                  onChange={(e) => {
+                                    setCustomParty((prev) => ({ ...prev, trn: e.target.value }));
+                                    setDirty(true);
+                                  }}
+                                  disabled={isFormDisabled}
+                                  className="w-full rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-mono text-white focus:border-amber-400 focus:outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-0.5">Phone</label>
+                                <input
+                                  type="text"
+                                  value={customParty.phone}
+                                  onChange={(e) => {
+                                    setCustomParty((prev) => ({ ...prev, phone: e.target.value }));
+                                    setDirty(true);
+                                  }}
+                                  disabled={isFormDisabled}
+                                  className="w-full rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs text-white focus:border-amber-400 focus:outline-none"
+                                />
+                              </div>
+                              <div className="sm:col-span-2">
+                                <label className="block text-[10px] text-slate-400 mb-0.5">Address</label>
+                                <input
+                                  type="text"
+                                  value={customParty.address}
+                                  onChange={(e) => {
+                                    setCustomParty((prev) => ({ ...prev, address: e.target.value }));
+                                    setDirty(true);
+                                  }}
+                                  disabled={isFormDisabled}
+                                  className="w-full rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs text-white focus:border-amber-400 focus:outline-none"
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1299,7 +1424,7 @@ function DocumentSplitScreenEditorWorkspace({
                 </span>
               </div>
 
-              <div className="overflow-x-auto rounded-lg border border-slate-800">
+              <div className="hidden md:block overflow-x-auto rounded-lg border border-slate-800">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-800/80 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                     <tr>
@@ -1430,6 +1555,116 @@ function DocumentSplitScreenEditorWorkspace({
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile Line Items Cards */}
+              <div className="md:hidden space-y-3">
+                {lines.map((l, idx) => (
+                  <div key={`m_line_${idx}`} className="rounded-xl border border-slate-800 bg-slate-900/90 p-3 space-y-2.5 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-[11px] font-bold text-slate-400">Item #{idx + 1}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-emerald-400">AED {l.line_total.toFixed(2)}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveLine(idx)}
+                          disabled={isFormDisabled || lines.length <= 1}
+                          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-rose-400 disabled:opacity-20"
+                          title="Remove Line"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1">Product (Optional)</label>
+                      <select
+                        value={l.product_id}
+                        onChange={(e) => handleProductSelect(idx, e.target.value)}
+                        disabled={isFormDisabled}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-xs text-white focus:outline-none"
+                      >
+                        <option value="">— Custom —</option>
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1">Description</label>
+                      <textarea
+                        rows={2}
+                        value={l.description}
+                        onChange={(e) => handleUpdateLine(idx, { description: e.target.value })}
+                        placeholder="Item description"
+                        disabled={isFormDisabled}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-xs text-white focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-slate-400 mb-1">Qty</label>
+                        <NumericCellInput
+                          value={l.quantity}
+                          onChange={(val) => handleUpdateLine(idx, { quantity: val })}
+                          min={0.001}
+                          fallback={1}
+                          disabled={isFormDisabled}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-center font-mono text-white focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 mb-1">Unit</label>
+                        <input
+                          type="text"
+                          value={l.unit}
+                          onChange={(e) => handleUpdateLine(idx, { unit: e.target.value })}
+                          placeholder="Nos"
+                          disabled={isFormDisabled}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-center text-white focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 mb-1">Unit Rate (AED)</label>
+                        <NumericCellInput
+                          value={l.unit_price}
+                          onChange={(val) => handleUpdateLine(idx, { unit_price: val })}
+                          min={0}
+                          fallback={0}
+                          disabled={isFormDisabled}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-center font-mono text-white focus:outline-none"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <div>
+                          <label className="block text-[10px] text-slate-400 mb-1">Disc%</label>
+                          <NumericCellInput
+                            value={l.discount_pct}
+                            onChange={(val) => handleUpdateLine(idx, { discount_pct: val })}
+                            min={0}
+                            max={100}
+                            fallback={0}
+                            disabled={isFormDisabled}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-1.5 py-2 text-center font-mono text-white focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-400 mb-1">VAT%</label>
+                          <NumericCellInput
+                            value={l.vat_rate}
+                            onChange={(val) => handleUpdateLine(idx, { vat_rate: val })}
+                            min={0}
+                            max={100}
+                            fallback={0}
+                            disabled={isFormDisabled}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-1.5 py-2 text-center font-mono text-amber-300 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               {!isFormDisabled && (
@@ -1755,29 +1990,96 @@ function DocumentSplitScreenEditorWorkspace({
         </div>
       </div>
 
-      {/* A4 Print & PDF Export Modal */}
-      {isPrintModalOpen && (
-        <PrintModal
-          isOpen={isPrintModalOpen}
-          onClose={() => setIsPrintModalOpen(false)}
-          editorHref={`/settings/designer?type=${documentType}`}
+      {/* Sticky Mobile Bottom Action Bar */}
+      <footer className="lg:hidden shrink-0 border-t border-slate-800 bg-slate-900/95 px-3 py-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={handlePrint}
+          className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3 text-xs font-semibold text-slate-200 hover:bg-slate-700 cursor-pointer"
+          title="Preview & Export PDF"
         >
-          <div className="flex flex-col gap-6 print:gap-0">
-            {Array.from({ length: totalPreviewPages }, (_, index) => (
-              <DynamicDocumentRenderer
-                key={index}
-                layout={design.layout}
-                company={company}
-                data={previewData}
-                isDesignerPreview={false}
-                scale={1}
-                pageNumber={index + 1}
-                totalPages={totalPreviewPages}
-              />
-            ))}
-          </div>
-        </PrintModal>
-      )}
+          <Printer size={15} className="text-indigo-400" />
+          <span>PDF</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSaveDocument("draft")}
+          disabled={saving || isSubmitting || isFormDisabled}
+          className="flex min-h-11 items-center justify-center gap-1 rounded-xl border border-slate-700 bg-slate-800 px-3 text-xs font-semibold text-slate-200 hover:bg-slate-700 disabled:opacity-50 cursor-pointer"
+        >
+          <Save size={14} className="text-slate-400" />
+          <span>Draft</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSaveDocument()}
+          disabled={saving || isSubmitting || isFormDisabled}
+          className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 text-xs font-bold text-white shadow-md disabled:opacity-50 cursor-pointer"
+        >
+          {saving || isSubmitting ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+          <span>{saving || isSubmitting ? "Saving…" : effectiveDocNumber ? "Save Changes" : "Save"}</span>
+        </button>
+      </footer>
+
+      {/* A4 Print & PDF Export Modal */}
+      {isPrintModalOpen && (() => {
+        const isDraftExport = dirty || !effectiveDocNumber;
+        const docFile = generateDocumentPdfFilename({
+          docType: documentType,
+          docNumber: effectiveDocNumber || undefined,
+          partyName: isSupplierParty ? previewData.supplier_name : previewData.customer_name,
+          customerName: previewData.customer_name,
+          supplierName: previewData.supplier_name,
+          projectName: previewData.project_name,
+          scopeOfWork: previewData.scope_of_work,
+          subject: (previewData as { subject?: string }).subject,
+          notes: previewData.notes,
+          items: previewData.items,
+          date: previewData.document_date,
+        });
+        const exportFilename = isDraftExport && !effectiveDocNumber
+          ? `DRAFT ${docFile.filename}`
+          : docFile.filename;
+        const exportTitle = isDraftExport && !effectiveDocNumber
+          ? `DRAFT ${docFile.title}`
+          : docFile.title;
+
+        return (
+          <PrintModal
+            isOpen={isPrintModalOpen}
+            onClose={() => setIsPrintModalOpen(false)}
+            editorHref={`/settings/designer?type=${documentType}`}
+            documentFilename={exportFilename}
+            documentTitle={exportTitle}
+            isDraftOrUnsaved={isDraftExport}
+            onSaveBeforeExport={
+              !isFormDisabled
+                ? async () => {
+                    setIsPrintModalOpen(false);
+                    await handleSaveDocument(undefined, { exportAfterSave: true });
+                  }
+                : undefined
+            }
+          >
+            <div className="flex flex-col gap-6 print:gap-0">
+              {Array.from({ length: totalPreviewPages }, (_, index) => (
+                <DynamicDocumentRenderer
+                  key={index}
+                  layout={design.layout}
+                  company={company}
+                  data={previewData}
+                  isDesignerPreview={false}
+                  scale={1}
+                  pageNumber={index + 1}
+                  totalPages={totalPreviewPages}
+                />
+              ))}
+            </div>
+          </PrintModal>
+        );
+      })()}
     </div>
   );
 }

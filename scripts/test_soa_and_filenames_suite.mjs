@@ -48,18 +48,25 @@ function testAssert(condition, name, details = "") {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. AUTOMATIC PDF FILENAME GENERATION FOR ALL DOCUMENTS
+//
+// Historical note: Commit 5d74823 originally tested the early v1 format
+// `[DocNumber] - [Party].pdf` (without work descriptions). Commit eeabe7c
+// superseded that format across all desktop ERP modules & MobilePdfModal with
+// the authoritative PC production naming convention verified in
+// `scripts/test_master_pdf_filenames.mjs`:
+//   [Document Number] [Customer/Supplier Name] - [Work Description].pdf
 // ─────────────────────────────────────────────────────────────────────────────
-console.log("[Section 1] Automatic Document PDF Filenames (Task 4)");
+console.log("[Section 1] Automatic Document PDF Filenames (Authoritative Desktop & Mobile Convention)");
 
 {
-  // Quotation
+  // Quotation (Desktop & Mobile parity)
   const quo = generateDocumentPdfFilename({
     docType: "quotation",
     docNumber: "QUO-101",
     partyName: "Al Karwan Solution FZC",
   });
-  testAssert(quo.filename === "QUO-101 - Al Karwan Solution FZC.pdf", "Quotation filename", quo.filename);
-  testAssert(quo.title === "QUO-101 - Al Karwan Solution FZC", "Quotation browser print title", quo.title);
+  testAssert(quo.filename === "QUO-101 Al Karwan Solution FZC - Fabrication.pdf", "Quotation filename", quo.filename);
+  testAssert(quo.title === "QUO-101 Al Karwan Solution FZC - Fabrication", "Quotation browser print title", quo.title);
 
   // Tax Invoice
   const inv = generateDocumentPdfFilename({
@@ -67,15 +74,21 @@ console.log("[Section 1] Automatic Document PDF Filenames (Task 4)");
     docNumber: "INV-117",
     partyName: "Al Fajar Al Mashreq",
   });
-  testAssert(inv.filename === "INV-117 - Al Fajar Al Mashreq.pdf", "Tax Invoice filename", inv.filename);
+  testAssert(inv.filename === "INV-117 Al Fajar Al Mashreq - PVC Fabrication.pdf", "Tax Invoice filename", inv.filename);
 
-  // Proforma Invoice
-  const pi = generateDocumentPdfFilename({
+  // Proforma Invoice (supports both proforma_invoice on desktop & proforma on mobile)
+  const piDesktop = generateDocumentPdfFilename({
     docType: "proforma_invoice",
     docNumber: "PI-001",
     partyName: "Customer Name",
   });
-  testAssert(pi.filename === "PI-001 - Customer Name.pdf", "Proforma Invoice filename", pi.filename);
+  const piMobile = generateDocumentPdfFilename({
+    docType: "proforma",
+    docNumber: "PI-001",
+    partyName: "Customer Name",
+  });
+  testAssert(piDesktop.filename === "PI-001 Customer Name - Fabrication.pdf", "Proforma Invoice filename", piDesktop.filename);
+  testAssert(piMobile.filename === piDesktop.filename, "Proforma Mobile & Desktop parity", piMobile.filename);
 
   // Delivery Note
   const dn = generateDocumentPdfFilename({
@@ -83,7 +96,7 @@ console.log("[Section 1] Automatic Document PDF Filenames (Task 4)");
     docNumber: "DN-001",
     partyName: "Customer Name",
   });
-  testAssert(dn.filename === "DN-001 - Customer Name.pdf", "Delivery Note filename", dn.filename);
+  testAssert(dn.filename === "DN-001 Customer Name - Delivery.pdf", "Delivery Note filename", dn.filename);
 
   // Purchase Order
   const po = generateDocumentPdfFilename({
@@ -91,7 +104,7 @@ console.log("[Section 1] Automatic Document PDF Filenames (Task 4)");
     docNumber: "PO-001",
     partyName: "Supplier Name",
   });
-  testAssert(po.filename === "PO-001 - Supplier Name.pdf", "Purchase Order filename", po.filename);
+  testAssert(po.filename === "PO-001 Supplier Name - Purchase.pdf", "Purchase Order filename", po.filename);
 
   // Receipt Voucher
   const rv = generateDocumentPdfFilename({
@@ -99,9 +112,9 @@ console.log("[Section 1] Automatic Document PDF Filenames (Task 4)");
     docNumber: "RV-001",
     partyName: "Customer Name",
   });
-  testAssert(rv.filename === "RV-001 - Customer Name.pdf", "Receipt Voucher filename", rv.filename);
+  testAssert(rv.filename === "RV-001 Customer Name - Payment.pdf", "Receipt Voucher filename", rv.filename);
 
-  // Customer Statement
+  // Customer Statement (with explicit SOA number -> Statement of Account; without SOA number -> period)
   const soa = generateDocumentPdfFilename({
     docType: "customer_statement",
     docNumber: "SOA-001",
@@ -109,8 +122,8 @@ console.log("[Section 1] Automatic Document PDF Filenames (Task 4)");
     date: "2026-11-05",
   });
   testAssert(
-    soa.filename === "SOA-001 - Al Fajar Al Mashreq - 05-11-2026.pdf",
-    "Customer Statement filename with DD-MM-YYYY date",
+    soa.filename === "SOA-001 Al Fajar Al Mashreq - Statement of Account.pdf",
+    "Customer Statement filename with SOA number",
     soa.filename
   );
 
@@ -120,15 +133,16 @@ console.log("[Section 1] Automatic Document PDF Filenames (Task 4)");
     docNumber: "BILL-001",
     partyName: "Supplier Name",
   });
-  testAssert(bill.filename === "BILL-001 - Supplier Name.pdf", "Supplier Bill filename", bill.filename);
+  testAssert(bill.filename === "BILL-001 Supplier Name.pdf", "Supplier Bill filename", bill.filename);
 
   // Salary Statement
   const sal = generateDocumentPdfFilename({
     docType: "salary_statement",
     docNumber: "SAL-2026-11",
     partyName: "Employee Name",
+    period: "November 2026",
   });
-  testAssert(sal.filename === "SAL-2026-11 - Employee Name.pdf", "Salary Statement filename", sal.filename);
+  testAssert(sal.filename === "Salary Statement Employee Name - November 2026.pdf", "Salary Statement filename", sal.filename);
 
   // Sanitization: Invalid file system characters: / \ : * ? " < > |
   const sanitized = sanitizeFilenamePart("ACME / Dubai: Co. *Global* <Middle East> | \"Safe\"?");
@@ -146,12 +160,12 @@ console.log("[Section 1] Automatic Document PDF Filenames (Task 4)");
     sanitized
   );
 
-  // Fallback when party is missing
+  // Fallback when party is missing (preserves fallback work description for tax invoice)
   const fallback = generateDocumentPdfFilename({
     docType: "tax_invoice",
     docNumber: "INV-999",
   });
-  testAssert(fallback.filename === "INV-999.pdf", "Fallback filename when party is missing", fallback.filename);
+  testAssert(fallback.filename === "INV-999 - PVC Fabrication.pdf", "Fallback filename when party is missing", fallback.filename);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

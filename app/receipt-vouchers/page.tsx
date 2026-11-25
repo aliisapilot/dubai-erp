@@ -18,7 +18,6 @@ import {
   CustomPartyData,
   withCustomerDocumentDetails,
   serializeCustomPartyNotes,
-  parseCustomPartyFromNotes,
 } from "@/lib/documentCustomer";
 
 type Customer = { id: string; name: string | null; trn: string | null };
@@ -190,7 +189,7 @@ export default function ReceiptVouchersPage() {
   async function loadData() {
     setLoading(true);
     const [{ data: vchs }, { data: custs }, { data: invs }, co] = await Promise.all([
-      supabase.from("receipt_vouchers").select("*").order("voucher_date", { ascending: false }),
+      supabase.from("receipt_vouchers").select("*, customer:customers(*)").order("voucher_date", { ascending: false }),
       supabase.from("customers").select("id, name, trn").eq("active", true).order("name"),
       supabase.from("tax_invoices").select("id, invoice_number, total_amount").order("invoice_date", { ascending: false }),
       getCurrentCompany(),
@@ -311,15 +310,15 @@ export default function ReceiptVouchersPage() {
 
       const fullPayload: Record<string, unknown> = {
         ...basePayload,
-        customer_name: partyMode === "custom" ? customCustomer.name.trim() : null,
-        customer_address: partyMode === "custom" ? customCustomer.address?.trim() || null : null,
-        customer_trn: partyMode === "custom" ? customCustomer.trn?.trim() || null : null,
-        contact_person: partyMode === "custom" ? customCustomer.contact_person?.trim() || null : null,
-        contact_number: partyMode === "custom" ? customCustomer.phone?.trim() || null : null,
-        contact_email: partyMode === "custom" ? customCustomer.email?.trim() || null : null,
-        custom_project_name: partyMode === "custom" ? customCustomer.project_name?.trim() || null : null,
-        is_custom_customer: partyMode === "custom",
-        custom_customer: partyMode === "custom" ? customCustomer : null,
+        customer_name: effectivePayer || null,
+        customer_address: isCustom ? customCustomer.address?.trim() || null : null,
+        customer_trn: isCustom ? customCustomer.trn?.trim() || null : null,
+        contact_person: isCustom ? customCustomer.contact_person?.trim() || null : null,
+        contact_number: isCustom ? customCustomer.phone?.trim() || null : null,
+        contact_email: isCustom ? customCustomer.email?.trim() || null : null,
+        custom_project_name: isCustom ? customCustomer.project_name?.trim() || null : null,
+        is_custom_customer: isCustom,
+        custom_customer: isCustom ? customCustomer : null,
       };
 
       if (editing) {
@@ -448,19 +447,19 @@ export default function ReceiptVouchersPage() {
     <main className="min-h-screen bg-slate-50">
       <div className="app-screen-content no-print">
         <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5">
           <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-slate-900 p-2.5 text-white">
+            <div className="rounded-xl bg-slate-900 p-2.5 text-white shrink-0">
               <Receipt size={22} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">Receipt Vouchers</h1>
-              <p className="text-sm text-slate-500">Official cash, cheque, and bank transfer receipt vouchers (RCV)</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Receipt Vouchers</h1>
+              <p className="text-xs sm:text-sm text-slate-500">Official cash, cheque, and bank transfer receipt vouchers (RCV)</p>
             </div>
           </div>
           <button
             onClick={openAdd}
-            className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
+            className="flex min-h-10 items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-slate-800 transition"
           >
             <Plus size={18} /> New Receipt Voucher
           </button>
@@ -492,8 +491,63 @@ export default function ReceiptVouchersPage() {
             <p>No receipt vouchers recorded. Issue a new receipt voucher above.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-            <table className="w-full text-sm">
+          <>
+            {/* Mobile Receipt Voucher Cards */}
+            <div className="space-y-3 md:hidden">
+              {filtered.map((v) => (
+                <div key={v.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="inline-block font-mono text-xs font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                        {formatDisplayDocNumber(v.voucher_number, "receipt_voucher") || v.voucher_number}
+                      </span>
+                      <div className="mt-1 font-semibold text-sm text-slate-900 break-words">
+                        {v.customer_name || v.received_from}
+                      </div>
+                      {v.custom_project_name && (
+                        <div className="text-[11px] text-slate-500 mt-0.5">Project: {v.custom_project_name}</div>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-mono text-sm font-bold text-emerald-700">{fmtAED(v.amount)}</div>
+                      <div className="text-[11px] text-slate-500">{v.voucher_date}</div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+                    <div className="text-slate-600">
+                      {v.payment_method}{v.cheque_number ? ` · Chq ${v.cheque_number}` : ""}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handlePrint(v)}
+                        className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700"
+                      >
+                        <Printer size={13} /> PDF
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEdit(v)}
+                        className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700"
+                      >
+                        <Pencil size={13} /> Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteReceiptVoucher(v)}
+                        className="inline-flex min-h-9 items-center justify-center rounded-lg border border-red-200 bg-red-50 px-2.5 text-red-600"
+                        aria-label={`Delete ${v.voucher_number}`}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <th className="px-4 py-3">Voucher #</th>
@@ -575,6 +629,7 @@ export default function ReceiptVouchersPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 
@@ -582,19 +637,19 @@ export default function ReceiptVouchersPage() {
       {showModal && (
         <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-150">
           {/* Top Bar */}
-          <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900 px-4 text-white">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">
+          <header className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-3 py-2 text-white sm:px-4 lg:h-14 lg:flex-nowrap lg:py-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">
                 <Receipt size={18} />
               </div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold tracking-wide">
+              <div className="flex items-center gap-2 min-w-0">
+                <h2 className="text-sm font-bold tracking-wide truncate">
                   {editing ? "Edit Receipt Voucher" : "Issue Receipt Voucher"}
                 </h2>
-                <span className="font-mono text-xs rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-slate-300">
+                <span className="font-mono text-xs rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-slate-300 shrink-0">
                   {editing?.voucher_number || form.voucher_number || "[Draft Preview]"}
                 </span>
-                <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="hidden sm:flex items-center gap-1 text-[11px] text-slate-400 shrink-0">
                   <CheckCircle2 size={12} className="text-emerald-400" />
                   Live Sync
                 </span>
@@ -685,7 +740,7 @@ export default function ReceiptVouchersPage() {
 
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-3.5">
                     <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Voucher Details</div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="mb-1 block font-semibold text-slate-300">Voucher Ref #</label>
                         <input

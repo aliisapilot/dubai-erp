@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useState, useMemo } from "react";
 import MobileLayout from "@/components/mobile/MobileLayout";
 import MobilePdfModal from "@/components/mobile/MobilePdfModal";
+import Link from "next/link";
 import {
   Search, FileText, Download, Share2, Eye,
   RefreshCw, Loader2, Check,
-  AlertCircle
+  AlertCircle, Pencil
 } from "lucide-react";
 import {
   MobilePortalDocument, MobileDocumentCategory, MOBILE_CATEGORY_TABS,
@@ -243,6 +244,31 @@ export default function MobileDocumentPortalPage() {
                       <Eye size={14} className="text-emerald-400" />
                       <span>View PDF</span>
                     </button>
+
+                    {(doc.category === "tax_invoice" ||
+                      doc.category === "quotation" ||
+                      doc.category === "proforma" ||
+                      doc.category === "delivery_note" ||
+                      doc.category === "purchase_order") && (
+                      <Link
+                        href={
+                          doc.category === "tax_invoice"
+                            ? `/tax-invoices?edit=${encodeURIComponent(doc.id)}`
+                            : doc.category === "quotation"
+                            ? `/quotations?edit=${encodeURIComponent(doc.id)}`
+                            : doc.category === "proforma"
+                            ? `/proforma-invoices?edit=${encodeURIComponent(doc.id)}`
+                            : doc.category === "delivery_note"
+                            ? `/delivery-notes?edit=${encodeURIComponent(doc.id)}`
+                            : `/purchase-orders?edit=${encodeURIComponent(doc.id)}`
+                        }
+                        className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-xl bg-amber-500/15 border border-amber-500/30 px-3 py-2 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-500/25"
+                        title="Edit Document"
+                      >
+                        <Pencil size={14} />
+                        <span className="hidden min-[380px]:inline">Edit</span>
+                      </Link>
+                    )}
 
                     <button
                       type="button"
