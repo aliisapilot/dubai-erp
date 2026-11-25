@@ -6,7 +6,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Download, Loader2, Printer, X, ZoomIn, ZoomOut, Maximize2, FileText, ChevronLeft } from "lucide-react";
 import { DocumentLayout, formatDocNumber } from "@/lib/documentDesigner";
 import { generateDocumentPdfFilename } from "@/lib/documentFilename";
-import { exportDocumentToPdf, isMobileBrowser } from "@/lib/exportDocumentPdf";
+import { exportDocumentToPdf } from "@/lib/exportDocumentPdf";
 import DynamicDocumentRenderer, {
   SAMPLE_DOCUMENT_DATA,
   getDocumentPageCount,
@@ -14,7 +14,6 @@ import DynamicDocumentRenderer, {
   MockDocumentData,
 } from "../documents/DynamicDocumentRenderer";
 import { CompanyDocInfo } from "../documents/DocHeader";
-import { printCurrentDocument } from "@/lib/print";
 
 const TEST_DATASETS: Record<string, { label: string; count: number; data: MockDocumentData }> = {
   short_1: {
@@ -247,7 +246,20 @@ export default function DocumentPreviewModal({
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") {
         e.preventDefault();
-        void printCurrentDocument();
+        const previewFile = generateDocumentPdfFilename({
+          docType: layout.documentType,
+          docNumber: activeDataset.document_number,
+          partyName: activeDataset.customer_name || activeDataset.supplier_name,
+          customerName: activeDataset.customer_name,
+          supplierName: activeDataset.supplier_name,
+          items: activeDataset.items,
+          date: activeDataset.document_date,
+        });
+        void exportDocumentToPdf({
+          filename: previewFile.filename,
+          scopeElement: previewAreaRef.current,
+          action: "print",
+        });
       }
     };
 
@@ -406,13 +418,6 @@ export default function DocumentPreviewModal({
                 items: activeDataset.items,
                 date: activeDataset.document_date,
               });
-              if (!isMobileBrowser()) {
-                await printCurrentDocument({
-                  documentFilename: previewFile.filename,
-                  documentTitle: previewFile.title,
-                });
-                return;
-              }
               setExportingAction("print");
               setExportError(null);
               try {

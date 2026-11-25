@@ -1,11 +1,10 @@
 "use client";
-import { printCurrentDocument } from "@/lib/print";
 
 import React, { ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { Download, Loader2, Maximize, Printer, Save, Share2, Sliders, X, ZoomIn, ZoomOut } from "lucide-react";
 import { getDocumentPreviewScale } from "@/lib/documentPreview";
-import { exportDocumentToPdf, isMobileBrowser, prefetchDocumentPdf } from "@/lib/exportDocumentPdf";
+import { exportDocumentToPdf, prefetchDocumentPdf } from "@/lib/exportDocumentPdf";
 
 interface PrintModalProps {
   isOpen: boolean;
@@ -121,10 +120,6 @@ export default function PrintModal({
   if (!isOpen) return null;
 
   const runPdfAction = async (action: "download" | "share" | "print") => {
-    if (action === "print" && !isMobileBrowser()) {
-      await printCurrentDocument({ documentFilename, documentTitle: displayTitle });
-      return;
-    }
     setExportingAction(action);
     setExportNotice(null);
     try {
@@ -145,7 +140,10 @@ export default function PrintModal({
         });
       } else if (action === "print" && res.fallbackUrl) {
         setExportNotice({
-          text: `Tap "Open PDF" to open the A4 PDF and print via iOS Share → Print (${res.filename}).`,
+          text:
+            res.method === "ios-fallback"
+              ? `Tap "Open PDF" to open and print the A4 PDF (${res.filename}).`
+              : `Opened A4 PDF for printing (${res.filename}).`,
           url: res.fallbackUrl,
         });
       }

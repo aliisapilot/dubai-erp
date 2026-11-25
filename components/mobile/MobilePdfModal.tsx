@@ -1,5 +1,4 @@
 "use client";
-import { printCurrentDocument } from "@/lib/print";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -16,7 +15,7 @@ import {
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { getDocumentPreviewScale } from "@/lib/documentPreview";
 import { generateDocumentPdfFilename } from "@/lib/documentFilename";
-import { exportDocumentToPdf, isMobileBrowser, prefetchDocumentPdf } from "@/lib/exportDocumentPdf";
+import { exportDocumentToPdf, prefetchDocumentPdf } from "@/lib/exportDocumentPdf";
 
 // Template imports
 import TaxInvoiceTemplate, { TaxInvoiceData } from "@/components/documents/TaxInvoiceTemplate";
@@ -407,13 +406,6 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
             onClick={async () => {
               if (document.category === "company_file" && fileUrl) {
                 window.open(fileUrl, "_blank", "noopener");
-                return;
-              }
-              if (!isMobileBrowser()) {
-                await printCurrentDocument({
-                  documentFilename: computedFile.filename,
-                  documentTitle: computedFile.title,
-                });
                 return;
               }
               await runServerPdfAction("print");

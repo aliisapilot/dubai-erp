@@ -709,6 +709,20 @@ function verifyLegacyJsPdfRemovalAndRetryUi() {
     const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
     assert(/Retry/i.test(src), `${rel} renders explicit Retry option on PDF render error`);
   }
+
+  const unifiedPrintFiles = [
+    "components/documents/PrintModal.tsx",
+    "components/mobile/MobilePdfModal.tsx",
+    "components/documents/DocumentContainer.tsx",
+    "components/designer/DocumentPreviewModal.tsx",
+  ];
+  for (const rel of unifiedPrintFiles) {
+    const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
+    assert(
+      !src.includes("printCurrentDocument") && !src.includes("isMobileBrowser"),
+      `${rel} routes Print PDF through unified server Chromium PDF engine (no browser print bypass)`
+    );
+  }
 }
 
 function buildQtn157DesignerSheetHtml(): { html: string; expectedFilename: string } {

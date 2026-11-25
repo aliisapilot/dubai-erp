@@ -237,8 +237,12 @@ export async function renderHtmlToServerPdf(params: {
   action?: "download" | "share" | "blob" | "print";
 }): Promise<PdfDeliveryResult> {
   const filename = normalizePdfFilename(params.filename);
+  const assetsKey = Object.keys(params.assets || {})
+    .sort()
+    .map((k) => `${k}:${(params.assets![k] || "").length}`)
+    .join(",");
   const fingerprint = fastStringHash(
-    `${filename}|${params.landscape ? "L" : "P"}|${params.sheetsHtml.join("\n")}`
+    `${filename}|${params.landscape ? "L" : "P"}|${assetsKey}|${params.sheetsHtml.join("\n")}`
   );
 
   let entry = completedPdfCache.get(fingerprint);
