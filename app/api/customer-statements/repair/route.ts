@@ -26,6 +26,7 @@ import {
   type CustomerCandidate,
 } from "@/lib/soaManager";
 import {
+  isStatusEffective,
   matchSingleHistoricalEntry,
   normalizeDocRef,
   type RawHistoricalEntry,
@@ -78,18 +79,15 @@ export async function POST(req: NextRequest) {
         supabase
           .from("tax_invoices")
           .select("id, customer_id, invoice_number, invoice_date, total_amount, status")
-          .eq("company_id", companyId)
-          .not("status", "in", '("cancelled","void")'),
+          .eq("company_id", companyId),
         supabase
           .from("receipt_vouchers")
           .select("id, customer_id, voucher_number, voucher_date, amount, status, payment_method, cheque_number")
-          .eq("company_id", companyId)
-          .not("status", "in", '("cancelled","void")'),
+          .eq("company_id", companyId),
         supabase
           .from("payments")
           .select("id, customer_id, payment_number, reference_number, payment_date, amount, status, payment_method")
-          .eq("company_id", companyId)
-          .not("status", "in", '("cancelled","void")'),
+          .eq("company_id", companyId),
       ]);
 
     if (custErr) {
@@ -106,21 +104,21 @@ export async function POST(req: NextRequest) {
 
     const invByCust = new Map<string, RawInvoice[]>();
     (invRes.data || []).forEach((row) => {
-      if (!row.customer_id) return;
+      if (!row.customer_id || !isStatusEffective(row.status)) return;
       const list = invByCust.get(row.customer_id) || [];
       list.push(row as RawInvoice);
       invByCust.set(row.customer_id, list);
     });
     const recByCust = new Map<string, RawReceiptVoucher[]>();
     (recRes.data || []).forEach((row) => {
-      if (!row.customer_id) return;
+      if (!row.customer_id || !isStatusEffective(row.status)) return;
       const list = recByCust.get(row.customer_id) || [];
       list.push(row as RawReceiptVoucher);
       recByCust.set(row.customer_id, list);
     });
     const payByCust = new Map<string, RawPayment[]>();
     (payRes.data || []).forEach((row) => {
-      if (!row.customer_id) return;
+      if (!row.customer_id || !isStatusEffective(row.status)) return;
       const list = payByCust.get(row.customer_id) || [];
       list.push(row as RawPayment);
       payByCust.set(row.customer_id, list);

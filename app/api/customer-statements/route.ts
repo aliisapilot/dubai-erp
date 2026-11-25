@@ -180,27 +180,27 @@ export async function GET(req: NextRequest) {
       // Pick single latest verified SOA for this customer (never sum overlapping historical SOAs)
       customerSavedSoa = verifiedStatements.find((s) => s.customer_id === targetCustomerId) || null;
 
-      // Fetch live invoices & receipts & payments
+      // Fetch live invoices & receipts & payments (filter cancelled/void in JS so NULL status rows are never dropped)
       const [invRes, recRes, payRes] = await Promise.all([
         supabase
           .from("tax_invoices")
           .select("id, invoice_number, invoice_date, total_amount, status, company_id, customer_id, customer_name, customer_trn, notes")
           .eq("company_id", companyId)
-          .eq("customer_id", targetCustomerId)
-          .not("status", "in", '("cancelled","void")'),
+          .eq("customer_id", targetCustomerId),
         supabase
           .from("receipt_vouchers")
-          .select("id, voucher_number, voucher_date, amount, status, invoice_id, payment_method, cheque_number, reference_number, notes")
+          .select("id, voucher_number, voucher_date, amount, status, payment_method, cheque_number, tax_invoice_id, notes")
           .eq("company_id", companyId)
-          .eq("customer_id", targetCustomerId)
-          .not("status", "in", '("cancelled","void")'),
+          .eq("customer_id", targetCustomerId),
         supabase
           .from("payments")
-          .select("id, payment_number, payment_date, amount, status, invoice_id, payment_method, reference_number, notes")
+          .select("id, payment_number, payment_date, amount, status, payment_method, reference_number, notes")
           .eq("company_id", companyId)
-          .eq("customer_id", targetCustomerId)
-          .not("status", "in", '("cancelled","void")'),
+          .eq("customer_id", targetCustomerId),
       ]);
+      if (invRes.error) console.warn("[CustomerStatements] tax_invoices query error:", invRes.error.message);
+      if (recRes.error) console.warn("[CustomerStatements] receipt_vouchers query error:", recRes.error.message);
+      if (payRes.error) console.warn("[CustomerStatements] payments query error:", payRes.error.message);
 
       const rawInvoices = (invRes.data || []) as RawInvoice[];
       const rawReceipts = (recRes.data || []) as RawReceiptVoucher[];
@@ -232,19 +232,19 @@ export async function GET(req: NextRequest) {
       supabase
         .from("tax_invoices")
         .select("id, customer_id, invoice_number, invoice_date, total_amount, status")
-        .eq("company_id", companyId)
-        .not("status", "in", '("cancelled","void")'),
+        .eq("company_id", companyId),
       supabase
         .from("receipt_vouchers")
         .select("id, customer_id, voucher_number, voucher_date, amount, status, payment_method, cheque_number")
-        .eq("company_id", companyId)
-        .not("status", "in", '("cancelled","void")'),
+        .eq("company_id", companyId),
       supabase
         .from("payments")
         .select("id, customer_id, payment_number, reference_number, payment_date, amount, status, payment_method")
-        .eq("company_id", companyId)
-        .not("status", "in", '("cancelled","void")'),
+        .eq("company_id", companyId),
     ]);
+    if (allInvRes.error) console.warn("[CustomerStatements] all tax_invoices error:", allInvRes.error.message);
+    if (allRecRes.error) console.warn("[CustomerStatements] all receipt_vouchers error:", allRecRes.error.message);
+    if (allPayRes.error) console.warn("[CustomerStatements] all payments error:", allPayRes.error.message);
 
     const invByCust = new Map<string, RawInvoice[]>();
     (allInvRes.data || []).forEach((row) => {
