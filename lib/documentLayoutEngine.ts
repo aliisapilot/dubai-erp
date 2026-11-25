@@ -428,8 +428,8 @@ export function calculateTableRenderedHeight(
     itemsHeight = effectiveCount * baseRowHeight;
   }
 
-  // Add 1.2mm for outer table borders and cell padding
-  return headerHeight + itemsHeight + 1.2;
+  // Add 2.5mm for outer table borders, cell padding, and wrapped row tolerance
+  return headerHeight + itemsHeight + 2.5;
 }
 
 /**

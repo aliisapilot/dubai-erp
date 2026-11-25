@@ -176,7 +176,7 @@ function ExcelSoaEditorModalContent({
         }
 
         // Try getting short-lived signed URL or direct download
-        const url = `/api/smart-import/storage?path=${encodeURIComponent(fetchPath)}&bucket=${encodeURIComponent(bucket)}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
+        const url = `/api/smart-import/storage?path=${encodeURIComponent(fetchPath)}&bucket=${encodeURIComponent(bucket)}`;
         const res = await fetch(url, {
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         });
