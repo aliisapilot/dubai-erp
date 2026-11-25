@@ -12,6 +12,7 @@ import {
   sanitizeDocumentHtmlForPdf,
 } from "../lib/serverPdfRenderer";
 import { generateDocumentPdfFilename } from "../lib/documentFilename";
+import { computeServerPdfCacheFingerprint } from "../lib/exportDocumentPdf";
 import { createDefaultLayout } from "../lib/documentDesigner";
 import { formatDisplayDocNumber } from "../lib/documentNumbering";
 import { computeEffectiveLayout, prepareSavedAutoFit } from "../lib/documentLayoutEngine";
@@ -1087,6 +1088,63 @@ async function main() {
   });
   const qtn157Path = path.join(OUT_DIR, qtn157File.filename);
   fs.writeFileSync(qtn157Path, qtn157Pdf);
+
+  // Verify Download PDF and Print PDF share the exact same cache fingerprint (reusing identical Blob bytes)
+  // and even across two separate Chromium renders produce identical page count, text, coordinates, and fonts
+  const qtn157PrintPdf = await renderPdfFromHtmlSheets({
+    sheetsHtml: [realQtnHtml],
+    cssText: compiledAppCss,
+    assets,
+    landscape: false,
+    title: qtn157File.title,
+  });
+  const qtn157DownloadOutPath = path.join(OUT_DIR, "QTN-157_download.pdf");
+  const qtn157PrintOutPath = path.join(OUT_DIR, "QTN-157_print.pdf");
+  fs.writeFileSync(qtn157DownloadOutPath, qtn157Pdf);
+  fs.writeFileSync(qtn157PrintOutPath, qtn157PrintPdf);
+
+  const stripPdfTimestamps = (buf: Buffer) =>
+    buf.toString("latin1").replace(/\/(CreationDate|ModDate)\s*\([^)]*\)/g, "/$1()");
+  assert(
+    stripPdfTimestamps(qtn157Pdf) === stripPdfTimestamps(qtn157PrintPdf),
+    "QTN-157 Download PDF and Print PDF produce identical PDF content (excluding CreationDate/ModDate)"
+  );
+
+  const baseFp = computeServerPdfCacheFingerprint({
+    filename: qtn157File.filename,
+    title: qtn157File.title,
+    landscape: false,
+    cssText: compiledAppCss,
+    assets: { __PDF_ASSET_0__: "data:image/png;base64,AAAA" },
+    sheetsHtml: [realQtnHtml],
+  });
+  const sameLengthDiffAssetFp = computeServerPdfCacheFingerprint({
+    filename: qtn157File.filename,
+    title: qtn157File.title,
+    landscape: false,
+    cssText: compiledAppCss,
+    assets: { __PDF_ASSET_0__: "data:image/png;base64,BBBB" },
+    sheetsHtml: [realQtnHtml],
+  });
+  const diffCssFp = computeServerPdfCacheFingerprint({
+    filename: qtn157File.filename,
+    title: qtn157File.title,
+    landscape: false,
+    cssText: `${compiledAppCss}\n/* template-change */`,
+    assets: { __PDF_ASSET_0__: "data:image/png;base64,AAAA" },
+    sheetsHtml: [realQtnHtml],
+  });
+  const diffHtmlFp = computeServerPdfCacheFingerprint({
+    filename: qtn157File.filename,
+    title: qtn157File.title,
+    landscape: false,
+    cssText: compiledAppCss,
+    assets: { __PDF_ASSET_0__: "data:image/png;base64,AAAA" },
+    sheetsHtml: [`${realQtnHtml}<!-- edited -->`],
+  });
+  assert(baseFp !== sameLengthDiffAssetFp, "PDF cache key invalidates when logo/image content changes even at identical byte length");
+  assert(baseFp !== diffCssFp, "PDF cache key invalidates when CSS/font/template settings change");
+  assert(baseFp !== diffHtmlFp, "PDF cache key invalidates when document HTML/details change");
   const realAudit = await auditGeneratedPdf(qtn157Pdf, 1, false, [
     "AL SAFWAH AL QABDHA TENTS IND L.L.C SP",
     "100451829300003",

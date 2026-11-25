@@ -223,6 +223,24 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+export function computeServerPdfCacheFingerprint(params: {
+  filename: string;
+  title?: string;
+  landscape?: boolean;
+  cssText?: string;
+  assets?: Record<string, string>;
+  sheetsHtml: string[];
+}): string {
+  const assetsHash = Object.keys(params.assets || {})
+    .sort()
+    .map((k) => `${k}:${fastStringHash(params.assets![k] || "")}`)
+    .join(",");
+  const cssHash = fastStringHash(params.cssText || "");
+  return fastStringHash(
+    `${params.filename}|${params.title || ""}|${params.landscape ? "L" : "P"}|${cssHash}|${assetsHash}|${params.sheetsHtml.join("\n")}`
+  );
+}
+
 /**
  * Generates an authoritative server-side Chromium A4 PDF from arbitrary HTML sheets + CSS.
  * Used by both DOM document exports and spreadsheet-to-PDF reports (`SoaPreviewModal`).
@@ -237,13 +255,16 @@ export async function renderHtmlToServerPdf(params: {
   action?: "download" | "share" | "blob" | "print";
 }): Promise<PdfDeliveryResult> {
   const filename = normalizePdfFilename(params.filename);
-  const assetsKey = Object.keys(params.assets || {})
-    .sort()
-    .map((k) => `${k}:${(params.assets![k] || "").length}`)
-    .join(",");
-  const fingerprint = fastStringHash(
-    `${filename}|${params.landscape ? "L" : "P"}|${assetsKey}|${params.sheetsHtml.join("\n")}`
-  );
+  const title = params.title || filename.replace(/\.pdf$/i, "");
+  const resolvedCssText = params.cssText ?? collectDocumentCssText();
+  const fingerprint = computeServerPdfCacheFingerprint({
+    filename,
+    title,
+    landscape: Boolean(params.landscape),
+    cssText: resolvedCssText,
+    assets: params.assets,
+    sheetsHtml: params.sheetsHtml,
+  });
 
   let entry = completedPdfCache.get(fingerprint);
   if (!entry) {
@@ -256,10 +277,10 @@ export async function renderHtmlToServerPdf(params: {
           headers,
           body: JSON.stringify({
             sheetsHtml: params.sheetsHtml,
-            cssText: params.cssText ?? collectDocumentCssText(),
+            cssText: resolvedCssText,
             assets: params.assets || {},
             filename,
-            title: params.title || filename.replace(/\.pdf$/i, ""),
+            title,
             landscape: Boolean(params.landscape),
           }),
         });
