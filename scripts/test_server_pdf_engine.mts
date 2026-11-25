@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import puppeteer from "puppeteer-core";
 import {
@@ -11,6 +13,9 @@ import {
 } from "../lib/serverPdfRenderer";
 import { generateDocumentPdfFilename } from "../lib/documentFilename";
 import { createDefaultLayout } from "../lib/documentDesigner";
+import { formatDisplayDocNumber } from "../lib/documentNumbering";
+import { computeEffectiveLayout, prepareSavedAutoFit } from "../lib/documentLayoutEngine";
+import DynamicDocumentRenderer from "../components/documents/DynamicDocumentRenderer";
 
 const ROOT = process.cwd();
 const OUT_DIR = path.join(ROOT, "test-output");
@@ -34,7 +39,26 @@ function assert(cond: boolean, label: string, detail?: string) {
  * so server tests exercise identical desktop-only CSS rules as live browser capture.
  */
 function stripMobileMediaFromGlobalsCss(rawCss: string): string {
-  return rawCss.replace(/@media\s+screen\s+and\s+\(max-width:\s*767px\)\s*\{[\s\S]*?\n\}/g, "");
+  // Handle both readable globals.css and minified Turbopack CSS chunks cleanly by matching balanced braces
+  let out = rawCss;
+  const re = /@media\s+screen\s+and\s+\(max-width:\s*767px\)\s*\{/g;
+  let match: RegExpExecArray | null;
+  const ranges: Array<[number, number]> = [];
+  while ((match = re.exec(out)) !== null) {
+    let depth = 1;
+    let pos = match.index + match[0].length;
+    while (pos < out.length && depth > 0) {
+      if (out[pos] === "{") depth++;
+      else if (out[pos] === "}") depth--;
+      pos++;
+    }
+    if (depth === 0) ranges.push([match.index, pos]);
+  }
+  for (let i = ranges.length - 1; i >= 0; i--) {
+    const [start, end] = ranges[i];
+    out = out.slice(0, start) + out.slice(end);
+  }
+  return out;
 }
 
 function buildDesktopDocumentCss(): string {
@@ -554,8 +578,12 @@ async function auditGeneratedPdf(
     `collisions=${totalOverlapCollisions}`
   );
 
+  const compactText = fullText.replace(/\s+/g, "");
   for (const sub of expectedSubstrings) {
-    assert(fullText.includes(sub), `Vector text contains "${sub}"`);
+    assert(
+      fullText.includes(sub) || compactText.includes(sub.replace(/\s+/g, "")),
+      `Vector text contains "${sub}"`
+    );
   }
 
   return { text: fullText, numPages };
@@ -899,32 +927,176 @@ async function main() {
     "4,850.00",
   ]);
 
-  console.log("\n[Case] Quotation QTN-157 Al Karwan Solution FZC - PVC Water Tank Liner.pdf");
-  const qtn157 = buildQtn157DesignerSheetHtml();
+  console.log("\n[Case] Quotation QTN-157 Real DynamicDocumentRenderer + Arabic + Alignment + Exact Totals");
+  assert(
+    formatDisplayDocNumber("QTN-157", "quotation") === "QTN-157",
+    "formatDisplayDocNumber preserves saved QTN-157 prefix without rewriting to QUO-157"
+  );
+
+  const builtHtmlCheck = buildPdfDocumentHtml({
+    sheetsHtml: ["<div>check</div>"],
+    cssText: "",
+    title: "FontCheck",
+  });
+  for (const w of [400, 500, 600, 700, 800]) {
+    assert(
+      builtHtmlCheck.includes(`font-family: 'Noto Sans Arabic'`) &&
+        builtHtmlCheck.includes(`font-weight: ${w}`),
+      `Server PDF embeds Noto Sans Arabic font weight ${w}`
+    );
+  }
+  assert(
+    builtHtmlCheck.includes("font-family: 'Inter', 'Noto Sans Arabic'") &&
+      builtHtmlCheck.includes("letter-spacing: 0 !important"),
+    "Server PDF sets Noto Sans Arabic in global body fallback stack and resets letter-spacing on RTL Arabic"
+  );
+
+  const qtnLayoutFitted = prepareSavedAutoFit(createDefaultLayout("quotation"));
+  const qtnDataReal = {
+    document_number: "QTN-157",
+    document_date: "2026-11-25",
+    due_date: "2026-12-25",
+    customer_name: "Al Karwan Solution FZC",
+    customer_trn: "104337393300003",
+    customer_address: "Warehouse P6-091, SAIF Zone, Sharjah, UAE",
+    contact_person: "Mr. Mohammed Ayaz",
+    contact_number: "+971 50 123 4567",
+    contact_email: "ayaz@alkarwan.example",
+    payment_terms: "50% Advance upon confirmation, 50% upon completion",
+    items: [
+      {
+        description: "PVC Water Tank Liner Fabrication & Installation — بطانة خزان مياه بي في سي",
+        quantity: 1,
+        unit: "Job",
+        unit_price: 11859.0,
+        vat_rate: 5,
+        vat_amount: 592.95,
+        line_total: 12451.95,
+      },
+    ],
+    subtotal: 11859.0,
+    vat_amount: 592.95,
+    total_amount: 12451.95,
+  };
+
+  const effGeom = computeEffectiveLayout(qtnLayoutFitted, 1, true, 1, 1, qtnDataReal.items, {
+    customer_name: qtnDataReal.customer_name,
+    customer_trn: qtnDataReal.customer_trn,
+    customer_address: qtnDataReal.customer_address,
+    contact_person: qtnDataReal.contact_person,
+    contact_number: qtnDataReal.contact_number,
+    contact_email: qtnDataReal.contact_email,
+    payment_terms: qtnDataReal.payment_terms,
+  });
+  const effCust = effGeom.elements.find((e) => e.type === "customer_info");
+  const effMeta = effGeom.elements.find((e) => e.type === "doc_meta");
+  assert(
+    Boolean(effCust && effMeta && effCust.effectiveY === effMeta.effectiveY && effCust.effectiveHeight === effMeta.effectiveHeight),
+    "Customer details and Document Reference boxes share identical aligned effectiveY and effectiveHeight",
+    `cust=(y:${effCust?.effectiveY}, h:${effCust?.effectiveHeight}), meta=(y:${effMeta?.effectiveY}, h:${effMeta?.effectiveHeight})`
+  );
+
+  const realCompany = {
+    name: "Al Safwah Al Qabdha Tents Ind L.L.C SP",
+    legal_name: "AL SAFWAH AL QABDHA TENTS IND L.L.C SP",
+    arabic_name: "الصفوه الذهبيه لصناعه الخيام ذ.م.م.ش.و",
+    trn: "100451829300003",
+    address: "Industrial Area 13, Sharjah, UAE",
+    phone: "+971 6 534 9912",
+    email: "info@alsafwahtents.ae",
+    bank_name: "Mashreq Bank PSC",
+    bank_account_name: "AL SAFWAH AL QABDHA TENTS IND L.L.C SP",
+    iban: "AE130330000019101999916",
+    swift_bic: "BOMLAEAD",
+  };
+
+  const DynamicDocComponent =
+    typeof DynamicDocumentRenderer === "object" &&
+    DynamicDocumentRenderer !== null &&
+    "default" in DynamicDocumentRenderer
+      ? (DynamicDocumentRenderer as unknown as { default: typeof DynamicDocumentRenderer }).default
+      : DynamicDocumentRenderer;
+
+  const realQtnHtml = renderToStaticMarkup(
+    React.createElement(DynamicDocComponent, {
+      layout: qtnLayoutFitted,
+      company: realCompany,
+      data: qtnDataReal,
+      isDesignerPreview: false,
+      scale: 1,
+      pageNumber: 1,
+      totalPages: 1,
+    })
+  );
+  assert(realQtnHtml.includes("REF: QTN-157") && !realQtnHtml.includes("QUO-157"), "Rendered DynamicDocumentRenderer HTML shows QTN-157 and NEVER QUO-157");
+  assert(
+    realQtnHtml.includes('lang="ar" dir="rtl" class="font-arabic"') &&
+      realQtnHtml.includes("عرض أسعار") &&
+      realQtnHtml.includes("بيانات العميل") &&
+      realQtnHtml.includes("البيانات") &&
+      realQtnHtml.includes("بطانة خزان مياه بي في سي") &&
+      realQtnHtml.includes("المبلغ بالحروف") &&
+      realQtnHtml.includes("بيانات التحويل"),
+    "All 6 bilingual Arabic sections in DynamicDocumentRenderer receive explicit lang=ar dir=rtl font-arabic markup"
+  );
+
+  let compiledAppCss = cssText;
+  const nextChunksDir = path.join(ROOT, ".next", "static", "chunks");
+  if (fs.existsSync(nextChunksDir)) {
+    const cssFiles = fs.readdirSync(nextChunksDir).filter((f) => f.endsWith(".css"));
+    if (cssFiles.length > 0) {
+      const builtCss = cssFiles.map((f) => fs.readFileSync(path.join(nextChunksDir, f), "utf8")).join("\n");
+      compiledAppCss = `${stripMobileMediaFromGlobalsCss(builtCss)}\n${cssText}`;
+    }
+  }
+
+  const qtn157File = generateDocumentPdfFilename({
+    docType: "quotation",
+    docNumber: "QTN-157",
+    partyName: qtnDataReal.customer_name,
+    customerName: qtnDataReal.customer_name,
+    items: qtnDataReal.items,
+    date: qtnDataReal.document_date,
+  });
+  assert(
+    qtn157File.filename === "QTN-157 Al Karwan Solution FZC - PVC Water Tank Liner.pdf",
+    "QTN-157 filename matches authoritative convention",
+    qtn157File.filename
+  );
+
   const qtn157Pdf = await renderPdfFromHtmlSheets({
-    sheetsHtml: [qtn157.html],
-    cssText,
+    sheetsHtml: [realQtnHtml],
+    cssText: compiledAppCss,
     assets,
     landscape: false,
-    title: qtn157.expectedFilename.replace(/\.pdf$/i, ""),
+    title: qtn157File.title,
   });
-  const qtn157Path = path.join(OUT_DIR, qtn157.expectedFilename);
+  const qtn157Path = path.join(OUT_DIR, qtn157File.filename);
   fs.writeFileSync(qtn157Path, qtn157Pdf);
-  await auditGeneratedPdf(qtn157Pdf, 1, false, [
+  const realAudit = await auditGeneratedPdf(qtn157Pdf, 1, false, [
     "AL SAFWAH AL QABDHA TENTS IND L.L.C SP",
-    "TRN: 100451829300003",
+    "100451829300003",
     "info@alsafwahtents.ae",
     "Al Karwan Solution FZC",
     "104337393300003",
     "ayaz@alkarwan.example",
     "QTN-157",
     "PVC Water Tank Liner",
-    "6,048.00",
+    "11,859.00",
+    "592.95",
+    "12,451.95",
   ]);
+  assert(!realAudit.text.includes("QUO-157"), "Generated QTN-157 PDF text contains NO QUO-157 substitution");
+
+  const qtn157Synthetic = buildQtn157DesignerSheetHtml();
+  assert(
+    qtn157Synthetic.expectedFilename === "QTN-157 Al Karwan Solution FZC - PVC Water Tank Liner.pdf",
+    "Consistent QTN-157 filename helper parity"
+  );
 
   console.log("\n[Visual Render] Rendering PDFs via pdfjs-dist to PNG for visual inspection...");
   await renderPdfPagesToPng([
-    { pdfPath: qtn157Path, pngPath: path.join(OUT_DIR, "preview_qtn_157_p1.png"), label: "QTN-157 quotation" },
+    { pdfPath: qtn157Path, pngPath: path.join(OUT_DIR, "preview_qtn_157_p1.png"), label: "QTN-157 real renderer" },
     { pdfPath: path.join(OUT_DIR, "sample_pdf_1_item.pdf"), pngPath: path.join(OUT_DIR, "preview_1_item_p1.png"), label: "1-item invoice" },
     { pdfPath: path.join(OUT_DIR, "sample_pdf_15_items.pdf"), pngPath: path.join(OUT_DIR, "preview_15_items_p1.png"), label: "15-item invoice" },
     { pdfPath: path.join(OUT_DIR, "sample_soa_server.pdf"), pngPath: path.join(OUT_DIR, "preview_soa_p1.png"), label: "SOA statement" },

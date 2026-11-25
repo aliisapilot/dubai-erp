@@ -13,7 +13,7 @@ import {
   normalizePrintSettings,
   DOCUMENT_TYPE_OPTIONS,
 } from "@/lib/documentDesigner";
-import { formatDocNumber, formatDisplayDocNumber, type DocNumberingConfig } from "@/lib/documentNumbering";
+import { formatDocNumber, type DocNumberingConfig } from "@/lib/documentNumbering";
 import { CompanyDocInfo } from "./DocHeader";
 import { numberToWordsArabic, numberToWordsEnglish } from "@/lib/amountInWords";
 import { fmtAED, fmtDate } from "@/lib/helpers";
@@ -507,6 +507,35 @@ export function replaceDocumentTokens(
   return str;
 }
 
+const ARABIC_CHAR_RE = /[\u0600-\u06FF\u0750-\u077F\u0870-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+const ARABIC_RUN_SPLIT_RE =
+  /([\u0600-\u06FF\u0750-\u077F\u0870-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+(?:[\s\u060C\u061B\u061F]+[\u0600-\u06FF\u0750-\u077F\u0870-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+)*)/g;
+
+function renderBilingualRuns(text: string | null | undefined): React.ReactNode {
+  if (!text) return text ?? "";
+  if (!ARABIC_CHAR_RE.test(text)) return text;
+  const parts = text.split(ARABIC_RUN_SPLIT_RE);
+  return parts.map((part, idx) =>
+    ARABIC_CHAR_RE.test(part) ? (
+      <span
+        key={idx}
+        lang="ar"
+        dir="rtl"
+        className="font-arabic"
+        style={{
+          fontFamily: "'Noto Sans Arabic', 'Segoe UI Arabic', 'Amiri', Arial, sans-serif",
+          letterSpacing: "0px",
+          unicodeBidi: "isolate",
+        }}
+      >
+        {part}
+      </span>
+    ) : (
+      <React.Fragment key={idx}>{part}</React.Fragment>
+    )
+  );
+}
+
 export default function DynamicDocumentRenderer({
   layout: savedLayout,
   company,
@@ -518,7 +547,7 @@ export default function DynamicDocumentRenderer({
 }: DynamicDocumentRendererProps) {
   const rawData = providedData || getSampleDocumentData(savedLayout.documentType, savedLayout.numberingConfig);
   const effectiveDocNumber = (!isDesignerPreview && providedData?.document_number)
-    ? formatDisplayDocNumber(providedData.document_number, savedLayout.documentType) || providedData.document_number
+    ? providedData.document_number
     : savedLayout.numberingConfig
     ? formatDocNumber(
         savedLayout.numberingConfig,
@@ -887,7 +916,7 @@ export default function DynamicDocumentRenderer({
                   textAlign: "right",
                 }}
               >
-                {elem.customText || "Statement of Account"}
+                {renderBilingualRuns(elem.customText || "Statement of Account")}
               </span>
             </div>
           );
@@ -917,14 +946,16 @@ export default function DynamicDocumentRenderer({
                   letterSpacing: elem.letterSpacing !== undefined ? `${elem.letterSpacing}px` : undefined,
                 }}
               >
-                {elem.customText ||
-                  (layout.numberingConfig?.customTitle && layout.numberingConfig?.customTitleAr
-                    ? `${layout.numberingConfig.customTitle} — ${layout.numberingConfig.customTitleAr}`
-                    : layout.numberingConfig?.customTitle ||
-                      DOCUMENT_TYPE_OPTIONS.find((d) => d.id === layout.documentType)?.defaultTitle ||
-                      (layout.documentType === "measurement_sheet"
-                        ? "MEASUREMENT & TAKEOFF SHEET"
-                        : "TAX INVOICE"))}
+                {renderBilingualRuns(
+                  elem.customText ||
+                    (layout.numberingConfig?.customTitle && layout.numberingConfig?.customTitleAr
+                      ? `${layout.numberingConfig.customTitle} — ${layout.numberingConfig.customTitleAr}`
+                      : layout.numberingConfig?.customTitle ||
+                        DOCUMENT_TYPE_OPTIONS.find((d) => d.id === layout.documentType)?.defaultTitle ||
+                        (layout.documentType === "measurement_sheet"
+                          ? "MEASUREMENT & TAKEOFF SHEET"
+                          : "TAX INVOICE"))
+                )}
               </span>
             </div>
             <div className="text-right font-mono font-bold" style={{ color: colors.accent, fontSize: `${Math.max(6, titlePt * 0.75)}pt` }}>
@@ -1036,7 +1067,7 @@ export default function DynamicDocumentRenderer({
                 lineHeight: 1.15,
               }}
             >
-              <span style={{ color: colors.primary }}>{partyHeading}</span>
+              <span style={{ color: colors.primary }}>{renderBilingualRuns(partyHeading)}</span>
               <span style={{ color: colors.muted }}>{partyRole}</span>
             </div>
             {elem.customText ? (
@@ -1048,7 +1079,7 @@ export default function DynamicDocumentRenderer({
                   lineHeight: isUltraCompact ? 1.1 : isCompactPartyCard ? 1.15 : 1.25,
                 }}
               >
-                {replaceTokens(elem.customText)}
+                {renderBilingualRuns(replaceTokens(elem.customText))}
               </div>
             ) : (
               <div
@@ -1132,7 +1163,7 @@ export default function DynamicDocumentRenderer({
             }}
           >
             <div className="flex justify-between items-center border-b pb-1 font-bold uppercase" style={{ borderColor: colors.border, fontSize: `${Math.max(6, suppPt * 0.95)}pt` }}>
-              <span style={{ color: colors.primary }}>Supplier / Vendor Details (بيانات المورد):</span>
+              <span style={{ color: colors.primary }}>{renderBilingualRuns("Supplier / Vendor Details (بيانات المورد):")}</span>
               <span style={{ color: colors.muted }}>Vendor</span>
             </div>
             {elem.customText ? (
@@ -1191,7 +1222,7 @@ export default function DynamicDocumentRenderer({
             }}
           >
             <div className="flex justify-between items-center border-b pb-1 font-bold uppercase" style={{ borderColor: colors.border, fontSize: `${Math.max(6, prjPt * 0.95)}pt` }}>
-              <span style={{ color: colors.primary }}>Project Details (بيانات المشروع):</span>
+              <span style={{ color: colors.primary }}>{renderBilingualRuns("Project Details (بيانات المشروع):")}</span>
               <span className="font-mono font-bold" style={{ color: colors.accent }}>{data.project_number || "PRJ"}</span>
             </div>
             {elem.customText ? (
@@ -1289,7 +1320,7 @@ export default function DynamicDocumentRenderer({
           >
             {elem.customText ? (
               <div className="w-full h-full min-h-0 overflow-auto whitespace-pre-line leading-relaxed select-text" style={{ fontSize: `${metaPt}pt` }}>
-                {replaceTokens(elem.customText)}
+                {renderBilingualRuns(replaceTokens(elem.customText))}
               </div>
             ) : (
               <>
@@ -1302,7 +1333,7 @@ export default function DynamicDocumentRenderer({
                     lineHeight: 1.15,
                   }}
                 >
-                  <span style={{ color: colors.primary }}>Document Reference (البيانات):</span>
+                  <span style={{ color: colors.primary }}>{renderBilingualRuns("Document Reference (البيانات):")}</span>
                   <span className="font-mono font-bold" style={{ color: colors.accent }}>{data.document_number}</span>
                 </div>
                 <div
@@ -1374,7 +1405,7 @@ export default function DynamicDocumentRenderer({
         const activeCols = tSettings.columns.filter((c) => c.visible);
         const dynamicCellPadding = effectiveGeometry.fitProfile?.cellPadding;
         const isCompact = (tSettings.rowHeight || 8.5) < 7.5;
-        const cellPadding = dynamicCellPadding ? "" : isCompact ? "py-0.5 px-1.5" : "py-1 px-2";
+        const cellPadding = dynamicCellPadding ? "" : isCompact ? "py-0.5 px-1" : "py-1 px-1.5";
         const customPaddingStyle: CSSProperties = tSettings.cellPadding !== undefined
           ? { padding: `${tSettings.cellPadding}mm` }
           : dynamicCellPadding
@@ -1410,7 +1441,9 @@ export default function DynamicDocumentRenderer({
                 >
                   {activeCols.map((col, cIdx) => {
                     const colHeaderPt = col.fontSize !== undefined ? col.fontSize : tableHeaderFontSizePt;
-                    const labelContent = col.labelAr ? `${col.label}<br/><span dir="rtl" className="font-arabic text-[9px] text-slate-300">${col.labelAr}</span>` : col.label;
+                    const labelContent = col.labelAr
+                      ? `${col.label}<br/><span lang="ar" dir="rtl" class="font-arabic text-[9px] text-slate-300" style="font-family:'Noto Sans Arabic','Segoe UI Arabic','Amiri',Arial,sans-serif;letter-spacing:0;unicode-bidi:isolate;">${col.labelAr}</span>`
+                      : col.label;
                     const isTargetAmountCol = ["unit_price", "vat_amount", "line_total", "rate", "discount", "debit", "credit", "balance"].includes(col.key);
                     const effectiveAlign = col.align ? col.align : isTargetAmountCol ? "right" : "left";
                     const isStatement = layout.documentType === "customer_statement";
@@ -1472,7 +1505,7 @@ export default function DynamicDocumentRenderer({
                       {activeCols.map((col, cIdx) => {
                         let val: React.ReactNode = "";
                         if (col.key === "index") val = firstItemIndex + idx + 1;
-                        else if (col.key === "description") val = item.description;
+                        else if (col.key === "description") val = renderBilingualRuns(item.description);
                         else if (col.key === "quantity") val = item.quantity;
                         else if (col.key === "unit") val = item.unit || "Nos";
                         else if (col.key === "unit_price") val = Number(item.unit_price).toFixed(2);
@@ -1619,12 +1652,12 @@ export default function DynamicDocumentRenderer({
           >
             {elem.customText ? (
               <div className="w-full h-full min-h-0 overflow-hidden whitespace-pre-line leading-relaxed select-text" style={{ fontSize: `${textPt}pt` }}>
-                {replaceTokens(elem.customText)}
+                {renderBilingualRuns(replaceTokens(elem.customText))}
               </div>
             ) : (
               <>
                 <div className="font-semibold text-slate-800 shrink-0" style={{ fontSize: `${headerPt}pt`, lineHeight: 1.2 }}>
-                  Amount in Words (المبلغ بالحروف):
+                  {renderBilingualRuns("Amount in Words (المبلغ بالحروف):")}
                   {(layout.documentType === "receipt_voucher" || layout.documentType === "employee_payment_voucher") &&
                     !effectiveGeometry.elements.some((element) => element.type === "totals" && element.visible && element.effectiveVisible !== false) && (
                       <span className="float-right font-mono font-bold">{fmtAED(data.total_amount)}</span>
@@ -1636,6 +1669,7 @@ export default function DynamicDocumentRenderer({
                 <div
                   className="text-right font-arabic font-semibold pt-0.5 border-t leading-tight select-text break-words"
                   dir="rtl"
+                  lang="ar"
                   style={{
                     borderColor: colors.border,
                     color: colors.accent,
@@ -1643,7 +1677,7 @@ export default function DynamicDocumentRenderer({
                     direction: "rtl",
                     textAlign: "right",
                     unicodeBidi: "isolate",
-                    fontFamily: "'Segoe UI Arabic', 'Noto Naskh Arabic', 'Amiri', 'Traditional Arabic', Arial, sans-serif",
+                    fontFamily: "'Noto Sans Arabic', 'Segoe UI Arabic', 'Noto Naskh Arabic', 'Amiri', 'Traditional Arabic', Arial, sans-serif",
                     letterSpacing: "0px",
                   }}
                 >
@@ -1890,12 +1924,12 @@ export default function DynamicDocumentRenderer({
           >
             {elem.customText ? (
               <div className="whitespace-pre-line leading-snug select-text" style={{ fontSize: `${bankPt}pt` }}>
-                {replaceTokens(elem.customText)}
+                {renderBilingualRuns(replaceTokens(elem.customText))}
               </div>
             ) : (
               <>
                 <div className="font-bold text-slate-800 mb-0.5" style={{ color: colors.primary, fontSize: `${Math.max(6, bankPt * 0.95)}pt` }}>
-                  Bank Transfer Information (بيانات التحويل):
+                  {renderBilingualRuns("Bank Transfer Information (بيانات التحويل):")}
                 </div>
                 <div>Bank: <span className="font-semibold">{brand.bank_name}</span></div>
                 <div>Account: <span className="font-semibold">{brand.bank_account_name || brand.legal_name}</span></div>
@@ -2627,12 +2661,21 @@ export default function DynamicDocumentRenderer({
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((elem) => {
           const isManual = (layout.layoutMode || "manual") === "manual";
+          const isZone2Card = ["customer_info", "supplier_info", "project_info", "doc_meta"].includes(elem.type);
           const posX = (isDesignerPreview || isManual) ? elem.x : (elem.effectiveX ?? elem.x);
-          const posY = (isDesignerPreview || isManual)
-            ? (elem.isFollower && elem.effectiveY !== undefined ? elem.effectiveY : elem.y)
+          const posY = isDesignerPreview
+            ? elem.y
+            : isManual
+            ? (elem.isFollower || isZone2Card) && elem.effectiveY !== undefined
+              ? elem.effectiveY
+              : elem.y
             : (elem.effectiveY ?? elem.y);
           const width = (isDesignerPreview || isManual) ? elem.width : (elem.effectiveWidth ?? elem.width);
-          const height = (isDesignerPreview || isManual) ? elem.height : (elem.effectiveHeight ?? elem.height);
+          const height = isDesignerPreview
+            ? elem.height
+            : isManual
+            ? (isZone2Card && elem.effectiveHeight !== undefined ? elem.effectiveHeight : elem.height)
+            : (elem.effectiveHeight ?? elem.height);
 
           return (
             <div
@@ -2646,11 +2689,11 @@ export default function DynamicDocumentRenderer({
                 height:
                   elem.type === "line_items"
                     ? "auto"
-                    : ["company_name_en", "company_name_ar", "company_address", "customer_info", "supplier_info"].includes(elem.type)
+                    : ["company_name_en", "company_name_ar", "company_address"].includes(elem.type)
                     ? "auto"
                     : `${height}mm`,
                 minHeight:
-                  ["company_name_en", "company_name_ar", "company_address", "customer_info", "supplier_info"].includes(elem.type)
+                  ["company_name_en", "company_name_ar", "company_address"].includes(elem.type)
                     ? `${height}mm`
                     : undefined,
                 zIndex: elem.zIndex,

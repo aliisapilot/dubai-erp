@@ -8,7 +8,7 @@ import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
 import DocSignatureArea from "./DocSignatureArea";
 import { numberToWordsEnglish, numberToWordsArabic } from "@/lib/amountInWords";
-import { fmtAED, fmtDate, formatDisplayDocNumber } from "@/lib/helpers";
+import { fmtAED, fmtDate } from "@/lib/helpers";
 import { stripCustomPartyTags } from "@/lib/documentCustomer";
 
 import DocumentContainer from "./DocumentContainer";
@@ -72,7 +72,7 @@ export default function QuotationTemplate({
   if (!design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
 
   const rendererData: MockDocumentData = {
-    document_number: formatDisplayDocNumber(quotation.quotation_number, "quotation") || quotation.quotation_number,
+    document_number: quotation.quotation_number,
     document_date: quotation.quotation_date,
     due_date: quotation.expiry_date || undefined,
     status: quotation.status || undefined,

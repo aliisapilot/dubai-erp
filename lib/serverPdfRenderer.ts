@@ -53,69 +53,75 @@ function readBase64DataUrl(absPath: string): string | null {
 function getBundledFontFaceCss(): string {
   if (cachedFontCss !== null) return cachedFontCss;
 
-  const fontEntries = [
-    {
-      family: "Inter",
-      weight: 400,
-      file: "node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2",
-    },
-    {
-      family: "Inter",
-      weight: 500,
-      file: "node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2",
-    },
-    {
-      family: "Inter",
-      weight: 600,
-      file: "node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2",
-    },
-    {
-      family: "Inter",
-      weight: 700,
-      file: "node_modules/@fontsource/inter/files/inter-latin-700-normal.woff2",
-    },
-    {
-      family: "Noto Sans Arabic",
-      weight: 400,
-      file: "node_modules/@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-400-normal.woff2",
-    },
-    {
-      family: "Noto Sans Arabic",
-      weight: 700,
-      file: "node_modules/@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-700-normal.woff2",
-    },
-  ];
+  const LATIN_RANGE =
+    "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD";
+  const ARABIC_RANGE =
+    "U+0600-06FF,U+0750-077F,U+0870-088E,U+0890-0891,U+0897-08E1,U+08E3-08FF,U+200C-200E,U+2010-2011,U+204F,U+2E41,U+FB50-FDFF,U+FE70-FEFC";
 
+  const weights = [400, 500, 600, 700, 800];
   const rules: string[] = [];
-  for (const f of fontEntries) {
-    const dataUrl = readBase64DataUrl(path.join(/*turbopackIgnore: true*/ process.cwd(), f.file));
-    if (dataUrl) {
+  const arabicByWeight = new Map<number, string>();
+
+  for (const weight of weights) {
+    const interUrl = readBase64DataUrl(
+      path.join(/*turbopackIgnore: true*/ process.cwd(), `node_modules/@fontsource/inter/files/inter-latin-${weight}-normal.woff2`)
+    );
+    if (interUrl) {
       rules.push(`
 @font-face {
-  font-family: '${f.family}';
+  font-family: 'Inter';
   font-style: normal;
-  font-weight: ${f.weight};
+  font-weight: ${weight};
   font-display: block;
-  src: url('${dataUrl}') format('woff2');
+  src: url('${interUrl}') format('woff2');
+  unicode-range: ${LATIN_RANGE};
+}`);
+    }
+
+    const arUrl = readBase64DataUrl(
+      path.join(/*turbopackIgnore: true*/ process.cwd(), `node_modules/@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-${weight}-normal.woff2`)
+    );
+    if (arUrl) {
+      arabicByWeight.set(weight, arUrl);
+      rules.push(`
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: ${weight};
+  font-display: block;
+  src: url('${arUrl}') format('woff2');
+  unicode-range: ${ARABIC_RANGE};
 }`);
     }
   }
 
-  // On headless Linux without Microsoft system fonts, alias Windows Arabic names cleanly to Noto Sans Arabic
-  if (process.platform === "linux") {
-    const ar400 = readBase64DataUrl(
-      path.join(process.cwd(), "node_modules/@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-400-normal.woff2")
-    );
-    const ar700 = readBase64DataUrl(
-      path.join(process.cwd(), "node_modules/@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-700-normal.woff2")
-    );
-    for (const alias of ["Segoe UI Arabic", "Amiri", "Scheherazade New", "Traditional Arabic", "Noto Naskh Arabic"]) {
-      if (ar400) {
-        rules.push(`@font-face { font-family: '${alias}'; font-weight: 400; src: url('${ar400}') format('woff2'); }`);
-      }
-      if (ar700) {
-        rules.push(`@font-face { font-family: '${alias}'; font-weight: 700; src: url('${ar700}') format('woff2'); }`);
-      }
+  // Alias all standard & Windows UI/Arabic font families cleanly on Linux serverless (and ensure
+  // every Arabic glyph in Inter, Arial, Segoe UI, or custom fonts renders via bundled Noto Sans Arabic)
+  const fallbackFamilies =
+    process.platform === "linux"
+      ? [
+          "Inter",
+          "Segoe UI Arabic",
+          "Segoe UI",
+          "Amiri",
+          "Scheherazade New",
+          "Traditional Arabic",
+          "Noto Naskh Arabic",
+          "Arial",
+          "Helvetica",
+          "Tahoma",
+          "Calibri",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif",
+        ]
+      : ["Inter", "Segoe UI Arabic", "Amiri", "Scheherazade New", "Traditional Arabic", "Noto Naskh Arabic"];
+
+  for (const [weight, arUrl] of arabicByWeight.entries()) {
+    for (const alias of fallbackFamilies) {
+      rules.push(
+        `@font-face { font-family: '${alias}'; font-style: normal; font-weight: ${weight}; font-display: block; src: url('${arUrl}') format('woff2'); unicode-range: ${ARABIC_RANGE}; }`
+      );
     }
   }
 
@@ -320,6 +326,11 @@ ${sanitizedCss}
   margin: 0;
 }
 
+:root {
+  --font-sans: 'Inter', 'Noto Sans Arabic', 'Segoe UI Arabic', Arial, sans-serif;
+  --font-app-sans: 'Inter', 'Noto Sans Arabic', 'Segoe UI Arabic', Arial, sans-serif;
+}
+
 html,
 body {
   margin: 0 !important;
@@ -328,15 +339,23 @@ body {
   background: #ffffff !important;
   background-color: #ffffff !important;
   color: #0f172a !important;
-  font-family: 'Inter', Arial, Helvetica, 'Segoe UI', sans-serif;
+  font-family: 'Inter', 'Noto Sans Arabic', 'Segoe UI Arabic', Arial, Helvetica, sans-serif !important;
   -webkit-print-color-adjust: exact !important;
   print-color-adjust: exact !important;
   -webkit-text-size-adjust: 100% !important;
 }
 
+.dynamic-document-page,
+.print-document,
+.document-sheet {
+  font-family: 'Inter', 'Noto Sans Arabic', 'Segoe UI Arabic', Arial, Helvetica, sans-serif;
+}
+
 .font-arabic,
-[dir="rtl"] {
-  font-family: 'Noto Sans Arabic', 'Segoe UI Arabic', 'Amiri', 'Traditional Arabic', Arial, sans-serif;
+[dir="rtl"],
+[lang="ar"] {
+  font-family: 'Noto Sans Arabic', 'Segoe UI Arabic', 'Amiri', 'Traditional Arabic', Arial, sans-serif !important;
+  letter-spacing: 0 !important;
 }
 
 .pdf-sheet-slot {

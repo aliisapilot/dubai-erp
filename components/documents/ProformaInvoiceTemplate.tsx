@@ -8,7 +8,7 @@ import DocHeader, { CompanyDocInfo } from "./DocHeader";
 import DocFooter from "./DocFooter";
 import DocSignatureArea from "./DocSignatureArea";
 import { numberToWordsEnglish, numberToWordsArabic } from "@/lib/amountInWords";
-import { fmtAED, fmtDate, formatDisplayDocNumber } from "@/lib/helpers";
+import { fmtAED, fmtDate } from "@/lib/helpers";
 import { stripCustomPartyTags } from "@/lib/documentCustomer";
 import DocumentContainer from "./DocumentContainer";
 
@@ -61,7 +61,7 @@ export default function ProformaInvoiceTemplate({
   if (!design.ready) return <DesignLoadState error={design.error} retry={design.retry} />;
 
   const rendererData: MockDocumentData = {
-    document_number: formatDisplayDocNumber(proforma.proforma_number, "proforma_invoice") || proforma.proforma_number,
+    document_number: proforma.proforma_number,
     document_date: proforma.proforma_date,
     status: proforma.status || undefined,
     customer_name: proforma.customer_name,

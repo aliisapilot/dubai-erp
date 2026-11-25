@@ -837,7 +837,7 @@ export default function QuotationsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-mono text-xs font-semibold text-blue-700">
-                      {formatDisplayDocNumber(q.quotation_number, "quotation") || "—"}
+                      {q.quotation_number || formatDisplayDocNumber(q.quotation_number, "quotation") || "—"}
                     </p>
                     <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                       <h2 className="break-words text-sm font-bold leading-snug text-slate-900">{q.customer_name || custMap[q.customer_id || ""]?.name || "—"}</h2>
@@ -880,13 +880,8 @@ export default function QuotationsPage() {
                   <tr key={q.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-mono text-xs">
                       <span className="font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                        {formatDisplayDocNumber(q.quotation_number, "quotation") || "—"}
+                        {q.quotation_number || formatDisplayDocNumber(q.quotation_number, "quotation") || "—"}
                       </span>
-                      {q.quotation_number && q.quotation_number !== formatDisplayDocNumber(q.quotation_number, "quotation") && (
-                        <span className="text-[10px] text-slate-400 block font-normal mt-0.5" title="Original Database Identifier">
-                          {q.quotation_number}
-                        </span>
-                      )}
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-900">
                       <div className="flex items-center gap-1.5 flex-wrap">
