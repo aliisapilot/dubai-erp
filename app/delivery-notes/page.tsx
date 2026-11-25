@@ -10,7 +10,7 @@ import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { parseDatabaseError } from "@/lib/paymentTypes";
-import { withCustomerDocumentDetails, serializeCustomPartyNotes } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails, buildDocumentPartySnapshot } from "@/lib/documentCustomer";
 import DynamicDocumentRenderer, {
   MockDocumentData,
   getDocumentPageCount,
@@ -193,10 +193,20 @@ export default function DeliveryNotesPage() {
     loadAll();
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || notes.length === 0 || showForm || editing) return;
+    const editId = new URLSearchParams(window.location.search).get("edit");
+    if (editId) {
+      const target = notes.find((dn) => dn.id === editId);
+      if (target) void openEdit(target);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notes]);
+
   async function loadAll() {
     setLoading(true);
     const [{ data: dn }, { data: c }, { data: p }, co, { data: prjs }] = await Promise.all([
-      supabase.from("delivery_notes").select("*").order("created_at", { ascending: false }),
+      supabase.from("delivery_notes").select("*, customer:customers(*)").order("created_at", { ascending: false }),
       supabase.from("customers").select("id, name, customer_code, trn, address, contact_person, phone, mobile, email, active").order("name"),
       supabase.from("products").select("id, name, sku, unit, current_stock, description").eq("active", true).order("name"),
       getCurrentCompany(),
@@ -435,32 +445,27 @@ export default function DeliveryNotesPage() {
         }
       }
 
-      const customPayload = isCustom
-        ? {
-            name: customCustomer.name.trim(),
-            address: customCustomer.address,
-            contact_person: customCustomer.contact_person,
-            phone: customCustomer.phone,
-            email: customCustomer.email,
-            trn: customCustomer.trn,
-            project_name: customCustomer.project_name,
-          }
+      const masterCustomer = !isCustom && form.customer_id
+        ? customers.find((c) => c.id === form.customer_id) || null
         : null;
 
-      const rawNotes = form.notes.trim() || "";
-      const serializedNotes = isCustom && customPayload ? serializeCustomPartyNotes(rawNotes, customPayload) : rawNotes;
+      const snapshot = buildDocumentPartySnapshot({
+        partyType: "customer",
+        isCustom,
+        partyId: form.customer_id,
+        masterParty: masterCustomer,
+        name: isCustom ? customCustomer.name : masterCustomer?.name || editing?.customer_name,
+        address: isCustom ? (customCustomer.address || form.customer_address) : (form.customer_address || masterCustomer?.address),
+        trn: isCustom ? customCustomer.trn : masterCustomer?.trn,
+        contactPerson: isCustom ? (customCustomer.contact_person || form.contact_person) : (form.contact_person || masterCustomer?.contact_person),
+        phone: isCustom ? (customCustomer.phone || form.contact_number) : (form.contact_number || masterCustomer?.mobile || masterCustomer?.phone),
+        email: isCustom ? customCustomer.email : masterCustomer?.email,
+        projectName: isCustom ? customCustomer.project_name : null,
+        rawNotes: form.notes,
+      });
 
       const payload: Record<string, unknown> = {
-        customer_id: isCustom ? null : form.customer_id || null,
-        customer_name: isCustom ? customCustomer.name.trim() : null,
-        customer_address: isCustom ? (customCustomer.address.trim() || form.customer_address.trim() || null) : (form.customer_address.trim() || null),
-        customer_trn: isCustom ? customCustomer.trn.trim() || null : null,
-        contact_person: isCustom ? (customCustomer.contact_person.trim() || form.contact_person.trim() || null) : (form.contact_person.trim() || null),
-        contact_number: isCustom ? (customCustomer.phone.trim() || form.contact_number.trim() || null) : (form.contact_number.trim() || null),
-        contact_email: isCustom ? customCustomer.email.trim() || null : null,
-        custom_project_name: isCustom ? customCustomer.project_name.trim() || null : null,
-        is_custom_customer: isCustom,
-        custom_customer: customPayload,
+        ...snapshot.fullColumns,
         project_id: form.project_id || null,
         delivery_date: form.delivery_date || null,
         status: form.status.toLowerCase(),
@@ -471,7 +476,7 @@ export default function DeliveryNotesPage() {
         delivery_method: form.delivery_method || "Company Vehicle",
         receiver_name: form.receiver_name.trim() || null,
         receiver_mobile: form.receiver_mobile.trim() || null,
-        notes: serializedNotes || null,
+        notes: snapshot.notesWithFallback,
         updated_at: new Date().toISOString(),
       };
 
@@ -517,7 +522,7 @@ export default function DeliveryNotesPage() {
             delivery_method: form.delivery_method || "Company Vehicle",
             receiver_name: form.receiver_name.trim() || null,
             receiver_mobile: form.receiver_mobile.trim() || null,
-            notes: serializedNotes || null,
+            notes: snapshot.notesWithFallback || snapshot.cleanNotes,
             updated_at: new Date().toISOString(),
           };
           const res = await executeSave(minimalPayload);

@@ -339,6 +339,123 @@ export function withSupplierDocumentDetails<T extends DocumentRecord>(record: T)
   };
 }
 
+export interface DocumentPartySnapshotInput {
+  partyType?: "customer" | "supplier";
+  isCustom: boolean;
+  partyId?: string | null;
+  masterParty?: CustomerRelation | SupplierRelation | null;
+  name?: string | null;
+  address?: string | null;
+  trn?: string | null;
+  contactPerson?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  projectName?: string | null;
+  rawNotes?: string | null;
+}
+
+export interface DocumentPartySnapshotResult {
+  resolvedName: string;
+  resolvedAddress: string | null;
+  resolvedTrn: string | null;
+  resolvedContact: string | null;
+  resolvedPhone: string | null;
+  resolvedEmail: string | null;
+  resolvedProjectName: string | null;
+  hasOverride: boolean;
+  customPayload: CustomPartyData | null;
+  fullColumns: Record<string, unknown>;
+  cleanNotes: string | null;
+  notesWithFallback: string | null;
+}
+
+/**
+ * Builds consistent document-level customer/supplier snapshot fields for saving.
+ * Always persists document-specific party details (never wipes customer_name when
+ * an existing customer is linked) and produces a lossless notes fallback tag for
+ * schemas without custom_customer/customer_name columns.
+ */
+export function buildDocumentPartySnapshot(input: DocumentPartySnapshotInput): DocumentPartySnapshotResult {
+  const isSupplier = input.partyType === "supplier";
+  const master = input.masterParty || null;
+
+  const resolvedName = text(input.name) || (!input.isCustom ? text(master?.name) : undefined) || "";
+  const resolvedAddress =
+    text(input.address) || (!input.isCustom ? text(master?.address) : undefined) || null;
+  const resolvedTrn =
+    text(input.trn) || (!input.isCustom ? text(master?.trn) : undefined) || null;
+  const resolvedContact =
+    text(input.contactPerson) || (!input.isCustom ? text(master?.contact_person) : undefined) || null;
+  const resolvedPhone =
+    text(input.phone) || (!input.isCustom ? text(master?.mobile) || text(master?.phone) : undefined) || null;
+  const resolvedEmail =
+    text(input.email) || (!input.isCustom ? text(master?.email) : undefined) || null;
+  const resolvedProjectName = text(input.projectName) || null;
+
+  const masterName = text(master?.name) || "";
+  const hasOverride =
+    input.isCustom ||
+    (Boolean(resolvedName) && Boolean(masterName) && resolvedName !== masterName) ||
+    (Boolean(resolvedAddress) && resolvedAddress !== (text(master?.address) || null)) ||
+    (Boolean(resolvedTrn) && resolvedTrn !== (text(master?.trn) || null));
+
+  const snapshotPayload: CustomPartyData | null = resolvedName
+    ? {
+        name: resolvedName,
+        address: resolvedAddress || "",
+        contact_person: resolvedContact || "",
+        phone: resolvedPhone || "",
+        email: resolvedEmail || "",
+        trn: resolvedTrn || "",
+        project_name: resolvedProjectName || "",
+      }
+    : null;
+
+  const cleanNotesStr = stripCustomPartyTags(input.rawNotes || "");
+  const cleanNotes = cleanNotesStr || null;
+  const tagName = isSupplier ? "CUSTOM_SUPPLIER" : "CUSTOM_CUSTOMER";
+  const serializedNotes =
+    hasOverride && snapshotPayload
+      ? serializeCustomPartyNotes(cleanNotesStr, tagName, snapshotPayload)
+      : cleanNotesStr;
+  const notesWithFallback = serializedNotes || null;
+
+  const idKey = isSupplier ? "supplier_id" : "customer_id";
+  const nameKey = isSupplier ? "supplier_name" : "customer_name";
+  const addrKey = isSupplier ? "supplier_address" : "customer_address";
+  const trnKey = isSupplier ? "supplier_trn" : "customer_trn";
+  const flagKey = isSupplier ? "is_custom_supplier" : "is_custom_customer";
+  const jsonKey = isSupplier ? "custom_supplier" : "custom_customer";
+
+  const fullColumns: Record<string, unknown> = {
+    [idKey]: input.isCustom ? null : text(input.partyId) || null,
+    [nameKey]: resolvedName || null,
+    [addrKey]: resolvedAddress,
+    [trnKey]: resolvedTrn,
+    contact_person: resolvedContact,
+    contact_number: resolvedPhone,
+    contact_email: resolvedEmail,
+    custom_project_name: resolvedProjectName,
+    [flagKey]: input.isCustom,
+    [jsonKey]: (input.isCustom || hasOverride) ? snapshotPayload : null,
+  };
+
+  return {
+    resolvedName,
+    resolvedAddress,
+    resolvedTrn,
+    resolvedContact,
+    resolvedPhone,
+    resolvedEmail,
+    resolvedProjectName,
+    hasOverride,
+    customPayload: (input.isCustom || hasOverride) ? snapshotPayload : null,
+    fullColumns,
+    cleanNotes,
+    notesWithFallback,
+  };
+}
+
 export function formatDatabaseError(err: unknown): string {
   if (!err) return "An unknown error occurred while saving.";
   if (typeof err === "string" && err.trim()) return err.trim();

@@ -70,12 +70,18 @@ function ExcelSoaEditorModalContent({
   const [soaNumber, setSoaNumber] = useState(record.soa_number || "");
   const [statementDate, setStatementDate] = useState(record.statement_date || "");
   const [openingBalance, setOpeningBalance] = useState(Number(record.opening_balance) || 0);
+  const [pdfClosingInput, setPdfClosingInput] = useState<string>(
+    record.closing_balance !== null && record.closing_balance !== undefined
+      ? String(record.closing_balance)
+      : ""
+  );
   const [entries, setEntries] = useState<RawHistoricalEntry[]>(
     record.entries ? JSON.parse(JSON.stringify(record.entries)) : []
   );
 
   // Layout & View toggles
   const [showPdfPreview, setShowPdfPreview] = useState(true);
+  const [mobileTab, setMobileTab] = useState<"table" | "pdf">("table");
   const [isFullScreenTable, setIsFullScreenTable] = useState(false);
   const [pdfZoom, setPdfZoom] = useState(100);
 
@@ -297,7 +303,7 @@ function ExcelSoaEditorModalContent({
     pushUndo();
     const updated = entries.map((e) => {
       if (e.id !== rowId) return e;
-      return { ...e, [field]: val, is_edited: true };
+      return { ...e, [field]: val, is_edited: true, needs_review: false };
     });
     const { computedEntries: res } = recalc(openingBalance, updated);
     setEntries(res);
@@ -411,7 +417,7 @@ function ExcelSoaEditorModalContent({
       pastedRows.push({
         id: createRowId("paste"),
         date: date || statementDate || new Date().toISOString().slice(0, 10),
-        reference_no: ref || `INV-P${pastedRows.length + 1}`,
+        reference_no: ref,
         description: desc || "Pasted Transaction",
         debit,
         credit,
@@ -426,23 +432,37 @@ function ExcelSoaEditorModalContent({
     setEntries(res);
   }
 
-  // Validate Math Balance
+  // Validate Math Balance (strict AED 0.01 tolerance)
+  const sourceClosingParsed =
+    pdfClosingInput.trim() === "" || Number.isNaN(Number(pdfClosingInput))
+      ? null
+      : Math.round(Number(pdfClosingInput) * 100) / 100;
+  const currentDiscrepancy =
+    sourceClosingParsed !== null ? Math.round(Math.abs(closingBal - sourceClosingParsed) * 100) / 100 : null;
+
   function handleValidateStatement() {
     const expected = Math.round((openingBalance + totalDebits - totalCredits) * 100) / 100;
-    const targetClosing = record.closing_balance != null ? Number(record.closing_balance) : closingBal;
-    const diff = Math.round(Math.abs(expected - targetClosing) * 100) / 100;
+    if (sourceClosingParsed === null) {
+      setValidationAlert({
+        valid: false,
+        difference: 0,
+        message: `Original PDF Closing Balance is not extracted yet. Enter the source PDF closing balance (computed: AED ${expected.toFixed(2)}) before verifying.`,
+      });
+      return;
+    }
+    const diff = Math.round(Math.abs(expected - sourceClosingParsed) * 100) / 100;
 
-    if (diff <= 0.05) {
+    if (diff <= 0.01) {
       setValidationAlert({
         valid: true,
         difference: 0,
-        message: `Statement math reconciles accurately. Opening (AED ${openingBalance.toFixed(2)}) + Debits (AED ${totalDebits.toFixed(2)}) - Credits (AED ${totalCredits.toFixed(2)}) = Closing Balance (AED ${expected.toFixed(2)}).`,
+        message: `Statement math reconciles within AED 0.01. Opening (AED ${openingBalance.toFixed(2)}) + Debits (AED ${totalDebits.toFixed(2)}) - Credits (AED ${totalCredits.toFixed(2)}) = Closing Balance (AED ${expected.toFixed(2)}).`,
       });
     } else {
       setValidationAlert({
         valid: false,
         difference: diff,
-        message: `Discrepancy of AED ${diff.toFixed(2)} detected. Target closing is AED ${targetClosing.toFixed(2)}, but computed balance is AED ${expected.toFixed(2)}.`,
+        message: `Discrepancy of AED ${diff.toFixed(2)} detected. Original PDF closing is AED ${sourceClosingParsed.toFixed(2)}, but calculated closing is AED ${expected.toFixed(2)}.`,
       });
     }
   }
@@ -574,7 +594,7 @@ function ExcelSoaEditorModalContent({
           soaNumber: soaNumber.trim() || undefined,
           statementDate: statementDate || null,
           openingBalance,
-          closingBalance: closingBal,
+          closingBalance: sourceClosingParsed,
           entries: computedEntries,
           isVerified: options.verify,
           status: options.verify ? "verified" : "pending_verification",
@@ -600,13 +620,20 @@ function ExcelSoaEditorModalContent({
     }
   }
 
-  // Verification requirements: strict guardrails
+  // Verification requirements: strict guardrails (Section 8)
   const isCustomerConfirmed = Boolean(customerId);
   const isDateConfirmed = Boolean(statementDate);
   const hasRows = computedEntries.length > 0;
-  const targetClosing = record.closing_balance != null ? Number(record.closing_balance) : closingBal;
-  const isMathReconciled = Math.abs(closingBal - targetClosing) <= 0.05;
-  const canVerify = isCustomerConfirmed && isDateConfirmed && isMathReconciled && (hasRows || confirmZeroTransactions);
+  const isSourceClosingKnown = sourceClosingParsed !== null;
+  const isMathReconciled = isSourceClosingKnown && currentDiscrepancy !== null && currentDiscrepancy <= 0.01;
+  const hasUnresolvedRowIssues = computedEntries.some((r) => Boolean((r as { needs_review?: boolean }).needs_review));
+  const canVerify =
+    isCustomerConfirmed &&
+    isDateConfirmed &&
+    isSourceClosingKnown &&
+    isMathReconciled &&
+    !hasUnresolvedRowIssues &&
+    (hasRows || confirmZeroTransactions);
 
   const exportPdfFilename = getExportSoaPdfFilename(
     soaNumber || record.soa_number,
@@ -767,27 +794,73 @@ function ExcelSoaEditorModalContent({
             />
           </div>
 
+          <div className="sm:col-span-2 space-y-1">
+            <label className="text-[10px] text-slate-400 uppercase font-semibold">PDF Closing (AED)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={pdfClosingInput}
+              placeholder="Not extracted"
+              onChange={(e) => {
+                setPdfClosingInput(e.target.value);
+                setHasUnsavedChanges(true);
+              }}
+              className={`w-full rounded-lg border bg-slate-900 px-2.5 py-1.5 text-xs text-right font-mono focus:border-cyan-500 focus:outline-none ${
+                sourceClosingParsed === null ? "border-amber-700 text-amber-300" : "border-slate-700 text-white"
+              }`}
+            />
+          </div>
+
           <div className="sm:col-span-3 space-y-1">
-            <label className="text-[10px] text-slate-400 uppercase font-semibold">Calculated Closing</label>
-            <div className="rounded-lg bg-slate-900 border border-slate-800 px-3 py-1.5 text-xs font-mono font-bold text-white flex items-center justify-between">
+            <label className="text-[10px] text-slate-400 uppercase font-semibold">
+              Calculated Closing {currentDiscrepancy !== null && currentDiscrepancy > 0.01 ? "(Mismatch)" : ""}
+            </label>
+            <div className="rounded-lg bg-slate-900 border border-slate-800 px-3 py-1.5 text-xs font-mono font-bold text-white flex items-center justify-between gap-2">
               <span className={closingBal < 0 ? "text-emerald-400" : "text-cyan-300"}>
                 AED {closingBal.toFixed(2)}
               </span>
-              <span className="text-[10px] text-slate-400 font-normal font-sans">
-                ({computedEntries.length} rows)
-              </span>
+              {currentDiscrepancy !== null && currentDiscrepancy > 0.01 ? (
+                <span className="text-[10px] text-rose-400 font-semibold">
+                  Diff: AED {currentDiscrepancy.toFixed(2)}
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-400 font-normal font-sans">
+                  ({computedEntries.length} rows)
+                </span>
+              )}
             </div>
           </div>
+        </div>
+
+        {/* Mobile Tab Switcher: Switch cleanly between Original PDF & Edit Transactions */}
+        <div className="lg:hidden flex items-center gap-2 px-4 py-2 bg-slate-900/80 border-b border-slate-800 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileTab("table")}
+            className={`flex-1 min-h-9 rounded-lg text-xs font-bold transition ${
+              mobileTab === "table" ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400"
+            }`}
+          >
+            Edit Transactions ({computedEntries.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab("pdf")}
+            className={`flex-1 min-h-9 rounded-lg text-xs font-bold transition ${
+              mobileTab === "pdf" ? "bg-amber-600 text-white" : "bg-slate-800 text-slate-400"
+            }`}
+          >
+            Original PDF
+          </button>
         </div>
 
         {/* Validation Alert / Discrepancy Banner */}
         {validationAlert && (
           <div
-            className={`px-5 py-2.5 flex items-center justify-between text-xs border-b ${
-              validationAlert.valid
-                ? "bg-emerald-950/70 border-emerald-800 text-emerald-200"
-                : "bg-rose-950/70 border-rose-800 text-rose-200"
-            }`}
+            className={`px-5 py-2.5 flex items-center justify-between text-xs border-b ${validationAlert.valid
+              ? "bg-emerald-950/70 border-emerald-800 text-emerald-200"
+              : "bg-rose-950/70 border-rose-800 text-rose-200"
+              }`}
           >
             <div className="flex items-center gap-2">
               {validationAlert.valid ? (
@@ -915,11 +988,11 @@ function ExcelSoaEditorModalContent({
           </div>
         )}
 
-        {/* Main Layout: Split View or Full Screen */}
-        <div className={`grid gap-3 flex-1 overflow-hidden p-4 ${showPdfPreview && !isFullScreenTable ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+        {/* Main Layout: Split View on Desktop, Clean Switchable Tabs on Mobile */}
+        <div className={`grid gap-3 flex-1 overflow-hidden p-3 sm:p-4 ${showPdfPreview && !isFullScreenTable ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
           {/* Left Panel: Original PDF Preview */}
           {showPdfPreview && !isFullScreenTable && (
-            <div className="rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden flex flex-col h-full">
+            <div className={`rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden flex-col h-full ${mobileTab === "pdf" ? "flex" : "hidden lg:flex"}`}>
               {/* PDF Preview Top Toolbar */}
               <div className="bg-slate-900 px-3 py-2 border-b border-slate-800 text-[11px] text-slate-400 flex items-center justify-between shrink-0">
                 <span className="truncate max-w-[200px]" title={record.file_name}>
@@ -1017,7 +1090,7 @@ function ExcelSoaEditorModalContent({
           {/* Right Panel: Editable Spreadsheet Table */}
           <div
             ref={tableContainerRef}
-            className="rounded-xl border border-slate-800 bg-slate-950/60 overflow-y-auto flex flex-col h-full"
+            className={`rounded-xl border border-slate-800 bg-slate-950/60 overflow-auto flex-col h-full ${mobileTab === "table" || isFullScreenTable || !showPdfPreview ? "flex" : "hidden lg:flex"}`}
             onPaste={(e) => {
               const text = e.clipboardData.getData("text");
               if (text && text.includes("\t")) {
@@ -1040,8 +1113,17 @@ function ExcelSoaEditorModalContent({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-mono">
-                {computedEntries.map((row, idx) => (
-                  <tr key={row.id} className="hover:bg-slate-900/50 transition">
+                {computedEntries.map((row, idx) => {
+                  const rowNeedsReview = Boolean((row as { needs_review?: boolean }).needs_review);
+                  return (
+                  <tr
+                    key={row.id}
+                    className={`transition ${
+                      rowNeedsReview
+                        ? "bg-amber-950/30 hover:bg-amber-950/50"
+                        : "hover:bg-slate-900/50"
+                    }`}
+                  >
                     <td className="py-1 px-2 text-center text-slate-500 text-[10px]">
                       {idx + 1}
                     </td>
@@ -1111,7 +1193,8 @@ function ExcelSoaEditorModalContent({
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
 
                 {computedEntries.length === 0 && (
                   <tr>
@@ -1282,14 +1365,13 @@ function ExcelSoaEditorModalContent({
               type="button"
               onClick={() => void handleSave({ verify: true })}
               disabled={!canVerify || saving}
-              className={`inline-flex items-center gap-1.5 rounded-xl px-5 py-2 font-bold transition shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                canVerify
-                  ? "bg-cyan-600 hover:bg-cyan-500 text-white"
-                  : "bg-slate-800 text-slate-500 border border-slate-700"
-              }`}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-5 py-2 font-bold transition shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${canVerify
+                ? "bg-cyan-600 hover:bg-cyan-500 text-white"
+                : "bg-slate-800 text-slate-500 border border-slate-700"
+                }`}
               title={
                 !canVerify
-                  ? `Cannot verify: ${!isCustomerConfirmed ? "Select customer. " : ""}${!isDateConfirmed ? "Set statement date. " : ""}${!isMathReconciled ? "Reconcile closing balance. " : ""}${!hasRows && !confirmZeroTransactions ? "Requires transaction rows or genuine zero confirmation." : ""}`
+                  ? `Cannot verify: ${!isCustomerConfirmed ? "Select customer. " : ""}${!isDateConfirmed ? "Set statement date. " : ""}${!isSourceClosingKnown ? "Enter PDF closing balance. " : ""}${isSourceClosingKnown && !isMathReconciled ? "Reconcile closing balance within AED 0.01. " : ""}${hasUnresolvedRowIssues ? "Review highlighted uncertain rows. " : ""}${!hasRows && !confirmZeroTransactions ? "Requires transaction rows or genuine zero confirmation." : ""}`
                   : "Approve and verify Statement of Account"
               }
             >

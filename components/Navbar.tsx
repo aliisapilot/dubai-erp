@@ -181,12 +181,12 @@ export default function Navbar() {
     <nav className="sticky top-0 z-40 h-14 bg-slate-900 border-b border-slate-800 text-white select-none shrink-0 m-0 p-0 no-print print:hidden">
       <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
         {/* Left Section: Mobile Menu Trigger + Brand (Mobile only) + Dynamic Page Title */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           {/* Mobile Menu Hamburger Button */}
           <button
             type="button"
             onClick={() => window.dispatchEvent(new CustomEvent("toggle-erp-sidebar"))}
-            className="md:hidden flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+            className="md:hidden flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
             aria-label="Toggle Navigation"
           >
             <Menu size={18} />
@@ -200,15 +200,15 @@ export default function Navbar() {
           </Link>
 
           {/* Active Page Indicator */}
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <div className="hidden sm:flex h-7 w-7 items-center justify-center rounded-lg bg-slate-800 text-emerald-400 border border-slate-700/60 shrink-0">
               <PageIcon size={15} />
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <h1 className="text-sm font-bold tracking-tight text-white whitespace-nowrap">
+            <div className="flex items-center gap-2 min-w-0">
+              <h1 className="text-xs sm:text-sm font-bold tracking-tight text-white truncate">
                 {pageMeta.title}
               </h1>
-              <span className="hidden sm:inline-flex items-center text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
+              <span className="hidden sm:inline-flex items-center text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full whitespace-nowrap shrink-0">
                 UAE VAT 5%
               </span>
             </div>

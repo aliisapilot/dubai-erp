@@ -6,6 +6,133 @@ import { sanitizeFilenamePart } from "./documentFilename";
 export interface DocumentPdfExportOptions {
   filename?: string;
   scopeElement?: HTMLElement | null;
+  action?: "download" | "share" | "blob";
+}
+
+export interface PdfDeliveryResult {
+  filename: string;
+  blob: Blob;
+  method: "download" | "share" | "ios-fallback" | "blob";
+  fallbackUrl?: string;
+}
+
+let activeDownloadLock = false;
+
+export function normalizePdfFilename(rawFilename?: string | null): string {
+  const base = sanitizeFilenamePart((rawFilename || "Document").replace(/(\.pdf)+$/i, ""));
+  return `${base || "Document"}.pdf`;
+}
+
+export function isIosDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+export function isStandalonePwa(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.matchMedia?.("(display-mode: standalone)").matches ||
+    Boolean((navigator as unknown as { standalone?: boolean }).standalone)
+  );
+}
+
+/**
+ * Delivers a generated PDF Blob with its exact intended filename across Desktop,
+ * Android Chrome, iOS Safari, and iOS installed PWAs.
+ */
+export async function deliverPdfBlob(params: {
+  blob: Blob;
+  filename: string;
+  action?: "download" | "share" | "blob";
+}): Promise<PdfDeliveryResult> {
+  const filename = normalizePdfFilename(params.filename);
+  const pdfBlob =
+    params.blob.type === "application/pdf"
+      ? params.blob
+      : new Blob([params.blob], { type: "application/pdf" });
+
+  const action = params.action || "download";
+  if (action === "blob") {
+    return { filename, blob: pdfBlob, method: "blob" };
+  }
+
+  // Native File Sharing (iOS Safari "Save to Files" / AirDrop / WhatsApp & Android Share)
+  if (action === "share" && typeof navigator !== "undefined" && typeof File !== "undefined") {
+    try {
+      const pdfFile = new File([pdfBlob], filename, { type: "application/pdf" });
+      if (typeof navigator.canShare === "function" && navigator.canShare({ files: [pdfFile] })) {
+        await navigator.share({
+          files: [pdfFile],
+          title: filename.replace(/\.pdf$/i, ""),
+        });
+        return { filename, blob: pdfBlob, method: "share" };
+      }
+    } catch (shareErr: unknown) {
+      if (shareErr instanceof Error && shareErr.name === "AbortError") {
+        return { filename, blob: pdfBlob, method: "share" };
+      }
+      // Fall through to standard download / fallback if Web Share fails
+    }
+  }
+
+  if (activeDownloadLock) {
+    return { filename, blob: pdfBlob, method: "blob" };
+  }
+
+  activeDownloadLock = true;
+  try {
+    const blobUrl = URL.createObjectURL(pdfBlob);
+    // Keep object URL alive for 60s so slower mobile browsers/PWAs never truncate reads
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(blobUrl);
+      } catch {}
+    }, 60_000);
+
+    // On iOS standalone PWA, `<a download>` can fail or open a headless PDF without Back button.
+    // Attempt native share sheet first when installed as an iOS PWA so "Save to Files" preserves filename!
+    if (isIosDevice() && isStandalonePwa() && typeof File !== "undefined") {
+      try {
+        const pdfFile = new File([pdfBlob], filename, { type: "application/pdf" });
+        if (typeof navigator.canShare === "function" && navigator.canShare({ files: [pdfFile] })) {
+          await navigator.share({
+            files: [pdfFile],
+            title: filename.replace(/\.pdf$/i, ""),
+          });
+          return { filename, blob: pdfBlob, method: "share" };
+        }
+      } catch (iosShareErr: unknown) {
+        if (iosShareErr instanceof Error && iosShareErr.name === "AbortError") {
+          return { filename, blob: pdfBlob, method: "share" };
+        }
+      }
+    }
+
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = filename;
+    link.rel = "noopener";
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      try {
+        link.remove();
+      } catch {}
+    }, 250);
+
+    if (isIosDevice()) {
+      return { filename, blob: pdfBlob, method: "ios-fallback", fallbackUrl: blobUrl };
+    }
+    return { filename, blob: pdfBlob, method: "download" };
+  } finally {
+    setTimeout(() => {
+      activeDownloadLock = false;
+    }, 400);
+  }
 }
 
 function createColorConverter() {
@@ -106,7 +233,7 @@ async function inlineImagesAsDataUrls(images: HTMLImageElement[]): Promise<void>
  */
 export async function exportDocumentToPdf(
   options: DocumentPdfExportOptions = {}
-): Promise<{ filename: string; blob: Blob }> {
+): Promise<PdfDeliveryResult> {
   if (typeof window === "undefined") {
     throw new Error("PDF export is only available in browser environments.");
   }
@@ -227,12 +354,27 @@ export async function exportDocumentToPdf(
             win.getComputedStyle = window.getComputedStyle;
           }
 
+          // Reset preview viewport scale transforms on BOTH parent wrappers and cloned sheet
+          // so mobile previews render full unscaled 794x1123 A4 dimensions identical to desktop.
+          clonedDoc
+            .querySelectorAll<HTMLElement>(
+              ".print-preview-scale-content, .mobile-pdf-print-content, .print-preview-scale-shell, .mobile-pdf-scale-shell"
+            )
+            .forEach((wrapper) => {
+              wrapper.style.transform = "none";
+              wrapper.style.position = "static";
+              wrapper.style.width = "auto";
+              wrapper.style.height = "auto";
+              wrapper.style.margin = "0";
+            });
+
           const clonedSheets = clonedDoc.querySelectorAll<HTMLElement>(
             ".dynamic-document-page, .print-document, .document-sheet"
           );
           const clonedSheet = clonedSheets[i] || clonedSheets[0];
           if (clonedSheet) {
             clonedSheet.style.transform = "none";
+            clonedSheet.style.position = "relative";
             clonedSheet.style.boxShadow = "none";
             clonedSheet.style.margin = "0";
           }
@@ -290,20 +432,16 @@ export async function exportDocumentToPdf(
       }
     }
 
-    // Ensure valid characters and .pdf extension
-    if (defaultFilename) {
-      let clean = sanitizeFilenamePart(defaultFilename.replace(/\.pdf$/i, ""));
-      if (!clean) clean = "Document";
-      defaultFilename = `${clean}.pdf`;
-    } else {
-      defaultFilename = "Document.pdf";
-    }
+    // Ensure valid characters and single .pdf extension
+    defaultFilename = normalizePdfFilename(defaultFilename);
 
-    // Trigger client download
-    pdf.save(defaultFilename);
-
-    const blob = pdf.output("blob");
-    return { filename: defaultFilename, blob };
+    const rawBlob = pdf.output("blob");
+    const pdfBlob = new Blob([rawBlob], { type: "application/pdf" });
+    return await deliverPdfBlob({
+      blob: pdfBlob,
+      filename: defaultFilename,
+      action: options.action || "download",
+    });
   } finally {
     window.getComputedStyle = origGetComputedStyle;
   }

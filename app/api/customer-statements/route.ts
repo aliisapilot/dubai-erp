@@ -787,9 +787,12 @@ export async function PUT(req: NextRequest) {
     const finalSoaNumber = soaNumber?.trim() || stored.soa_number;
     const finalStatementDate = statementDate !== undefined ? statementDate : stored.statement_date;
     const openingBalance = newOpeningBalance !== undefined ? Math.round(Number(newOpeningBalance) * 100) / 100 : stored.opening_balance;
-    const closingBalance = newClosingBalance !== undefined && newClosingBalance !== null
-      ? Math.round(Number(newClosingBalance) * 100) / 100
-      : Math.round((openingBalance + totalDebits - totalCredits) * 100) / 100;
+    const closingBalance =
+      newClosingBalance === null
+        ? null
+        : newClosingBalance !== undefined
+        ? Math.round(Number(newClosingBalance) * 100) / 100
+        : stored.closing_balance;
 
     const isStillVerified = requestedVerified !== undefined
       ? Boolean(requestedVerified && existingEntries.length > 0)

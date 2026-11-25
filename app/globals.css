@@ -1367,11 +1367,45 @@ input[type="date"]::-webkit-calendar-picker-indicator {
    ========================================================================== */
 
 /* Ensure all data tables within ERP pages can scroll horizontally
-   on small screens without breaking the layout. */
-@media (max-width: 767px) {
-  /* Make any bare table inside the ERP content area scrollable */
-  [data-print-root] table:not(.no-scroll) {
+   on small screens without breaking the layout, while strictly preserving
+   A4 document template tables (.dynamic-document-page, .print-document, .document-sheet). */
+@media screen and (max-width: 767px) {
+  html,
+  body,
+  [data-print-root] {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  /* Prevent Safari/iOS automatic zoom when focusing form inputs, selects, textareas */
+  :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):not(:where(.print-document *, .document-sheet *, .dynamic-document-page *, .erp-document-surface *, .no-mobile-zoom)) {
+    font-size: 16px !important;
+  }
+
+  /* Safely wrap module headers and search bars across all 30+ ERP screens at 320px-430px */
+  [data-print-root] header > div.max-w-7xl {
+    flex-wrap: wrap !important;
+    gap: 0.75rem !important;
+    padding: 0.875rem 1rem !important;
+  }
+
+  [data-print-root] header > div.max-w-7xl > div:last-child {
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+    max-width: 100% !important;
+  }
+
+  [data-print-root] div.mx-auto.max-w-7xl.px-6 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    padding-top: 1.25rem !important;
+    padding-bottom: 1.5rem !important;
+  }
+
+  /* Make any bare ERP data table scrollable horizontally without affecting A4 document sheets */
+  [data-print-root] table:not(.no-scroll):not(:where(.print-document *, .document-sheet *, .dynamic-document-page *, .erp-document-surface *)) {
     display: block;
+    width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
@@ -1390,7 +1424,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   /* Prevent overflow on modal content cards */
   .fixed.inset-0 > div[class*="bg-white"] {
-    max-width: calc(100vw - 2rem) !important;
+    max-width: calc(100vw - 1.5rem) !important;
     width: 100% !important;
   }
 }

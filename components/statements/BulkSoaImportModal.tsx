@@ -564,17 +564,40 @@ export default function BulkSoaImportModal({
               : null;
 
           if (Array.isArray(doc.items) && doc.items.length > 0) {
-            entries = doc.items.map((it: Record<string, unknown>, idx: number) => ({
-              id: createRowId(`pdf_${idx}`),
-              date: String(it.date || statementDate || ""),
-              reference_no: String(it.reference || it.documentNumber || `INV-${idx + 1}`),
-              original_reference: it.reference ? String(it.reference) : undefined,
-              description: String(it.description || "Historical Item"),
-              debit: Number(it.debit || it.amount || 0),
-              credit: Number(it.credit || 0),
-              status: "historical" as const,
-              source_filename: item.fileName,
-            }));
+            entries = doc.items.map((it: Record<string, unknown>, idx: number) => {
+              const rawRef = it.reference ? String(it.reference).trim() : it.reference_no ? String(it.reference_no).trim() : "";
+              const itemNeedsReview = Boolean(it.needsCellReview) || it.calculationStatus === "mismatch";
+              if (itemNeedsReview) extractionUncertain = true;
+              return {
+                id: createRowId(`pdf_${idx}`),
+                date: String(it.date || statementDate || ""),
+                // Never invent invoice references (e.g. for Bank Transfer rows where Invoice # cell is empty)
+                reference_no: rawRef,
+                original_reference: rawRef || undefined,
+                description: String(it.description || "Statement Entry"),
+                debit: Math.round((Number(it.debit ?? 0) || 0) * 100) / 100,
+                credit: Math.round((Number(it.credit ?? 0) || 0) * 100) / 100,
+                balance: it.balance != null ? Math.round(Number(it.balance) * 100) / 100 : undefined,
+                status: "historical" as const,
+                needs_review: itemNeedsReview,
+                source_filename: item.fileName,
+              };
+            });
+
+            // Derive actual debits & credits from extracted rows when rows were parsed
+            const rowDebits = Math.round(entries.reduce((s, e) => s + (Number(e.debit) || 0), 0) * 100) / 100;
+            const rowCredits = Math.round(entries.reduce((s, e) => s + (Number(e.credit) || 0), 0) * 100) / 100;
+            if (charges === 0 && credits === 0) {
+              charges = rowDebits;
+              credits = rowCredits;
+            } else if (Math.abs(rowDebits - charges) > 0.01 || Math.abs(rowCredits - credits) > 0.01) {
+              // Use actual row totals if summary differed, and flag for review
+              charges = rowDebits;
+              credits = rowCredits;
+              if (closingBalance === null || Math.abs(Math.round((openingBalance + rowDebits - rowCredits) * 100) / 100 - closingBalance) > 0.01) {
+                extractionUncertain = true;
+              }
+            }
           }
 
           if (textLen < 30 && !customerName && (closingBalance === 0 || closingBalance === null)) {
@@ -584,10 +607,10 @@ export default function BulkSoaImportModal({
             extractionUncertain = true;
           }
 
-          // Mathematical audit
+          // Strict AED 0.01 Mathematical audit
           if (closingBalance !== null) {
             const expectedClosing = Math.round((openingBalance + charges - credits) * 100) / 100;
-            if (Math.abs(closingBalance - expectedClosing) > 0.05) {
+            if (Math.abs(closingBalance - expectedClosing) > 0.01) {
               extractionUncertain = true;
             }
           }

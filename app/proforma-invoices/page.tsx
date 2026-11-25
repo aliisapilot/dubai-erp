@@ -9,7 +9,7 @@ import ProformaInvoiceTemplate from "@/components/documents/ProformaInvoiceTempl
 import PrintModal from "@/components/documents/PrintModal";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { withCustomerDocumentDetails, stripCustomPartyTags, serializeCustomPartyNotes } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails, stripCustomPartyTags, buildDocumentPartySnapshot } from "@/lib/documentCustomer";
 import { parseDatabaseError } from "@/lib/paymentTypes";
 import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import DocumentSplitScreenEditor, {
@@ -97,10 +97,20 @@ function PIContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || invoices.length === 0 || showForm || editing) return;
+    const editId = new URLSearchParams(window.location.search).get("edit");
+    if (editId) {
+      const target = invoices.find((pi) => pi.id === editId);
+      if (target) void openEdit(target);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoices]);
+
   async function loadAll() {
     setLoading(true);
     const [{ data: pi }, { data: c }, { data: p }, co] = await Promise.all([
-      supabase.from("proforma_invoices").select("*").order("created_at", { ascending: false }),
+      supabase.from("proforma_invoices").select("*, customer:customers(*)").order("created_at", { ascending: false }),
       supabase.from("customers").select("id, name, customer_code, trn, address, contact_person, phone, mobile, email, active").order("name"),
       supabase.from("products").select("id, name, sku, selling_price, vat_rate, unit, description").eq("active", true).order("name"),
       getCurrentCompany(),
@@ -155,7 +165,8 @@ function PIContent() {
   function openAdd() { setError(""); setSuccess(""); setEditing(null); setForm(emptyForm); setLines([emptyLine()]); setShowForm(true); }
   async function openEdit(pi: PI) {
     setError(""); setSuccess("");
-    const enriched = withCustomerDocumentDetails(pi) as PI;
+    const customer = customers.find((item) => item.id === pi.customer_id);
+    const enriched = withCustomerDocumentDetails({ ...pi, customer }) as PI;
     setEditing(enriched);
     setForm({
       customer_id: enriched.customer_id||"",
@@ -191,6 +202,7 @@ function PIContent() {
     subtotal: number;
     vat_amount: number;
     total_amount: number;
+    exportAfterSave?: boolean;
   }) {
     setError("");
     setSuccess("");
@@ -212,21 +224,24 @@ function PIContent() {
     }
     setSaving(true);
     try {
-      const customPayload = isCustom
-        ? {
-            name: payload.form.customer_name?.trim() || "",
-            address: payload.form.customer_address || "",
-            contact_person: payload.form.contact_person || "",
-            phone: payload.form.contact_number || "",
-            email: payload.form.contact_email || "",
-            trn: payload.form.customer_trn || "",
-            project_name: payload.form.custom_project_name || "",
-          }
+      const selectedCustomer = !isCustom && payload.form.customer_id
+        ? customers.find((c) => c.id === payload.form.customer_id) || null
         : null;
 
-      const selectedCustomer = !isCustom && payload.form.customer_id
-        ? customers.find((c) => c.id === payload.form.customer_id)
-        : null;
+      const snapshot = buildDocumentPartySnapshot({
+        partyType: "customer",
+        isCustom,
+        partyId: payload.form.customer_id,
+        masterParty: selectedCustomer,
+        name: payload.form.customer_name,
+        address: payload.form.customer_address,
+        trn: payload.form.customer_trn,
+        contactPerson: payload.form.contact_person,
+        phone: payload.form.contact_number,
+        email: payload.form.contact_email,
+        projectName: payload.form.custom_project_name,
+        rawNotes: payload.form.notes,
+      });
 
       // Status check constraint normalization: only allowed DB statuses
       const validStatuses = ["draft", "sent", "accepted", "invoiced", "cancelled"];
@@ -239,22 +254,11 @@ function PIContent() {
         normalizedStatus = "draft";
       }
 
-      const notesContent = isCustom && customPayload
-        ? serializeCustomPartyNotes((payload.form.notes || "").trim(), customPayload)
-        : (payload.form.notes || "").trim() || null;
+      const notesContent = snapshot.notesWithFallback;
 
-      // Tier 1: Full payload with custom columns and terms_conditions
+      // Tier 1: Full payload with document snapshot columns and terms_conditions
       const tier1Payload: Record<string, unknown> = {
-        customer_id: isCustom ? null : payload.form.customer_id || null,
-        customer_name: isCustom ? payload.form.customer_name?.trim() : (selectedCustomer?.name || null),
-        customer_address: isCustom ? payload.form.customer_address || null : (selectedCustomer?.address || null),
-        customer_trn: isCustom ? payload.form.customer_trn || null : (selectedCustomer?.trn || null),
-        contact_person: isCustom ? payload.form.contact_person || null : (selectedCustomer?.contact_person || null),
-        contact_number: isCustom ? payload.form.contact_number || null : (selectedCustomer?.phone || selectedCustomer?.mobile || null),
-        contact_email: isCustom ? payload.form.contact_email || null : (selectedCustomer?.email || null),
-        custom_project_name: isCustom ? payload.form.custom_project_name || null : null,
-        is_custom_customer: isCustom,
-        custom_customer: customPayload,
+        ...snapshot.fullColumns,
         proforma_date: payload.form.invoice_date || null,
         valid_until: payload.form.supply_date || null,
         terms_conditions: payload.form.payment_terms?.trim() || null,
@@ -458,6 +462,16 @@ function PIContent() {
       setShowForm(false);
       setEditing(null);
       await loadAll();
+      if (payload.exportAfterSave && saveRes.id) {
+        const { data: freshPi } = await supabase
+          .from("proforma_invoices")
+          .select("*, customer:customers(*)")
+          .eq("id", saveRes.id)
+          .maybeSingle();
+        if (freshPi) {
+          await openPrint(withCustomerDocumentDetails(freshPi as PI) as PI);
+        }
+      }
     } catch (err: unknown) {
       const msg = parseDatabaseError(err, "Failed to save proforma invoice. Please check required fields and network.");
       setError(msg);
@@ -501,14 +515,14 @@ function PIContent() {
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="app-screen-content no-print">
-        <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-        <div className="flex items-center gap-3"><div className="rounded-xl bg-slate-900 p-2.5 text-white"><FileSpreadsheet size={22} /></div><div><h1 className="text-2xl font-bold text-slate-900">Proforma Invoices</h1><p className="text-sm text-slate-500">Create and manage proforma invoices</p></div></div>
-        <button onClick={openAdd} className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"><Plus size={18} />New Proforma</button>
+        <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5">
+        <div className="flex items-center gap-3"><div className="rounded-xl bg-slate-900 p-2.5 text-white shrink-0"><FileSpreadsheet size={22} /></div><div><h1 className="text-xl sm:text-2xl font-bold text-slate-900">Proforma Invoices</h1><p className="text-xs sm:text-sm text-slate-500">Create and manage proforma invoices</p></div></div>
+        <button onClick={openAdd} className="flex min-h-10 items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-slate-800"><Plus size={18} />New Proforma</button>
       </div></header>
-      <div className="mx-auto max-w-7xl px-6 py-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-5 sm:py-8">
         {success && <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
         {error && !showForm && <div className="mb-5 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button onClick={()=>setError("")}><X size={16}/></button></div>}
-        <div className="mb-6 flex gap-3"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search proformas…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/></div><select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm appearance-none focus:outline-none"><option value="">All Status</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="invoiced">Invoiced</option><option value="cancelled">Cancelled</option></select></div>
+        <div className="mb-6 flex flex-col sm:flex-row gap-3"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search proformas…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-slate-400 focus:outline-none"/></div><select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm appearance-none focus:outline-none"><option value="">All Status</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="invoiced">Invoiced</option><option value="cancelled">Cancelled</option></select></div>
         {loading ? <div className="flex justify-center py-24"><Loader2 size={28} className="animate-spin text-slate-400"/></div> : filtered.length===0 ? (
           <div className="rounded-xl border border-slate-200 bg-white py-20 text-center"><FileSpreadsheet size={40} className="mx-auto mb-3 text-slate-300"/><p className="text-sm text-slate-500">No proforma invoices.</p></div>
         ) : (

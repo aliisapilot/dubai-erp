@@ -9,7 +9,7 @@ import {
   isMissingMobilePermissionsSchema,
   getCategoryLabel,
 } from "./mobilePortalTypes";
-import { withCustomerDocumentDetails } from "./documentCustomer";
+import { withCustomerDocumentDetails, withSupplierDocumentDetails } from "./documentCustomer";
 
 /**
  * Loads the user's mobile permissions from profiles.
@@ -93,27 +93,27 @@ export async function fetchUnifiedMobileDocuments(options?: {
       (async () => {
         const { data } = await supabase
           .from("tax_invoices")
-          .select("id, invoice_number, invoice_date, supply_date, total_amount, status, notes, customer:customers(id, name, trn)")
+          .select("*, customer:customers(*)")
           .order("invoice_date", { ascending: false })
           .limit(options?.limit || 50);
 
         if (data) {
-          for (const item of data) {
-            const cust = Array.isArray(item.customer) ? item.customer[0] : item.customer;
+          for (const rawItem of data) {
+            const item = withCustomerDocumentDetails(rawItem as Record<string, unknown>);
             docs.push({
-              id: item.id,
+              id: String(item.id),
               category: "tax_invoice",
               categoryLabel: getCategoryLabel("tax_invoice"),
-              documentNumber: item.invoice_number || `INV-${item.id.slice(0, 6)}`,
-              date: item.invoice_date || item.supply_date || "",
+              documentNumber: String(item.invoice_number || `INV-${String(item.id).slice(0, 6)}`),
+              date: String(item.invoice_date || item.supply_date || ""),
               dueDate: null,
-              partyName: cust?.name || "Customer",
-              partyTrn: cust?.trn,
+              partyName: item.customer_name || "Customer",
+              partyTrn: item.customer_trn || undefined,
               partyRole: "Customer",
               amount: permissions.canViewFinancials ? Number(item.total_amount) || 0 : null,
-              status: item.status || "Final",
-              statusBadgeClass: statusClass(item.status || "Final"),
-              notes: item.notes,
+              status: String(item.status || "Final"),
+              statusBadgeClass: statusClass(String(item.status || "Final")),
+              notes: typeof item.notes === "string" ? item.notes : null,
               hasAttachment: false,
               rawData: item,
             });
@@ -129,27 +129,27 @@ export async function fetchUnifiedMobileDocuments(options?: {
       (async () => {
         const { data } = await supabase
           .from("quotations")
-          .select("*, customer:customers(id, name, trn)")
+          .select("*, customer:customers(*)")
           .order("quotation_date", { ascending: false })
           .limit(options?.limit || 50);
 
         if (data) {
-          for (const item of data) {
-            const cust = Array.isArray(item.customer) ? item.customer[0] : item.customer;
+          for (const rawItem of data) {
+            const item = withCustomerDocumentDetails(rawItem as Record<string, unknown>);
             docs.push({
-              id: item.id,
+              id: String(item.id),
               category: "quotation",
               categoryLabel: getCategoryLabel("quotation"),
-              documentNumber: item.quotation_number || `QUO-${item.id.slice(0, 6)}`,
-              date: item.quotation_date || "",
-              dueDate: item.valid_until,
-              partyName: item.customer_name || cust?.name || "",
-              partyTrn: item.customer_trn || cust?.trn,
+              documentNumber: String(item.quotation_number || `QUO-${String(item.id).slice(0, 6)}`),
+              date: String(item.quotation_date || ""),
+              dueDate: (item.valid_until as string | null) || null,
+              partyName: item.customer_name || "",
+              partyTrn: item.customer_trn || undefined,
               partyRole: "Customer",
               amount: permissions.canViewFinancials ? Number(item.total_amount) || 0 : null,
-              status: item.status || "Sent",
-              statusBadgeClass: statusClass(item.status || "Sent"),
-              notes: item.notes,
+              status: String(item.status || "Sent"),
+              statusBadgeClass: statusClass(String(item.status || "Sent")),
+              notes: typeof item.notes === "string" ? item.notes : null,
               hasAttachment: false,
               rawData: item,
             });
@@ -165,27 +165,27 @@ export async function fetchUnifiedMobileDocuments(options?: {
       (async () => {
         const { data } = await supabase
           .from("proforma_invoices")
-          .select("id, proforma_number, proforma_date, due_date, total_amount, status, notes, customer:customers(id, name, trn)")
+          .select("*, customer:customers(*)")
           .order("proforma_date", { ascending: false })
           .limit(options?.limit || 50);
 
         if (data) {
-          for (const item of data) {
-            const cust = Array.isArray(item.customer) ? item.customer[0] : item.customer;
+          for (const rawItem of data) {
+            const item = withCustomerDocumentDetails(rawItem as Record<string, unknown>);
             docs.push({
-              id: item.id,
+              id: String(item.id),
               category: "proforma",
               categoryLabel: getCategoryLabel("proforma"),
-              documentNumber: item.proforma_number || `PI-${item.id.slice(0, 6)}`,
-              date: item.proforma_date || "",
-              dueDate: item.due_date,
-              partyName: cust?.name || "Customer",
-              partyTrn: cust?.trn,
+              documentNumber: String(item.proforma_number || `PI-${String(item.id).slice(0, 6)}`),
+              date: String(item.proforma_date || ""),
+              dueDate: (item.due_date as string | null) || null,
+              partyName: item.customer_name || "Customer",
+              partyTrn: item.customer_trn || undefined,
               partyRole: "Customer",
               amount: permissions.canViewFinancials ? Number(item.total_amount) || 0 : null,
-              status: item.status || "Draft",
-              statusBadgeClass: statusClass(item.status || "Draft"),
-              notes: item.notes,
+              status: String(item.status || "Draft"),
+              statusBadgeClass: statusClass(String(item.status || "Draft")),
+              notes: typeof item.notes === "string" ? item.notes : null,
               hasAttachment: false,
               rawData: item,
             });
@@ -201,26 +201,27 @@ export async function fetchUnifiedMobileDocuments(options?: {
       (async () => {
         const { data } = await supabase
           .from("delivery_notes")
-          .select("id, delivery_note_number, delivery_date, status, remarks, customer:customers(id, name, trn)")
+          .select("*, customer:customers(*)")
           .order("delivery_date", { ascending: false })
           .limit(options?.limit || 50);
 
         if (data) {
-          for (const item of data) {
-            const cust = Array.isArray(item.customer) ? item.customer[0] : item.customer;
+          for (const rawItem of data) {
+            const item = withCustomerDocumentDetails(rawItem as Record<string, unknown>);
+            const rawRemarks = (rawItem as { remarks?: string | null }).remarks;
             docs.push({
-              id: item.id,
+              id: String(item.id),
               category: "delivery_note",
               categoryLabel: getCategoryLabel("delivery_note"),
-              documentNumber: item.delivery_note_number || `DN-${item.id.slice(0, 6)}`,
-              date: item.delivery_date || "",
-              partyName: cust?.name || "Customer",
-              partyTrn: cust?.trn,
+              documentNumber: String(item.delivery_note_number || `DN-${String(item.id).slice(0, 6)}`),
+              date: String(item.delivery_date || ""),
+              partyName: item.customer_name || "Customer",
+              partyTrn: item.customer_trn || undefined,
               partyRole: "Customer",
               amount: null,
-              status: item.status || "Delivered",
-              statusBadgeClass: statusClass(item.status || "Delivered"),
-              notes: item.remarks,
+              status: String(item.status || "Delivered"),
+              statusBadgeClass: statusClass(String(item.status || "Delivered")),
+              notes: typeof item.notes === "string" ? item.notes : (typeof rawRemarks === "string" ? rawRemarks : null),
               hasAttachment: false,
               rawData: item,
             });
@@ -236,26 +237,26 @@ export async function fetchUnifiedMobileDocuments(options?: {
       (async () => {
         const { data } = await supabase
           .from("purchase_orders")
-          .select("id, purchase_order_number, po_date, total_amount, status, notes, supplier:suppliers(id, name, trn)")
-          .order("po_date", { ascending: false })
+          .select("*, supplier:suppliers(*)")
+          .order("order_date", { ascending: false })
           .limit(options?.limit || 50);
 
         if (data) {
-          for (const item of data) {
-            const supp = Array.isArray(item.supplier) ? item.supplier[0] : item.supplier;
+          for (const rawItem of data) {
+            const item = withSupplierDocumentDetails(rawItem as Record<string, unknown>);
             docs.push({
-              id: item.id,
+              id: String(item.id),
               category: "purchase_order",
               categoryLabel: getCategoryLabel("purchase_order"),
-              documentNumber: item.purchase_order_number || `PO-${item.id.slice(0, 6)}`,
-              date: item.po_date || "",
-              partyName: supp?.name || "Supplier",
-              partyTrn: supp?.trn,
+              documentNumber: String(item.purchase_order_number || `PO-${String(item.id).slice(0, 6)}`),
+              date: String((item as { order_date?: string | null; po_date?: string | null }).order_date || (item as { po_date?: string | null }).po_date || ""),
+              partyName: item.supplier_name || "Supplier",
+              partyTrn: item.supplier_trn || undefined,
               partyRole: "Supplier",
               amount: permissions.canViewFinancials ? Number(item.total_amount) || 0 : null,
-              status: item.status || "Approved",
-              statusBadgeClass: statusClass(item.status || "Approved"),
-              notes: item.notes,
+              status: String(item.status || "Approved"),
+              statusBadgeClass: statusClass(String(item.status || "Approved")),
+              notes: typeof item.notes === "string" ? item.notes : null,
               hasAttachment: false,
               rawData: item,
             });
@@ -500,7 +501,7 @@ export async function fetchDocumentForPdf(category: MobileDocumentCategory, id: 
       supabase.from("purchase_orders").select("*, supplier:suppliers(*)").eq("id", id).single(),
       supabase.from("purchase_order_items").select("*").eq("purchase_order_id", id).order("sort_order"),
     ]);
-    return { ...po, items: items || [] };
+    return withSupplierDocumentDetails({ ...po, items: items || [] });
   }
 
   if (category === "supplier_bill") {

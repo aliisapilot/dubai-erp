@@ -114,9 +114,15 @@ export async function POST(req: NextRequest) {
     const details: Array<{
       id: string;
       fileName: string;
+      soaNumber?: string;
+      customerName?: string;
       status: "repaired" | "skipped_verified" | "missing_file" | "failed";
       oldClosing: number | null;
       newClosing: number | null;
+      calculatedClosing?: number | null;
+      debits?: number;
+      credits?: number;
+      difference?: number | null;
       oldRows: number;
       newRows: number;
       oldDate: string;
@@ -140,9 +146,15 @@ export async function POST(req: NextRequest) {
         details.push({
           id: stored.id,
           fileName: stored.file_name,
+          soaNumber: stored.soa_number,
+          customerName: stored.customer_name,
           status: "skipped_verified",
           oldClosing: stored.closing_balance,
           newClosing: stored.closing_balance,
+          calculatedClosing: stored.closing_balance,
+          debits: stored.charges,
+          credits: stored.credits,
+          difference: 0,
           oldRows: stored.entries.length,
           newRows: stored.entries.length,
           oldDate: stored.statement_date,
@@ -164,6 +176,8 @@ export async function POST(req: NextRequest) {
         details.push({
           id: stored.id,
           fileName: stored.file_name,
+          soaNumber: stored.soa_number,
+          customerName: stored.customer_name,
           status: "missing_file",
           oldClosing: stored.closing_balance,
           newClosing: null,
@@ -254,18 +268,22 @@ export async function POST(req: NextRequest) {
           }
 
           if (Array.isArray(extraction.items) && extraction.items.length > 0) {
-            newEntries = extraction.items.map((it, idx) => ({
-              id: `re_${stored.id}_${idx + 1}`,
-              date: String(it.date || newStatementDate || ""),
-              reference_no: String(it.reference || it.reference_no || `INV-${idx + 1}`),
-              original_reference: it.reference ? String(it.reference) : undefined,
-              description: String(it.description || "Historical Statement Entry"),
-              debit: Number(it.debit || 0),
-              credit: Number(it.credit || 0),
-              balance: Number(it.balance || 0),
-              status: "historical" as const,
-              source_filename: stored.file_name,
-            }));
+            newEntries = extraction.items.map((it, idx) => {
+              const rawRef = it.reference ? String(it.reference).trim() : it.reference_no ? String(it.reference_no).trim() : "";
+              return {
+                id: `re_${stored.id}_${idx + 1}`,
+                date: String(it.date || newStatementDate || ""),
+                // Never invent invoice numbers for payments/transfers without an explicit reference
+                reference_no: rawRef,
+                original_reference: rawRef || undefined,
+                description: String(it.description || "Statement Entry"),
+                debit: Math.round((Number(it.debit ?? 0) || 0) * 100) / 100,
+                credit: Math.round((Number(it.credit ?? 0) || 0) * 100) / 100,
+                balance: it.balance != null ? Math.round(Number(it.balance) * 100) / 100 : undefined,
+                status: "historical" as const,
+                source_filename: stored.file_name,
+              };
+            });
           }
         }
 
@@ -277,18 +295,10 @@ export async function POST(req: NextRequest) {
           totCredits += Number(e.credit) || 0;
         });
 
-        // If closing balance was not explicitly stated, compute from entries if entries exist
-        if (newClosingBalance === null && newEntries.length > 0) {
-          const lastEntry = newEntries[newEntries.length - 1];
-          if (lastEntry.balance != null && !Number.isNaN(lastEntry.balance)) {
-            newClosingBalance = lastEntry.balance;
-          } else {
-            newClosingBalance = Math.round((newOpeningBalance + totDebits - totCredits) * 100) / 100;
-          }
-        }
-
+        // Do NOT invent or overwrite an unextracted PDF closing balance.
+        // Unknown closing balance stays `null` ("Not extracted") and requires manual review.
         const expectedClosing = Math.round((newOpeningBalance + totDebits - totCredits) * 100) / 100;
-        const isMathValid = newClosingBalance !== null && Math.abs(newClosingBalance - expectedClosing) <= 0.05;
+        const isMathValid = newClosingBalance !== null && Math.abs(newClosingBalance - expectedClosing) <= 0.01;
 
         // Match customer
         const customerMatch = matchCustomerCandidates(newCustomerName, customers);
@@ -353,12 +363,28 @@ export async function POST(req: NextRequest) {
         }
 
         repairedCount++;
+        const resolvedCustomerName =
+          (resolvedCustomerId && custMap.get(resolvedCustomerId)) ||
+          newCustomerName ||
+          "Unassigned";
+        const totalDebits = Math.round(totDebits * 100) / 100;
+        const totalCredits = Math.round(totCredits * 100) / 100;
+        const closingDiff =
+          newClosingBalance !== null
+            ? Math.round((newClosingBalance - expectedClosing) * 100) / 100
+            : null;
         details.push({
           id: stored.id,
           fileName: stored.file_name,
+          soaNumber: newSoaNumber,
+          customerName: resolvedCustomerName,
           status: "repaired",
           oldClosing: stored.closing_balance,
           newClosing: newClosingBalance,
+          calculatedClosing: expectedClosing,
+          debits: totalDebits,
+          credits: totalCredits,
+          difference: closingDiff,
           oldRows: stored.entries.length,
           newRows: newEntries.length,
           oldDate: stored.statement_date,

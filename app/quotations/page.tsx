@@ -10,7 +10,7 @@ import PrintModal from "@/components/documents/PrintModal";
 import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import EditDocumentReferenceModal from "@/components/documents/EditDocumentReferenceModal";
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
-import { withCustomerDocumentDetails, stripCustomPartyTags } from "@/lib/documentCustomer";
+import { withCustomerDocumentDetails, stripCustomPartyTags, buildDocumentPartySnapshot } from "@/lib/documentCustomer";
 import { parseDatabaseError } from "@/lib/paymentTypes";
 import DocumentSplitScreenEditor, {
   DocumentEditorFormState,
@@ -175,10 +175,20 @@ export default function QuotationsPage() {
 
   useEffect(() => { loadAll(); }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || quotations.length === 0 || showForm || editing) return;
+    const editId = new URLSearchParams(window.location.search).get("edit");
+    if (editId) {
+      const target = quotations.find((q) => q.id === editId);
+      if (target) void openEdit(target);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotations]);
+
   async function loadAll() {
     setLoading(true);
     const [{ data: q }, { data: c }, { data: p }, { data: prjs }, co] = await Promise.all([
-      supabase.from("quotations").select("*").order("created_at", { ascending: false }),
+      supabase.from("quotations").select("*, customer:customers(*)").order("created_at", { ascending: false }),
       supabase.from("customers").select("id, name, customer_code, trn, address, contact_person, phone, mobile, email, active").order("name"),
       supabase.from("products").select("id, name, sku, description, selling_price, vat_rate, unit").eq("active", true).order("name"),
       supabase.from("projects").select("id, name, project_number").order("created_at", { ascending: false }),
@@ -249,7 +259,8 @@ export default function QuotationsPage() {
   async function openEdit(q: Quotation) {
     setError("");
     setSuccess("");
-    const enriched = withCustomerDocumentDetails(q) as Quotation;
+    const customer = customers.find((item) => item.id === q.customer_id);
+    const enriched = withCustomerDocumentDetails({ ...q, customer }) as Quotation;
     setEditing(enriched);
     setForm({
       customer_id: enriched.customer_id || "",
@@ -416,6 +427,7 @@ export default function QuotationsPage() {
     subtotal: number;
     vat_amount: number;
     total_amount: number;
+    exportAfterSave?: boolean;
   }) {
     setError("");
     setSuccess("");
@@ -433,31 +445,27 @@ export default function QuotationsPage() {
     setSaving(true);
     try {
       const dbStatus = normalizeQuotationStatus(payload.form.status);
-      const customPayload = isCustom
-        ? {
-            name: payload.form.customer_name?.trim() || "",
-            address: payload.form.customer_address || "",
-            contact_person: payload.form.contact_person || "",
-            phone: payload.form.contact_number || "",
-            email: payload.form.contact_email || "",
-            trn: payload.form.customer_trn || "",
-            project_name: payload.form.custom_project_name || "",
-          }
+      const masterCustomer = !isCustom && payload.form.customer_id
+        ? customers.find((c) => c.id === payload.form.customer_id) || null
         : null;
 
-      const rawNotes = payload.form.notes?.trim() || "";
+      const snapshot = buildDocumentPartySnapshot({
+        partyType: "customer",
+        isCustom,
+        partyId: payload.form.customer_id,
+        masterParty: masterCustomer,
+        name: payload.form.customer_name,
+        address: payload.form.customer_address,
+        trn: payload.form.customer_trn,
+        contactPerson: payload.form.contact_person,
+        phone: payload.form.contact_number,
+        email: payload.form.contact_email,
+        projectName: payload.form.custom_project_name,
+        rawNotes: payload.form.notes,
+      });
 
       const dataPayload: Record<string, unknown> = {
-        customer_id: isCustom ? null : payload.form.customer_id || null,
-        customer_name: isCustom ? payload.form.customer_name?.trim() : null,
-        customer_address: isCustom ? payload.form.customer_address || null : null,
-        customer_trn: isCustom ? payload.form.customer_trn || null : null,
-        contact_person: isCustom ? payload.form.contact_person || null : null,
-        contact_number: isCustom ? payload.form.contact_number || null : null,
-        contact_email: isCustom ? payload.form.contact_email || null : null,
-        custom_project_name: isCustom ? payload.form.custom_project_name || null : null,
-        is_custom_customer: isCustom,
-        custom_customer: customPayload,
+        ...snapshot.fullColumns,
         project_id: payload.form.project_id || null,
         quotation_date: payload.form.invoice_date || null,
         expiry_date: payload.form.supply_date || null,
@@ -467,7 +475,7 @@ export default function QuotationsPage() {
         vat_amount: payload.vat_amount,
         total_amount: payload.total_amount,
         payment_terms: payload.form.payment_terms || null,
-        notes: rawNotes || null,
+        notes: snapshot.notesWithFallback,
         terms: payload.form.terms?.trim() || payload.form.payment_terms || null,
         updated_at: new Date().toISOString(),
       };
@@ -521,6 +529,21 @@ export default function QuotationsPage() {
         const isNotNullCustomer = errObj?.code === "23502" && (errObj?.message?.includes("customer_id") || JSON.stringify(errObj).includes("customer_id"));
 
         if (isColErr) {
+          const notesGuaranteed = snapshot.notesWithFallback || (snapshot.customPayload
+            ? buildDocumentPartySnapshot({
+                partyType: "customer",
+                isCustom: true,
+                name: snapshot.resolvedName,
+                address: snapshot.resolvedAddress,
+                trn: snapshot.resolvedTrn,
+                contactPerson: snapshot.resolvedContact,
+                phone: snapshot.resolvedPhone,
+                email: snapshot.resolvedEmail,
+                projectName: snapshot.resolvedProjectName,
+                rawNotes: payload.form.notes,
+              }).notesWithFallback
+            : snapshot.cleanNotes);
+
           const minimalPayload: Record<string, unknown> = {
             customer_id: isCustom ? null : payload.form.customer_id || null,
             project_id: payload.form.project_id || null,
@@ -531,7 +554,7 @@ export default function QuotationsPage() {
             discount_amount: 0,
             vat_amount: payload.vat_amount,
             total_amount: payload.total_amount,
-            notes: rawNotes || null,
+            notes: notesGuaranteed,
             terms: payload.form.terms?.trim() || payload.form.payment_terms || null,
             updated_at: new Date().toISOString(),
           };
@@ -552,7 +575,7 @@ export default function QuotationsPage() {
                 discount_amount: 0,
                 vat_amount: payload.vat_amount,
                 total_amount: payload.total_amount,
-                notes: rawNotes || null,
+                notes: notesGuaranteed,
                 terms: payload.form.terms?.trim() || payload.form.payment_terms || null,
               };
               try {
@@ -661,6 +684,16 @@ export default function QuotationsPage() {
       setSuccess(`Quotation ${saveRes.quotationNumber} ${editing ? "updated" : "saved"} successfully.`);
       closeForm();
       await loadAll();
+      if (payload.exportAfterSave && saveRes.id) {
+        const { data: freshQ } = await supabase
+          .from("quotations")
+          .select("*, customer:customers(*)")
+          .eq("id", saveRes.id)
+          .maybeSingle();
+        if (freshQ) {
+          await openPrint(withCustomerDocumentDetails(freshQ as Quotation) as Quotation);
+        }
+      }
     } catch (err: unknown) {
       const msg = parseDatabaseError(err, "Failed to save quotation. Please check required fields and network.");
       setError(msg);
@@ -748,12 +781,12 @@ export default function QuotationsPage() {
     <main className="min-h-screen bg-slate-50">
       <div className="app-screen-content no-print">
         <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-3 py-4 sm:px-6 sm:py-5">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5">
           <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-slate-900 p-2.5 text-white"><FileText size={22} /></div>
-            <div><h1 className="text-2xl font-bold text-slate-900">Quotations</h1><p className="text-sm text-slate-500">Create and manage sales quotations</p></div>
+            <div className="rounded-xl bg-slate-900 p-2.5 text-white shrink-0"><FileText size={22} /></div>
+            <div><h1 className="text-xl sm:text-2xl font-bold text-slate-900">Quotations</h1><p className="text-xs sm:text-sm text-slate-500">Create and manage sales quotations</p></div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setShowImportModal(true)}
