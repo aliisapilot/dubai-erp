@@ -40,7 +40,6 @@ export default function PrintModal({
     typeof window === "undefined" ? 1 : getDocumentPreviewScale(window.innerWidth - 32, 794)
   );
   const [isFit, setIsFit] = useState(true);
-  const [childrenRev, setChildrenRev] = useState(0);
   const [exportingAction, setExportingAction] = useState<"download" | "share" | "print" | null>(null);
   const [exportNotice, setExportNotice] = useState<{
     text: string;
@@ -53,10 +52,9 @@ export default function PrintModal({
     if (!isOpen) return;
     const timer = setTimeout(() => {
       setExportNotice(null);
-      setChildrenRev((r) => r + 1);
     }, 0);
     return () => clearTimeout(timer);
-  }, [isOpen, documentFilename, documentTitle, children]);
+  }, [isOpen, documentFilename, documentTitle]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -281,9 +279,9 @@ export default function PrintModal({
       <div ref={surfaceRef} className="print-preview-surface flex flex-col min-h-0 flex-1 items-center justify-start overflow-auto overscroll-contain bg-slate-200 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:p-4 min-w-0">
         <CanonicalPdfPreview
           filename={documentFilename || `${displayTitle}.pdf`}
-          revisionKey={`${documentFilename || ""}|${displayTitle}|${childrenRev}`}
+          revisionKey={`${documentFilename || ""}|${displayTitle}`}
           scale={scale}
-          debounceMs={80}
+          debounceMs={30}
           onScopeElement={(el) => {
             previewRef.current = el;
           }}

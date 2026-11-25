@@ -281,18 +281,31 @@ export async function renderHtmlToServerPdf(params: {
     if (!promise) {
       promise = (async () => {
         const headers = await getAuthHeaders();
-        const res = await fetch("/api/pdf/render", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            sheetsHtml: params.sheetsHtml,
-            cssText: resolvedCssText,
-            assets: params.assets || {},
-            filename,
-            title,
-            landscape: Boolean(params.landscape),
-          }),
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25_000);
+        let res: Response;
+        try {
+          res = await fetch("/api/pdf/render", {
+            method: "POST",
+            headers,
+            signal: controller.signal,
+            body: JSON.stringify({
+              sheetsHtml: params.sheetsHtml,
+              cssText: resolvedCssText,
+              assets: params.assets || {},
+              filename,
+              title,
+              landscape: Boolean(params.landscape),
+            }),
+          });
+        } catch (fetchErr) {
+          if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
+            throw new Error("PDF generation timed out after 25s. Please retry.");
+          }
+          throw fetchErr;
+        } finally {
+          clearTimeout(timeoutId);
+        }
 
         if (!res.ok) {
           let errMsg = `Server PDF engine failed (${res.status}).`;
@@ -325,8 +338,8 @@ export async function renderHtmlToServerPdf(params: {
         const blob = new Blob([buf], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
 
-        // Keep max 8 cached PDFs to bound client memory
-        if (completedPdfCache.size >= 8) {
+        // Keep max 16 cached PDFs to bound client memory while enabling instant reopen
+        if (completedPdfCache.size >= 16) {
           const oldestKey = completedPdfCache.keys().next().value;
           if (oldestKey) {
             const old = completedPdfCache.get(oldestKey);
