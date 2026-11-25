@@ -21,18 +21,25 @@ import {
   Maximize2,
   Upload,
   GitCompare,
+  Printer,
+  Share2,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { CustomerCandidate, StoredSoaRecord } from "@/lib/soaManager";
-import type { RawHistoricalEntry, RawInvoice, RawReceiptVoucher } from "@/lib/customerStatementEngine";
+import type { RawHistoricalEntry, RawInvoice, RawReceiptVoucher, StatementData } from "@/lib/customerStatementEngine";
 import { getExportSoaPdfFilename } from "@/lib/soaManager";
+import { clearPdfCache, exportDocumentToPdf } from "@/lib/exportDocumentPdf";
+import type { CompanyDocInfo } from "@/components/documents/DocHeader";
+import StatementOfAccountTemplate from "@/components/documents/StatementOfAccountTemplate";
 
 interface ExcelSoaEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
   record: StoredSoaRecord | null;
   customers: CustomerCandidate[];
-  onSaved: () => void;
+  companyInfo?: CompanyDocInfo | null;
+  liveStatement?: StatementData | null;
+  onSaved: (savedCustomerId?: string) => void;
 }
 
 let rowIdCounter = 0;
@@ -58,13 +65,17 @@ function ExcelSoaEditorModalContent({
   onClose,
   record,
   customers,
+  companyInfo,
+  liveStatement,
   onSaved,
 }: {
   isOpen: boolean;
   onClose: () => void;
   record: StoredSoaRecord;
   customers: CustomerCandidate[];
-  onSaved: () => void;
+  companyInfo?: CompanyDocInfo | null;
+  liveStatement?: StatementData | null;
+  onSaved: (savedCustomerId?: string) => void;
 }) {
   const [customerId, setCustomerId] = useState(record.customer_id || "");
   const [soaNumber, setSoaNumber] = useState(record.soa_number || "");
@@ -108,7 +119,22 @@ function ExcelSoaEditorModalContent({
   // Save states
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [saveMode, setSaveMode] = useState<"published" | "draft" | null>(null);
+  const [amountConfirmOpen, setAmountConfirmOpen] = useState(false);
+  const [amountChangeReason, setAmountChangeReason] = useState("");
+  const [pdfExportingAction, setPdfExportingAction] = useState<"download" | "print" | "share" | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const hiddenPrintRef = useRef<HTMLDivElement>(null);
+
+  const initialFinancialSig = React.useMemo(
+    () =>
+      JSON.stringify({
+        open: Number(record.opening_balance) || 0,
+        rows: (record.entries || []).map((r) => [r.id, parseNum(r.debit), parseNum(r.credit)]),
+      }),
+    [record]
+  );
 
   // Live Ledger Comparison Modal state
   const [showReconcileDrawer, setShowReconcileDrawer] = useState(false);
@@ -573,13 +599,35 @@ function ExcelSoaEditorModalContent({
     }
   }
 
-  // Save changes
-  async function handleSave(options: { verify: boolean }) {
+  const currentFinancialSig = JSON.stringify({
+    open: openingBalance,
+    rows: computedEntries.map((r) => [r.id, parseNum(r.debit), parseNum(r.credit)]),
+  });
+  const hasFinancialAmountChanges = currentFinancialSig !== initialFinancialSig;
+
+  // Save changes (Save Draft vs Save Changes / Publish vs Approve & Verify)
+  async function handleSave(options: {
+    mode: "draft" | "save_changes" | "verify";
+    reasonOverride?: string;
+  }) {
+    if (
+      options.mode === "save_changes" &&
+      hasFinancialAmountChanges &&
+      !options.reasonOverride &&
+      !amountConfirmOpen
+    ) {
+      setAmountConfirmOpen(true);
+      return;
+    }
+
     setErrorMsg("");
     setSaving(true);
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token || "";
+
+      const isDraft = options.mode === "draft";
+      const apiAction = isDraft ? "save_draft" : "publish_changes";
 
       const res = await fetch("/api/customer-statements", {
         method: "PUT",
@@ -589,19 +637,25 @@ function ExcelSoaEditorModalContent({
         },
         body: JSON.stringify({
           attachmentId: record?.id,
-          action: "update_statement",
+          action: apiAction,
           customerId: customerId || undefined,
           soaNumber: soaNumber.trim() || undefined,
           statementDate: statementDate || null,
           openingBalance,
           closingBalance: sourceClosingParsed,
           entries: computedEntries,
-          isVerified: options.verify,
-          status: options.verify ? "verified" : "pending_verification",
-          needsReview: !options.verify,
-          reason: options.verify
-            ? "User approved and verified Statement of Account"
-            : "User saved Statement of Account draft",
+          isVerified: !isDraft,
+          status: isDraft ? "pending_verification" : "verified",
+          needsReview: isDraft,
+          reason:
+            options.reasonOverride ||
+            (options.mode === "verify"
+              ? "User approved and verified Statement of Account"
+              : options.mode === "save_changes"
+              ? hasFinancialAmountChanges
+                ? "User confirmed and published financial amount corrections"
+                : "User saved and published Statement of Account changes"
+              : "User saved Statement of Account draft"),
         }),
       });
 
@@ -610,13 +664,35 @@ function ExcelSoaEditorModalContent({
         throw new Error(json?.error || "Failed to save statement.");
       }
 
+      clearPdfCache();
       setHasUnsavedChanges(false);
-      onSaved();
-      if (options.verify) onClose();
+      setAmountConfirmOpen(false);
+      setAmountChangeReason("");
+      setLastSavedAt(new Date().toLocaleTimeString());
+      setSaveMode(isDraft ? "draft" : "published");
+      onSaved(customerId || undefined);
+      if (options.mode === "verify") onClose();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Failed to save statement.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleExportUpdatedStatementPdf(action: "download" | "print" | "share") {
+    if (!hiddenPrintRef.current) return;
+    setPdfExportingAction(action);
+    setErrorMsg("");
+    try {
+      await exportDocumentToPdf({
+        filename: exportPdfFilename,
+        scopeElement: hiddenPrintRef.current,
+        action,
+      });
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Failed to generate updated SOA PDF.");
+    } finally {
+      setPdfExportingAction(null);
     }
   }
 
@@ -657,9 +733,23 @@ function ExcelSoaEditorModalContent({
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-950 border border-amber-800 text-amber-300">
                     Unsaved Edits
                   </span>
+                ) : lastSavedAt ? (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                      saveMode === "published"
+                        ? "bg-emerald-950 border-emerald-800 text-emerald-300"
+                        : "bg-slate-800 border-slate-700 text-slate-300"
+                    }`}
+                  >
+                    {saveMode === "published" ? `Saved & Published (${lastSavedAt})` : `Draft Saved (${lastSavedAt})`}
+                  </span>
+                ) : record.is_verified && !record.needs_review ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-950 border border-cyan-800 text-cyan-300">
+                    Published
+                  </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950 border border-emerald-800 text-emerald-300">
-                    Saved
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 border border-slate-700 text-slate-300">
+                    Draft / Pending
                   </span>
                 )}
               </div>
@@ -709,17 +799,50 @@ function ExcelSoaEditorModalContent({
               <span>{isFullScreenTable ? "Split View" : "Full Spreadsheet"}</span>
             </button>
 
+            <button
+              type="button"
+              disabled={pdfExportingAction !== null}
+              onClick={() => void handleExportUpdatedStatementPdf("download")}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 font-bold transition cursor-pointer disabled:opacity-50"
+              title="Download updated Statement of Account PDF"
+            >
+              {pdfExportingAction === "download" ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              <span>Download PDF</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={pdfExportingAction !== null}
+              onClick={() => void handleExportUpdatedStatementPdf("print")}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 font-bold transition cursor-pointer disabled:opacity-50"
+              title="Print updated Statement of Account PDF"
+            >
+              {pdfExportingAction === "print" ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
+              <span className="hidden sm:inline">Print</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={pdfExportingAction !== null}
+              onClick={() => void handleExportUpdatedStatementPdf("share")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-emerald-300 px-3 py-1.5 font-semibold transition cursor-pointer disabled:opacity-50"
+              title="Share updated Statement of Account PDF"
+            >
+              {pdfExportingAction === "share" ? <Loader2 size={13} className="animate-spin" /> : <Share2 size={13} />}
+              <span className="hidden sm:inline">Share</span>
+            </button>
+
             {pdfBlobUrl && (
               <a
                 href={pdfBlobUrl}
                 target="_blank"
                 rel="noreferrer"
-                download={exportPdfFilename}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 font-semibold transition cursor-pointer"
-                title="Download original document"
+                download={record.file_name || exportPdfFilename}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 font-semibold transition cursor-pointer"
+                title="Download immutable original uploaded PDF"
               >
                 <Download size={13} />
-                <span>Download PDF</span>
+                <span className="hidden md:inline">Download Original</span>
               </a>
             )}
 
@@ -1322,9 +1445,55 @@ function ExcelSoaEditorModalContent({
           </div>
         )}
 
+        {/* Financial Amount Correction Confirmation Banner */}
+        {amountConfirmOpen && (
+          <div className="border-t border-amber-700/80 bg-amber-950/90 px-5 py-3 text-xs text-amber-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div className="space-y-1 flex-1 min-w-[240px]">
+              <div className="font-bold text-amber-300 flex items-center gap-1.5">
+                <AlertTriangle size={14} />
+                <span>Confirm Financial Amount Correction &amp; Audit Trail</span>
+              </div>
+              <p className="text-[11px] text-amber-200/80">
+                You modified debit, credit, or opening balance amounts. Enter an audit note to publish this correction to the authoritative Live Customer Statement.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={amountChangeReason}
+                onChange={(e) => setAmountChangeReason(e.target.value)}
+                placeholder="Reason for financial correction (e.g. Corrected INV debit)"
+                className="rounded-lg border border-amber-700 bg-slate-950 px-3 py-1.5 text-xs text-white w-64 focus:border-amber-400 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setAmountConfirmOpen(false)}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() =>
+                  void handleSave({
+                    mode: "save_changes",
+                    reasonOverride:
+                      amountChangeReason.trim() ||
+                      "User confirmed and published financial amount corrections",
+                  })
+                }
+                className="rounded-lg bg-amber-600 hover:bg-amber-500 px-4 py-1.5 text-xs font-bold text-white cursor-pointer disabled:opacity-50"
+              >
+                Confirm &amp; Publish
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Footer with Calculations & Save / Verify Controls */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 bg-slate-900 border-t border-slate-800 text-xs shrink-0">
-          <div className="flex items-center gap-3 text-slate-400 font-mono">
+          <div className="flex flex-wrap items-center gap-3 text-slate-400 font-mono">
             <span>
               Opening: <strong className="text-white">AED {openingBalance.toFixed(2)}</strong>
             </span>
@@ -1342,18 +1511,18 @@ function ExcelSoaEditorModalContent({
             </span>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={onClose}
               className="rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 px-4 py-2 font-semibold text-slate-300 hover:text-white transition cursor-pointer"
             >
-              Cancel
+              Close
             </button>
 
             <button
               type="button"
-              onClick={() => void handleSave({ verify: false })}
+              onClick={() => void handleSave({ mode: "draft" })}
               disabled={saving}
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 font-semibold transition cursor-pointer disabled:opacity-50"
             >
@@ -1363,7 +1532,18 @@ function ExcelSoaEditorModalContent({
 
             <button
               type="button"
-              onClick={() => void handleSave({ verify: true })}
+              onClick={() => void handleSave({ mode: "save_changes" })}
+              disabled={!isCustomerConfirmed || saving}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 font-bold transition shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Save and publish changes immediately to the authoritative Live Customer Statement"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              <span>Save Changes</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void handleSave({ mode: "verify" })}
               disabled={!canVerify || saving}
               className={`inline-flex items-center gap-1.5 rounded-xl px-5 py-2 font-bold transition shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${canVerify
                 ? "bg-cyan-600 hover:bg-cyan-500 text-white"
@@ -1379,6 +1559,49 @@ function ExcelSoaEditorModalContent({
               <span>Approve &amp; Verify</span>
             </button>
           </div>
+        </div>
+
+        {/* Off-screen authoritative StatementOfAccountTemplate for unified Chromium PDF export */}
+        <div
+          ref={hiddenPrintRef}
+          aria-hidden="true"
+          style={{ position: "fixed", left: "-99999px", top: 0, width: "210mm", pointerEvents: "none", opacity: 0 }}
+        >
+          <StatementOfAccountTemplate
+            company={companyInfo || null}
+            statement={
+              liveStatement && liveStatement.statement_number === (soaNumber || record.soa_number)
+                ? {
+                    ...liveStatement,
+                    entries:
+                      liveStatement.entries.some((e) => !e.is_historical)
+                        ? liveStatement.entries
+                        : computedEntries.map((ce) => ({
+                            ...ce,
+                            status: ce.status === "duplicate" ? ("historical" as const) : ce.status,
+                            balance: ce.balance ?? 0,
+                            is_historical: true,
+                          })),
+                  }
+                : {
+                    statement_number: soaNumber || record.soa_number || "SOA",
+                    statement_date: statementDate || record.statement_date || new Date().toISOString().slice(0, 10),
+                    customer_name: customers.find((c) => c.id === customerId)?.name || record.customer_name || "Customer",
+                    customer_code: customers.find((c) => c.id === customerId)?.customer_code || null,
+                    customer_trn: customers.find((c) => c.id === customerId)?.trn || null,
+                    opening_balance: openingBalance,
+                    total_debits: totalDebits,
+                    total_credits: totalCredits,
+                    closing_balance: closingBal,
+                    entries: computedEntries.map((ce) => ({
+                      ...ce,
+                      status: ce.status === "duplicate" ? ("historical" as const) : ce.status,
+                      balance: ce.balance ?? 0,
+                      is_historical: true,
+                    })),
+                  }
+            }
+          />
         </div>
       </div>
     </div>

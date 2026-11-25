@@ -26,6 +26,15 @@ let activeDownloadLock = false;
 const inFlightPdfRequests = new Map<string, Promise<CachedPdfEntry>>();
 const completedPdfCache = new Map<string, CachedPdfEntry>();
 
+export function clearPdfCache(): void {
+  for (const entry of completedPdfCache.values()) {
+    try {
+      URL.revokeObjectURL(entry.url);
+    } catch {}
+  }
+  completedPdfCache.clear();
+}
+
 export function normalizePdfFilename(rawFilename?: string | null): string {
   const base = sanitizeFilenamePart((rawFilename || "Document").replace(/(\.pdf)+$/i, ""));
   return `${base || "Document"}.pdf`;

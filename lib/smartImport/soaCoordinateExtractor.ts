@@ -189,7 +189,11 @@ interface MergedToken {
  * Merges horizontally adjacent PDF text items on the same baseline (or wrapped header cell)
  * into logical tokens with accurate bounding boxes.
  */
-function mergeItemsHorizontally(items: ParsedPdfTextItem[], maxGapPt = 4): MergedToken[] {
+function mergeItemsHorizontally(
+  items: ParsedPdfTextItem[],
+  maxGapPt = 4,
+  columnBounds?: DetectedSoaColumn[]
+): MergedToken[] {
   if (items.length === 0) return [];
   const sorted = [...items].sort((a, b) => a.x - b.x);
   const merged: MergedToken[] = [];
@@ -200,6 +204,10 @@ function mergeItemsHorizontally(items: ParsedPdfTextItem[], maxGapPt = 4): Merge
     const itemRight = item.x + (item.width || itemText.length * 4.5);
     const last = merged[merged.length - 1];
     const gap = last ? item.x - last.right : Infinity;
+
+    const crossesColumnBoundary =
+      Boolean(last && columnBounds && columnBounds.length > 1) &&
+      columnBounds!.some((col) => last.right <= col.boundRight + 1 && item.x >= col.boundRight - 1);
 
     const bothAreAmountsOrDashes =
       last &&
@@ -213,6 +221,7 @@ function mergeItemsHorizontally(items: ParsedPdfTextItem[], maxGapPt = 4): Merge
 
     if (
       last &&
+      !crossesColumnBoundary &&
       !bothAreAmountsOrDashes &&
       !bothAreDistinctHeaderRoles &&
       gap <= maxGapPt &&
@@ -319,6 +328,8 @@ function detectPageTableHeader(
 
         const boundRight = idx === sortedCols.length - 1
           ? Math.max(pageWidth || 600, entry.tok.right + 40)
+          : entry.role === "ref" && next.role === "description"
+          ? Math.min((entry.tok.right + next.tok.left) / 2, entry.tok.right + 18)
           : (entry.tok.right + next.tok.left) / 2;
 
         return {
@@ -409,6 +420,15 @@ function assignTextColumnRole(
   const itemLeft = item.x;
   const itemRight = item.x + (item.width || item.str.length * 4);
   const itemCenter = (itemLeft + itemRight) / 2;
+
+  const descCol = columns.find((c) => c.role === "description");
+  const refCol = columns.find((c) => c.role === "ref");
+  if (descCol && refCol && refCol.right < descCol.left) {
+    // Left-aligned description text starting past the Ref header's right edge belongs to Description
+    if (itemLeft >= refCol.boundRight - 2 && itemLeft < descCol.boundRight) {
+      return "description";
+    }
+  }
 
   for (const col of columns) {
     if (itemCenter >= col.boundLeft && itemCenter < col.boundRight) {
@@ -602,7 +622,7 @@ export function extractSoaTableFromCoordinates(
       const sortedSubYs = Array.from(rowSubLines.keys()).sort((a, b) => b - a);
       for (const ySub of sortedSubYs) {
         const subItems = rowSubLines.get(ySub)!.sort((a, b) => a.x - b.x);
-        const mergedLineTokens = mergeItemsHorizontally(subItems, 5);
+        const mergedLineTokens = mergeItemsHorizontally(subItems, 5, activeColumns);
 
         for (const tok of mergedLineTokens) {
           const fakeItem: ParsedPdfTextItem = {

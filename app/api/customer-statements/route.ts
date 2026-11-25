@@ -172,6 +172,9 @@ export async function GET(req: NextRequest) {
     let statementData = null;
     let selectedCustomer = null;
     let customerSavedSoa = null;
+    let targetRawInvoices: RawInvoice[] = [];
+    let targetRawReceipts: RawReceiptVoucher[] = [];
+    let targetRawPayments: RawPayment[] = [];
 
     const targetCustomerId = customerId || customers?.[0]?.id;
     if (targetCustomerId) {
@@ -205,6 +208,9 @@ export async function GET(req: NextRequest) {
       const rawInvoices = (invRes.data || []) as RawInvoice[];
       const rawReceipts = (recRes.data || []) as RawReceiptVoucher[];
       const rawPayments = (payRes.data || []) as RawPayment[];
+      targetRawInvoices = rawInvoices;
+      targetRawReceipts = rawReceipts;
+      targetRawPayments = rawPayments;
 
       statementData = calculateCustomerStatement({
         customerId: targetCustomerId,
@@ -223,6 +229,9 @@ export async function GET(req: NextRequest) {
         historicalEntries: customerSavedSoa?.entries || [],
         statementNumber: customerSavedSoa?.soa_number || undefined,
         statementDate: customerSavedSoa?.statement_date || undefined,
+        originalPdfClosingBalance: customerSavedSoa?.closing_balance ?? null,
+        originalStatementCutoffDate:
+          customerSavedSoa?.cutover_date || customerSavedSoa?.statement_date || null,
       });
     }
 
@@ -310,6 +319,11 @@ export async function GET(req: NextRequest) {
       };
     });
 
+    const latestAuditTs =
+      customerSavedSoa?.audit_trail && customerSavedSoa.audit_trail.length > 0
+        ? customerSavedSoa.audit_trail[customerSavedSoa.audit_trail.length - 1].timestamp
+        : customerSavedSoa?.created_at || null;
+
     return NextResponse.json({
       success: true,
       companyId,
@@ -322,6 +336,10 @@ export async function GET(req: NextRequest) {
       selectedCustomer,
       statement: statementData,
       customerSavedSoa,
+      invoices: targetRawInvoices,
+      receipts: targetRawReceipts,
+      payments: targetRawPayments,
+      lastSynchronizedAt: latestAuditTs || new Date().toISOString(),
     });
   } catch (err) {
     return NextResponse.json(
@@ -608,7 +626,7 @@ export async function POST(req: NextRequest) {
 export interface UpdateSoaPayload {
   companyId?: string;
   attachmentId: string;
-  action: "edit_entry" | "add_entry" | "delete_entry" | "update_cutover" | "update_statement";
+  action: "edit_entry" | "add_entry" | "delete_entry" | "update_cutover" | "update_statement" | "save_draft" | "publish_changes";
   entryId?: string;
   entry?: Partial<RawHistoricalEntry>;
   entries?: RawHistoricalEntry[];
@@ -773,7 +791,7 @@ export async function PUT(req: NextRequest) {
         updated: { cutoverDate: updatedCutoverDate, isCutoverApproved: updatedCutoverApproved },
         reason: reason || "User updated cutover settings",
       });
-    } else if (action === "update_statement") {
+    } else if (action === "update_statement" || action === "save_draft" || action === "publish_changes") {
       if (Array.isArray(entries)) {
         existingEntries.length = 0;
         existingEntries.push(...entries);
@@ -782,7 +800,11 @@ export async function PUT(req: NextRequest) {
         timestamp: nowIso,
         user: userIdentifier,
         action: "edit",
-        reason: reason || "User updated statement via Excel-style editor",
+        reason:
+          reason ||
+          (action === "save_draft"
+            ? "User saved Statement of Account draft"
+            : "User published Statement of Account changes"),
         original: {
           soaNumber: stored.soa_number,
           statementDate: stored.statement_date,
@@ -795,7 +817,14 @@ export async function PUT(req: NextRequest) {
           statementDate: statementDate !== undefined ? statementDate : stored.statement_date,
           openingBalance: newOpeningBalance !== undefined ? newOpeningBalance : stored.opening_balance,
           entriesCount: existingEntries.length,
-          isVerified: requestedVerified !== undefined ? requestedVerified : stored.is_verified,
+          isVerified:
+            action === "save_draft"
+              ? false
+              : action === "publish_changes"
+              ? true
+              : requestedVerified !== undefined
+              ? requestedVerified
+              : stored.is_verified,
         },
       });
     }
@@ -818,11 +847,29 @@ export async function PUT(req: NextRequest) {
         ? Math.round(Number(newClosingBalance) * 100) / 100
         : stored.closing_balance;
 
-    const isStillVerified = requestedVerified !== undefined
-      ? Boolean(requestedVerified && existingEntries.length > 0)
-      : (stored.is_verified && existingEntries.length > 0);
-    const putStatus = requestedStatus || (isStillVerified ? "verified" : stored.status === "rejected" ? "rejected" : "pending_verification");
-    const finalNeedsReview = requestedNeedsReview !== undefined ? requestedNeedsReview : (!isStillVerified);
+    const isStillVerified =
+      action === "save_draft"
+        ? false
+        : action === "publish_changes"
+        ? true
+        : requestedVerified !== undefined
+        ? Boolean(requestedVerified && existingEntries.length > 0)
+        : stored.is_verified && existingEntries.length > 0;
+    const putStatus =
+      action === "save_draft"
+        ? "pending_verification"
+        : action === "publish_changes"
+        ? "verified"
+        : requestedStatus ||
+          (isStillVerified ? "verified" : stored.status === "rejected" ? "rejected" : "pending_verification");
+    const finalNeedsReview =
+      action === "save_draft"
+        ? true
+        : action === "publish_changes"
+        ? false
+        : requestedNeedsReview !== undefined
+        ? requestedNeedsReview
+        : !isStillVerified;
 
     const finalStoragePath = storagePath || stored.storage_path || undefined;
 
@@ -870,6 +917,7 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      lastSynchronizedAt: nowIso,
       updatedRecord: {
         ...stored,
         opening_balance: openingBalance,

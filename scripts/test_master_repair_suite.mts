@@ -431,6 +431,141 @@ async function run() {
   await pg.close();
   console.log("  ✓ PGlite snapshot persistence, master-record isolation & PDF filenames PASSED across all 6 document types!");
 
+  console.log("\n[7] Testing SOA137-26 + post-cutoff INV145 live synchronization & breakdown...");
+  const soa137Stmt = calculateCustomerStatement({
+    customerId: "cust-elegance",
+    customerName: "Elegance Tents And Sheds Installation",
+    initialCutoverBalance: 0,
+    cutoverDate: "2026-11-11",
+    statementNumber: "SOA137-26",
+    statementDate: "2026-11-11",
+    originalPdfClosingBalance: 39625.56,
+    originalStatementCutoffDate: "2026-11-11",
+    historicalEntries: [
+      {
+        id: "h-1",
+        date: "2026-10-15",
+        reference_no: "INV130",
+        description: "PVC Fabrication & Installation",
+        debit: 51173.46,
+        credit: 0,
+        status: "historical",
+      },
+      {
+        id: "h-2",
+        date: "2026-11-01",
+        reference_no: "RV-090",
+        description: "Bank Transfer",
+        debit: 0,
+        credit: 11547.9,
+        status: "historical",
+      },
+    ],
+    invoices: [
+      {
+        id: "inv-145",
+        customer_id: "cust-elegance",
+        invoice_number: "INV145",
+        invoice_date: "2026-11-25",
+        total_amount: 5522.0,
+        status: "sent",
+      },
+    ],
+    receipts: [],
+    payments: [],
+  });
+  assert.equal(soa137Stmt.breakdown?.original_pdf_closing_balance, 39625.56);
+  assert.equal(soa137Stmt.breakdown?.reconciled_historical_balance, 39625.56);
+  assert.equal(soa137Stmt.breakdown?.post_cutoff_invoices_total, 5522.0);
+  assert.equal(soa137Stmt.breakdown?.current_outstanding_balance, 45147.56);
+  assert.equal(soa137Stmt.closing_balance, 45147.56);
+
+  // Editing INV145 updates statement without duplication; recording payment reduces balance
+  const soa137Updated = calculateCustomerStatement({
+    customerId: "cust-elegance",
+    customerName: "Elegance Tents And Sheds Installation",
+    initialCutoverBalance: 0,
+    cutoverDate: "2026-11-11",
+    statementNumber: "SOA137-26",
+    statementDate: "2026-11-11",
+    originalPdfClosingBalance: 39625.56,
+    originalStatementCutoffDate: "2026-11-11",
+    historicalEntries: [
+      {
+        id: "h-1",
+        date: "2026-10-15",
+        reference_no: "INV130",
+        description: "Edited Description - PVC Fabrication",
+        debit: 51173.46,
+        credit: 0,
+        is_edited: true,
+        status: "historical",
+      },
+      {
+        id: "h-2",
+        date: "2026-11-01",
+        reference_no: "RV-090",
+        description: "Bank Transfer",
+        debit: 0,
+        credit: 11547.9,
+        status: "historical",
+      },
+    ],
+    invoices: [
+      {
+        id: "inv-145",
+        customer_id: "cust-elegance",
+        invoice_number: "INV145",
+        invoice_date: "2026-11-25",
+        total_amount: 6000.0,
+        status: "sent",
+      },
+    ],
+    receipts: [
+      {
+        id: "rv-200",
+        customer_id: "cust-elegance",
+        voucher_number: "RV-200",
+        voucher_date: "2026-11-26",
+        amount: 2000.0,
+        status: "completed",
+      },
+    ],
+    payments: [],
+  });
+  assert.equal(soa137Updated.entries.filter((e) => e.invoice_id === "inv-145" || e.original_reference === "INV145").length, 1);
+  assert.equal(soa137Updated.entries.find((e) => e.id === "h-1")?.description, "Edited Description - PVC Fabrication");
+  assert.equal(soa137Updated.closing_balance, 43625.56);
+  console.log("  ✓ SOA137-26 + INV145 breakdown, live edit sync, and payment sync PASSED!");
+
+  console.log("\n[8] Testing coordinate extractor separation between Ref # and left-aligned Description...");
+  const refDescPage = {
+    pageNumber: 1,
+    width: 595,
+    height: 842,
+    text: "",
+    items: [
+      { str: "Date", x: 35, y: 700, width: 25, height: 10, page: 1 },
+      { str: "Ref #", x: 95, y: 700, width: 26, height: 10, page: 1 },
+      { str: "Description", x: 220, y: 700, width: 55, height: 10, page: 1 },
+      { str: "Charges (AED)", x: 360, y: 700, width: 65, height: 10, page: 1 },
+      { str: "Credits (AED)", x: 440, y: 700, width: 60, height: 10, page: 1 },
+      { str: "Balance (AED)", x: 515, y: 700, width: 65, height: 10, page: 1 },
+
+      { str: "15/10/2026", x: 35, y: 675, width: 45, height: 10, page: 1 },
+      { str: "INV101", x: 95, y: 675, width: 32, height: 10, page: 1 },
+      { str: "PVC Fabrication", x: 145, y: 675, width: 70, height: 10, page: 1 },
+      { str: "5,522.00", x: 380, y: 675, width: 42, height: 10, page: 1 },
+      { str: "-", x: 465, y: 675, width: 5, height: 10, page: 1 },
+      { str: "5,522.00", x: 535, y: 675, width: 42, height: 10, page: 1 },
+    ],
+  };
+  const sepRes = extractSoaTableFromCoordinates([refDescPage], "test_ref_desc.pdf", 0);
+  assert.equal(sepRes.items.length, 1);
+  assert.equal(sepRes.items[0].reference_no, "INV101");
+  assert.equal(sepRes.items[0].description, "PVC Fabrication");
+  console.log("  ✓ Coordinate extractor Ref # vs Description separation PASSED!");
+
   console.log("\n===================================================================");
   console.log("  ALL MASTER VERIFICATION TESTS PASSED SUCCESSFULLY! ✓");
   console.log("===================================================================");
