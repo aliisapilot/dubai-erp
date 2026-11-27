@@ -1,11 +1,11 @@
 "use client";
-import { printCurrentDocument } from "@/lib/print";
 
 import React, { ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { Download, Loader2, Maximize, Printer, Save, Share2, Sliders, X, ZoomIn, ZoomOut } from "lucide-react";
 import { getDocumentPreviewScale } from "@/lib/documentPreview";
-import { exportDocumentToPdf, isMobileBrowser, prefetchDocumentPdf } from "@/lib/exportDocumentPdf";
+import { exportDocumentToPdf } from "@/lib/exportDocumentPdf";
+import CanonicalPdfPreview from "./CanonicalPdfPreview";
 
 interface PrintModalProps {
   isOpen: boolean;
@@ -33,7 +33,7 @@ export default function PrintModal({
   onSaveBeforeExport,
 }: PrintModalProps) {
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
-  const previewRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 794, height: 1123 });
   const [scale, setScale] = useState(() =>
@@ -52,15 +52,9 @@ export default function PrintModal({
     if (!isOpen) return;
     const timer = setTimeout(() => {
       setExportNotice(null);
-      if (previewRef.current) {
-        void prefetchDocumentPdf({
-          filename: documentFilename,
-          scopeElement: previewRef.current,
-        });
-      }
-    }, 150);
+    }, 0);
     return () => clearTimeout(timer);
-  }, [isOpen, documentFilename, children]);
+  }, [isOpen, documentFilename, documentTitle]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -121,10 +115,6 @@ export default function PrintModal({
   if (!isOpen) return null;
 
   const runPdfAction = async (action: "download" | "share" | "print") => {
-    if (action === "print" && !isMobileBrowser()) {
-      await printCurrentDocument({ documentFilename, documentTitle: displayTitle });
-      return;
-    }
     setExportingAction(action);
     setExportNotice(null);
     try {
@@ -145,7 +135,10 @@ export default function PrintModal({
         });
       } else if (action === "print" && res.fallbackUrl) {
         setExportNotice({
-          text: `Tap "Open PDF" to open the A4 PDF and print via iOS Share → Print (${res.filename}).`,
+          text:
+            res.method === "ios-fallback"
+              ? `Tap "Open PDF" to open and print the A4 PDF (${res.filename}).`
+              : `Opened A4 PDF for printing (${res.filename}).`,
           url: res.fallbackUrl,
         });
       }
@@ -284,11 +277,17 @@ export default function PrintModal({
         </div>
       )}
       <div ref={surfaceRef} className="print-preview-surface flex flex-col min-h-0 flex-1 items-center justify-start overflow-auto overscroll-contain bg-slate-200 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:p-4 min-w-0">
-        <div className="print-preview-scale-shell relative shrink-0" style={{ width: dimensions.width * scale, height: dimensions.height * scale, margin: "auto" }}>
-          <div ref={previewRef} className="print-preview-scale-content absolute left-0 top-0 origin-top-left" style={{ width: dimensions.width, transform: `scale(${scale})` }}>
-            {children}
-          </div>
-        </div>
+        <CanonicalPdfPreview
+          filename={documentFilename || `${displayTitle}.pdf`}
+          revisionKey={`${documentFilename || ""}|${displayTitle}`}
+          scale={scale}
+          debounceMs={30}
+          onScopeElement={(el) => {
+            previewRef.current = el;
+          }}
+        >
+          {children}
+        </CanonicalPdfPreview>
       </div>
     </div>
   );

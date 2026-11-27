@@ -101,6 +101,16 @@ export interface StatementEntry {
   source_filename?: string;
 }
 
+export interface StatementBreakdown {
+  original_pdf_closing_balance: number | null;
+  original_statement_cutoff_date: string | null;
+  reconciled_historical_balance: number;
+  post_cutoff_invoices_total: number;
+  post_cutoff_payments_total: number;
+  approved_adjustments_total: number;
+  current_outstanding_balance: number;
+}
+
 export interface StatementData {
   statement_number: string;
   statement_date: string;
@@ -118,6 +128,7 @@ export interface StatementData {
   closing_balance: number;
   total_debits?: number;
   total_credits?: number;
+  breakdown?: StatementBreakdown;
 }
 
 export interface ReconciliationReport {
@@ -630,6 +641,8 @@ export interface StatementCalculationInput {
   customerCode?: string | null;
   statementNumber?: string;
   statementDate?: string;
+  originalPdfClosingBalance?: number | null;
+  originalStatementCutoffDate?: string | null;
 }
 
 /**
@@ -767,6 +780,26 @@ export function calculateCustomerStatement(input: StatementCalculationInput): St
 
   const finalClosing = roundCurrency(computedOpening + totalPeriodDebits - totalPeriodCredits);
 
+  // Compute historical vs post-cutoff live breakdown cleanly
+  const historicalRows = entries.filter((e) => e.is_historical);
+  const liveRows = entries.filter((e) => !e.is_historical);
+  const historicalNet = historicalRows.reduce(
+    (sum, e) => roundCurrency(sum + e.debit - e.credit),
+    0
+  );
+  const reconciledHistoricalBalance = roundCurrency(computedOpening + historicalNet);
+  const postCutoffInvoicesTotal = liveRows.reduce(
+    (sum, e) => roundCurrency(sum + e.debit),
+    0
+  );
+  const postCutoffPaymentsTotal = liveRows.reduce(
+    (sum, e) => roundCurrency(sum + e.credit),
+    0
+  );
+  const approvedAdjustmentsTotal = historicalRows
+    .filter((e) => e.is_edited || (e.reference_no || "").toUpperCase() === "ADJ")
+    .reduce((sum, e) => roundCurrency(sum + e.debit - e.credit), 0);
+
   return {
     statement_number: input.statementNumber || "SOA-001",
     statement_date: input.statementDate || new Date().toISOString().slice(0, 10),
@@ -783,6 +816,17 @@ export function calculateCustomerStatement(input: StatementCalculationInput): St
     closing_balance: finalClosing,
     total_debits: totalPeriodDebits,
     total_credits: totalPeriodCredits,
+    breakdown: {
+      original_pdf_closing_balance:
+        input.originalPdfClosingBalance !== undefined ? input.originalPdfClosingBalance : null,
+      original_statement_cutoff_date:
+        input.originalStatementCutoffDate || input.cutoverDate || input.statementDate || null,
+      reconciled_historical_balance: reconciledHistoricalBalance,
+      post_cutoff_invoices_total: postCutoffInvoicesTotal,
+      post_cutoff_payments_total: postCutoffPaymentsTotal,
+      approved_adjustments_total: approvedAdjustmentsTotal,
+      current_outstanding_balance: finalClosing,
+    },
   };
 }
 

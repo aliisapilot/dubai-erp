@@ -1,5 +1,4 @@
 "use client";
-import { printCurrentDocument } from "@/lib/print";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -16,7 +15,8 @@ import {
 import { CompanyDocInfo } from "@/components/documents/DocHeader";
 import { getDocumentPreviewScale } from "@/lib/documentPreview";
 import { generateDocumentPdfFilename } from "@/lib/documentFilename";
-import { exportDocumentToPdf, isMobileBrowser, prefetchDocumentPdf } from "@/lib/exportDocumentPdf";
+import { exportDocumentToPdf } from "@/lib/exportDocumentPdf";
+import CanonicalPdfPreview from "@/components/documents/CanonicalPdfPreview";
 
 // Template imports
 import TaxInvoiceTemplate, { TaxInvoiceData } from "@/components/documents/TaxInvoiceTemplate";
@@ -48,7 +48,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
     message: string;
     action: "download" | "share" | "print";
   } | null>(null);
-  const pageRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef<HTMLDivElement | null>(null);
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
 
   const computedFile = useMemo(() => {
@@ -177,16 +177,7 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
     updateHeight();
     const observer = new ResizeObserver(updateHeight);
     observer.observe(page);
-    const warmTimer = setTimeout(() => {
-      if (document.category !== "company_file" && fullDoc && pageRef.current) {
-        void prefetchDocumentPdf({
-          filename: computedFile.filename,
-          scopeElement: pageRef.current,
-        });
-      }
-    }, 150);
     return () => {
-      clearTimeout(warmTimer);
       observer.disconnect();
     };
   }, [fullDoc, document.category, computedFile.filename]);
@@ -409,13 +400,6 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
                 window.open(fileUrl, "_blank", "noopener");
                 return;
               }
-              if (!isMobileBrowser()) {
-                await printCurrentDocument({
-                  documentFilename: computedFile.filename,
-                  documentTitle: computedFile.title,
-                });
-                return;
-              }
               await runServerPdfAction("print");
             }}
             className="flex h-11 w-10 sm:w-11 items-center justify-center rounded-xl text-slate-200 hover:bg-slate-800 hover:text-white disabled:opacity-50"
@@ -483,21 +467,17 @@ export default function MobilePdfModal({ document, company, onClose }: MobilePdf
             </a>
           </div>
         ) : (
-          <div
-            className="mobile-pdf-scale-shell relative shrink-0 print:h-auto print:w-auto"
-            style={{
-              width: 794 * scale,
-              height: pageHeight * scale,
+          <CanonicalPdfPreview
+            filename={computedFile.filename}
+            revisionKey={`${document.category}|${document.id}|${computedFile.filename}|${Boolean(fullDoc)}`}
+            scale={scale}
+            debounceMs={80}
+            onScopeElement={(el) => {
+              pageRef.current = el;
             }}
           >
-            <div
-              ref={pageRef}
-              className="mobile-pdf-print-content absolute left-0 top-0 origin-top-left rounded-sm bg-white shadow-2xl transition-transform duration-150 print:static print:transform-none print:shadow-none"
-              style={{ transform: `scale(${scale})`, width: 794 }}
-            >
-              {renderDocumentTemplate()}
-            </div>
-          </div>
+            {renderDocumentTemplate()}
+          </CanonicalPdfPreview>
         )}
       </div>
     </div>

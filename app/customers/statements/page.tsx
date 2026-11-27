@@ -100,6 +100,7 @@ export default function CustomerStatementsPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [statementData, setStatementData] = useState<StatementData | null>(null);
   const [customerSavedSoa, setCustomerSavedSoa] = useState<StoredSoaRecord | null>(null);
+  const [lastSynchronizedAt, setLastSynchronizedAt] = useState<string | null>(null);
 
   // Filters for ledger view
   const [searchQuery, setSearchQuery] = useState("");
@@ -193,6 +194,7 @@ export default function CustomerStatementsPage() {
       setStatements(json.statements || []);
       setStatementData(json.statement || null);
       setCustomerSavedSoa(json.customerSavedSoa || null);
+      setLastSynchronizedAt(json.lastSynchronizedAt || new Date().toISOString());
 
       if (json.selectedCustomer?.id) {
         setSelectedCustomerId(json.selectedCustomer.id);
@@ -1327,10 +1329,9 @@ export default function CustomerStatementsPage() {
                           Current Outstanding Balance
                         </span>
                         <div
-                          className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${(statementData?.closing_balance || 0) > 0 ? "text-cyan-400" : "text-emerald-400"
-                            }`}
+                          className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${(statementData?.closing_balance || 0) > 0 ? "text-cyan-400" : "text-emerald-400"}`}
                         >
-                          AED {(statementData?.closing_balance || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                          AED {(statementData?.closing_balance ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                         <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 pt-0.5">
                           <span>
@@ -1344,6 +1345,15 @@ export default function CustomerStatementsPage() {
                           <span>
                             Total Payments: <strong className="text-emerald-300">AED {(statementData?.total_credits || 0).toFixed(2)}</strong>
                           </span>
+                          {lastSynchronizedAt && (
+                            <>
+                              <span>•</span>
+                              <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
+                                <Clock size={11} />
+                                <span>Last synced: {new Date(lastSynchronizedAt).toLocaleString()}</span>
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
 
@@ -1359,6 +1369,56 @@ export default function CustomerStatementsPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* Historical vs Current Balance Breakdown */}
+                  {statementData?.breakdown && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5 pt-4 border-t border-slate-800/80 text-xs">
+                      <div className="rounded-xl bg-slate-950/80 border border-slate-800 p-2.5">
+                        <span className="text-[10px] text-slate-400 uppercase block">Original PDF Closing</span>
+                        <span className="font-mono font-bold text-slate-200">
+                          {statementData.breakdown.original_pdf_closing_balance !== null
+                            ? `AED ${statementData.breakdown.original_pdf_closing_balance.toFixed(2)}`
+                            : "—"}
+                        </span>
+                      </div>
+                      <div className="rounded-xl bg-slate-950/80 border border-slate-800 p-2.5">
+                        <span className="text-[10px] text-slate-400 uppercase block">Cutoff Date</span>
+                        <span className="font-mono font-bold text-slate-200">
+                          {formatDisplayDate(statementData.breakdown.original_statement_cutoff_date)}
+                        </span>
+                      </div>
+                      <div className="rounded-xl bg-slate-950/80 border border-slate-800 p-2.5">
+                        <span className="text-[10px] text-slate-400 uppercase block">Reconciled Historical</span>
+                        <span className="font-mono font-bold text-cyan-300">
+                          AED {statementData.breakdown.reconciled_historical_balance.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="rounded-xl bg-slate-950/80 border border-slate-800 p-2.5">
+                        <span className="text-[10px] text-slate-400 uppercase block">New Invoices (+)</span>
+                        <span className="font-mono font-bold text-amber-300">
+                          + AED {statementData.breakdown.post_cutoff_invoices_total.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="rounded-xl bg-slate-950/80 border border-slate-800 p-2.5">
+                        <span className="text-[10px] text-slate-400 uppercase block">New Payments (-)</span>
+                        <span className="font-mono font-bold text-emerald-300">
+                          - AED {statementData.breakdown.post_cutoff_payments_total.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="rounded-xl bg-slate-950/80 border border-slate-800 p-2.5">
+                        <span className="text-[10px] text-slate-400 uppercase block">Approved Adjustments</span>
+                        <span className="font-mono font-bold text-purple-300">
+                          AED {statementData.breakdown.approved_adjustments_total.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="rounded-xl bg-cyan-950/40 border border-cyan-800/60 p-2.5">
+                        <span className="text-[10px] text-cyan-300 uppercase font-semibold block">Current Balance</span>
+                        <span className="font-mono font-extrabold text-cyan-200">
+                          AED {statementData.breakdown.current_outstanding_balance.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Filters */}
@@ -1642,10 +1702,11 @@ export default function CustomerStatementsPage() {
           isOpen={Boolean(editingSoaRecord)}
           record={editingSoaRecord}
           customers={customers}
+          companyInfo={companyInfo}
+          liveStatement={statementData}
           onClose={() => setEditingSoaRecord(null)}
-          onSaved={() => {
-            setEditingSoaRecord(null);
-            void loadStatement(selectedCustomerId, fromDate || undefined, toDate || undefined);
+          onSaved={(savedCustomerId) => {
+            void loadStatement(savedCustomerId || selectedCustomerId, fromDate || undefined, toDate || undefined);
           }}
         />
       )}

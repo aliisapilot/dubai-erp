@@ -36,6 +36,7 @@ import { NumericCellInput } from "@/components/ui/NumericCellInput";
 import { stripCustomPartyTags } from "@/lib/documentCustomer";
 import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import PrintModal from "./PrintModal";
+import CanonicalPdfPreview from "./CanonicalPdfPreview";
 
 export interface EditorLineItem {
   id?: string;
@@ -364,6 +365,8 @@ function DocumentSplitScreenEditorWorkspace({
   const [previewFullscreen, setPreviewFullscreen] = useState<boolean>(false);
   const [zoom, setZoom] = useState<number>(0.85);
   const [previewPage, setPreviewPage] = useState<number>(1);
+  const [canonicalPageCount, setCanonicalPageCount] = useState<number>(1);
+  const [isPreviewUpdating, setIsPreviewUpdating] = useState<boolean>(false);
   const [dirty, setDirty] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
@@ -1835,8 +1838,14 @@ function DocumentSplitScreenEditorWorkspace({
           {/* Top Preview Controls Bar */}
           <div className="flex h-10 shrink-0 items-center justify-between border-b border-slate-800/80 bg-slate-900/60 px-4 text-xs text-slate-300 select-none">
             <div className="flex items-center gap-2">
-              <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="font-semibold text-slate-200">WYSIWYG Live PDF Preview</span>
+              <span
+                className={`flex h-2 w-2 rounded-full ${
+                  isPreviewUpdating ? "bg-blue-400 animate-ping" : "bg-emerald-400"
+                }`}
+              />
+              <span className="font-semibold text-slate-200">
+                {isPreviewUpdating ? "Updating Preview…" : "WYSIWYG Canonical PDF"}
+              </span>
               <span className="text-[10px] text-slate-400">
                 ({previewData.items.length} {previewData.items.length === 1 ? "line" : "lines"})
               </span>
@@ -1917,7 +1926,7 @@ function DocumentSplitScreenEditorWorkspace({
               </div>
 
               {/* Multi-page controls */}
-              {totalPreviewPages > 1 && (
+              {Math.max(totalPreviewPages, canonicalPageCount) > 1 && (
                 <div className="flex items-center gap-1 border-l border-slate-800 pl-2">
                   <button
                     type="button"
@@ -1928,12 +1937,14 @@ function DocumentSplitScreenEditorWorkspace({
                     <ChevronLeft size={12} />
                   </button>
                   <span className="text-[10px] font-mono text-slate-300">
-                    {previewPage}/{totalPreviewPages}
+                    {previewPage}/{Math.max(totalPreviewPages, canonicalPageCount)}
                   </span>
                   <button
                     type="button"
-                    onClick={() => setPreviewPage((p) => Math.min(totalPreviewPages, p + 1))}
-                    disabled={previewPage >= totalPreviewPages}
+                    onClick={() =>
+                      setPreviewPage((p) => Math.min(Math.max(totalPreviewPages, canonicalPageCount), p + 1))
+                    }
+                    disabled={previewPage >= Math.max(totalPreviewPages, canonicalPageCount)}
                     className="p-1 rounded hover:bg-slate-800 disabled:opacity-30 cursor-pointer"
                   >
                     <ChevronRight size={12} />
@@ -1953,34 +1964,45 @@ function DocumentSplitScreenEditorWorkspace({
             }}
           >
             {design.ready && design.layout ? (
-              <div
-                style={{
-                  width: `${design.layout.page.widthMm * zoom * 3.7795296}px`,
-                  height: `${design.layout.page.heightMm * zoom * 3.7795296}px`,
-                  flexShrink: 0,
-                  position: "relative",
-                  margin: "auto",
-                }}
+              <CanonicalPdfPreview
+                filename={
+                  generateDocumentPdfFilename({
+                    docType: documentType,
+                    docNumber: effectiveDocNumber || previewData.document_number || undefined,
+                    partyName: isSupplierParty ? previewData.supplier_name : previewData.customer_name,
+                    customerName: previewData.customer_name,
+                    supplierName: previewData.supplier_name,
+                    projectName: previewData.project_name,
+                    scopeOfWork: previewData.scope_of_work,
+                    subject: (previewData as { subject?: string }).subject,
+                    notes: previewData.notes,
+                    items: previewData.items,
+                    date: previewData.document_date,
+                  }).filename
+                }
+                revisionKey={JSON.stringify({ previewData, layout: design.layout })}
+                scale={zoom}
+                pageNumber={previewPage}
+                debounceMs={450}
+                onPdfReady={(info) => setCanonicalPageCount(info.pageCount)}
+                onUpdatingChange={setIsPreviewUpdating}
               >
-                <div
-                  className="erp-document-surface absolute top-0 left-0 origin-top-left bg-white shadow-2xl rounded-sm border border-slate-300"
-                  style={{
-                    width: `${design.layout.page.widthMm}mm`,
-                    height: `${design.layout.page.heightMm}mm`,
-                    transform: `scale(${zoom})`,
-                  }}
-                >
-                  <DynamicDocumentRenderer
-                    layout={design.layout}
-                    company={company}
-                    data={previewData}
-                    isDesignerPreview={false}
-                    scale={1}
-                    pageNumber={previewPage}
-                    totalPages={totalPreviewPages}
-                  />
-                </div>
-              </div>
+                {Array.from({ length: totalPreviewPages }, (_, idx) => {
+                  const pNum = idx + 1;
+                  return (
+                    <DynamicDocumentRenderer
+                      key={pNum}
+                      layout={design.layout!}
+                      company={company}
+                      data={previewData}
+                      isDesignerPreview={false}
+                      scale={1}
+                      pageNumber={pNum}
+                      totalPages={totalPreviewPages}
+                    />
+                  );
+                })}
+              </CanonicalPdfPreview>
             ) : (
               <div className="flex h-64 items-center justify-center text-xs text-slate-400">
                 <Loader2 size={24} className="animate-spin text-slate-500" />

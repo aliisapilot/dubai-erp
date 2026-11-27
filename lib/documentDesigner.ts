@@ -1164,9 +1164,8 @@ export const DEFAULT_DELIVERY_COLUMNS: TableColumnConfig[] = [
 
 export const DEFAULT_STATEMENT_COLUMNS: TableColumnConfig[] = [
   { key: "date", label: "Date", visible: true, widthPct: 11, align: "center" },
-  { key: "type", label: "Type", visible: true, widthPct: 12, align: "center" },
-  { key: "reference", label: "Ref #", visible: true, widthPct: 12, align: "center" },
-  { key: "description", label: "Description", visible: true, widthPct: 27, align: "left" },
+  { key: "reference", label: "Reference #", visible: true, widthPct: 13, align: "center" },
+  { key: "description", label: "Description", visible: true, widthPct: 38, align: "left" },
   { key: "debit", label: "Debit (AED)", visible: true, widthPct: 12, align: "right" },
   { key: "credit", label: "Credit (AED)", visible: true, widthPct: 12, align: "right" },
   { key: "balance", label: "Balance (AED)", visible: true, widthPct: 14, align: "right" },
@@ -1174,9 +1173,8 @@ export const DEFAULT_STATEMENT_COLUMNS: TableColumnConfig[] = [
 
 export const SOA_REFERENCE_STATEMENT_COLUMNS: TableColumnConfig[] = [
   { key: "date", label: "Date", visible: true, widthPct: 11, align: "center" },
-  { key: "type", label: "Type", visible: true, widthPct: 12, align: "center" },
-  { key: "reference", label: "Ref #", visible: true, widthPct: 12, align: "center" },
-  { key: "description", label: "Description", visible: true, widthPct: 27, align: "left" },
+  { key: "reference", label: "Reference #", visible: true, widthPct: 13, align: "center" },
+  { key: "description", label: "Description", visible: true, widthPct: 38, align: "left" },
   { key: "debit", label: "Charges (AED)", visible: true, widthPct: 12, align: "right" },
   { key: "credit", label: "Credits (AED)", visible: true, widthPct: 12, align: "right" },
   { key: "balance", label: "Balance (AED)", visible: true, widthPct: 14, align: "right" },

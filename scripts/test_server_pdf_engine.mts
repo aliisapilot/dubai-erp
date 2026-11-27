@@ -12,6 +12,7 @@ import {
   sanitizeDocumentHtmlForPdf,
 } from "../lib/serverPdfRenderer";
 import { generateDocumentPdfFilename } from "../lib/documentFilename";
+import { computeServerPdfCacheFingerprint } from "../lib/exportDocumentPdf";
 import { createDefaultLayout } from "../lib/documentDesigner";
 import { formatDisplayDocNumber } from "../lib/documentNumbering";
 import { computeEffectiveLayout, prepareSavedAutoFit } from "../lib/documentLayoutEngine";
@@ -709,6 +710,38 @@ function verifyLegacyJsPdfRemovalAndRetryUi() {
     const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
     assert(/Retry/i.test(src), `${rel} renders explicit Retry option on PDF render error`);
   }
+
+  const unifiedPrintFiles = [
+    "components/documents/PrintModal.tsx",
+    "components/mobile/MobilePdfModal.tsx",
+    "components/documents/DocumentContainer.tsx",
+    "components/designer/DocumentPreviewModal.tsx",
+  ];
+  for (const rel of unifiedPrintFiles) {
+    const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
+    assert(
+      !src.includes("printCurrentDocument") && !src.includes("isMobileBrowser"),
+      `${rel} routes Print PDF through unified server Chromium PDF engine (no browser print bypass)`
+    );
+  }
+
+  assert(
+    fs.existsSync(path.join(ROOT, "public/pdf.worker.min.mjs")),
+    "public/pdf.worker.min.mjs exists for cross-platform CanonicalPdfPreview"
+  );
+  const wysiwygPreviewFiles = [
+    "components/documents/PrintModal.tsx",
+    "components/mobile/MobilePdfModal.tsx",
+    "components/designer/DocumentPreviewModal.tsx",
+    "components/documents/DocumentSplitScreenEditor.tsx",
+  ];
+  for (const rel of wysiwygPreviewFiles) {
+    const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
+    assert(
+      src.includes("CanonicalPdfPreview"),
+      `${rel} renders Live Preview from CanonicalPdfPreview (exact server Chromium PDF)`
+    );
+  }
 }
 
 function buildQtn157DesignerSheetHtml(): { html: string; expectedFilename: string } {
@@ -1073,6 +1106,63 @@ async function main() {
   });
   const qtn157Path = path.join(OUT_DIR, qtn157File.filename);
   fs.writeFileSync(qtn157Path, qtn157Pdf);
+
+  // Verify Download PDF and Print PDF share the exact same cache fingerprint (reusing identical Blob bytes)
+  // and even across two separate Chromium renders produce identical page count, text, coordinates, and fonts
+  const qtn157PrintPdf = await renderPdfFromHtmlSheets({
+    sheetsHtml: [realQtnHtml],
+    cssText: compiledAppCss,
+    assets,
+    landscape: false,
+    title: qtn157File.title,
+  });
+  const qtn157DownloadOutPath = path.join(OUT_DIR, "QTN-157_download.pdf");
+  const qtn157PrintOutPath = path.join(OUT_DIR, "QTN-157_print.pdf");
+  fs.writeFileSync(qtn157DownloadOutPath, qtn157Pdf);
+  fs.writeFileSync(qtn157PrintOutPath, qtn157PrintPdf);
+
+  const stripPdfTimestamps = (buf: Buffer) =>
+    buf.toString("latin1").replace(/\/(CreationDate|ModDate)\s*\([^)]*\)/g, "/$1()");
+  assert(
+    stripPdfTimestamps(qtn157Pdf) === stripPdfTimestamps(qtn157PrintPdf),
+    "QTN-157 Download PDF and Print PDF produce identical PDF content (excluding CreationDate/ModDate)"
+  );
+
+  const baseFp = computeServerPdfCacheFingerprint({
+    filename: qtn157File.filename,
+    title: qtn157File.title,
+    landscape: false,
+    cssText: compiledAppCss,
+    assets: { __PDF_ASSET_0__: "data:image/png;base64,AAAA" },
+    sheetsHtml: [realQtnHtml],
+  });
+  const sameLengthDiffAssetFp = computeServerPdfCacheFingerprint({
+    filename: qtn157File.filename,
+    title: qtn157File.title,
+    landscape: false,
+    cssText: compiledAppCss,
+    assets: { __PDF_ASSET_0__: "data:image/png;base64,BBBB" },
+    sheetsHtml: [realQtnHtml],
+  });
+  const diffCssFp = computeServerPdfCacheFingerprint({
+    filename: qtn157File.filename,
+    title: qtn157File.title,
+    landscape: false,
+    cssText: `${compiledAppCss}\n/* template-change */`,
+    assets: { __PDF_ASSET_0__: "data:image/png;base64,AAAA" },
+    sheetsHtml: [realQtnHtml],
+  });
+  const diffHtmlFp = computeServerPdfCacheFingerprint({
+    filename: qtn157File.filename,
+    title: qtn157File.title,
+    landscape: false,
+    cssText: compiledAppCss,
+    assets: { __PDF_ASSET_0__: "data:image/png;base64,AAAA" },
+    sheetsHtml: [`${realQtnHtml}<!-- edited -->`],
+  });
+  assert(baseFp !== sameLengthDiffAssetFp, "PDF cache key invalidates when logo/image content changes even at identical byte length");
+  assert(baseFp !== diffCssFp, "PDF cache key invalidates when CSS/font/template settings change");
+  assert(baseFp !== diffHtmlFp, "PDF cache key invalidates when document HTML/details change");
   const realAudit = await auditGeneratedPdf(qtn157Pdf, 1, false, [
     "AL SAFWAH AL QABDHA TENTS IND L.L.C SP",
     "100451829300003",
@@ -1094,9 +1184,67 @@ async function main() {
     "Consistent QTN-157 filename helper parity"
   );
 
+  console.log("\n[Case] SOA102-26 Al Karwan Solution FZC (6-column layout, no Type, no overlap, no red debits)");
+  const soaBaseLayout = createDefaultLayout("customer_statement");
+  const soaItems = [
+    { description: "Opening Balance Brought Forward", date: "", reference: "—", debit: 0, credit: 0, balance: 0, quantity: 1, unit_price: 0, vat_amount: 0, line_total: 0 },
+    { description: "Advance Payment for QTN104/26 & QTN105/26", date: "2026-02-09", reference: "—", debit: 0, credit: 9000, balance: -9000, quantity: 1, unit_price: 9000, vat_amount: 0, line_total: -9000 },
+    { description: "Pvc Water Tank Liner", date: "2026-03-07", reference: "INV108", debit: 17673.6, credit: 0, balance: 8673.6, quantity: 1, unit_price: 17673.6, vat_amount: 0, line_total: 8673.6 },
+    { description: "Pvc Water Tank Liner", date: "2026-03-10", reference: "INV109", debit: 3028.72, credit: 0, balance: 11702.32, quantity: 1, unit_price: 3028.72, vat_amount: 0, line_total: 11702.32 },
+    { description: "Pvc Water Tank Liner", date: "2026-03-17", reference: "INV110", debit: 0, credit: 215, balance: 11487.32, quantity: 1, unit_price: 215, vat_amount: 0, line_total: 11487.32 },
+  ];
+  const soa102Data = {
+    document_number: "SOA102-26",
+    document_date: "2026-03-25",
+    customer_name: "Al Karwan Solution FZC",
+    customer_trn: "104337393300003",
+    opening_balance: 0,
+    total_credits: 9215.0,
+    subtotal: 20702.32,
+    vat_amount: 0,
+    total_amount: 11487.32,
+    items: soaItems,
+    payment_terms: "Your account balance is 11,487.32 AED. Please make your payment to cover the balance by the due date.",
+  };
+  const soa102Html = renderToStaticMarkup(
+    React.createElement(DynamicDocComponent, {
+      layout: soaBaseLayout,
+      company: realCompany,
+      data: soa102Data,
+      isDesignerPreview: false,
+      scale: 1,
+      pageNumber: 1,
+      totalPages: 1,
+    })
+  );
+  assert(
+    !soa102Html.includes(">Type<") && soa102Html.includes("Reference #") && !soa102Html.includes("text-rose-700"),
+    "SOA102-26 uses 6 columns (no Type column) and removes red text from normal debit amounts"
+  );
+  const soa102Pdf = await renderPdfFromHtmlSheets({
+    sheetsHtml: [soa102Html],
+    cssText: compiledAppCss,
+    assets,
+    landscape: false,
+    title: "SOA102-26 Al Karwan Solution FZC",
+  });
+  const soa102Path = path.join(OUT_DIR, "SOA102-26_Al_Karwan.pdf");
+  fs.writeFileSync(soa102Path, soa102Pdf);
+  await auditGeneratedPdf(soa102Pdf, 1, false, [
+    "SOA102-26",
+    "Al Karwan Solution FZC",
+    "Reference #",
+    "INV108",
+    "INV109",
+    "INV110",
+    "11,487.32",
+    "Account Summary",
+  ]);
+
   console.log("\n[Visual Render] Rendering PDFs via pdfjs-dist to PNG for visual inspection...");
   await renderPdfPagesToPng([
     { pdfPath: qtn157Path, pngPath: path.join(OUT_DIR, "preview_qtn_157_p1.png"), label: "QTN-157 real renderer" },
+    { pdfPath: soa102Path, pngPath: path.join(OUT_DIR, "preview_soa102_26_p1.png"), label: "SOA102-26 Al Karwan" },
     { pdfPath: path.join(OUT_DIR, "sample_pdf_1_item.pdf"), pngPath: path.join(OUT_DIR, "preview_1_item_p1.png"), label: "1-item invoice" },
     { pdfPath: path.join(OUT_DIR, "sample_pdf_15_items.pdf"), pngPath: path.join(OUT_DIR, "preview_15_items_p1.png"), label: "15-item invoice" },
     { pdfPath: path.join(OUT_DIR, "sample_soa_server.pdf"), pngPath: path.join(OUT_DIR, "preview_soa_p1.png"), label: "SOA statement" },

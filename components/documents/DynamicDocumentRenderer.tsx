@@ -1402,7 +1402,21 @@ export default function DynamicDocumentRenderer({
           ] as TableColumnConfig[],
         };
 
-        const activeCols = tSettings.columns.filter((c) => c.visible);
+        const rawActiveCols = tSettings.columns.filter(
+          (c) => c.visible && !(layout.documentType === "customer_statement" && c.key === "type")
+        );
+        const totalColPct = rawActiveCols.reduce((s, c) => s + (c.widthPct || 10), 0);
+        const activeCols =
+          layout.documentType === "customer_statement" && totalColPct > 0 && Math.abs(totalColPct - 100) > 0.1
+            ? rawActiveCols.map((c) => ({
+                ...c,
+                label: c.key === "reference" && c.label === "Ref #" ? "Reference #" : c.label,
+                widthPct:
+                  c.key === "description"
+                    ? Math.round(((c.widthPct + (100 - totalColPct)) * 10)) / 10
+                    : c.widthPct,
+              }))
+            : rawActiveCols;
         const dynamicCellPadding = effectiveGeometry.fitProfile?.cellPadding;
         const isCompact = (tSettings.rowHeight || 8.5) < 7.5;
         const cellPadding = dynamicCellPadding ? "" : isCompact ? "py-0.5 px-1" : "py-1 px-1.5";
@@ -1497,7 +1511,7 @@ export default function DynamicDocumentRenderer({
                       key={firstItemIndex + idx}
                       className="hover:bg-slate-50/50"
                       style={{
-                        height: `${rowHeightMm}mm`,
+                        minHeight: `${rowHeightMm}mm`,
                         backgroundColor: idx % 2 === 0 ? colors.tableRowBg : colors.tableRowAlt,
                         borderBottom: `${tSettings.borderThickness}px solid ${tableBorderColor}`,
                       }}
@@ -1551,12 +1565,12 @@ export default function DynamicDocumentRenderer({
                         const isTargetAmountCol = ["unit_price", "vat_amount", "line_total", "rate", "discount", "debit", "credit", "balance"].includes(col.key);
                         const effectiveAlign = col.align ? col.align : isTargetAmountCol ? "right" : "left";
 
-                        const isNoWrap = isMonetary || ["type", "date", "reference"].includes(col.key);
+                        const isNoWrap = isMonetary || col.key === "date";
 
                         return (
                           <td
                             key={col.key}
-                            className={`${cellPadding} ${isNoWrap ? "whitespace-nowrap" : "break-words"} ${col.key === "dimensions" || col.key === "calc_type" || col.key === "description" ? "whitespace-pre-line" : ""} ${isMonetary ? "font-mono" : ""}`}
+                            className={`${cellPadding} overflow-hidden ${isNoWrap ? "whitespace-nowrap" : "break-words"} ${col.key === "dimensions" || col.key === "calc_type" || col.key === "description" ? "whitespace-pre-line" : ""} ${isMonetary ? "font-mono" : ""}`}
                             style={{
                               ...customPaddingStyle,
                               fontSize: `${colBodyPt}pt`,
@@ -1723,7 +1737,7 @@ export default function DynamicDocumentRenderer({
           const opening = data.opening_balance ?? (data.items[0]?.type === "Opening" ? data.items[0].balance : 0);
           return (
             <div
-              className="w-full h-full min-h-0 overflow-hidden rounded select-text flex flex-col justify-start"
+              className="w-full h-full min-h-0 mt-[3mm] overflow-hidden rounded select-text flex flex-col justify-start"
               style={{
                 border: `${elem.borderWidth || 1}px solid ${elem.borderColor || colors.border}`,
                 borderRadius: `${elem.borderRadius !== undefined ? elem.borderRadius : 2}px`,
@@ -1765,7 +1779,7 @@ export default function DynamicDocumentRenderer({
                   </tr>
                   <tr className="border-b" style={{ borderColor: elem.borderColor || colors.border }}>
                     <td className="px-2 py-[1px] font-medium text-slate-700 whitespace-nowrap">New Charges</td>
-                    <td className="px-2 py-[1px] text-right font-mono font-bold text-rose-700 whitespace-nowrap">
+                    <td className="px-2 py-[1px] text-right font-mono font-bold text-slate-900 whitespace-nowrap">
                       {fmtAED(data.subtotal || 0)}
                     </td>
                   </tr>

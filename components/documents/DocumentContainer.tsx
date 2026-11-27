@@ -3,8 +3,7 @@
 import React, { ReactNode, useState } from "react";
 import { Download, Printer } from "lucide-react";
 import { getBrandConfig, BrandColors, CompanyBrandInput } from "@/lib/brandConfig";
-import { printCurrentDocument } from "@/lib/print";
-import { exportDocumentToPdf, isMobileBrowser } from "@/lib/exportDocumentPdf";
+import { exportDocumentToPdf } from "@/lib/exportDocumentPdf";
 import { generateDocumentPdfFilename } from "@/lib/documentFilename";
 import PageDecorativeBorders from "./PageDecorativeBorders";
 import { DEFAULT_PAGE_BORDERS, PageBorderSettings, DocumentLayout } from "@/lib/documentDesigner";
@@ -87,27 +86,22 @@ export default function DocumentContainer({
     setExportError(null);
     if (onPrint) {
       onPrint();
-    } else if (isMobileBrowser()) {
-      setIsExporting(true);
-      try {
-        await exportDocumentToPdf({
-          filename: defaultPdfFilename,
-          action: "print",
-        });
-      } catch (err) {
-        console.error("Mobile PDF print error:", err);
-        setExportError({
-          message: err instanceof Error ? err.message : "Failed to generate PDF for printing.",
-          action: "print",
-        });
-      } finally {
-        setIsExporting(false);
-      }
-    } else {
-      await printCurrentDocument({
-        documentFilename: defaultPdfFilename,
-        documentTitle: defaultDocTitle,
+      return;
+    }
+    setIsExporting(true);
+    try {
+      await exportDocumentToPdf({
+        filename: defaultPdfFilename,
+        action: "print",
       });
+    } catch (err) {
+      console.error("PDF print error:", err);
+      setExportError({
+        message: err instanceof Error ? err.message : "Failed to generate PDF for printing.",
+        action: "print",
+      });
+    } finally {
+      setIsExporting(false);
     }
   };
 

@@ -26,6 +26,15 @@ let activeDownloadLock = false;
 const inFlightPdfRequests = new Map<string, Promise<CachedPdfEntry>>();
 const completedPdfCache = new Map<string, CachedPdfEntry>();
 
+export function clearPdfCache(): void {
+  for (const entry of completedPdfCache.values()) {
+    try {
+      URL.revokeObjectURL(entry.url);
+    } catch {}
+  }
+  completedPdfCache.clear();
+}
+
 export function normalizePdfFilename(rawFilename?: string | null): string {
   const base = sanitizeFilenamePart((rawFilename || "Document").replace(/(\.pdf)+$/i, ""));
   return `${base || "Document"}.pdf`;
@@ -223,6 +232,24 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+export function computeServerPdfCacheFingerprint(params: {
+  filename: string;
+  title?: string;
+  landscape?: boolean;
+  cssText?: string;
+  assets?: Record<string, string>;
+  sheetsHtml: string[];
+}): string {
+  const assetsHash = Object.keys(params.assets || {})
+    .sort()
+    .map((k) => `${k}:${fastStringHash(params.assets![k] || "")}`)
+    .join(",");
+  const cssHash = fastStringHash(params.cssText || "");
+  return fastStringHash(
+    `${params.filename}|${params.title || ""}|${params.landscape ? "L" : "P"}|${cssHash}|${assetsHash}|${params.sheetsHtml.join("\n")}`
+  );
+}
+
 /**
  * Generates an authoritative server-side Chromium A4 PDF from arbitrary HTML sheets + CSS.
  * Used by both DOM document exports and spreadsheet-to-PDF reports (`SoaPreviewModal`).
@@ -237,9 +264,16 @@ export async function renderHtmlToServerPdf(params: {
   action?: "download" | "share" | "blob" | "print";
 }): Promise<PdfDeliveryResult> {
   const filename = normalizePdfFilename(params.filename);
-  const fingerprint = fastStringHash(
-    `${filename}|${params.landscape ? "L" : "P"}|${params.sheetsHtml.join("\n")}`
-  );
+  const title = params.title || filename.replace(/\.pdf$/i, "");
+  const resolvedCssText = params.cssText ?? collectDocumentCssText();
+  const fingerprint = computeServerPdfCacheFingerprint({
+    filename,
+    title,
+    landscape: Boolean(params.landscape),
+    cssText: resolvedCssText,
+    assets: params.assets,
+    sheetsHtml: params.sheetsHtml,
+  });
 
   let entry = completedPdfCache.get(fingerprint);
   if (!entry) {
@@ -247,18 +281,31 @@ export async function renderHtmlToServerPdf(params: {
     if (!promise) {
       promise = (async () => {
         const headers = await getAuthHeaders();
-        const res = await fetch("/api/pdf/render", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            sheetsHtml: params.sheetsHtml,
-            cssText: params.cssText ?? collectDocumentCssText(),
-            assets: params.assets || {},
-            filename,
-            title: params.title || filename.replace(/\.pdf$/i, ""),
-            landscape: Boolean(params.landscape),
-          }),
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25_000);
+        let res: Response;
+        try {
+          res = await fetch("/api/pdf/render", {
+            method: "POST",
+            headers,
+            signal: controller.signal,
+            body: JSON.stringify({
+              sheetsHtml: params.sheetsHtml,
+              cssText: resolvedCssText,
+              assets: params.assets || {},
+              filename,
+              title,
+              landscape: Boolean(params.landscape),
+            }),
+          });
+        } catch (fetchErr) {
+          if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
+            throw new Error("PDF generation timed out after 25s. Please retry.");
+          }
+          throw fetchErr;
+        } finally {
+          clearTimeout(timeoutId);
+        }
 
         if (!res.ok) {
           let errMsg = `Server PDF engine failed (${res.status}).`;
@@ -291,8 +338,8 @@ export async function renderHtmlToServerPdf(params: {
         const blob = new Blob([buf], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
 
-        // Keep max 8 cached PDFs to bound client memory
-        if (completedPdfCache.size >= 8) {
+        // Keep max 16 cached PDFs to bound client memory while enabling instant reopen
+        if (completedPdfCache.size >= 16) {
           const oldestKey = completedPdfCache.keys().next().value;
           if (oldestKey) {
             const old = completedPdfCache.get(oldestKey);

@@ -45,7 +45,6 @@ export default function StatementOfAccountTemplate({
     total_credits: totalCredits,
     items: [{
       date: statement.from_date || "",
-      type: "Opening",
       reference: "—",
       description: "Opening Balance Brought Forward",
       debit: 0,
@@ -57,14 +56,7 @@ export default function StatementOfAccountTemplate({
       line_total: statement.opening_balance,
     }, ...statement.entries.map((e) => ({
       date: e.date,
-      type: e.description.startsWith("Tax Invoice")
-        ? "Tax Invoice"
-        : e.description.startsWith("Payment")
-        ? "Payment"
-        : e.description.startsWith("Receipt Voucher")
-        ? "Receipt Voucher"
-        : e.description.split(" (")[0],
-      reference: e.reference_no,
+      reference: e.reference_no || "—",
       description: e.description,
       debit: e.debit,
       credit: e.credit,
@@ -210,7 +202,7 @@ export default function StatementOfAccountTemplate({
                   <td className="py-2 px-2.5 text-slate-800 break-words">
                     {entry.description}
                   </td>
-                  <td className="py-2 px-2.5 text-right font-mono text-rose-700">
+                  <td className="py-2 px-2.5 text-right font-mono text-slate-900">
                     {entry.debit > 0 ? entry.debit.toLocaleString("en-US", { minimumFractionDigits: 2 }) : "—"}
                   </td>
                   <td className="py-2 px-2.5 text-right font-mono text-emerald-700 font-semibold">
@@ -235,7 +227,7 @@ export default function StatementOfAccountTemplate({
                 <td colSpan={3} className="py-2.5 px-3 text-right">
                   Total Period Activity:
                 </td>
-                <td className="py-2.5 px-3 text-right font-mono text-rose-700">
+                <td className="py-2.5 px-3 text-right font-mono text-slate-900">
                   {totalCharges.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </td>
                 <td className="py-2.5 px-3 text-right font-mono text-emerald-700">
